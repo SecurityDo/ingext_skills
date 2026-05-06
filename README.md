@@ -58,6 +58,48 @@ summary — KPI cards, charts, tables, and a written interpretation of the data.
 
 ---
 
+### `o365-user-investigation.skill`
+
+Investigate a specific Office 365 / Azure AD (Entra) user by running three Fluency reports
+in parallel and combining the results into a single-page HTML investigation report —
+activity timeline, executive summary, per-report data tables, and security recommendations.
+
+**Trigger phrases**
+
+- "Investigate O365 user `<email>`"
+- "Look into what user `<email>` did in Office 365"
+- "Pull a Fluency user investigation for `<email>`"
+- "Check this Azure AD account on Fluency"
+- "What did `<user>` do in Office 365 last week?"
+
+**What you get**
+
+- A browser-ready HTML investigation report with Fluency branding
+- Chronological activity timeline merging sign-ins and directory changes
+- Executive summary highlighting suspicious patterns (failed logins, unusual locations,
+  privilege changes, etc.)
+- Three per-report data tables: sign-in history, directory changes initiated by the user,
+  and directory changes targeting the user
+- Suggested next steps for the analyst
+
+**Required reports in your FPL catalog**
+
+- `GetDirectoryChangesInitiatedByUser`
+- `GetDirectoryChangesTargetingUser`
+- `GetUserSigninHistory`
+
+If any of the three are missing, Claude will stop and tell you which ones are absent
+rather than producing a partial report.
+
+**Notes**
+
+- Claude will ask for the username and time window (Last 24 hours, 7 days, 30 days, or
+  custom) if you don't supply them up front.
+- To get a PDF, ask Claude to "convert it to PDF" after the HTML is generated — it will
+  chain into the `html-to-pdf` skill.
+
+---
+
 ### `html-to-pdf.skill`
 
 Convert any HTML file to a pixel-perfect PDF using headless Chromium (via Playwright).
