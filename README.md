@@ -15,11 +15,47 @@ assets — no manual commands needed.
 
 ## Installation
 
-1. Open Claude Code and go to **Settings → Plugins**.
-2. Drag and drop a `.skill` file onto the plugins panel, or click **Add Plugin** and
-   select the file.
-3. The skill is now active. Just talk to Claude naturally — it will invoke the right skill
-   when it recognises your request.
+### Step 1 — Connect Claude Code to GitHub
+
+Before installing skills, connect Claude Code to GitHub so it can access this repository
+directly.
+
+1. Open Claude Code and go to **Settings → Connectors**.
+2. Click **Add Connector** and search for **GitHub**.
+3. Select the GitHub connector and click **Connect**.
+4. Authenticate via **OAuth login** with your GitHub account.
+5. Once connected, Claude Code can browse and pull files from any repository you have
+   access to.
+
+### Step 2 — Install skills from this repository
+
+With the GitHub connector active, ask Claude to install the skills directly:
+
+> "Install the skills from github.com/SecurityDo/ingext_skills"
+
+Claude will browse the repository, download the `.skill` files, and add them to your
+Claude Code plugins automatically.
+
+Alternatively, install a specific skill by name:
+
+> "Install the fluency-report skill from github.com/SecurityDo/ingext_skills"
+
+### Updating skills
+
+To get the latest version of any skill, ask Claude:
+
+> "Update my Ingext skills from github.com/SecurityDo/ingext_skills"
+
+Claude will pull the latest `.skill` files from the repository and replace the installed
+versions.
+
+### Manual install
+
+If you prefer to install manually without the GitHub connector:
+
+1. Download the `.skill` file directly from this repository.
+2. Open Claude Code and go to **Cowork → Customize**.
+3. Drag and drop the file onto the plugins panel, or click **Add Plugin** and select it.
 
 ---
 
