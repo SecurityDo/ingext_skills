@@ -178,6 +178,45 @@ Claude will also offer to convert automatically after generating an HTML report.
 
 ---
 
+### `ingext-kql.skill`
+
+Translate a natural-language question into a validated KQL query for the Ingext datalake.
+Looks up the real indexes and schemas in your tenant before writing a single line of KQL,
+so column names, field types, and table identifiers are always accurate.
+
+**Trigger phrases**
+
+- "Write me a KQL query for `<question>`"
+- "Count denied Fortigate traffic by srcip in the last 6 hours"
+- "Top 10 users by failed sign-ins yesterday"
+- "Show behavior events with high scores today"
+- Any natural-language description of what you want to search, count, or aggregate in the datalake
+
+**What you get**
+
+- A validated KQL query (passed through the parser before it reaches you)
+- A 2-3 sentence explanation of what the query does and any assumptions made
+- The list of index names the query references
+
+**Workflow Claude follows**
+
+1. Calls `list_indexes` to find the correct queryable table for your request
+2. Calls `list_schemas` + `describe_schema` to get exact column names and types
+3. Drafts KQL using the index name (not the schema name — these differ and the skill enforces the distinction)
+4. Validates the query with `validate_kql` before returning anything
+5. Returns `{ kql, explanation, tables }`
+
+**Required connector tools**
+
+`list_indexes`, `list_schemas`, `describe_schema`, `validate_kql` — available on the Ingext MCP connector.
+
+**Notes**
+
+- Every query is time-bounded. If you don't specify a time range the skill defaults to the last 24 hours and says so in the explanation.
+- Bundled with KQL syntax reference, dynamic JSON column guide, and worked examples for group-by and facet queries — pulled on demand to keep context small.
+
+---
+
 ## Typical Workflow
 
 ```
