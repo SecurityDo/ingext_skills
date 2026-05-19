@@ -13,6 +13,29 @@ assets — no manual commands needed.
 
 ---
 
+## Repository Layout
+
+```
+ingext_skills/
+├── SKILLS/                          # Raw skill source files (browsable)
+│   ├── fluency-report/              # SKILL.md + assets/, references/
+│   ├── html-to-pdf/                 # SKILL.md + scripts/
+│   ├── ingext-kql/                  # SKILL.md + references/
+│   └── o365-user-investigation/     # SKILL.md + assets/, evals/, scripts/
+└── cowork/                          # Pre-packaged .skill bundles (installable)
+    ├── fluency-report.skill
+    ├── html-to-pdf.skill
+    ├── ingext-kql.skill
+    └── o365-user-investigation.skill
+```
+
+- **`SKILLS/`** — the unpacked source of each skill, one folder per skill. Use this to
+  read, review, or modify a skill's contents.
+- **`cowork/`** — the same skills built as `.skill` packages (zip archives) ready to drop
+  into Claude Code via Cowork.
+
+---
+
 ## Installation
 
 ### Step 1 — Connect Claude Code to GitHub
@@ -53,7 +76,7 @@ versions.
 
 If you prefer to install manually without the GitHub connector:
 
-1. Download the `.skill` file directly from this repository.
+1. Download the desired `.skill` file from the [`cowork/`](cowork/) folder in this repo.
 2. Open Claude Code and go to **Cowork → Customize**.
 3. Drag and drop the file onto the plugins panel, or click **Add Plugin** and select it.
 

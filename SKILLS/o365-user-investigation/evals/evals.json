@@ -1,0 +1,48 @@
+{
+  "skill_name": "o365-user-investigation",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need to investigate john.smith@contoso.com on Fluency — can you pull their O365 activity for the last 7 days and tell me what they've been up to? I'm trying to figure out if there's anything suspicious going on with their account after we got an alert.",
+      "expected_output": "The skill should (1) call list_reports and verify all 3 required reports exist, (2) run all 3 reports for the username with from/to timestamps covering the last 7 days, (3) produce a single HTML report with a timeline SVG, KPI strip, summary paragraph, 3 data tables, and recommendations. The HTML file should be linkable via computer:// URL.",
+      "files": [],
+      "expectations": [
+        "The skill calls list_reports before running any report",
+        "All three reports (GetDirectoryChangesInitiatedByUser, GetDirectoryChangesTargetingUser, GetUserSigninHistory) are run",
+        "The output is an HTML file saved to disk",
+        "The HTML contains a timeline section with SVG",
+        "The HTML contains KPI cards",
+        "The HTML contains a summary paragraph",
+        "The HTML contains tables for all three reports",
+        "The HTML contains a Recommended Next Steps section",
+        "A computer:// link to the HTML file is provided in chat"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Hey can you check what jane.doe@corp.com did in Office365 yesterday? Specifically I want to know if she made any directory changes or had unusual sign-ins. Run the investigation on Fluency.",
+      "expected_output": "The skill should collect the username (jane.doe@corp.com) and interpret 'yesterday' as the 24-hour window for the previous day, then run the same three reports and produce the HTML investigation report with all required sections.",
+      "files": [],
+      "expectations": [
+        "The skill calls list_reports first",
+        "The time range covers approximately the last 24 hours",
+        "The username jane.doe@corp.com is passed to all three reports",
+        "An HTML file is produced with timeline, tables, summary, and recommendations",
+        "A computer:// link is provided"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Run an O365 user investigation on Fluency. The user is bob@example.com and I want to look at the last 30 days.",
+      "expected_output": "The skill should verify the 3 required reports exist, then run them for bob@example.com over the last 30 days, producing the combined HTML report with timeline, KPI strip, 3 data tables, executive summary, and prioritised recommendations. If any required report is missing, the skill should stop and clearly state which report is absent.",
+      "files": [],
+      "expectations": [
+        "list_reports is called to verify required reports",
+        "All three required reports are run with bob@example.com as the username",
+        "The time range covers approximately 30 days",
+        "The HTML output contains all five sections: KPI strip, timeline, summary, three data tables, next steps",
+        "A computer:// link is shared in chat"
+      ]
+    }
+  ]
+}

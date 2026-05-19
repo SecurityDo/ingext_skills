@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{report_title}} · Fluency Report</title>
+
+  <!-- Inter for body, JetBrains Mono for tabular data -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- NOTE: No external chart library is used. All charts are pure inline SVG or CSS.
+       See widget_recipes.md for copy-paste patterns (line, bar, donut). -->
+
+  <style>
+    :root {
+      /* Brand */
+      --red:    #c0161c;
+      --red-2:  #e81e25;
+      --blue:   #2d65a1;
+      --blue-2: #457fc1;
+      --navy:   #2d2d72;
+      --green:  #1f9d55;
+      --amber:  #e8a01e;
+
+      /* Surface */
+      --bg:     #f6f7fa;
+      --card:   #ffffff;
+      --bd1:    #e3e6ec;
+      --bd2:    #eef0f4;
+
+      /* Text */
+      --t1:     #1a1f2c;
+      --t2:     #4a5163;
+      --t3:     #8a92a3;
+
+      /* Severity row tints */
+      --sev-high:   #fdecec;
+      --sev-med:    #fff7e8;
+      --sev-low:    #f0f5fb;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--t1);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      /* A4-native: 12px base so text stays readable at 1:1 print scale */
+      font-size: 12px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* A4 content area: 210mm - 2x12mm margins = 186mm = ~703px at 96dpi.
+       760px max-width gives comfortable gutters and renders without scaling. */
+    .page {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* -- Header --------------------------------------------------------- */
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 16px;
+      background: var(--card);
+      border: 1px solid var(--bd1);
+      border-radius: 8px;
+    }
+    .header-left { min-width: 0; }
+    .header-title {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin: 0 0 2px;
+      color: var(--t1);
+    }
+    .header-subtitle {
+      font-size: 11.5px;
+      color: var(--t2);
+      margin: 0;
+    }
+    .header-meta {
+      font-size: 10.5px;
+      color: var(--t3);
+      margin-top: 4px;
+    }
+    .header-meta strong { color: var(--t2); font-weight: 600; }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      text-decoration: none;
+    }
+    .brand img {
+      max-height: 26px;
+      max-width: 150px;
+      object-fit: contain;
+    }
+
+    /* -- KPI strip ------------------------------------------------------- */
+
+    .kpi-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 8px;
+    }
+    .kpi {
+      background: var(--card);
+      border: 1px solid var(--bd1);
+      border-radius: 6px;
+      padding: 8px 10px;
+      min-width: 0;
+    }
+    .kpi-label {
+      font-size: 9.5px;
+      font-weight: 600;
+      color: var(--t3);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .kpi-value {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--t1);
+      line-height: 1.1;
+      margin-bottom: 3px;
+    }
+    .kpi-value.red   { color: var(--red); }
+    .kpi-value.blue  { color: var(--blue); }
+    .kpi-value.navy  { color: var(--navy); }
+    .kpi-value.green { color: var(--green); }
+    .kpi-value.amber { color: var(--amber); }
+
+    .kpi-note {
+      font-size: 10px;
+      color: var(--t2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* -- Main grid ------------------------------------------------------- */
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 10px;
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--bd1);
+      border-radius: 8px;
+      padding: 10px 12px;
+      min-width: 0;
+      grid-column: span 12;  /* default; override per-panel below */
+    }
+    .panel.col-4  { grid-column: span 4; }
+    .panel.col-5  { grid-column: span 5; }
+    .panel.col-6  { grid-column: span 6; }
+    .panel.col-7  { grid-column: span 7; }
+    .panel.col-8  { grid-column: span 8; }
+    .panel.col-12 { grid-column: span 12; }
+
+    @media (max-width: 600px) {
+      .panel.col-4, .panel.col-5, .panel.col-6,
+      .panel.col-7, .panel.col-8 { grid-column: span 12; }
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .panel-title {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--t1);
+      margin: 0;
+      letter-spacing: -0.005em;
+    }
+    .panel-subtitle {
+      font-size: 10px;
+      color: var(--t3);
+      flex-shrink: 0;
+    }
+
+    /* Tables */
+    table.data {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    table.data th {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--t3);
+      text-align: left;
+      padding: 0 5px 4px;
+      border-bottom: 1px solid var(--bd2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    table.data td {
+      font-size: 11px;
+      padding: 4px 6px;
+      border-bottom: 1px solid var(--bd2);
+      color: var(--t1);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    table.data td.wrap { white-space: normal; word-break: break-word; line-height: 1.3; }
+    table.data tr:last-child td { border-bottom: none; }
+    table.data tr.sev-high { background: var(--sev-high); }
+    table.data tr.sev-med  { background: var(--sev-med); }
+    table.data tr.sev-low  { background: var(--sev-low); }
+
+    /* Severity pills */
+    .pill {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 9px;
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .pill.high { background: var(--red);   color: #fff; }
+    .pill.med  { background: var(--amber); color: #fff; }
+    .pill.low  { background: var(--blue);  color: #fff; }
+    .pill.info { background: var(--bd1);   color: var(--t2); }
+
+    /* Volume bar (inline progress) */
+    .vol {
+      position: relative;
+      height: 5px;
+      background: var(--bd2);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .vol-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      background: var(--blue);
+      border-radius: 3px;
+    }
+    .vol-fill.red  { background: var(--red); }
+    .vol-fill.amber{ background: var(--amber); }
+
+    /* -- SVG line chart primitives --------------------------------------- */
+    /* A4 chart: viewBox "0 0 540 160", plot area y in [12, 135] (h=123)   */
+    .svg-chart { width: 100%; height: auto; overflow: visible; display: block; }
+    .chart-axis { font-size: 9px; fill: var(--t3); font-family: 'Inter', -apple-system, sans-serif; }
+    .chart-gridline { stroke: var(--bd2); stroke-width: 1; }
+    .chart-line { fill: none; stroke: var(--blue); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    .chart-area { fill: rgba(45,101,161,0.10); }
+
+    /* -- CSS horizontal bar chart --------------------------------------- */
+    .bar-rows { display: flex; flex-direction: column; gap: 8px; }
+    .bar-row { display: grid; grid-template-columns: 100px 1fr 55px; align-items: center; gap: 6px; }
+    .bar-label { font-size: 10.5px; color: var(--t2); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bar-track { background: var(--bd2); border-radius: 3px; height: 8px; overflow: hidden; }
+    .bar-fill  { height: 100%; border-radius: 3px; background: var(--blue); }
+    .bar-val   { font-size: 10px; color: var(--t3); font-family: 'JetBrains Mono', monospace; text-align: right; }
+
+    /* -- CSS donut chart (conic-gradient) ------------------------------- */
+    .donut-wrap   { display: flex; align-items: center; gap: 16px; }
+    .donut-ring   {
+      flex-shrink: 0; width: 110px; height: 110px; border-radius: 50%;
+      -webkit-mask: radial-gradient(closest-side, transparent 58%, white 58%);
+      mask: radial-gradient(closest-side, transparent 58%, white 58%);
+    }
+    .donut-legend { display: flex; flex-direction: column; gap: 5px; }
+    .legend-row   { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--t2); }
+    .legend-swatch{ width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+    /* -- Summary block -------------------------------------------------- */
+
+    .summary {
+      background: var(--card);
+      border: 1px solid var(--bd1);
+      border-left: 3px solid var(--blue);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--t1);
+    }
+    .summary p { margin: 0 0 6px; }
+    .summary p:last-child { margin-bottom: 0; }
+    .summary strong { color: var(--t1); font-weight: 600; }
+
+    /* -- Next steps ----------------------------------------------------- */
+
+    .next-steps {
+      background: var(--card);
+      border: 1px solid var(--bd1);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .next-steps h3 {
+      font-size: 11.5px;
+      font-weight: 700;
+      margin: 0 0 8px;
+      color: var(--t1);
+    }
+    /* 3-column layout fits 6 items in two rows on A4 */
+    .ns-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 8px 10px;
+    }
+    .ns-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .ns-num {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--blue);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    .ns-when {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--t3);
+      margin-bottom: 1px;
+    }
+    .ns-act {
+      font-size: 11px;
+      color: var(--t1);
+      line-height: 1.35;
+    }
+
+    /* -- Footer --------------------------------------------------------- */
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: var(--card);
+      border: 1px solid var(--bd1);
+      border-radius: 6px;
+      font-size: 10px;
+      color: var(--t3);
+      gap: 16px;
+    }
+    .footer a {
+      color: var(--blue);
+      text-decoration: none;
+    }
+    .footer a:hover { text-decoration: underline; }
+
+    /* Print: no forced page breaks so html-to-pdf renders a single A4 page.
+       Background colours are kept so pills/charts look correct in print. */
+    @media print {
+      body { background: #fff; }
+      .page { max-width: none; padding: 8px; }
+      * {
+        page-break-before: auto !important;
+        page-break-after:  auto !important;
+        page-break-inside: auto !important;
+        break-before:      auto !important;
+        break-after:       auto !important;
+        break-inside:      auto !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <h1 class="header-title">{{report_title}}</h1>
+        <p class="header-subtitle">{{report_subtitle}}</p>
+        <div class="header-meta">
+          Generated <strong>{{report_date}}</strong>{{report_meta}}
+        </div>
+      </div>
+      <div class="header-right">
+        <a class="brand" href="https://fluencysecurity.com" target="_blank" rel="noopener">
+          <img src="assets/logo2.png" alt="Fluency" style="max-height:26px;max-width:150px;object-fit:contain;">
+        </a>
+      </div>
+    </div>
+
+    <!-- KPI strip — 4-6 cards -->
+    <div class="kpi-strip">
+      {{kpi_strip}}
+    </div>
+
+    <!-- Written interpretation of the highest-signal numbers -->
+    <div class="summary">
+      {{summary_html}}
+    </div>
+
+    <!-- Main grid — use .panel.col-4/.col-6/.col-8/.col-12 -->
+    <div class="main-grid">
+      {{main_grid}}
+    </div>
+
+    <!-- Recommended next steps -->
+    <div class="next-steps">
+      <h3>Recommended Next Steps</h3>
+      <div class="ns-grid">
+        {{next_steps_items}}
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <div>{{footer_page_info}}</div>
+      <div>Data as at <strong>{{footer_data_date}}</strong> · powered by <a href="https://fluencysecurity.com" target="_blank" rel="noopener">Fluency</a></div>
+    </div>
+
+  </div>
+</body>
+</html>
