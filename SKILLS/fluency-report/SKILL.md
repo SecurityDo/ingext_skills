@@ -99,12 +99,36 @@ report name at all, list the catalog and ask which one they want.
 Choose the mode based on what the user requested. Default to **sync mode**
 unless the user explicitly says "non-sync", "async", or "background".
 
+#### Time arguments — always ISO 8601 / RFC3339
+
+When a report takes a time window (`from` / `to`), **always bind them as
+absolute ISO 8601 / RFC3339 UTC timestamps**, e.g. `2026-06-04T22:01:32Z`.
+Do **not** pass relative expressions like `-24h`, `now`, or FortiGate-style
+snap syntax (`-1d@d`, `@d`) as argument values — even when those appear as
+the report's stored `defaultValue`, they are not reliably parsed when passed
+through `run_report`, and a malformed window can make the report hang until
+it times out.
+
+Resolve the user's phrasing to a concrete UTC range first:
+
+- "last 24 hours" → `from = now − 24h`, `to = now`
+- "yesterday" → previous calendar day `00:00:00Z` … `23:59:59Z`
+- "last 7 days" → `from = now − 7d`, `to = now`
+- an explicit range → convert both endpoints to `…Z` UTC
+
+Compute the timestamps with the shell (e.g. `date -u +"%Y-%m-%dT%H:%M:%SZ"`
+and `date -u -d '24 hours ago' …`) so the values are exact, then pass them
+as `arguments`. If the user specifies no window, omit `from`/`to` and let the
+report apply its own defaults.
+
 #### Sync mode (default)
 
 - Tool: `mcp__…__run_report`
 - `name`: the matched report name (exact, as it appears in the catalog)
 - `syncMode`: `true`
-- `arguments`: pass `from`, `to`, `id`, etc. only if the user specified them
+- `arguments`: pass `from`, `to`, `id`, etc. only if the user specified a
+  window — and bind `from`/`to` as ISO 8601 / RFC3339 UTC timestamps (see
+  "Time arguments" above)
 
 The response contains the full result directly. Save it:
 
@@ -175,23 +199,45 @@ report a security operator would actually want to read.
 
 ### Step 5 — compose the body
 
-Open `references/widget_recipes.md` for copy-paste snippets. Common
-building blocks:
+Open `references/widget_recipes.md` for copy-paste snippets. **All charts
+are pure inline SVG or CSS — do NOT add Chart.js or any other CDN/script
+dependency; the Cowork render environment blocks external scripts.** The
+recipes file is the source of truth for the exact class names and markup.
+
+Core building blocks:
 
 - **KPI card** — single big number + label + small note line
 - **KPI strip** — 4–6 KPI cards in a row
-- **Table panel** — title + subtitle + a `<table>` with severity-coded rows
-- **Line chart** — Chart.js line, for time-series counts or scores
-- **Bar chart** — Chart.js bar, for top-N categorical
-- **Donut chart** — Chart.js doughnut, for category distribution
 - **Summary block** — short paragraph interpreting the highest-signal
   numbers (e.g. "Alert volume is up 40% week-over-week, driven by a single
-  rule")
+  rule"), rendered as a blue-accented lead card
+- **Table panel** — title + subtitle + a `<table class="data">` with
+  severity-coded rows (`.sev-high/med/low`) and inline `.pill`s
+- **Line chart** — pure SVG, for time-series counts or scores (pre-compute
+  all `(x,y)` coordinates; the `.svg-chart` / `.chart-*` classes are defined)
+- **Bar chart** — pure CSS, for top-N categorical (`.bar-rows` / `.bar-fill`,
+  widths as a percentage of the series max)
+- **Donut chart** — pure CSS `conic-gradient` (`.donut-ring`), optionally with
+  a centred total via `.donut-center`
+- **Inline volume bars** — `.vol` / `.vol-fill` for an at-a-glance count
+  column inside a table
 - **Next steps** — three to six numbered actions, each with a "this
   week / within 14 days / quarterly" timing tag
 
-Layout the body as a CSS grid of panels. Two or three columns scale well
-across screen sizes; the base template's container is responsive.
+Richer components shipped by the upgraded template (use them to make the
+page read like a briefing, not a data dump):
+
+- **Callout band** — three signal-coded cards (`.callout good/watch/act`)
+  for an at-a-glance Healthy / Watch / Act posture read, ideal directly
+  under the KPI strip
+- **Risk gauge** — a single-figure `conic-gradient` dial (`.gauge`) with a
+  centred label and a short interpretation beside it
+- **Note strip** — a one-line emphasis banner (`.note`, with `.blue` / `.green`
+  tints) for a caveat, data gap, or "bottom line"
+
+Layout the body as a 12-column CSS grid of `.panel`s (`.col-4/5/6/7/8/12`).
+Two or three columns scale well; below 640px every panel collapses to full
+width automatically.
 
 ### Step 6 — fill the base template
 
@@ -212,10 +258,12 @@ The bundled template `assets/base_template.html` has these placeholders:
 
 Substitute via simple `str.replace`. Don't introduce a templating engine.
 
-Branding is hardcoded — every report shows the Fluency / Ingext logo in
-the header and "powered by Fluency" in the footer. There's no
-distributor / customer-branded variant; the agent doesn't need to pull
-or override anything to get the chrome right.
+Branding is hardcoded — the dark **hero header** shows the Fluency / Ingext
+logo inside a white "logo chip", and the footer reads "powered by Fluency".
+There's no distributor / customer-branded variant; the agent doesn't need
+to pull or override anything to get the chrome right. `{{report_title}}` and
+`{{report_subtitle}}` render in the hero; the subtitle has room for a full
+sentence describing what the report covers, so use it.
 
 ### Step 7 — write the file and copy the logo asset
 
@@ -248,23 +296,36 @@ A single HTML file:
 
 - Self-contained (pure SVG/CSS charts — no external JS dependencies, all styling inline)
 - Browser-friendly (responsive width, readable on a laptop screen)
-- Fluency-branded chrome (header bar, footer with distributor, palette)
+- Fluency-branded chrome (dark hero header with logo chip, footer with "powered by Fluency", brand palette)
 - A body that's tailored to the report's data shape
 
-The HTML is the primary deliverable. The template is designed to be
-**A4-native** — `max-width: 760px`, 12px base font, compact spacing — so it
-prints at 1:1 scale on A4 paper without any scaling or text shrinkage.
+The HTML is the primary deliverable. The body sits inside a single floating
+card (`max-width: 800px`, ~12.5px base font, compact spacing). For print /
+PDF the `@media print` rules drop the floating-card chrome so it fills the
+page edge-to-edge at 1:1 scale on A4.
+
+**Multi-page by default.** Unless the user explicitly asks for a single page
+(e.g. "fit it on one page", "one-pager"), build the report to flow naturally
+across **multiple A4 pages**. Don't compress or drop content to squeeze it
+onto one sheet — prefer completeness: a full KPI strip, the summary, callout
+band, the relevant charts, full top-N tables (not just the top few rows), a
+methodology/note strip where useful, and the next-steps block. The print CSS
+keeps each card, panel, and table row intact across page boundaries, so a
+longer body paginates cleanly. Only collapse to a single page when the user
+asks for it.
 
 If the user wants a PDF, use the **html-to-pdf** skill immediately after
 generating the HTML. The correct flags are:
 
 ```bash
-# Standard A4 PDF — runs without scaling, single page
+# Standard A4 PDF — multi-page, no scaling; content flows across pages
 --format=A4 --margin=12mm,12mm,12mm,12mm
 ```
 
-Do not use `--scale` or `--one-page` unless the report is unusually dense
-and overflows A4 at 1:1.
+Render multi-page by default — do **not** pass `--one-page` or `--scale`
+unless the user explicitly asked for a single-page output. If they did,
+add `--one-page` (and only then) so the whole report is collapsed onto one
+sheet.
 
 ## Failure modes
 

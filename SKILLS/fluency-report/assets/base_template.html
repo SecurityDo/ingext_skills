@@ -439,18 +439,19 @@
     }
     .footer a:hover { text-decoration: underline; }
 
-    /* Print: keep colours, drop the floating-card chrome so it fills A4. */
+    /* Print: keep colours, drop the floating-card chrome so it fills A4.
+       Multi-page by default — content flows across pages, but each card,
+       panel, and table row stays intact rather than splitting across a
+       page break. (To force a single page, the PDF step passes --one-page.) */
     @media print {
       body { background: #fff; }
       .page { max-width: none; margin: 0; border: none; border-radius: 0; box-shadow: none; }
-      * {
-        page-break-before: auto !important;
-        page-break-after:  auto !important;
-        page-break-inside: auto !important;
-        break-before:      auto !important;
-        break-after:       auto !important;
-        break-inside:      auto !important;
+      .panel, .kpi, .callout, .gauge, .note, .summary, .next-steps,
+      .ns-item, .bar-row, .legend-row, .donut-wrap, table.data tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
       }
+      .main-grid, .kpi-strip, .callouts { break-inside: auto; }
     }
   </style>
 </head>
