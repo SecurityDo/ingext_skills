@@ -1,474 +1,350 @@
-# Widget Recipes
+# Widget Recipes — Executive Report
 
-Copy-paste-ready HTML snippets for the body of a Fluency report. Every recipe
-uses only the CSS classes already shipped in `assets/base_template.html` — no
-external libraries. **Do not add Chart.js or any other CDN dependency** — the
-Cowork rendering environment blocks external scripts.
+Copy-paste-ready HTML for a Fluency **executive** report. The template
+(`assets/base_template.html`) is a multi-page document: a full-page **cover**
+followed by one or more numbered **section sheets**. Every recipe uses only the
+classes shipped in the template — **no Chart.js, no CDN scripts** (the Cowork
+render environment blocks them). All charts are pure inline SVG / CSS.
 
-The agent picks recipes based on the data shape from `run_report`, drops them
-into the right placeholder (`{{kpi_strip}}` / `{{main_grid}}` /
-`{{summary_html}}` / `{{next_steps_items}}`), and ships the file.
+The agent fills the cover placeholders, then assembles section sheets into the
+single `{{sections}}` placeholder.
 
-> **Template look (updated).** The base template now opens with a dark gradient
-> **hero header** (logo chip + title + subtitle), wraps the body in a single
-> floating **card**, and ships a richer component set: **callouts**, a **risk
-> gauge**, **note strips**, and a **centred-label donut**. All legacy classes
-> below still exist and fill exactly as before — the new components are additive.
+## Template placeholders
+
+| Placeholder | Fill with |
+|---|---|
+| `{{report_title}}` | Humanised report name; wrap the second line in `<span class="accent">…</span>` for the red highlight |
+| `{{cover_eyebrow}}` | Small uppercase kicker above the title (e.g. "Network Security Review") |
+| `{{report_lead}}` | 1–2 sentence executive description of what the report covers and what it found |
+| `{{confidential_tag}}` | e.g. `Confidential · Internal` |
+| `{{cover_meta}}` | 3–4 `.meta-field` blocks (reporting period, generated, tenant, source) |
+| `{{cover_kpis}}` | 4–5 `.cover-kpi` cards — the headline numbers |
+| `{{sections}}` | All section sheets, concatenated |
+| `{{footer_page_info}}` | e.g. `Fluency Report · <human title> · <tenant>` |
+
+Substitute via simple `str.replace`. Don't introduce a templating engine.
 
 ---
 
-## KPI card
+## Cover (page 1)
 
-Single big number with a label and an optional note. Drop into `{{kpi_strip}}`.
+The cover chrome is in the template; you only fill the placeholders.
+
+### `{{cover_meta}}` — labelled fields
 
 ```html
-<div class="kpi">
-  <div class="kpi-label">Total Alerts</div>
-  <div class="kpi-value red">9</div>
-  <div class="kpi-note">8 still new</div>
+<div class="meta-field"><div class="label">Reporting Period</div><div class="value">04–05 Jun 2026</div></div>
+<div class="meta-field"><div class="label">Generated</div><div class="value">05 Jun 2026</div></div>
+<div class="meta-field"><div class="label">Tenant</div><div class="value">Altron Group</div></div>
+<div class="meta-field"><div class="label">Source</div><div class="value">FortiGate Traffic Logs</div></div>
+```
+
+### `{{cover_kpis}}` — headline numbers
+
+```html
+<div class="cover-kpi"><div class="v">17.0M</div><div class="l">Traffic Events</div></div>
+<div class="cover-kpi"><div class="v blue">336.9 GB</div><div class="l">Total Traffic</div></div>
+<div class="cover-kpi"><div class="v amber">232 GB</div><div class="l">Inbound</div></div>
+<div class="cover-kpi"><div class="v green">105 GB</div><div class="l">Outbound</div></div>
+<div class="cover-kpi"><div class="v">76,452</div><div class="l">Unique Sources</div></div>
+```
+
+Value colour modifiers: `green`, `amber`, `red`, `blue` (default = white).
+
+---
+
+## Section sheet — the unit of the document
+
+Every major section is one `.sheet`. In print each starts on a fresh A4 page.
+Header (eyebrow + title + subtitle), then the body, then a footer.
+
+```html
+<section class="sheet">
+  <div class="sheet-head">
+    <p class="sec-eyebrow">02 · Activity Overview</p>
+    <h2 class="sec-title">What happened on the network</h2>
+    <p class="sec-sub">Every flow, grouped by direction and ranked by volume.</p>
+  </div>
+  <div class="sheet-body">
+    <!-- panels / two-col blocks / analysis go here -->
+  </div>
+  <div class="sheet-foot">
+    <span>02 · Activity Overview</span>
+    <span>Network Security Review · 05 Jun 2026</span>
+  </div>
+</section>
+```
+
+Number sections `01`, `02`, … in the eyebrow and footer. Keep the title a short
+plain-English question or statement ("Who is driving the activity", "Where
+access came from"), and the subtitle one line.
+
+---
+
+## Block title (with colour dot)
+
+Label a block inside a sheet. Dot colours: default blue, `.red`, `.green`,
+`.amber`, `.navy`.
+
+```html
+<p class="block-title"><span class="dot"></span>Operations by event count</p>
+```
+
+## Two-column layout
+
+For "chart + narrative" or "table + mini-chart" rows. Variants: `.wide-left`,
+`.wide-right` shift the 50/50 split.
+
+```html
+<div class="two-col wide-left">
+  <div><!-- left: table or chart --></div>
+  <div><!-- right: donut / gauge / note --></div>
 </div>
 ```
 
-Colour modifiers on `.kpi-value`: `red`, `blue`, `navy`, `green`, `amber`.
-Pick by signal — high alert volume → red, healthy posture → green, neutral
-counts → blue or default (no class = dark).
+## Analysis prose
 
-A typical strip is 4–6 cards. Examples:
-
-- Total events / Open alerts / Top severity / Active rules
-- Total findings / Critical / High / Medium / Low
-- Posture grade / Trend / Peak day / Top user
-
-## KPI strip — minimal example
+The written interpretation — **as important as the widgets**. Bold the key
+figures. One to three short paragraphs per section.
 
 ```html
-<div class="kpi"><div class="kpi-label">Active Rules</div><div class="kpi-value">15</div><div class="kpi-note">rules fired</div></div>
-<div class="kpi"><div class="kpi-label">Total Alerts</div><div class="kpi-value red">9</div><div class="kpi-note">+3 vs last week</div></div>
-<div class="kpi"><div class="kpi-label">Top User</div><div class="kpi-value navy">3</div><div class="kpi-note">sngcobo@…</div></div>
-<div class="kpi"><div class="kpi-label">Max CVSS</div><div class="kpi-value amber">8.1</div><div class="kpi-note">openssh KEV</div></div>
+<div>
+  <p class="block-title"><span class="dot"></span>Analysis</p>
+  <div class="prose">
+    <p><b>A single destination (193 GB)</b> absorbed 57% of all traffic across
+    941K sessions — far above any other endpoint. Concentration this high is
+    normal for backup, CDN or replication flows, but warrants a one-time check
+    that the endpoint is sanctioned.</p>
+    <p>Inbound outweighed outbound roughly <b>2:1</b> (232 GB vs 105 GB),
+    consistent with routine download and sync rather than bulk egress.</p>
+  </div>
+</div>
 ```
+
+Lead with the **so-what**, quantify and compare (shares, ratios, per-event
+averages, outliers), flag what to verify and why. Stay factual and specific —
+name the IPs / users / rules. Avoid empty intensifiers.
 
 ---
 
-## Callout cards (Healthy / Watch / Act)
+## KPI strip (inside a section)
 
-A three-up band of signal-coded callouts. Ideal directly under the KPI strip or
-at the top of `{{main_grid}}` as an at-a-glance posture read. Wrap in `.callouts`
-(auto-fit grid); each `.callout` takes one of `good` / `watch` / `act`, which
-sets the left accent bar and the tag colour.
+```html
+<div class="kpi-strip">
+  <div class="kpi"><div class="kpi-label">Total Events</div><div class="kpi-value navy">17.0M</div><div class="kpi-note">FortiGate logs</div></div>
+  <div class="kpi"><div class="kpi-label">Inbound</div><div class="kpi-value amber">232 GB</div><div class="kpi-note">69% of volume</div></div>
+  <div class="kpi"><div class="kpi-label">Outbound</div><div class="kpi-value green">105 GB</div><div class="kpi-note">31% of volume</div></div>
+  <div class="kpi"><div class="kpi-label">Top Talker</div><div class="kpi-value red">57%</div><div class="kpi-note">one destination</div></div>
+</div>
+```
+
+## Callout band (Healthy / Watch / Act)
+
+The at-a-glance posture read — ideal in the executive-summary section. Use
+exactly the three states `good` / `watch` / `act`.
 
 ```html
 <div class="callouts">
-  <div class="callout good">
-    <p class="tag">● Healthy</p>
-    <h4>Clean operational signal</h4>
-    <p>Only 5 of 1,073 operations failed (0.47%). Traffic is routine mailbox sync.</p>
-  </div>
-  <div class="callout watch">
-    <p class="tag">● Watch</p>
-    <h4>Concentrated activity</h4>
-    <p>One IP drove 191 events against a single mailbox. Likely benign — baseline it.</p>
-  </div>
-  <div class="callout act">
-    <p class="tag">● Act</p>
-    <h4>Admin changes to verify</h4>
-    <p>3 Conditional Access edits occurred. Tie each to an approved change.</p>
-  </div>
+  <div class="callout good"><p class="tag">● Healthy</p><h4>Broad, normal distribution</h4><p>76K sources / 23K destinations with a ~2:1 inbound bias — routine browse/sync/download.</p></div>
+  <div class="callout watch"><p class="tag">● Watch</p><h4>Single endpoint dominates</h4><p>One destination took 57% of all bytes. Confirm it is a sanctioned service.</p></div>
+  <div class="callout act"><p class="tag">● Act</p><h4>Large internal pull</h4><p>Host 172.29.110.34 received 30 GB from one external host — verify the download.</p></div>
 </div>
 ```
-
-To place callouts inside the 12-col grid instead, wrap the band in a
-`<div class="panel col-12">…</div>` or drop a `.callout` straight into a
-`.panel`. Use exactly the three states; don't invent new colour names.
-
----
 
 ## Risk gauge
 
-A single-figure posture dial — a conic-gradient ring with a centred label and a
-short interpretation beside it. Great for an executive summary row. The gradient
-fills clockwise to the "score" percentage; the remainder is `--bd2`.
+A single-figure posture dial. Band by colour: Low → `--green`, Elevated →
+`--amber`, High → `--red`. Set the same colour on the gradient and the `.s`.
 
 ```html
 <div class="gauge">
-  <!-- fill % = posture confidence; colour by band (green/amber/red) -->
-  <div class="gauge-ring" style="background:conic-gradient(var(--green) 0 78%, var(--bd2) 78% 100%);">
-    <div class="c"><div class="s" style="color:var(--green)">Low</div><div class="t">Risk</div></div>
+  <div class="gauge-ring" style="background:conic-gradient(var(--amber) 0 57%, var(--bd2) 57% 100%)">
+    <div class="c"><div class="s" style="color:var(--amber)">57%</div><div class="t">Top dst</div></div>
   </div>
-  <div class="gauge-txt">
-    <h4>Stable</h4>
-    <p>No compromise indicators. Residual risk is governance-driven, not active threat.</p>
-  </div>
+  <div class="gauge-txt"><h4>Bandwidth is concentrated</h4><p>One destination carries 57% of all bytes; the top 10 carry 82%. Normal for backup/CDN flows — validate each top endpoint once.</p></div>
 </div>
 ```
 
-Band guidance: Low → `--green`, Elevated → `--amber`, High → `--red`. Set the
-same colour on both the gradient and the `.s` label.
+## Note strip
 
----
-
-## Note strip (callout banner)
-
-A one-line emphasis banner with a leading glyph — use for a caveat, a data gap,
-or a "bottom line". Three tints: default amber (caution), `.blue` (info),
-`.green` (positive / all-clear).
+One-line emphasis: caveat, data gap, or "bottom line". Tints: default amber,
+`.blue` (info), `.green` (all-clear), `.red` (act).
 
 ```html
-<div class="note green">
-  <div class="ic">✓</div>
-  <p><b>Bottom line:</b> nothing here requires an incident response.</p>
-</div>
-
-<div class="note">
-  <div class="ic">⚠</div>
-  <p><b>Verify:</b> one IP sent 191 events to a single mailbox — confirm the device.</p>
-</div>
-
-<div class="note blue">
-  <div class="ic">ℹ</div>
-  <p>Geo-enrichment returned empty this run; location detections are unavailable.</p>
-</div>
+<div class="note green"><div class="ic">✓</div><p><b>Bottom line:</b> nothing here requires an incident response — two validation tasks only.</p></div>
+<div class="note"><div class="ic">⚠</div><p><b>Verify:</b> 203.0.113.17 moved 2.2 GB in just 18 sessions — large per-session transfer.</p></div>
+<div class="note blue"><div class="ic">ℹ</div><p>Internal vs external scope is inferred from RFC1918 ranges; geo-enrichment is unavailable this run.</p></div>
 ```
 
 ---
 
-## Panel — table with severity rows
+## Table — with share bar, pills, severity rows
 
-Fits any "rows of records" object. The `.sev-high|sev-med|sev-low` row classes
-tint the row; the inline pills colour the severity column.
-
-```html
-<div class="panel col-6">
-  <div class="panel-header">
-    <h2 class="panel-title">Top Behaviour Rules</h2>
-    <span class="panel-subtitle">15 rules · 9 alerts</span>
-  </div>
-  <table class="data">
-    <colgroup>
-      <col>
-      <col style="width:64px">
-      <col style="width:46px">
-      <col style="width:64px">
-      <col style="width:64px">
-    </colgroup>
-    <thead>
-      <tr><th>Rule</th><th>Platform</th><th style="text-align:center">Count</th><th>Category</th><th>Severity</th></tr>
-    </thead>
-    <tbody>
-      <tr class="sev-high">
-        <td class="wrap">O365_AzureAD_UserLoggedIn</td>
-        <td>O365</td>
-        <td class="num">5</td>
-        <td>Identity</td>
-        <td><span class="pill high">High</span></td>
-      </tr>
-      <tr class="sev-med">
-        <td class="wrap">O365_User_Updated</td>
-        <td>O365</td>
-        <td class="num">3</td>
-        <td>Identity</td>
-        <td><span class="pill med">Med</span></td>
-      </tr>
-      <!-- ... -->
-    </tbody>
-  </table>
-</div>
-```
-
-Rules of thumb:
-- `<col style="width:N">` to pin column widths so long names don't push numeric columns
-- Add `class="wrap"` on cells that should multi-line (rule names, usernames)
-- Use `class="num"` on numeric cells (right-aligned JetBrains Mono — replaces the
-  old inline `font-family` style, which still works)
-
-Pills available: `high` (red), `med` (amber), `low` (blue), `info` (grey),
-`ok` (green).
-
-Severity buckets:
-- CVSS: `>=7 high`, `>=4 med`, else `low`
-- Alert count vs max: `count >= max → high`, `count >= 2 → med`, else `low`
-- Status: `new → high`, `in_progress → med`, `closed → low`
-
----
-
-## Panel — line chart (pure SVG, time-series)
-
-No Chart.js. Pre-compute all `(x, y)` coordinates from the data, then emit a
-static SVG. The CSS classes `.svg-chart`, `.chart-axis`, `.chart-gridline`,
-`.chart-line`, and `.chart-area` are already defined in `base_template.html`.
-
-### Coordinate maths
-
-The template is sized for A4 — use these plot dimensions so the chart height
-matches the narrower, compact layout:
-
-```
-Plot area:  x ∈ [45, 510],  y ∈ [12, 135]
-            width = 465,     height = 123
-viewBox: "0 0 540 160"
-
-For n data points (index i = 0 … n-1):
-  x_i = 45 + i × (465 / (n - 1))
-  y_i = 135 − ((value_i − min) / (max − min)) × 123
-
-Round to 1 decimal place.
-```
-
-Build the `points` string as space-separated `"x,y"` pairs.
-
-For the **area fill** polygon, prepend the bottom-left corner `(45, 135)` and
-append the bottom-right corner `(lastX, 135)`.
-
-Choose 4 evenly-spaced y-axis gridlines (at y=135, 94, 53, 12) and label them
-with the corresponding data values.
-
-For the x-axis, place labels at y=150 — every 4th–6th data point to avoid crowding.
-
-### Example
-
-```html
-<div class="panel col-8">
-  <div class="panel-header">
-    <h2 class="panel-title">Alert Volume — Last 14 Days</h2>
-    <span class="panel-subtitle">9 alerts total</span>
-  </div>
-  <svg class="svg-chart" viewBox="0 0 540 160" xmlns="http://www.w3.org/2000/svg">
-    <line class="chart-gridline" x1="45" y1="135" x2="510" y2="135"/>
-    <line class="chart-gridline" x1="45" y1="94"  x2="510" y2="94"/>
-    <line class="chart-gridline" x1="45" y1="53"  x2="510" y2="53"/>
-    <line class="chart-gridline" x1="45" y1="12"  x2="510" y2="12"/>
-    <text class="chart-axis" x="40" y="138" text-anchor="end">0</text>
-    <text class="chart-axis" x="40" y="97"  text-anchor="end">1</text>
-    <text class="chart-axis" x="40" y="56"  text-anchor="end">2</text>
-    <text class="chart-axis" x="45"  y="150" text-anchor="middle">Apr 17</text>
-    <text class="chart-axis" x="188" y="150" text-anchor="middle">Apr 21</text>
-    <text class="chart-axis" x="331" y="150" text-anchor="middle">Apr 25</text>
-    <text class="chart-axis" x="510" y="150" text-anchor="middle">Apr 30</text>
-    <polygon class="chart-area" points="45,135 45,12 81,135 117,135 152,135 188,12 224,12 260,74 295,135 331,135 367,135 402,135 438,74 474,135 510,74 510,135"/>
-    <polyline class="chart-line" points="45,12 81,135 117,135 152,135 188,12 224,12 260,74 295,135 331,135 367,135 402,135 438,74 474,135 510,74"/>
-    <circle cx="45"  cy="12"  r="3" fill="#c0161c"/>
-    <circle cx="188" cy="12"  r="3" fill="#c0161c"/>
-    <circle cx="224" cy="12"  r="3" fill="#c0161c"/>
-  </svg>
-</div>
-```
-
-Tip: use `fill="#c0161c"` on the peak-value dot(s) to highlight them, and add
-an `<text>` annotation next to the peak with the value.
-
----
-
-## Panel — horizontal bar chart (pure CSS)
-
-No Chart.js. Use `.bar-rows` / `.bar-row` / `.bar-track` / `.bar-fill` — all
-defined in `base_template.html`. Width percentages are relative to the maximum
-value in the series (max = 100%). `.bar-fill` now defaults to a blue gradient;
-override inline with a flat colour or one of the gradient helpers.
-
-```html
-<div class="panel col-6">
-  <div class="panel-header">
-    <h2 class="panel-title">Top Alerted Users</h2>
-    <span class="panel-subtitle">7 identities</span>
-  </div>
-  <div class="bar-rows">
-    <!-- width = (value / max_value) * 100  -->
-    <div class="bar-row">
-      <div class="bar-label">sngcobo@…</div>
-      <div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--red)"></div></div>
-      <div class="bar-val">5</div>
-    </div>
-    <div class="bar-row">
-      <div class="bar-label">app@sharepoint</div>
-      <div class="bar-track"><div class="bar-fill" style="width:60%"></div></div>
-      <div class="bar-val">3</div>
-    </div>
-    <div class="bar-row">
-      <div class="bar-label">bmuobeleni</div>
-      <div class="bar-track"><div class="bar-fill" style="width:40%"></div></div>
-      <div class="bar-val">2</div>
-    </div>
-  </div>
-</div>
-```
-
-`bar-fill` colour: default blue gradient; override inline with
-`style="background:var(--red)"` for the top entry or any entry that warrants
-highlighting.
-
----
-
-## Panel — donut chart (pure CSS, conic-gradient)
-
-No Chart.js. Use `.donut-ring` with an inline `background: conic-gradient(…)`
-matching the data percentages, plus `.donut-legend` for the key.
-
-### How to build the gradient
-
-Convert each value to a cumulative percentage of the total, then write:
-
-```css
-background: conic-gradient(
-  COLOR_A  0%  PCT_A%,
-  COLOR_B  PCT_A%  PCT_AB%,
-  COLOR_C  PCT_AB% 100%
-);
-```
-
-### Example (5 categories summing to 100%)
-
-```html
-<div class="panel col-4">
-  <div class="panel-header">
-    <h2 class="panel-title">Alerts by Category</h2>
-    <span class="panel-subtitle">9 alerts</span>
-  </div>
-  <div class="donut-wrap">
-    <div class="donut-ring" style="background:conic-gradient(
-      #c0161c  0%   44.4%,
-      #e81e25 44.4% 66.7%,
-      #2d65a1 66.7% 80.0%,
-      #457fc1 80.0% 91.1%,
-      #8a92a3 91.1% 100%
-    )"></div>
-    <div class="donut-legend">
-      <div class="legend-row"><div class="legend-swatch" style="background:#c0161c"></div><span>Identity — 44%</span></div>
-      <div class="legend-row"><div class="legend-swatch" style="background:#e81e25"></div><span>OAuth — 22%</span></div>
-      <div class="legend-row"><div class="legend-swatch" style="background:#2d65a1"></div><span>Mail — 13%</span></div>
-      <div class="legend-row"><div class="legend-swatch" style="background:#457fc1"></div><span>Files — 11%</span></div>
-      <div class="legend-row"><div class="legend-swatch" style="background:#8a92a3"></div><span>AppMgmt — 9%</span></div>
-    </div>
-  </div>
-</div>
-```
-
-### Donut with a centred total (optional)
-
-To print a big number in the donut hole, wrap the ring in a relatively-positioned
-box and add a `.donut-center` sibling:
-
-```html
-<div class="donut-wrap">
-  <div style="position:relative">
-    <div class="donut-ring" style="background:conic-gradient(var(--blue) 0 83.5%, var(--amber) 83.5% 96.8%, var(--green) 96.8% 100%)"></div>
-    <div class="donut-center"><div class="big">1,073</div><div class="cap">Events</div></div>
-  </div>
-  <div class="donut-legend">
-    <div class="legend-row"><div class="legend-swatch" style="background:var(--blue)"></div><span>Read / Access — 84%</span></div>
-    <div class="legend-row"><div class="legend-swatch" style="background:var(--amber)"></div><span>Deletions — 13%</span></div>
-    <div class="legend-row"><div class="legend-swatch" style="background:var(--green)"></div><span>Other — 3%</span></div>
-  </div>
-</div>
-```
-
-When one category dominates (>90%), the donut will be almost entirely one
-colour — that's intentional and visually impactful; show it as-is.
-
----
-
-## Panel — inline volume bars (no chart engine)
-
-For top-N tables where you want a visual at-a-glance count column. Pure CSS.
+`<col>` widths keep numeric columns aligned. `class="num"` = right-aligned
+mono. Inline `.cellbar` gives a share column; `.pill` tags a category;
+`.sev-*` tints a whole row.
 
 ```html
 <table class="data">
-  <thead><tr><th>Rule</th><th style="width:60px;text-align:center">Count</th><th style="width:80px">Volume</th></tr></thead>
+  <colgroup><col><col style="width:70px"><col style="width:150px"><col style="width:60px"><col style="width:70px"><col style="width:78px"></colgroup>
+  <thead><tr><th>Mailbox Owner</th><th style="text-align:right">Events</th><th>Share</th><th style="text-align:right">Ops</th><th style="text-align:right">Src IPs</th><th>Profile</th></tr></thead>
   <tbody>
     <tr>
-      <td class="wrap">O365_AzureAD_UserLoggedIn</td>
+      <td title="chris@…">chris@fluencysecurity.com</td>
+      <td class="num">644</td>
+      <td><div class="cellbar"><i style="width:100%"></i></div></td>
       <td class="num">5</td>
-      <td><div class="vol"><div class="vol-fill red" style="width:100%"></div></div></td>
+      <td class="num">46</td>
+      <td><span class="pill power">Power</span></td>
     </tr>
     <tr>
-      <td class="wrap">O365_User_Updated</td>
-      <td class="num">3</td>
-      <td><div class="vol"><div class="vol-fill" style="width:60%"></div></div></td>
+      <td title="patrick@…">patrick.evans@fluencysecurity.com</td>
+      <td class="num">111</td>
+      <td><div class="cellbar"><i style="width:17%"></i></div></td>
+      <td class="num">5</td>
+      <td class="num">16</td>
+      <td><span class="pill active">Active</span></td>
     </tr>
   </tbody>
 </table>
 ```
 
-`vol-fill` colour modifiers: default blue, `.red`, `.amber`. Width is the
-row's value as a percentage of the max in the column.
+Pills available: `high` (red), `med` (amber), `low` (blue), `ok`/`benign`
+(green), `info`/`service` (grey), `power` (navy), `active` (blue outline),
+`light` (grey outline), `endpoint` (amber tint), `msauth` (blue tint).
+`.cellbar > i` colour: default blue, `.amber`, `.red`. Width = value ÷ max × 100.
 
----
+Severity buckets: CVSS `>=7 high / >=4 med / else low`; count-vs-max
+`==max high / >=2 med / else low`; status `new high / in_progress med / closed low`.
 
-## Summary block
+## Bar chart (pure CSS)
 
-A short paragraph (or two) that names the highest-signal finding in plain
-English. Drop into `{{summary_html}}`. Rendered as a blue-accented lead card.
+Width % = value ÷ series-max × 100. Highlight the top bar in red/amber inline.
 
 ```html
-<p>
-  <strong>9 alerts</strong> fired across <strong>15 rules</strong> in the
-  last 14 days, peaked at <strong>2 alerts</strong> on 17 Apr. Activity is
-  concentrated on identity events — <strong>analyst@partner.example.com</strong>
-  triggered 3 of those alerts via O365_AzureAD_UserLoggedIn.
-</p>
-<p>
-  Five OpenSSH KEV exposures remain active at <strong>CVSS 8.1</strong>;
-  patching the SSH stack is the highest-impact action this week.
-</p>
+<p class="block-title"><span class="dot"></span>Top Source IPs</p>
+<div class="bar-rows">
+  <div class="bar-row"><div class="bar-label">172.29.110.34</div><div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--red)"></div></div><div class="bar-val">30.9 GB</div></div>
+  <div class="bar-row"><div class="bar-label">203.0.113.19</div><div class="bar-track"><div class="bar-fill" style="width:29%;background:var(--amber)"></div></div><div class="bar-val">9.0 GB</div></div>
+  <div class="bar-row"><div class="bar-label">10.194.4.11</div><div class="bar-track"><div class="bar-fill" style="width:20%"></div></div><div class="bar-val">6.3 GB</div></div>
+</div>
 ```
 
-Keep it factual. Don't editorialise ("alarming", "concerning") — let the
-numbers carry the weight.
+## Donut chart (with count legend)
 
----
-
-## Next-steps item
-
-Drop into `{{next_steps_items}}`. Three to six items is the right range. The
-number chip is now a rounded square; colour it by urgency.
+Cumulative percentages drive the `conic-gradient`. Legend rows can carry a
+right-aligned `.val` count. Optional centred total via `.donut-center`.
 
 ```html
-<div class="ns-item">
-  <div class="ns-num" style="background:var(--red)">1</div>
-  <div>
-    <div class="ns-when">This week</div>
-    <div class="ns-act">Patch SSH stack — 5 active KEV exposures at CVSS 8.1 (openssh).</div>
+<p class="block-title"><span class="dot green"></span>Traffic by direction</p>
+<div class="donut-wrap">
+  <div style="position:relative">
+    <div class="donut-ring" style="background:conic-gradient(var(--amber) 0 68.9%, var(--green) 68.9% 100%)"></div>
+    <div class="donut-center"><div class="big">337 GB</div><div class="cap">Total</div></div>
+  </div>
+  <div class="donut-legend">
+    <div class="legend-row"><div class="legend-swatch" style="background:var(--amber)"></div><span>Inbound</span><span class="val">232 GB</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:var(--green)"></div><span>Outbound</span><span class="val">105 GB</span></div>
   </div>
 </div>
 ```
 
-Number-chip colours by urgency: `var(--red)` for items 1–3 (this week / 14 days),
-`var(--blue)` for 30-day items, `var(--navy)` for quarterly.
+When one slice dominates (>90%), the ring is almost one colour — that's
+intentional and reads as impact; ship it as-is.
 
-Six-item example:
+## Line chart (pure SVG, time-series)
+
+Pre-compute coordinates; the `.svg-chart` / `.chart-*` classes are defined.
+Plot area `x ∈ [45, 510]`, `y ∈ [12, 135]`, viewBox `0 0 540 160`.
+`x_i = 45 + i·(465/(n-1))`, `y_i = 135 − ((v−min)/(max−min))·123`.
 
 ```html
-<div class="ns-item"><div class="ns-num" style="background:var(--red)">1</div><div><div class="ns-when">This week</div><div class="ns-act">Patch SSH stack — 5 active KEV exposures at CVSS 8.1.</div></div></div>
-<div class="ns-item"><div class="ns-num" style="background:var(--red)">2</div><div><div class="ns-when">This week</div><div class="ns-act">Investigate analyst@partner.example.com (3 alerts).</div></div></div>
-<div class="ns-item"><div class="ns-num" style="background:var(--red)">3</div><div><div class="ns-when">Within 14 days</div><div class="ns-act">Review O365 OAuth consent grants — reduce admin-consent surface.</div></div></div>
-<div class="ns-item"><div class="ns-num" style="background:var(--blue)">4</div><div><div class="ns-when">Within 14 days</div><div class="ns-act">Tune AzureAD UserLoggedIn rule — highest-volume trigger.</div></div></div>
-<div class="ns-item"><div class="ns-num" style="background:var(--blue)">5</div><div><div class="ns-when">Within 30 days</div><div class="ns-act">Confirm closure SLA — only 1 of 9 alerts closed this period.</div></div></div>
-<div class="ns-item"><div class="ns-num" style="background:var(--navy)">6</div><div><div class="ns-when">Quarterly</div><div class="ns-act">Identity-rule review — promote stable rules out of monitoring.</div></div></div>
+<svg class="svg-chart" viewBox="0 0 540 160" xmlns="http://www.w3.org/2000/svg">
+  <line class="chart-gridline" x1="45" y1="135" x2="510" y2="135"/>
+  <line class="chart-gridline" x1="45" y1="74"  x2="510" y2="74"/>
+  <line class="chart-gridline" x1="45" y1="12"  x2="510" y2="12"/>
+  <polygon class="chart-area" points="45,135 45,40 188,90 331,30 510,60 510,135"/>
+  <polyline class="chart-line" points="45,40 188,90 331,30 510,60"/>
+  <circle cx="331" cy="30" r="3" fill="#c0161c"/>
+</svg>
 ```
 
 ---
 
-## Layout guide for `{{main_grid}}`
+## Action plan cards (governance section)
 
-The grid is 12 columns wide. Common arrangements:
+Numbered, full-width, with a right-aligned timing pill. Number-square colour by
+urgency: `--red` (this week), `--blue` (14–30 days), `--navy` (quarterly).
 
-- **2 panels side-by-side**: two `col-6` panels
-- **Three small panels**: three `col-4` panels
-- **Hero + side panel**: `col-8` + `col-4`
-- **Wide chart on top, two below**: `col-12` + two `col-6`
-- **Chart + donut**: `col-7` (bars) + `col-5` (donut)
+```html
+<div class="action-list">
+  <div class="action">
+    <div class="action-num" style="background:var(--red)">1</div>
+    <div class="action-body"><h4>Validate the top-talker destination</h4><p>Confirm 203.0.113.18 (193 GB, 57% of traffic) is a sanctioned service, not exfiltration.</p></div>
+    <div class="action-when">This week</div>
+  </div>
+  <div class="action">
+    <div class="action-num" style="background:var(--blue)">4</div>
+    <div class="action-body"><h4>Baseline per-host volumes</h4><p>Set thresholds so future spikes surface automatically.</p></div>
+    <div class="action-when">Within 14 days</div>
+  </div>
+  <div class="action">
+    <div class="action-num" style="background:var(--navy)">6</div>
+    <div class="action-body"><h4>Review logging coverage</h4><p>Confirm all firewalls feed the tenant; tune top-talker alerting.</p></div>
+    <div class="action-when">Quarterly</div>
+  </div>
+</div>
+```
 
-Below 640px wide, every panel collapses to full width automatically.
-
-Helper utilities available inside panels: `.block-title` (with a `.dot`),
-`.divider` (thin rule between blocks), `.eyebrow` / `.h-sec` / `.h-sub` for
-section headings if you build a longer multi-part report.
+(The legacy `.next-steps` / `.ns-item` grid still works if you prefer a compact
+block, but `.action` cards are the executive default.)
 
 ---
 
+## Appendix — methodology grid + brand close
+
+Two-column labelled notes that document how the figures were derived, then a
+centred brand block and an info disclaimer.
+
+```html
+<div class="method-grid">
+  <div class="method-item"><span class="mk">▶</span><p><b>Source.</b> FortiGate traffic logs via the Ingext datalake.</p></div>
+  <div class="method-item"><span class="mk">▶</span><p><b>Window.</b> Trailing 24h, 04 Jun 22:01 – 05 Jun 22:01 UTC.</p></div>
+  <div class="method-item"><span class="mk">▶</span><p><b>Scope.</b> 17.0M events · 76,452 sources · 23,324 destinations.</p></div>
+  <div class="method-item"><span class="mk">▶</span><p><b>Volume basis.</b> Per-session byte deltas; sent = egress, received = ingress.</p></div>
+</div>
+<div class="divider"></div>
+<div class="note blue"><div class="ic">ℹ</div><p>This report summarises observed traffic and does not assert intent. Items flagged "verify" are statistical outliers for human review, not confirmed incidents.</p></div>
+<div class="brand-block"><div class="bm">Fluency Security</div><div class="bs">Network Security Review · Generated 05 Jun 2026 · Confidential</div></div>
+```
+
+---
+
+## Report structure blueprint
+
+A full executive report is the cover plus these sheets (adapt the section names
+to the report's domain — these are the Office 365 Exchange set as a model):
+
+1. **Cover** — title, lead, meta fields, headline KPIs.
+2. **01 · Executive Summary** — lead paragraph, callout band (Healthy/Watch/Act),
+   two-col posture interpretation + risk gauge, "bottom line" note.
+3. **02 · Activity Overview** — KPI strip, two-col (bar chart + donut),
+   divider, **Analysis** prose.
+4. **03 · <Who/What is driving it>** — a ranked detail table (with share bars +
+   pills), two-col Analysis + mini concentration chart.
+5. **04 · <Where it came from / infrastructure>** — source table + footprint
+   donut, a second detail table, a "sanctioned / verify" note.
+6. **05 · Governance & Recommendations** — high-impact change tables with
+   impact/verdict pills, then the numbered **action plan**.
+7. **06 · Appendix** — methodology grid, disclaimer note, brand close.
+
+Smaller reports can collapse to cover + Exec Summary + 2–3 sheets + Appendix,
+but always keep: a cover, a callout band, at least one chart, full detail
+tables, per-section Analysis prose, an action plan, and an appendix.
+
 ## Branding
 
-Branding is hardcoded in `assets/base_template.html`. The dark **hero header**
-shows the Fluency logo (`assets/logo2.png`) inside a white "logo chip", and the
-footer always reads "powered by Fluency". The fluency-report skill copies
-`logo2.png` into the output's `assets/` folder at render time, so the relative
-`src="assets/logo2.png"` resolves. Nothing to fill in or override per report.
+Hardcoded. The dark cover shows the Fluency logo in a white chip with a
+`Confidential` tag; every sheet footer and the cover read "Powered by Fluency".
+The skill copies `logo2.png` into the output's `assets/` folder at render time,
+so `src="assets/logo2.png"` resolves. Nothing to override per report.

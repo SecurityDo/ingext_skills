@@ -6,10 +6,10 @@ description: Run a Fluency / Ingext FPL report and turn its result into a single
 # Fluency / Ingext Report
 
 Run any Fluency / Ingext FPL report on demand and turn its `objects[]`
-result into a single-page, browser-friendly HTML summary — KPI cards,
-charts, tables, and a short written interpretation tailored to whatever
-data came back. The HTML is the deliverable; the user opens it in a
-browser.
+result into a **multi-page, executive-grade HTML report** — a branded cover,
+a numbered section per domain of the data, charts, ranked tables, written
+analysis, an action plan, and a methodology appendix, all tailored to whatever
+data came back. The HTML is the deliverable; the user opens it in a browser.
 
 This skill works against **any** report in the user's FPL catalog and
 synthesizes the layout from the data shape. Some reports may have
@@ -204,6 +204,40 @@ are pure inline SVG or CSS — do NOT add Chart.js or any other CDN/script
 dependency; the Cowork render environment blocks external scripts.** The
 recipes file is the source of truth for the exact class names and markup.
 
+#### Build an executive, multi-page document — not a single dashboard
+
+The template is a **paginated executive report**: a full-page **cover** plus a
+series of numbered **section sheets** (`.sheet`), each starting on a fresh A4
+page with its own header (numbered eyebrow + title + subtitle) and footer. You
+fill the cover placeholders, then assemble the section sheets into
+`{{sections}}`. Aim for the look and depth of a partner-grade report: a cover
+with embedded KPIs, an executive summary, one section per domain of the data,
+a governance / action-plan section, and a methodology appendix.
+
+Standard structure (adapt the section names to the report's domain — the
+`widget_recipes.md` "Report structure blueprint" has the full model):
+
+1. **Cover** — title (with a red accent line), executive lead sentence,
+   meta fields (period / generated / tenant / source), 4–5 headline KPIs.
+2. **01 · Executive Summary** — a lead paragraph, the Healthy/Watch/Act
+   callout band, a two-column posture interpretation + risk gauge, and a
+   "bottom line" note.
+3. **02 … N · One section per domain of the data** — each with a KPI strip or
+   ranked detail table, at least one chart (bar / donut / line), and a written
+   **Analysis** block. Use the section title as a plain-English question
+   ("Who is driving the activity", "Where access came from").
+4. **Governance & Recommendations** — high-impact items in tables with
+   impact/verdict pills, then the numbered **action plan** (`.action` cards
+   with timing pills).
+5. **Appendix** — a methodology grid documenting how the figures were derived,
+   a disclaimer note, and the brand close.
+
+Map the report's `objects[]` onto these sections: scalar/overview objects →
+cover KPIs + Activity Overview; ranked top-N objects → their own detail
+sections with a table **and** a chart; anything time-series → a line chart.
+Don't render every object identically, and don't stop at one page — a real
+report runs several sheets.
+
 Core building blocks:
 
 - **KPI card** — single big number + label + small note line
@@ -239,24 +273,68 @@ Layout the body as a 12-column CSS grid of `.panel`s (`.col-4/5/6/7/8/12`).
 Two or three columns scale well; below 640px every panel collapses to full
 width automatically.
 
+#### Default composition — use the full toolkit
+
+Unless the user asks for something minimal, **every** report should combine
+all four of these, not just a table dump:
+
+1. **KPI strip + summary** — the headline numbers, then a 2–4 sentence
+   written interpretation of what they mean.
+2. **A callout band** (`.callout good/watch/act`) — translate the data into
+   a Healthy / Watch / Act posture read so a non-analyst grasps the takeaway
+   at a glance. Add a **risk gauge** or **note strip** when there's a single
+   figure or caveat worth spotlighting.
+3. **At least one chart** — a bar chart for top-N / categorical data, a donut
+   for a part-to-whole split, or a line chart for anything time-series. Charts
+   are pure SVG/CSS (no Chart.js). Pick the chart that fits the data shape;
+   don't force one.
+4. **Full detail tables** — the underlying rows (complete top-N, not just the
+   first few), with severity/scope `.pill`s and `.sev-*` row tints where a
+   column warrants it.
+
+A good report reads top-down as: *headline → what it means → where to look →
+the evidence*.
+
+#### Explain the results, don't just display them
+
+The written word is as important as the widgets. For each major section, add a
+short, plain-English interpretation alongside the numbers:
+
+- Lead with the **so-what**: what the figure implies, not just its value
+  (e.g. "one destination carries 57% of all bytes — concentration this high
+  is normal for backup/CDN flows but warrants a one-time check", not just
+  "57%").
+- **Quantify and compare**: ratios, shares of total, per-event averages,
+  outliers, week-over-week or window-over-window deltas where the data allows.
+- **Flag what to verify** and why it matters, distinguishing routine signal
+  from genuine anomalies.
+- Stay **factual and specific** — name the IPs, users, rules, or values.
+  Avoid empty intensifiers ("alarming", "concerning"); let the numbers carry
+  the weight.
+
+The panel subtitles, note strips, and callout body text are all good places
+to put one-line explanations close to the data they describe.
+
 ### Step 6 — fill the base template
 
-The bundled template `assets/base_template.html` has these placeholders:
+The bundled template `assets/base_template.html` is a **multi-page executive
+document**: a full-page cover followed by the section sheets you assemble. It
+has these placeholders:
 
 | Placeholder | Fill with |
 |---|---|
-| `{{report_title}}` | The matched report's name, humanised (e.g. `Domain_Monitoring_Report` → "Domain Monitoring") |
-| `{{report_subtitle}}` | One-line description of what the report covers |
-| `{{report_date}}` | The current date, formatted `DD MMM YYYY` |
-| `{{report_meta}}` | Optional period / data-window line, leading with ` · ` (e.g. ` · Last 14 days`) |
-| `{{kpi_strip}}` | The KPI cards row (HTML fragment) |
-| `{{main_grid}}` | The grid of charts and tables (HTML fragment) |
-| `{{summary_html}}` | A 2–4 sentence interpretation of the data |
-| `{{next_steps_items}}` | Six (or fewer) numbered next-step blocks |
-| `{{footer_data_date}}` | The current date, formatted `DD MMM YYYY` |
-| `{{footer_page_info}}` | `Fluency Report · the human title` |
+| `{{report_title}}` | The matched report's name, humanised. Wrap the second line in `<span class="accent">…</span>` for the red highlight (e.g. `Office 365 Exchange<br><span class="accent">Activity Review</span>`) |
+| `{{cover_eyebrow}}` | Small uppercase kicker above the title (e.g. "Network Security Review") |
+| `{{report_lead}}` | 1–2 sentence executive description: what the report covers and the top-line finding |
+| `{{confidential_tag}}` | e.g. `Confidential · Internal` |
+| `{{cover_meta}}` | 3–4 `.meta-field` blocks — reporting period, generated date, tenant, source |
+| `{{cover_kpis}}` | 4–5 `.cover-kpi` cards — the headline numbers |
+| `{{sections}}` | Every section sheet, concatenated (see Step 5) |
+| `{{footer_page_info}}` | `Fluency Report · <human title> · <tenant>` |
 
-Substitute via simple `str.replace`. Don't introduce a templating engine.
+Substitute via simple `str.replace`. Don't introduce a templating engine. The
+exact markup for the cover fields and every section component is in
+`references/widget_recipes.md`.
 
 Branding is hardcoded — the dark **hero header** shows the Fluency / Ingext
 logo inside a white "logo chip", and the footer reads "powered by Fluency".
@@ -296,13 +374,13 @@ A single HTML file:
 
 - Self-contained (pure SVG/CSS charts — no external JS dependencies, all styling inline)
 - Browser-friendly (responsive width, readable on a laptop screen)
-- Fluency-branded chrome (dark hero header with logo chip, footer with "powered by Fluency", brand palette)
-- A body that's tailored to the report's data shape
+- Fluency-branded chrome (dark cover with logo chip + Confidential tag, per-section footers reading "powered by Fluency", brand palette)
+- A multi-page, sectioned executive document tailored to the report's data
 
-The HTML is the primary deliverable. The body sits inside a single floating
-card (`max-width: 800px`, ~12.5px base font, compact spacing). For print /
-PDF the `@media print` rules drop the floating-card chrome so it fills the
-page edge-to-edge at 1:1 scale on A4.
+The HTML is the primary deliverable. It renders as a **cover page plus a stack
+of section sheets** (each `width: 800px`, ~12.5px base font). For print / PDF
+the `@media print` rules drop the floating-card chrome and put the cover and
+each section on its own A4 page at 1:1 scale.
 
 **Multi-page by default.** Unless the user explicitly asks for a single page
 (e.g. "fit it on one page", "one-pager"), build the report to flow naturally
