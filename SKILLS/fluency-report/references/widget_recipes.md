@@ -9,6 +9,12 @@ The agent picks recipes based on the data shape from `run_report`, drops them
 into the right placeholder (`{{kpi_strip}}` / `{{main_grid}}` /
 `{{summary_html}}` / `{{next_steps_items}}`), and ships the file.
 
+> **Template look (updated).** The base template now opens with a dark gradient
+> **hero header** (logo chip + title + subtitle), wraps the body in a single
+> floating **card**, and ships a richer component set: **callouts**, a **risk
+> gauge**, **note strips**, and a **centred-label donut**. All legacy classes
+> below still exist and fill exactly as before — the new components are additive.
+
 ---
 
 ## KPI card
@@ -44,6 +50,88 @@ A typical strip is 4–6 cards. Examples:
 
 ---
 
+## Callout cards (Healthy / Watch / Act)
+
+A three-up band of signal-coded callouts. Ideal directly under the KPI strip or
+at the top of `{{main_grid}}` as an at-a-glance posture read. Wrap in `.callouts`
+(auto-fit grid); each `.callout` takes one of `good` / `watch` / `act`, which
+sets the left accent bar and the tag colour.
+
+```html
+<div class="callouts">
+  <div class="callout good">
+    <p class="tag">● Healthy</p>
+    <h4>Clean operational signal</h4>
+    <p>Only 5 of 1,073 operations failed (0.47%). Traffic is routine mailbox sync.</p>
+  </div>
+  <div class="callout watch">
+    <p class="tag">● Watch</p>
+    <h4>Concentrated activity</h4>
+    <p>One IP drove 191 events against a single mailbox. Likely benign — baseline it.</p>
+  </div>
+  <div class="callout act">
+    <p class="tag">● Act</p>
+    <h4>Admin changes to verify</h4>
+    <p>3 Conditional Access edits occurred. Tie each to an approved change.</p>
+  </div>
+</div>
+```
+
+To place callouts inside the 12-col grid instead, wrap the band in a
+`<div class="panel col-12">…</div>` or drop a `.callout` straight into a
+`.panel`. Use exactly the three states; don't invent new colour names.
+
+---
+
+## Risk gauge
+
+A single-figure posture dial — a conic-gradient ring with a centred label and a
+short interpretation beside it. Great for an executive summary row. The gradient
+fills clockwise to the "score" percentage; the remainder is `--bd2`.
+
+```html
+<div class="gauge">
+  <!-- fill % = posture confidence; colour by band (green/amber/red) -->
+  <div class="gauge-ring" style="background:conic-gradient(var(--green) 0 78%, var(--bd2) 78% 100%);">
+    <div class="c"><div class="s" style="color:var(--green)">Low</div><div class="t">Risk</div></div>
+  </div>
+  <div class="gauge-txt">
+    <h4>Stable</h4>
+    <p>No compromise indicators. Residual risk is governance-driven, not active threat.</p>
+  </div>
+</div>
+```
+
+Band guidance: Low → `--green`, Elevated → `--amber`, High → `--red`. Set the
+same colour on both the gradient and the `.s` label.
+
+---
+
+## Note strip (callout banner)
+
+A one-line emphasis banner with a leading glyph — use for a caveat, a data gap,
+or a "bottom line". Three tints: default amber (caution), `.blue` (info),
+`.green` (positive / all-clear).
+
+```html
+<div class="note green">
+  <div class="ic">✓</div>
+  <p><b>Bottom line:</b> nothing here requires an incident response.</p>
+</div>
+
+<div class="note">
+  <div class="ic">⚠</div>
+  <p><b>Verify:</b> one IP sent 191 events to a single mailbox — confirm the device.</p>
+</div>
+
+<div class="note blue">
+  <div class="ic">ℹ</div>
+  <p>Geo-enrichment returned empty this run; location detections are unavailable.</p>
+</div>
+```
+
+---
+
 ## Panel — table with severity rows
 
 Fits any "rows of records" object. The `.sev-high|sev-med|sev-low` row classes
@@ -70,14 +158,14 @@ tint the row; the inline pills colour the severity column.
       <tr class="sev-high">
         <td class="wrap">O365_AzureAD_UserLoggedIn</td>
         <td>O365</td>
-        <td style="text-align:center;font-family:'JetBrains Mono',monospace">5</td>
+        <td class="num">5</td>
         <td>Identity</td>
         <td><span class="pill high">High</span></td>
       </tr>
       <tr class="sev-med">
         <td class="wrap">O365_User_Updated</td>
         <td>O365</td>
-        <td style="text-align:center;font-family:'JetBrains Mono',monospace">3</td>
+        <td class="num">3</td>
         <td>Identity</td>
         <td><span class="pill med">Med</span></td>
       </tr>
@@ -90,7 +178,11 @@ tint the row; the inline pills colour the severity column.
 Rules of thumb:
 - `<col style="width:N">` to pin column widths so long names don't push numeric columns
 - Add `class="wrap"` on cells that should multi-line (rule names, usernames)
-- `font-family: 'JetBrains Mono'` on numeric cells for vertical alignment
+- Use `class="num"` on numeric cells (right-aligned JetBrains Mono — replaces the
+  old inline `font-family` style, which still works)
+
+Pills available: `high` (red), `med` (amber), `low` (blue), `info` (grey),
+`ok` (green).
 
 Severity buckets:
 - CVSS: `>=7 high`, `>=4 med`, else `low`
@@ -140,51 +232,23 @@ For the x-axis, place labels at y=150 — every 4th–6th data point to avoid cr
     <h2 class="panel-title">Alert Volume — Last 14 Days</h2>
     <span class="panel-subtitle">9 alerts total</span>
   </div>
-  <!--
-    14 data points: [2,0,0,2,2,0,1,0,0,0,1,0,0,1]
-    min=0, max=2, range=2
-    x_step = 465/13 ≈ 35.8   y_scale = 123/2 = 61.5
-    Pre-computed points:
-      i=0:  (45,  12)   [value=2, max]
-      i=1:  (81,  135)  [value=0]
-      i=3:  (152, 135)  [value=0]
-      i=4:  (188, 12)   [value=2]
-      ...
-  -->
   <svg class="svg-chart" viewBox="0 0 540 160" xmlns="http://www.w3.org/2000/svg">
-    <!-- Gridlines at y=135, 94, 53, 12 -->
     <line class="chart-gridline" x1="45" y1="135" x2="510" y2="135"/>
     <line class="chart-gridline" x1="45" y1="94"  x2="510" y2="94"/>
     <line class="chart-gridline" x1="45" y1="53"  x2="510" y2="53"/>
     <line class="chart-gridline" x1="45" y1="12"  x2="510" y2="12"/>
-    <!-- Y labels -->
     <text class="chart-axis" x="40" y="138" text-anchor="end">0</text>
     <text class="chart-axis" x="40" y="97"  text-anchor="end">1</text>
     <text class="chart-axis" x="40" y="56"  text-anchor="end">2</text>
-    <!-- X labels (every ~4 points) -->
     <text class="chart-axis" x="45"  y="150" text-anchor="middle">Apr 17</text>
     <text class="chart-axis" x="188" y="150" text-anchor="middle">Apr 21</text>
     <text class="chart-axis" x="331" y="150" text-anchor="middle">Apr 25</text>
     <text class="chart-axis" x="510" y="150" text-anchor="middle">Apr 30</text>
-    <!-- Area fill -->
     <polygon class="chart-area" points="45,135 45,12 81,135 117,135 152,135 188,12 224,12 260,74 295,135 331,135 367,135 402,135 438,74 474,135 510,74 510,135"/>
-    <!-- Line -->
     <polyline class="chart-line" points="45,12 81,135 117,135 152,135 188,12 224,12 260,74 295,135 331,135 367,135 402,135 438,74 474,135 510,74"/>
-    <!-- Dots -->
     <circle cx="45"  cy="12"  r="3" fill="#c0161c"/>
-    <circle cx="81"  cy="135" r="3" fill="#2d65a1"/>
-    <circle cx="117" cy="135" r="3" fill="#2d65a1"/>
-    <circle cx="152" cy="135" r="3" fill="#2d65a1"/>
     <circle cx="188" cy="12"  r="3" fill="#c0161c"/>
     <circle cx="224" cy="12"  r="3" fill="#c0161c"/>
-    <circle cx="260" cy="74"  r="3" fill="#2d65a1"/>
-    <circle cx="295" cy="135" r="3" fill="#2d65a1"/>
-    <circle cx="331" cy="135" r="3" fill="#2d65a1"/>
-    <circle cx="367" cy="135" r="3" fill="#2d65a1"/>
-    <circle cx="402" cy="135" r="3" fill="#2d65a1"/>
-    <circle cx="438" cy="74"  r="3" fill="#2d65a1"/>
-    <circle cx="474" cy="135" r="3" fill="#2d65a1"/>
-    <circle cx="510" cy="74"  r="3" fill="#2d65a1"/>
   </svg>
 </div>
 ```
@@ -198,7 +262,8 @@ an `<text>` annotation next to the peak with the value.
 
 No Chart.js. Use `.bar-rows` / `.bar-row` / `.bar-track` / `.bar-fill` — all
 defined in `base_template.html`. Width percentages are relative to the maximum
-value in the series (max = 100%).
+value in the series (max = 100%). `.bar-fill` now defaults to a blue gradient;
+override inline with a flat colour or one of the gradient helpers.
 
 ```html
 <div class="panel col-6">
@@ -206,11 +271,11 @@ value in the series (max = 100%).
     <h2 class="panel-title">Top Alerted Users</h2>
     <span class="panel-subtitle">7 identities</span>
   </div>
-  <div class="bar-rows" style="margin-top:8px;">
+  <div class="bar-rows">
     <!-- width = (value / max_value) * 100  -->
     <div class="bar-row">
       <div class="bar-label">sngcobo@…</div>
-      <div class="bar-track"><div class="bar-fill" style="width:100%;background:#c0161c"></div></div>
+      <div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--red)"></div></div>
       <div class="bar-val">5</div>
     </div>
     <div class="bar-row">
@@ -223,21 +288,13 @@ value in the series (max = 100%).
       <div class="bar-track"><div class="bar-fill" style="width:40%"></div></div>
       <div class="bar-val">2</div>
     </div>
-    <div class="bar-row">
-      <div class="bar-label">drohan</div>
-      <div class="bar-track"><div class="bar-fill" style="width:20%"></div></div>
-      <div class="bar-val">1</div>
-    </div>
-    <div class="bar-row">
-      <div class="bar-label">tthomas</div>
-      <div class="bar-track"><div class="bar-fill" style="width:20%"></div></div>
-      <div class="bar-val">1</div>
-    </div>
   </div>
 </div>
 ```
 
-`bar-fill` colour: default `--blue`; override inline with `style="background:#c0161c"` for the top entry or any entry that warrants highlighting.
+`bar-fill` colour: default blue gradient; override inline with
+`style="background:var(--red)"` for the top entry or any entry that warrants
+highlighting.
 
 ---
 
@@ -266,7 +323,7 @@ background: conic-gradient(
     <h2 class="panel-title">Alerts by Category</h2>
     <span class="panel-subtitle">9 alerts</span>
   </div>
-  <div class="donut-wrap" style="margin-top:12px;">
+  <div class="donut-wrap">
     <div class="donut-ring" style="background:conic-gradient(
       #c0161c  0%   44.4%,
       #e81e25 44.4% 66.7%,
@@ -281,6 +338,25 @@ background: conic-gradient(
       <div class="legend-row"><div class="legend-swatch" style="background:#457fc1"></div><span>Files — 11%</span></div>
       <div class="legend-row"><div class="legend-swatch" style="background:#8a92a3"></div><span>AppMgmt — 9%</span></div>
     </div>
+  </div>
+</div>
+```
+
+### Donut with a centred total (optional)
+
+To print a big number in the donut hole, wrap the ring in a relatively-positioned
+box and add a `.donut-center` sibling:
+
+```html
+<div class="donut-wrap">
+  <div style="position:relative">
+    <div class="donut-ring" style="background:conic-gradient(var(--blue) 0 83.5%, var(--amber) 83.5% 96.8%, var(--green) 96.8% 100%)"></div>
+    <div class="donut-center"><div class="big">1,073</div><div class="cap">Events</div></div>
+  </div>
+  <div class="donut-legend">
+    <div class="legend-row"><div class="legend-swatch" style="background:var(--blue)"></div><span>Read / Access — 84%</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:var(--amber)"></div><span>Deletions — 13%</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:var(--green)"></div><span>Other — 3%</span></div>
   </div>
 </div>
 ```
@@ -300,19 +376,19 @@ For top-N tables where you want a visual at-a-glance count column. Pure CSS.
   <tbody>
     <tr>
       <td class="wrap">O365_AzureAD_UserLoggedIn</td>
-      <td style="text-align:center;font-family:'JetBrains Mono',monospace">5</td>
+      <td class="num">5</td>
       <td><div class="vol"><div class="vol-fill red" style="width:100%"></div></div></td>
     </tr>
     <tr>
       <td class="wrap">O365_User_Updated</td>
-      <td style="text-align:center;font-family:'JetBrains Mono',monospace">3</td>
+      <td class="num">3</td>
       <td><div class="vol"><div class="vol-fill" style="width:60%"></div></div></td>
     </tr>
   </tbody>
 </table>
 ```
 
-`vol-fill` colour modifiers: default `--blue`, `.red`, `.amber`. Width is the
+`vol-fill` colour modifiers: default blue, `.red`, `.amber`. Width is the
 row's value as a percentage of the max in the column.
 
 ---
@@ -320,7 +396,7 @@ row's value as a percentage of the max in the column.
 ## Summary block
 
 A short paragraph (or two) that names the highest-signal finding in plain
-English. Drop into `{{summary_html}}`.
+English. Drop into `{{summary_html}}`. Rendered as a blue-accented lead card.
 
 ```html
 <p>
@@ -342,7 +418,8 @@ numbers carry the weight.
 
 ## Next-steps item
 
-Drop into `{{next_steps_items}}`. Three to six items is the right range.
+Drop into `{{next_steps_items}}`. Three to six items is the right range. The
+number chip is now a rounded square; colour it by urgency.
 
 ```html
 <div class="ns-item">
@@ -354,7 +431,7 @@ Drop into `{{next_steps_items}}`. Three to six items is the right range.
 </div>
 ```
 
-Number-circle colours by urgency: `var(--red)` for items 1–3 (this week / 14 days),
+Number-chip colours by urgency: `var(--red)` for items 1–3 (this week / 14 days),
 `var(--blue)` for 30-day items, `var(--navy)` for quarterly.
 
 Six-item example:
@@ -378,13 +455,20 @@ The grid is 12 columns wide. Common arrangements:
 - **Three small panels**: three `col-4` panels
 - **Hero + side panel**: `col-8` + `col-4`
 - **Wide chart on top, two below**: `col-12` + two `col-6`
+- **Chart + donut**: `col-7` (bars) + `col-5` (donut)
 
-Below 880px wide, every panel collapses to full width automatically.
+Below 640px wide, every panel collapses to full width automatically.
+
+Helper utilities available inside panels: `.block-title` (with a `.dot`),
+`.divider` (thin rule between blocks), `.eyebrow` / `.h-sec` / `.h-sub` for
+section headings if you build a longer multi-part report.
 
 ---
 
 ## Branding
 
-Branding is hardcoded in `assets/base_template.html` — the header logo is an
-inline SVG brand mark (no network request needed), and the footer always reads
-"powered by Fluency". Nothing to fill in or override per report.
+Branding is hardcoded in `assets/base_template.html`. The dark **hero header**
+shows the Fluency logo (`assets/logo2.png`) inside a white "logo chip", and the
+footer always reads "powered by Fluency". The fluency-report skill copies
+`logo2.png` into the output's `assets/` folder at render time, so the relative
+`src="assets/logo2.png"` resolves. Nothing to fill in or override per report.

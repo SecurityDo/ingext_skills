@@ -19,11 +19,15 @@ assets — no manual commands needed.
 ingext_skills/
 ├── SKILLS/                          # Raw skill source files (browsable)
 │   ├── fluency-report/              # SKILL.md + assets/, references/
+│   ├── fortigate-bandwidth/         # SKILL.md
+│   ├── fpl-report-builder/          # SKILL.md + references/
 │   ├── html-to-pdf/                 # SKILL.md + scripts/
 │   ├── ingext-kql/                  # SKILL.md + references/
 │   └── o365-user-investigation/     # SKILL.md + assets/, evals/, scripts/
 └── cowork/                          # Pre-packaged .skill bundles (installable)
     ├── fluency-report.skill
+    ├── fortigate-bandwidth.skill
+    ├── fpl-report-builder.skill
     ├── html-to-pdf.skill
     ├── ingext-kql.skill
     └── o365-user-investigation.skill
@@ -237,6 +241,73 @@ so column names, field types, and table identifiers are always accurate.
 
 - Every query is time-bounded. If you don't specify a time range the skill defaults to the last 24 hours and says so in the explanation.
 - Bundled with KQL syntax reference, dynamic JSON column guide, and worked examples for group-by and facet queries — pulled on demand to keep context small.
+
+---
+
+### `fpl-report-builder.skill`
+
+Author the source code for a Fluency / Ingext FPL report — a single file that compiles one
+or more KQL queries into named sections behind a `main({from, to})` entry point. Hand it a
+set of queries or just describe the sections you want, and it produces a ready-to-deploy
+`.fpl` file with the time-range scaffold and the mandatory time filter wired into every
+query.
+
+**Trigger phrases**
+
+- "Create an FQL/FPL report"
+- "Turn these KQL queries into a report"
+- "Build a report with an overview and a success-rate section"
+- "Compile these queries into one report"
+- "Scaffold an Office365 Exchange report"
+
+> This skill *writes* a report definition. To run an existing report use `fluency-report`;
+> to write a single standalone query use `ingext-kql`.
+
+**What you get**
+
+- A `.fpl` source file with the canonical `main` / `validateTimeRange` / `setEnv` scaffold
+- One `GetXxx → kql(...)` section function per requested section, each labelled with a comment
+- The mandatory `| where timestamp between (datetime("${rangeFrom}") .. datetime("${rangeTo}"))`
+  filter enforced on every query, so one `from`/`to` pair drives the whole report
+- A relative-time default window (yesterday by default; configurable per report cadence)
+
+**Notes**
+
+- Pure code authoring — the skill does not call MCP tools or query a live tenant, so it works
+  without a connector. Confirm guessed column/table names against your schema before deploying.
+- When you paste a query that hardcodes its own time filter (e.g. `ago(7d)` or a literal date
+  range), the skill swaps in the standard window-driven filter and tells you it did.
+- Bundled with a conventions reference (relative-time syntax, KQL building blocks, worked
+  multi-section example) pulled on demand to keep context small.
+
+---
+
+### `fortigate-bandwidth.skill`
+
+Reference knowledge for correctly calculating FortiGate traffic bandwidth from
+`NetworkFortigateTraffic` data. FortiGate's `sentbyte`/`rcvdbyte` fields are
+cumulative session counters, so naively summing them across periodic session logs
+massively over-counts (a single long-lived session can inflate an hourly total to
+petabytes). This skill teaches Claude to use the per-interval `sentdelta`/`rcvddelta`
+values from the `_fields` JSON bag instead.
+
+**Trigger phrases**
+
+- "Top talkers by bandwidth / data volume"
+- "Bandwidth by srcip / dstip"
+- "Data usage per host on the FortiGate"
+- "Busiest IPs", "traffic volume", any sum/ranking of FortiGate bytes
+
+**What it changes**
+
+- Replaces `sum(sentbyte)` with `sum(coalesce(tolong(_fields.sentdelta), sentbyte))`
+  (and the received analog) — delta when present, cumulative byte as fallback
+- Flags the `logid 0000000020` periodic-update records and how to include/exclude them
+- Adds a bytes-per-packet sanity check to catch corrupt/cumulative values
+
+> This is a knowledge skill — it carries no MCP tools of its own. It applies whenever
+> FortiGate byte aggregation comes up, including indirectly via `ingext-kql`,
+> `fluency-report`, or `fpl-report-builder`.
 
 ---
 
