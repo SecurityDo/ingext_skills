@@ -6,24 +6,29 @@ search the web to answer a metrics question. Everything queryable lives in this 
 
 Source: `ingext_schema/metrics/*.yaml`. Query language: **PromQL** or **MetricsQL**.
 
-> Internal/operational metrics (datalake merge, compressed-byte counters, runtime profiling, queue
-> and buffer gauges) are intentionally excluded — end users do not query them. If asked about one,
-> treat it as out of scope (see the scope rule below).
+> Most internal/operational metrics (datalake merge, compressed-byte counters, runtime profiling,
+> buffer gauges) are intentionally excluded — end users do not query them. If asked about one, treat
+> it as out of scope (see the scope rule below). The one exception is the `ingext_queue_length`
+> gauge (§7), which is exposed for queue-depth monitoring.
 
-## Golden rule — counters are monotonic
+## Golden rule — counters vs the queue gauge
 
-**Every metric below is a monotonic counter.** Never query the raw value. Always wrap a counter in
+Almost everything below is a **monotonic counter** — never query its raw value; always wrap it in
 `rate()` or `increase()` over a time window:
 
 - `rate(<counter>[5m])` → per-second average over the window (use for "per second", live rates).
 - `increase(<counter>[1h])` → total delta over the window (use for totals, billing, volume).
 
+The **one exception** is the gauge `ingext_queue_length` (§7): it is an instantaneous value, so
+query it **raw** — do **not** apply `rate()`/`increase()`.
+
 Aggregate across series with `sum`, and break out by label with `sum by (<label>)`.
 
 ## Scope rule — reject anything not in this catalog
 
-This catalog is an **allowlist**. There are exactly **six metric families** and **twelve
-counters**. If a request names a counter or label that does not appear in this file, **reject it** —
+This catalog is an **allowlist**. There are exactly **six counter families** (twelve counters) plus
+**one gauge** (`ingext_queue_length`). If a request names a counter, gauge, or label that does not
+appear in this file, **reject it** —
 **even if it is a real, valid counter on the instance.** Many live counters exist only for internal
 use and must never be exposed to end users, so validity on the instance is irrelevant: the only
 test is whether the metric is in this file. Respond:
@@ -193,6 +198,34 @@ sum by (provider) (rate(lake_realtime_search_count[5m]))
 
 ---
 
+## 7. ingext_queue_length — management queue length (gauge)
+
+A **gauge** (instantaneous value): the length of the internal management queues — the number of
+pending items currently in the queue. Query the **raw** value — do **not** apply `rate()` /
+`increase()`. Aggregate with `sum` / `max` / `topk`, or use `*_over_time` functions
+(`max_over_time`, `avg_over_time`, …) for trends.
+
+| Gauge | Description |
+|---|---|
+| `ingext_queue_length` | internal management queue length (pending items currently in the queue) |
+
+| Label | Description | Sample values |
+|---|---|---|
+| `provider` | service provider name | — |
+| `account` | account name | `fabrikam` |
+| `service` | service name | `behavior`, `ml`, `datalake`, `eventwatch` |
+
+```promql
+# Current queue length by service.
+sum by (service) (ingext_queue_length)
+# Peak queue length per service over the last hour.
+max by (service) (max_over_time(ingext_queue_length[1h]))
+# Top 10 most-backlogged queues right now.
+topk(10, ingext_queue_length)
+```
+
+---
+
 ## Tenant note
 
 The schema also defines `fluency_import_*` and `lake_import_*`, which were **not observed** on the
@@ -202,7 +235,11 @@ as authoritative for querying.
 
 ---
 
-## Quick reference — all counters
+## Quick reference
+
+**Gauge (read raw — no rate/increase):** `ingext_queue_length` — labels `provider`, `account`, `service`.
+
+**Counters (rate/increase):**
 
 | Family | Count counter | Byte counter | Key labels |
 |---|---|---|---|

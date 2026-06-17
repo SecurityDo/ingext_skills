@@ -26,10 +26,10 @@ is the complete, authoritative list.
 
 ## Scope
 
-The metrics store contains exactly **twelve counters across six families** (see the catalog).
-Answer only questions about these platform metrics. Internal/operational metrics (billing meter,
-datalake merge, compressed-byte counters, rule-action counts, runtime profiling, queue/buffer
-gauges) are out of scope — do not surface or query them.
+The metrics store contains exactly **twelve counters across six families**, plus the one gauge
+`ingext_queue_length` (queue depth). Answer only questions about these platform metrics.
+Internal/operational metrics (billing meter, datalake merge, compressed-byte counters, rule-action
+counts, runtime profiling, buffer gauges) are out of scope — do not surface or query them.
 
 ### Hard scope check (enforce before every query)
 
@@ -58,9 +58,11 @@ For datalake / event-table search (KQL), defer to the **ingext-kql** skill — t
 
 ## Golden rule
 
-Every metric is a **monotonic counter**. Never query the raw value — always wrap it in
+Almost every metric is a **monotonic counter** — never query its raw value; always wrap it in
 `rate(<counter>[window])` (per-second) or `increase(<counter>[window])` (total over window), and
-aggregate with `sum` / `sum by (<label>)`. See the catalog for details.
+aggregate with `sum` / `sum by (<label>)`. The one exception is the gauge `ingext_queue_length`,
+which is an instantaneous value — query it **raw**, no `rate()`/`increase()`. See the catalog for
+details.
 
 ## Tools
 
