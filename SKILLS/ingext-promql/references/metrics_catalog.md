@@ -80,6 +80,18 @@ processing and directs the data to a sink. So a single logical path is
 sum by (component, action) (rate(platform_component_total[5m]))
 # Dropped/errored events per second by component ID.
 sum by (id) (rate(platform_component_total{action=~"error|drop"}[5m]))
+# Total bytes received by all datasources over the last hour (ingress volume).
+sum (increase(platform_component_bytes{component="datasource", action="input"}[1h]))
+# Ingress bytes per source application over the last hour (top sources).
+sum by (application) (increase(platform_component_bytes{component="datasource", action="input"}[1h]))
+# Per-datasource ingest rate trend (for spike / outage anomaly detection).
+sum by (application) (rate(platform_component_bytes{component="datasource", action="input"}[1h]))
+# Top talker datasources by ingress volume over the last hour.
+topk(5, sum by (id, application) (increase(platform_component_bytes{component="datasource", action="input"}[1h])))
+# Router processing errors by router over the last hour (0 = healthy).
+sum by (id, application) (increase(platform_component_total{component="router", action="error"}[1h]))
+# Events dropped at routers and sinks by component over the last hour.
+sum by (component, id, application) (increase(platform_component_total{component=~"router|datasink", action="drop"}[1h]))
 ```
 
 ## 2. platform_processor — stream fabric processor metrics
@@ -110,6 +122,8 @@ sum by (processor) (rate(platform_processor_total[5m]))
 # Per-processor error ratio, last 5 minutes.
 sum by (processor) (rate(platform_processor_total{action="error"}[5m]))
   / sum by (processor) (rate(platform_processor_total[5m]))
+# Pipe processing errors by pipe and processor over the last hour (locate the failing pipe).
+sum by (pipe, processor) (increase(platform_processor_total{action="error"}[1h]))
 ```
 
 ## 3. platform_egress — egress metrics
@@ -135,6 +149,10 @@ sum by (processor) (rate(platform_processor_total{action="error"}[5m]))
 sum by (dest) (rate(platform_egress_count[5m]))
 # Total bytes egressed per datalake index over the last hour.
 sum by (index) (increase(platform_egress_bytes[1h]))
+# Total bytes egressed by destination over the last hour (e.g. eventwatch vs datalake).
+sum by (dest) (increase(platform_egress_bytes[1h]))
+# Total bytes egressed by event type over the last hour.
+sum by (eventType) (increase(platform_egress_bytes[1h]))
 ```
 
 ## 4. lake_ingress — datalake ingest metrics
