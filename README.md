@@ -23,14 +23,16 @@ ingext_skills/
 │   ├── fpl-report-builder/          # SKILL.md + references/
 │   ├── html-to-pdf/                 # SKILL.md + scripts/
 │   ├── ingext-kql/                  # SKILL.md + references/
-│   └── o365-user-investigation/     # SKILL.md + assets/, evals/, scripts/
+│   ├── azure-user-signin-investigation/  # SKILL.md + assets/, evals/, scripts/ (FPL sign-in/dir-change reports)
+│   └── office-user-investigation/   # SKILL.md + assets/, evals/, scripts/ (KQL Office365 table + GeoIP map)
 └── cowork/                          # Pre-packaged .skill bundles (installable)
     ├── fluency-report.skill
     ├── fortigate-bandwidth.skill
     ├── fpl-report-builder.skill
     ├── html-to-pdf.skill
     ├── ingext-kql.skill
-    └── o365-user-investigation.skill
+    ├── azure-user-signin-investigation.skill
+    └── office-user-investigation.skill
 ```
 
 - **`SKILLS/`** — the unpacked source of each skill, one folder per skill. Use this to
@@ -121,19 +123,26 @@ summary — KPI cards, charts, tables, and a written interpretation of the data.
 
 ---
 
-### `o365-user-investigation.skill`
+### `azure-user-signin-investigation.skill`
 
-Investigate a specific Office 365 / Azure AD (Entra) user by running three Fluency reports
-in parallel and combining the results into a single-page HTML investigation report —
-activity timeline, executive summary, per-report data tables, and security recommendations.
+Investigate a user's **Azure AD / Entra ID sign-in and directory-change** activity by running
+three Fluency FPL reports in parallel and combining the results into a single-page HTML
+investigation report — sign-in timeline, executive summary, per-report data tables, and
+security recommendations. Reads the `AzureSigninLogs` / `AzureAuditLogs` datalake tables.
+
+> **Which user-investigation skill?** Use **`azure-user-signin-investigation`** for Azure AD
+> sign-in history (IPs/apps/success-failure/location) and directory changes (role/group/
+> password changes the user made or that targeted them), when the three FPL reports are
+> deployed. Use **`office-user-investigation`** for mailbox / Office 365 activity (Exchange
+> ops, hidden inbox rules / BEC, OAuth consents, geolocated source-IP map) by querying the
+> `Office365` datalake table directly with KQL — including when the FPL reports aren't deployed.
 
 **Trigger phrases**
 
-- "Investigate O365 user `<email>`"
-- "Look into what user `<email>` did in Office 365"
-- "Pull a Fluency user investigation for `<email>`"
-- "Check this Azure AD account on Fluency"
-- "What did `<user>` do in Office 365 last week?"
+- "Investigate Azure AD / Entra user `<email>`"
+- "Pull `<email>`'s sign-in history on Fluency"
+- "What directory changes did `<user>` make or receive?"
+- "Run the Azure sign-in investigation for `<email>`"
 
 **What you get**
 
@@ -152,7 +161,43 @@ activity timeline, executive summary, per-report data tables, and security recom
 - `GetUserSigninHistory`
 
 If any of the three are missing, Claude will stop and tell you which ones are absent
-rather than producing a partial report.
+rather than producing a partial report. (For tenants without these reports, use
+`office-user-investigation` instead.)
+
+---
+
+### `office-user-investigation.skill`
+
+Investigate a Microsoft 365 mailbox / Office 365 user by querying the **`Office365` datalake
+table directly with KQL** (Office 365 Management Activity API data: Exchange, SharePoint,
+AzureActiveDirectory, DLP). Geolocates every source IP offline (GeoLite2) and produces a
+self-contained HTML report with a **GeoIP map**, KPI strip, executive summary, high-risk
+findings, inbox-rule detail, per-country tables, sign-in timeline and recommendations — plus
+an optional PDF. Works even when the Azure FPL reports / `AzureSigninLogs` tables aren't
+deployed, as long as an `Office365` index exists.
+
+**Trigger phrases**
+
+- "Investigate O365 / mailbox user `<email>`"
+- "Look into mailbox activity for `<email>`"
+- "Check this account for BEC / inbox rules"
+- "Run an Office user investigation"
+- "Give me a GeoIP map of `<user>`'s logins"
+
+**What you get**
+
+- A self-contained HTML report (no internet needed to view) + optional PDF
+- An inline-SVG **GeoIP map** of every source IP, colour-coded (primary user / other home /
+  foreign / inbox-rule-creating) and sized by event volume
+- KPI strip (sign-ins, failed logins, malicious inbox rules, suspicious IPs, OAuth consents)
+- Data-driven verdict, high-risk findings, malicious inbox-rule detail, per-country and
+  top-IP tables, daily sign-in timeline, and prioritised recommendations
+
+**Requirements**
+
+- An `Office365` datalake index on the tenant (Claude checks via `list_indexes`)
+- Offline geolocation via the bundled GeoLite2 DB — always treat country/city as approximate
+  and confirm with live threat intel before formal attribution
 
 **Notes**
 

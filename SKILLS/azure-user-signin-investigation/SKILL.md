@@ -1,9 +1,24 @@
 ---
-name: o365-user-investigation
-description: Investigate an Office365 / Azure AD user on Fluency by running all three required reports (GetDirectoryChangesInitiatedByUser, GetDirectoryChangesTargetingUser, GetUserSigninHistory) and producing a single-page HTML investigation report with an activity timeline, executive summary, per-report data tables, and security recommendations. Trigger whenever the user asks to investigate a specific O365 or Azure AD / Entra user — e.g. "investigate O365 user john@contoso.com", "look into what user X did in Office365", "pull a Fluency user investigation for jane@corp.com", "check this Azure AD account on Fluency", "run an O365 user investigation", "what did user X do in Office 365 last week?", or any phrasing implying a focused review of a specific user's sign-in or directory activity in Microsoft 365.
+name: azure-user-signin-investigation
+description: >-
+  Investigate a user's Azure AD / Entra ID SIGN-IN and DIRECTORY-CHANGE activity
+  on Fluency by running the three saved FPL reports — GetUserSigninHistory,
+  GetDirectoryChangesInitiatedByUser, GetDirectoryChangesTargetingUser — and
+  combining them into one HTML report (sign-in timeline, executive summary,
+  per-report tables, recommendations). These reports read the AzureSigninLogs /
+  AzureAuditLogs datalake tables. USE THIS SKILL WHEN the focus is Azure AD sign-ins
+  (IPs/apps/success-failure/location) and directory changes (role/group/password
+  changes the user made or that targeted the user), AND the tenant has those three
+  FPL reports deployed. Triggers: "investigate Azure AD/Entra user X", "pull X's
+  sign-in history on Fluency", "what directory changes did X make/receive",
+  "run the Azure sign-in investigation for jane@corp.com".
+  DO NOT use this for mailbox/Exchange content (inbox rules, sends, OAuth consents)
+  or when the FPL reports / AzureSigninLogs tables are absent — for that use the
+  `office-user-investigation` skill, which queries the Office365 datalake table
+  directly with KQL.
 ---
 
-# O365 User Investigation
+# Azure AD User Sign-in & Directory-Change Investigation
 
 Produce a comprehensive, single-page HTML investigation report for a specific Microsoft 365 / Azure AD user by running three Fluency reports and combining the results into one readable document.
 
@@ -227,10 +242,12 @@ The HTML report contains:
 ## Layout
 
 ```
-o365-user-investigation/
+azure-user-signin-investigation/
 ├── SKILL.md
 ├── assets/
 │   └── report_template.html    ← Fluency-branded HTML scaffold with named placeholders
+├── evals/
+│   └── evals.json
 └── scripts/
     └── build_report.py         ← Reads 3 report JSONs, builds timeline SVG + tables, fills template
 ```

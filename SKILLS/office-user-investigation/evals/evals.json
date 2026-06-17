@@ -1,0 +1,49 @@
+{
+  "skill_name": "office-user-investigation",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Investigate the Office365 user vendor@partner.example.com on Anico for the last 90 days. The FPL sign-in reports aren't deployed there, just use the Office365 table.",
+      "expected_output": "The skill should (1) confirm an Office365 index exists via list_indexes, (2) run the KQL query set (ip_summary, workload, operation, inbox_rules, oauth, timeline) against the Office365 table with rangeFrom/rangeTo covering 90 days, matching UserId case-insensitively, (3) geolocate every source IP offline, and (4) run build_report.py to produce a self-contained HTML report with a GeoIP map, KPI strip, executive summary, high-risk findings, inbox-rule detail, per-country tables, sign-in timeline and recommendations, plus a PDF.",
+      "files": [],
+      "expectations": [
+        "list_indexes is called and an Office365 index is confirmed before querying",
+        "KQL queries are run via kql_search with rangeFrom/rangeTo (not the FPL reports)",
+        "UserId is matched case-insensitively (tolower)",
+        "The ip_summary query aggregates events/logins/failed/sends per ClientIP",
+        "Every source IP is geolocated offline (GeoLite2)",
+        "An HTML report is produced containing an inline-SVG GeoIP map",
+        "The HTML contains KPI cards, an executive summary, a high-risk findings table and recommendations",
+        "Inbox-rule events are parsed and shown with their effect",
+        "A PDF is generated and a link to the output is provided in chat"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Can you do an Office user investigation on jane.doe@corp.com for the last 7 days? Query the Office365 datalake directly.",
+      "expected_output": "The skill collects the username and a 7-day window (converted to epoch ms), confirms the Office365 index, runs the KQL query set, geolocates the IPs, and builds the HTML + PDF investigation report. The verdict severity is derived from the data (inbox rules, foreign access, ongoing activity).",
+      "files": [],
+      "expectations": [
+        "The time window is approximately the last 7 days in epoch milliseconds",
+        "The Office365 index is confirmed via list_indexes",
+        "kql_search is used for all queries",
+        "The report verdict/severity is computed from the data, not hard-coded",
+        "An HTML report with a GeoIP map is produced and shared"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Run an office-user-investigation for bob@example.com over the last 30 days on our Fluency tenant.",
+      "expected_output": "If the tenant has no Office365 index, the skill stops and reports that this tenant doesn't ingest Office365 audit data. Otherwise it runs the KQL queries for bob@example.com over 30 days and produces the combined HTML + PDF report. If a source IP geolocates to a country with no bundled outline, the build still completes (dot plotted) and the agent may fetch that country's outline.",
+      "files": [],
+      "expectations": [
+        "list_indexes is checked; if no Office365 index, the skill stops and says so",
+        "The username bob@example.com is passed (lower-cased) to every KQL query",
+        "The 30-day window is converted to epoch milliseconds",
+        "build_report.py is run with --workdir, --skill-dir, --username, --from-ms, --to-ms, --output",
+        "The report still builds even if a country outline is missing",
+        "A link to the HTML/PDF output is provided in chat"
+      ]
+    }
+  ]
+}
