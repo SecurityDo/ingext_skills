@@ -1,5 +1,6 @@
 ---
 name: add-connector
+version: 1.0.0
 description: >
   Add (install) a new application connector on Ingext / Fluency. Use this skill whenever
   the user asks to "add an application", "install a connector", "connect [app name]",

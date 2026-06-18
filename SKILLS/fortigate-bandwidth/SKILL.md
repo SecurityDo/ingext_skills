@@ -1,5 +1,6 @@
 ---
 name: fortigate-bandwidth
+version: 1.0.0
 description: >
   Correctly calculate FortiGate traffic bandwidth (bytes sent/received, top talkers, data
   volume) from NetworkFortigateTraffic / fortigatetraffic data in the Ingext datalake. ALWAYS
@@ -14,105 +15,58 @@ description: >
 
 # FortiGate Bandwidth Calculation
 
-How to correctly compute bytes / bandwidth from FortiGate traffic logs
+Rules for correctly aggregating FortiGate traffic byte/packet counters
 (`NetworkFortigateTraffic` schema, or any `fortigatetraffic`-style index) in the
-Ingext datalake. Apply these rules to any aggregation of FortiGate byte/packet
-counters — KQL queries, FPL reports, dashboards, or written summaries.
+Ingext datalake. Apply to any FortiGate byte/packet aggregation — KQL queries,
+FPL reports, dashboards, or written summaries.
+
+> The ready-to-run query lives in the ingext-kql schema KB:
+> `references/schemas/NetworkFortigateTraffic/queries/fortigate-bandwidth.yaml`,
+> and the field-level guidance is in that table's `info.yaml`. This page is the
+> *why* and the validation checklist; use the KB example as the canonical query
+> and don't duplicate it.
 
 ## The core problem: cumulative counters
 
-FortiGate's `sentbyte`, `rcvdbyte`, `sentpkt`, and `rcvdpkt` are **cumulative
-running totals for the session**, not the bytes for that single log record. For
-long-lived sessions FortiGate emits periodic log lines, and **each line repeats
-the cumulative total to date**.
+`sentbyte`, `rcvdbyte`, `sentpkt`, and `rcvdpkt` are **cumulative running totals
+for the session**, not the bytes for that single log record. FortiGate emits
+periodic log lines for long-lived sessions, and each line repeats the cumulative
+total to date. So `summarize sum(sentbyte)` **double-counts** — a single
+multi-day session can inflate an hourly total to petabytes.
 
-Therefore `summarize sum(sentbyte)` **double-counts** — it re-adds the running
-total on every periodic record. A single multi-day session can inflate an hourly
-total to petabytes.
+## The fix: per-interval deltas from `_fields`
 
-### Telltale signs of a bad (cumulative) value
-
-- A single source IP whose total dwarfs everything else by orders of magnitude
-  (e.g. PB while everyone else is in MB/GB).
-- `bytes / packets` works out to **megabytes per packet** — physically
-  impossible (real packets max ~65 KB). Compute `sentbyte/sentpkt` as a sanity
-  check; multi-MB/packet means the byte field is cumulative or corrupt.
-- The same 5-tuple (`srcip:srcport -> dstip:dstport`) repeating across many
-  records with a steadily growing `duration` and monotonically increasing
-  `sentbyte`/`sentpkt`.
-
-## logid 0000000020 = periodic session updates
-
-Log ID `0000000020` is the FortiGate "traffic forward" **periodic session
-update**. These are the high-volume records that repeat cumulative counters.
-They dominate the index by record count and are the main source of inflation.
-
-## The fix: use per-interval deltas from _fields
-
-There are **no top-level delta columns**. The per-interval deltas live inside the
-`_fields` dynamic JSON bag (it carries the `kusto_dynamic_json` hint). On records
-that have them, `_fields` contains:
-
-- `sentdelta` — bytes sent since the previous log line
-- `rcvddelta` — bytes received since the previous log line
-- `sentpktdelta`, `rcvdpktdelta`, `durationdelta` — packet / duration deltas
-
-These deltas are the **correct per-record values to sum**.
-
-### Important caveats
-
-- **They are stored as strings** (e.g. `"2087"`) — wrap in `tolong()` before
-  summing.
-- Access via `_fields.sentdelta` / `_fields.rcvddelta`.
-- **Not every record has them.** A session-close record may carry only the
-  cumulative `sentbyte`/`rcvdbyte`, which in that case IS the true session total.
-
-## The canonical pattern
-
-Prefer the delta when present; fall back to the cumulative byte only when there
-is no delta. Use `coalesce`:
+There are no top-level delta columns. The correct per-record values are the
+deltas inside the `_fields` dynamic JSON bag — `sentdelta`, `rcvddelta`
+(plus `sentpktdelta`, `rcvdpktdelta`, `durationdelta`). They are stored as
+**strings**, so wrap in `tolong()`, and **not every record has them** (a
+session-close record may carry only the cumulative byte, which is then the true
+session total). The canonical rule is therefore delta-first with a cumulative
+fallback:
 
 ```kql
-NetworkFortigateTraffic
-| where TimeGenerated > ago(1h)
-| where logid != "0000000020"
-| extend sent = coalesce(tolong(_fields.sentdelta), sentbyte),
-         rcvd = coalesce(tolong(_fields.rcvddelta), rcvdbyte)
-| summarize event_count = count(),
-            total_sentbyte = sum(sent),
-            total_rcvdbyte = sum(rcvd) by srcip
-| extend total_bytes = total_sentbyte + total_rcvdbyte
-| top 10 by total_bytes desc
+extend sent = coalesce(tolong(_fields.sentdelta), sentbyte),
+       rcvd = coalesce(tolong(_fields.rcvddelta), rcvdbyte)
 ```
 
-Notes on the pattern:
+`logid 0000000020` is the periodic "traffic forward" session update — the
+high-volume records that repeat cumulative counters. Decide deliberately:
+exclude `logid 0000000020` to drop the noisiest periodic updates, **or** keep it
+and rely on its `sentdelta`/`rcvddelta` (which it reliably carries) if you want
+long-lived-session bandwidth included. Pick one approach consistently.
 
-- `coalesce(tolong(_fields.sentdelta), sentbyte)` — delta first, cumulative byte
-  as fallback. This matters beyond the obvious periodic logs: many other logids
-  also carry cumulative counters, and the coalesce silently corrects them.
-- Filtering `logid != "0000000020"` drops the noisiest periodic-update records.
-  If you instead WANT long-lived-session bandwidth included, do NOT drop
-  `0000000020` — keep it and rely on its `sentdelta`/`rcvddelta` (those records
-  reliably carry deltas). Choose one approach consistently.
-- Swap `srcip` for `dstip`, `app`, `service`, `dstport`, etc. to re-pivot.
-- For "most sent" vs "most received" rankings, order by `total_sentbyte` or
-  `total_rcvdbyte` separately.
+## Sanity checks before reporting
 
-## Worked validation (why this matters)
+1. Never `sum()` raw `sentbyte`/`rcvdbyte` across session logs — use the
+   `coalesce(tolong(_fields.sentdelta), sentbyte)` rule (and the rcvd analog).
+2. Decide deliberately whether to include or exclude `logid 0000000020`.
+3. Check the top result's **bytes-per-packet** ratio (`sentbyte/sentpkt`).
+   Multi-MB/packet is physically impossible (real packets max ~65 KB) and means
+   the byte field is cumulative or corrupt.
+4. Be suspicious of any single IP whose total dwarfs everything else by orders of
+   magnitude — usually one long-lived session with a cumulative counter.
+5. Always state the time window; FortiGate volume is meaningless without it.
 
-Real example from a live tenant, top talkers over one hour:
-
-- Naive `sum(sentbyte)` ranked `10.31.170.2` at ~15.62 PB — actually one 102-day
-  VoIP (SIP/UDP 5060) session logged 28 times with a cumulative (and corrupt:
-  multi-MB/packet) counter.
-- Naive `sum(sentbyte)` also ranked `10.240.80.2` at ~21.86 GB — but 16 of its 56
-  records carried cumulative counters. With deltas applied, its true traffic was
-  ~1.34 MB, dropping it out of even the top 100.
-
-## Checklist before reporting FortiGate bandwidth
-
-1. Never `sum()` raw `sentbyte`/`rcvdbyte` across session logs.
-2. Use `coalesce(tolong(_fields.sentdelta), sentbyte)` (and the rcvd analog).
-3. Decide deliberately whether to include or exclude `logid 0000000020`.
-4. Sanity-check the top result's bytes-per-packet ratio; flag multi-MB/packet.
-5. State the time window; FortiGate volume is meaningless without it.
+For reference, on a live tenant a naive `sum(sentbyte)` ranked one IP at ~15.6 PB
+over an hour — actually a single 102-day VoIP session logged 28 times with a
+corrupt cumulative counter. Applying the delta rule dropped it out of the top 100.

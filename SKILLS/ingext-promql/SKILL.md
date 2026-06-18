@@ -1,5 +1,6 @@
 ---
 name: ingext-promql
+version: 1.0.0
 description: >
   Generate and run PromQL / MetricsQL queries for the Fluency / Ingext platform metrics store
   (VictoriaMetrics). Use this skill whenever the user asks about platform throughput, ingest,

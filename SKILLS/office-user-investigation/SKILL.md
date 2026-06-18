@@ -1,5 +1,6 @@
 ---
 name: office-user-investigation
+version: 1.0.0
 description: >-
   Investigate a Microsoft 365 mailbox / Office 365 user by querying the
   Ingext/Fluency **Office365 datalake table directly with KQL** (Office 365

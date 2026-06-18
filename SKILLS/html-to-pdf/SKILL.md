@@ -1,5 +1,6 @@
 ---
 name: html-to-pdf
+version: 1.0.0
 description: >
   Convert any HTML file to a high-fidelity PDF using TypeScript and Playwright (headless
   Chromium). Use this skill whenever the user wants to turn an HTML file into a PDF —

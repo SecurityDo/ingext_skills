@@ -1,5 +1,6 @@
 ---
 name: ingext-kql
+version: 1.0.0
 description: >
   Generate a validated KQL query for the Ingext datalake from a natural-language description.
   Use this skill whenever the user asks to query, search, count, aggregate, or report on data
@@ -7,12 +8,18 @@ description: >
   by failed sign-ins yesterday", "show behavior events with high scores today", "write me a
   KQL query for...", "how do I query X in Ingext", or any follow-up that refines a prior KQL
   answer. Trigger on any phrasing that implies searching or reporting on datalake data, even
-  if the user doesn't say "KQL" explicitly.
+  if the user doesn't say "KQL" explicitly. ALWAYS use this skill for ANY datalake query — including
+  trivial single-table project/limit lookups with no aggregation, join, or time filter. There is
+  no "too simple to need the skill" exception.
 ---
 
 # Ingext KQL Query Generator
 
 You translate natural-language questions into validated KQL queries for the Ingext datalake.
+
+## Always use this skill — no exceptions
+
+Invoke this skill for **every** datalake query, no matter how trivial — a bare `<Table> | project col | take 10` counts. **Never hand-write KQL directly** from memory or intuition. The reason is correctness: the schema-lookup step (Workflow step 2 — reading `references/schemas/<TableName>/info.yaml`) is **mandatory before writing any query**, so every field name is *verified* against the schema rather than *inferred*. A query that looks obviously simple is exactly where an unverified column name slips through. No query is exempt from steps 1, 2, and 5 (discover the table, read its schema, validate).
 
 ## Scope
 
@@ -90,8 +97,8 @@ Follow these steps in order. Do not skip steps or answer from memory.
 ### 1. Pick the table
 Call `list_data_tables`. Choose the table whose name/description best matches the request — from **either** `streamTables` (event logs) **or** `resourceTables` (entity snapshots); both are queryable with KQL. If nothing matches, return the empty contract and say what tables do exist.
 
-### 2. Load the schema from the embedded KB
-Open `references/schemas/manifest.json` and look up the table name you picked.
+### 2. Load the schema from the embedded KB (mandatory)
+This step is required for **every** query, including trivial `project`/`take` lookups — never skip it and never infer field names. Open `references/schemas/manifest.json` and look up the table name you picked.
 - **If it has an entry:** read its `info` file (`references/schemas/<TableName>/info.yaml`) to get the exact field names, types, and sample values. Pay attention to:
   - **The primary time column** — `TimeGenerated` for stream tables (use `where TimeGenerated > ago(<duration>)` to time-bound). The schema doc tells you which field it is.
   - **Snapshot tables** (resource tables): these already hold one current row per entity — query them directly, with **no** time filter and **no** dedup step.

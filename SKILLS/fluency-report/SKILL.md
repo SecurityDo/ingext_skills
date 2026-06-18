@@ -1,5 +1,6 @@
 ---
 name: fluency-report
+version: 1.0.0
 description: Run a Fluency / Ingext FPL report and turn its result into a single-page HTML summary tailored to the data — KPI cards, charts, tables, and a short written interpretation. Trigger when the user says any phrasing of "run a Fluency report" or "run an Ingext report" — e.g. "run a Fluency report", "run the Ingext IngestionRate report", "give me a Fluency report on top alerted users", "build a Fluency summary for the IngestionRate report". The skill ALWAYS starts by listing the available reports via the FPL `list_reports` tool and matching the user's request against that list. If no report matches, the skill responds that the report doesn't exist and lists what does exist — it never invents or substitutes a report. Once a real match is found, it runs the report, reads the result, and produces a Fluency-branded single-page HTML summary using the bundled `assets/base_template.html` plus the widget recipes in `references/widget_recipes.md`.
 ---
 

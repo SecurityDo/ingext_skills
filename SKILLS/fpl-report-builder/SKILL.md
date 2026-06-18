@@ -1,5 +1,6 @@
 ---
 name: fpl-report-builder
+version: 1.0.0
 description: >
   Author a Fluency / Ingext FPL report source file that compiles one or more KQL queries
   into a single time-bounded report. Use this skill whenever the user wants to BUILD, WRITE,

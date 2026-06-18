@@ -1,5 +1,6 @@
 ---
 name: azure-user-signin-investigation
+version: 1.0.0
 description: >-
   Investigate a user's Azure AD / Entra ID SIGN-IN and DIRECTORY-CHANGE activity
   on Fluency by running the three saved FPL reports — GetUserSigninHistory,
