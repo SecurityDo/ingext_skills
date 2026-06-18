@@ -1,0 +1,429 @@
+schema: AzureSigninLogs
+description: "Schema for the Azure Active Directory (Entra ID) SigninLogs table. Contains interactive and non-interactive user sign-in events, including authentication, conditional access, risk, device, and location details. Query the table as SigninLogs. Dynamic fields hinted as JSON (e.g. DeviceDetail, LocationDetails, Status) support dot/bracket access directly; plain String fields holding JSON text require parse_json() first. Reference: https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/signinlogs"
+fields:
+
+  # ==========================================
+  # TIMESTAMPS & RECORD METADATA
+  # ==========================================
+  - name: TimeGenerated
+    type: DateTime
+    description: "Timestamp (UTC) of the sign-in event, normalized to epoch milliseconds. Primary time column for range filters (e.g. where TimeGenerated > ago(1d))."
+
+  - name: _Size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting. Not sourced from SigninLogs."
+
+  - name: CreatedDateTime
+    type: DateTime
+    description: "Date and time the sign-in was initiated (UTC), normalized to epoch milliseconds."
+
+  - name: DurationMs
+    type: Long
+    description: "Duration of the sign-in in milliseconds."
+
+  - name: ProcessingTimeInMilliseconds
+    type: String
+    description: "Processing time of the sign-in, in milliseconds."
+
+  - name: Type
+    type: String
+    description: "The name of the table/index. Set by the index engine."
+    sampleValues: ["SigninLogs"]
+
+  - name: SourceSystem
+    type: String
+    description: "The type of agent the event was collected by."
+    sampleValues: ["Azure"]
+
+  - name: Category
+    type: String
+    description: "Log category."
+    sampleValues: ["SignInLogs", "NonInteractiveUserSignInLogs"]
+
+  - name: Level
+    type: String
+    description: "Log level."
+
+  - name: OperationName
+    type: String
+    description: "Name of the operation."
+    sampleValues: ["Sign-in activity"]
+
+  - name: OperationVersion
+    type: String
+    description: "Operation (REST API) version."
+
+  - name: Id
+    type: String
+    description: "Identifier representing the sign-in activity."
+
+  - name: CorrelationId
+    type: String
+    description: "Identifier sent from the client when the sign-in is initiated; used for troubleshooting and correlating related events."
+
+  - name: OriginalRequestId
+    type: String
+    description: "Request identifier of the first request in the authentication sequence."
+
+  # ==========================================
+  # IDENTITY / USER
+  # ==========================================
+  - name: Identity
+    type: String
+    description: "Display name of the actor identified in the sign-in."
+
+  - name: UserId
+    type: String
+    description: "Object identifier (GUID) of the user."
+
+  - name: UserDisplayName
+    type: String
+    description: "Display name of the user."
+
+  - name: UserPrincipalName
+    type: String
+    description: "The UPN (email address) of the user."
+
+  - name: UserType
+    type: String
+    description: "Whether the user is a member or guest in the tenant."
+    sampleValues: ["member", "guest"]
+
+  - name: AlternateSignInName
+    type: String
+    description: "The identification the user provided to sign in; may be a UPN or other identifier."
+
+  - name: SignInIdentifier
+    type: String
+    description: "The identification the user provided to sign in; may be a UPN or other identifier."
+
+  - name: SignInIdentifierType
+    type: String
+    description: "Type of sign-in identifier."
+    sampleValues: ["userPrincipalName", "phoneNumber", "proxyAddress", "qrCode", "onPremisesUserPrincipalName"]
+
+  - name: AADTenantId
+    type: String
+    description: "The Azure AD tenant ID."
+
+  - name: HomeTenantId
+    type: String
+    description: "Tenant identifier of the user initiating the sign-in. Not applicable for Managed Identity or service principal."
+
+  - name: HomeTenantName
+    type: String
+    description: "Tenant name of the external tenant that homes the entity acting in the customer's tenant."
+
+  # ==========================================
+  # APPLICATION / SERVICE PRINCIPAL
+  # ==========================================
+  - name: AppDisplayName
+    type: String
+    description: "The application name displayed in the Azure Portal."
+
+  - name: AppId
+    type: String
+    description: "The application identifier in Azure Active Directory."
+
+  - name: AppOwnerTenantId
+    type: String
+    description: "Tenant identifier of the owner of the application in Azure AD."
+
+  - name: ServicePrincipalId
+    type: String
+    description: "Application identifier used for sign-in; populated when signing in using an application."
+
+  - name: ServicePrincipalName
+    type: String
+    description: "Application name used for sign-in; populated when signing in using an application."
+
+  - name: ClientCredentialType
+    type: String
+    description: "Type of client credential used (e.g. client assertion, client secret)."
+
+  - name: FederatedCredentialId
+    type: String
+    description: "Federated credential identifier."
+
+  - name: SourceAppClientId
+    type: String
+    description: "The source app's client ID for target identities."
+
+  - name: Agent
+    type: Dynamic
+    description: "Agentic property for sign-in logs, stored as a JSON object; includes agentType and parentAppId when type is AgenticInstance."
+
+  # ==========================================
+  # RESOURCE
+  # ==========================================
+  - name: Resource
+    type: String
+    description: "Resource the user signed in to."
+
+  - name: ResourceDisplayName
+    type: String
+    description: "Name of the resource that the user signed in to."
+
+  - name: ResourceGroup
+    type: String
+    description: "Resource group associated with the sign-in."
+
+  - name: ResourceId
+    type: String
+    description: "Identifier of the resource that the user signed in to."
+
+  - name: ResourceIdentity
+    type: String
+    description: "The resource that the user signed in to."
+
+  - name: ResourceOwnerTenantId
+    type: String
+    description: "Tenant identifier of the owner of the resource referenced in the sign-in."
+
+  - name: ResourceProvider
+    type: String
+    description: "Resource provider associated with the sign-in."
+
+  - name: ResourceServicePrincipalId
+    type: String
+    description: "Identifier of the service principal representing the target resource."
+
+  - name: ResourceTenantId
+    type: String
+    description: "Tenant identifier of the resource referenced in the sign-in."
+
+  # ==========================================
+  # AUTHENTICATION
+  # ==========================================
+  - name: AuthenticationMethodsUsed
+    type: String
+    description: "Authentication methods used during the sign-in."
+    sampleValues: ["SMS", "Authenticator App", "App Verification code", "Password", "FIDO", "PTA", "PHS"]
+
+  - name: AuthenticationRequirement
+    type: String
+    description: "Highest level of authentication needed through all sign-in steps for the sign-in to succeed."
+    sampleValues: ["singleFactorAuthentication", "multiFactorAuthentication"]
+
+  - name: AuthenticationRequirementPolicies
+    type: String
+    description: "Sources of the authentication requirement (conditional access, per-user MFA, identity protection, security defaults)."
+
+  - name: AuthenticationProtocol
+    type: String
+    description: "Protocol type or grant type used."
+    sampleValues: ["none", "oAuth2", "ropc", "wsFederation", "saml20", "deviceCode"]
+
+  - name: AuthenticationDetails
+    type: String
+    description: "Result of the authentication attempt and additional details on the authentication method. JSON text; use parse_json() to access sub-fields."
+
+  - name: AuthenticationProcessingDetails
+    type: String
+    description: "Additional authentication processing details, such as agent name for PTA/PHS or server name for federated auth. JSON text; use parse_json()."
+
+  - name: AuthenticationContextClassReferences
+    type: String
+    description: "Conditional access authentication contexts applied to the sign-in."
+
+  - name: AuthenticationAppDeviceDetails
+    type: String
+    description: "App and device state used during the most recent authentication step using an authentication app."
+
+  - name: AuthenticationAppPolicyEvaluationDetails
+    type: String
+    description: "Policies applied and enforced related to the authentication app during the latest sign-in step."
+
+  - name: AuthenticatorAppLocation
+    type: String
+    description: "The location of the authenticator app."
+
+  - name: IncomingTokenType
+    type: String
+    description: "Type of token used to sign in (e.g. primary refresh token, SAML assertion)."
+
+  - name: TokenIssuerName
+    type: String
+    description: "Name of the identity provider."
+    sampleValues: ["sts.microsoft.com"]
+
+  - name: TokenIssuerType
+    type: String
+    description: "Type of identity provider."
+    sampleValues: ["AzureAD", "ADFederationServices", "AzureADBackupAuth"]
+
+  - name: TokenProtectionStatusDetails
+    type: Dynamic
+    description: "Whether the sign-in token was bound to the device via token protection, stored as a JSON object."
+
+  - name: UniqueTokenIdentifier
+    type: String
+    description: "Base64-encoded request identifier used to track tokens issued by Azure AD as they are redeemed."
+
+  - name: OriginalTransferMethod
+    type: String
+    description: "Transfer method used to initiate a session throughout all subsequent requests."
+
+  - name: MfaDetail
+    type: Dynamic
+    description: "MFA detail (deprecated), stored as a JSON object."
+
+  - name: ClientAppUsed
+    type: String
+    description: "Legacy client used for sign-in."
+    sampleValues: ["Browser", "Exchange ActiveSync", "IMAP", "MAPI", "SMTP", "POP", "Mobile Apps and Desktop clients"]
+
+  # ==========================================
+  # RESULT / STATUS
+  # ==========================================
+  - name: ResultType
+    type: String
+    description: "5-6 digit error code for the sign-in event; 0 indicates success."
+    sampleValues: ["0", "50126", "50053", "50074"]
+
+  - name: ResultDescription
+    type: String
+    description: "Error message or reason for failure of the sign-in activity."
+
+  - name: ResultSignature
+    type: String
+    description: "Result signature."
+
+  - name: Status
+    type: Dynamic
+    description: "Sign-in status, stored as a JSON object including errorCode and the failure reason/additional details. Access e.g. Status.errorCode or Status.failureReason."
+
+  - name: FlaggedForReview
+    type: Boolean
+    description: "Whether a user flagged a failed sign-in for tenant admin review."
+
+  # ==========================================
+  # CONDITIONAL ACCESS
+  # ==========================================
+  - name: ConditionalAccessStatus
+    type: String
+    description: "Status of the triggered conditional access policy."
+    sampleValues: ["success", "failure", "notApplied"]
+
+  - name: ConditionalAccessPolicies
+    type: Dynamic
+    description: "List of conditional access policies triggered by the sign-in activity, stored as a JSON array. Use mv-expand to flatten."
+
+  - name: AppliedConditionalAccessPolicies
+    type: String
+    description: "Applied conditional access policies. JSON text; use parse_json()."
+
+  - name: ConditionalAccessAudiences
+    type: String
+    description: "The audiences targeted by the conditional access policy."
+
+  - name: SessionLifetimePolicies
+    type: String
+    description: "Conditional access session management policies applied during the sign-in event."
+
+  - name: AppliedEventListeners
+    type: Dynamic
+    description: "Detailed info about listeners (Azure Logic Apps, Azure Functions) triggered by the sign-in event, stored as a JSON array."
+
+  # ==========================================
+  # SESSION & FLAGS
+  # ==========================================
+  - name: SessionId
+    type: String
+    description: "Session ID generated during the sign-in."
+
+  - name: IsInteractive
+    type: Boolean
+    description: "Whether the sign-in is interactive (user provides an auth factor) versus non-interactive (client uses a token/code)."
+
+  - name: IsRisky
+    type: Boolean
+    description: "Whether the sign-in is considered risky."
+
+  - name: IsTenantRestricted
+    type: Boolean
+    description: "Whether the sign-in is under a tenant restrictions policy."
+
+  - name: IsThroughGlobalSecureAccess
+    type: Boolean
+    description: "Whether the user came through the Global Secure Access service."
+
+  - name: CrossTenantAccessType
+    type: String
+    description: "Type of cross-tenant access used by the actor to access the resource."
+
+  # ==========================================
+  # RISK
+  # ==========================================
+  - name: RiskDetail
+    type: String
+    description: "Reason behind the state of a risky user/sign-in."
+    sampleValues: ["none", "adminGeneratedTemporaryPassword", "userPerformedSecuredPasswordChange"]
+
+  - name: RiskEventTypes
+    type: String
+    description: "Risk event types (deprecated)."
+
+  - name: RiskEventTypes_V2
+    type: String
+    description: "Risk event types for the sign-in."
+    sampleValues: ["unlikelyTravel", "anonymizedIPAddress", "maliciousIPAddress"]
+
+  - name: RiskLevel
+    type: String
+    description: "Risk level of the sign-in."
+
+  - name: RiskLevelAggregated
+    type: String
+    description: "Aggregated risk level."
+    sampleValues: ["none", "low", "medium", "high", "hidden"]
+
+  - name: RiskLevelDuringSignIn
+    type: String
+    description: "Risk level during sign-in."
+    sampleValues: ["none", "low", "medium", "high", "hidden"]
+
+  - name: RiskState
+    type: String
+    description: "Risk state of the sign-in."
+    sampleValues: ["none", "confirmedSafe", "remediated", "dismissed", "atRisk", "confirmedCompromised"]
+
+  # ==========================================
+  # NETWORK / LOCATION / DEVICE
+  # ==========================================
+  - name: IPAddress
+    type: String
+    description: "IP address of the client from where the sign-in occurred."
+
+  - name: IPAddressFromResourceProvider
+    type: String
+    description: "IP address a user used to reach a resource provider; used for Conditional Access compliance."
+
+  - name: GlobalSecureAccessIpAddress
+    type: String
+    description: "Global Secure Access IP address that the user signed in from."
+
+  - name: AutonomousSystemNumber
+    type: String
+    description: "The Autonomous System Number (ASN) of the network used by the actor."
+
+  - name: Location
+    type: String
+    description: "2-letter country code from where the sign-in occurred."
+    sampleValues: ["US", "GB", "DE"]
+
+  - name: LocationDetails
+    type: Dynamic
+    description: "City, state, country/region and lat/long of the sign-in location, stored as a JSON object. Access e.g. LocationDetails.city or LocationDetails.geoCoordinates.latitude."
+
+  - name: NetworkLocationDetails
+    type: String
+    description: "Network location details including the type of network used and its names."
+
+  - name: DeviceDetail
+    type: Dynamic
+    description: "Device information from where the sign-in occurred, stored as a JSON object (deviceId, displayName, operatingSystem, browser, isCompliant, isManaged). Access e.g. DeviceDetail.operatingSystem or DeviceDetail.browser."
+
+  - name: UserAgent
+    type: String
+    description: "User agent information related to the sign-in."

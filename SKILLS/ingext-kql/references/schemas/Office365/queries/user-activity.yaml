@@ -1,0 +1,12 @@
+description: >-
+  A timeline of SharePoint and OneDrive file activity over the past 7 days,
+  showing which user performed which operation on which file and site, along
+  with the client IP, ordered most recent first.
+datatype: Office365
+kql: |
+  Office365
+  | where timestamp > ago(7d)
+  | where Workload in ("SharePoint", "OneDrive")
+  | project timestamp, UserId, Operation, SiteUrl, SourceFileName, ClientIP, ObjectId
+  | order by timestamp desc
+tags: [office365, sharepoint, onedrive, file-activity, audit-trail]

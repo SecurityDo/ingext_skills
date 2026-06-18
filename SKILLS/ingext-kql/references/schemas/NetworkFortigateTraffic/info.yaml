@@ -1,0 +1,326 @@
+schema: NetworkFortigateTraffic
+description: "Schema for FortiGate firewall traffic (forward session) logs (type=traffic). One row per session. Subtype-specific keys not modeled as columns are held in the _fields dynamic JSON bag. Reference: https://docs.fortinet.com/document/fortigate/7.6.6/fortios-log-message-reference/357866/log-message-fields"
+fields:
+
+  # ==========================================
+  # TIMESTAMPS & RECORD METADATA
+  # ==========================================
+  - name: TimeGenerated
+    type: DateTime
+    description: "Event timestamp (UTC), normalized to epoch milliseconds. Primary time column for range filters (e.g. where TimeGenerated > ago(1d))."
+
+  - name: _Size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting. Not sourced from FortiGate."
+
+  - name: _Type
+    type: String
+    description: "The name of the table/index. Set by the index engine."
+
+  - name: date
+    type: String
+    description: "Calendar day (year-month-day) when the log was recorded."
+    sampleValues: ["2017-11-15"]
+
+  - name: time
+    type: String
+    description: "Wall-clock time when the log was recorded."
+    sampleValues: ["11:44:16"]
+
+  - name: eventtime
+    type: Long
+    description: "Epoch time (nanoseconds) the log was triggered by FortiGate. May differ slightly from date/time due to recording delay."
+    sampleValues: ["1510775056"]
+
+  - name: tz
+    type: String
+    description: "Timezone offset of the log timestamp."
+    sampleValues: ["-0800", "+0000"]
+
+  # ==========================================
+  # SESSION
+  # ==========================================
+  - name: sessionid
+    type: Long
+    description: "Identifier for the session."
+    sampleValues: ["8058"]
+
+  - name: duration
+    type: Integer
+    description: "Duration of the session, in seconds."
+    sampleValues: ["2"]
+
+  - name: direction
+    type: String
+    description: "Message/packet direction."
+    sampleValues: ["incoming", "outgoing"]
+
+  - name: vd
+    type: String
+    description: "Name of the virtual domain (VDOM) in which the log was recorded."
+    sampleValues: ["vdom1"]
+
+  - name: proto
+    type: Integer
+    description: "IP protocol number (6=TCP, 17=UDP, 1=ICMP, etc.)."
+    sampleValues: ["6"]
+
+  # ==========================================
+  # SOURCE
+  # ==========================================
+  - name: srcip
+    type: String
+    description: "IP address (IPv4/IPv6) of the traffic's origin."
+    sampleValues: ["10.1.100.155"]
+
+  - name: srcport
+    type: Integer
+    description: "Port number of the traffic's origin."
+    sampleValues: ["40772"]
+
+  - name: srccountry
+    type: String
+    description: "Name of the source country (or 'Reserved' for private/reserved ranges)."
+    sampleValues: ["Reserved", "United States"]
+
+  - name: srcintf
+    type: String
+    description: "Interface name of the traffic's origin."
+    sampleValues: ["port12"]
+
+  - name: srcintfrole
+    type: String
+    description: "Role of the source interface."
+    sampleValues: ["undefined", "lan", "wan"]
+
+  - name: srcname
+    type: String
+    description: "Name of the source host."
+    sampleValues: ["pc1"]
+
+  - name: devtype
+    type: String
+    description: "Device type of the source."
+    sampleValues: ["Linux PC"]
+
+  - name: osname
+    type: String
+    description: "Operating system of the source."
+    sampleValues: ["Linux"]
+
+  - name: mastersrcmac
+    type: String
+    description: "Master MAC address for a source host with multiple network interfaces."
+    sampleValues: ["a2:e9:00:ec:40:01"]
+
+  - name: srcmac
+    type: String
+    description: "MAC address associated with the source IP address."
+    sampleValues: ["a2:e9:00:ec:40:01"]
+
+  - name: srcserver
+    type: Integer
+    description: "Server identifier of the source."
+    sampleValues: ["0"]
+
+  # ==========================================
+  # NAT TRANSLATION
+  # ==========================================
+  - name: transip
+    type: String
+    description: "NAT source IP (IPv4/IPv6) after translation."
+    sampleValues: ["172.16.200.2"]
+
+  - name: transport
+    type: Integer
+    description: "NAT source port after translation."
+    sampleValues: ["40772"]
+
+  - name: trandisp
+    type: String
+    description: "NAT translation type/disposition."
+    sampleValues: ["snat", "dnat", "noop"]
+
+  # ==========================================
+  # REPORTING DEVICE
+  # ==========================================
+  - name: devid
+    type: String
+    description: "Serial number of the FortiGate device that reported the traffic."
+    sampleValues: ["FGVM02Q105060010"]
+
+  - name: devname
+    type: String
+    description: "Name of the FortiGate device that reported the traffic."
+    sampleValues: ["FGVM02Q105060010"]
+
+  # ==========================================
+  # DESTINATION
+  # ==========================================
+  - name: dstip
+    type: String
+    description: "Destination IP address (IPv4/IPv6)."
+    sampleValues: ["203.0.113.15"]
+
+  - name: dstport
+    type: Integer
+    description: "Port number of the traffic's destination."
+    sampleValues: ["443"]
+
+  - name: dstcountry
+    type: String
+    description: "Name of the destination country."
+    sampleValues: ["United States"]
+
+  - name: dstintf
+    type: String
+    description: "Interface of the traffic's destination."
+    sampleValues: ["port11"]
+
+  - name: dstintfrole
+    type: String
+    description: "Role of the destination interface."
+    sampleValues: ["undefined", "lan", "wan"]
+
+  - name: dstname
+    type: String
+    description: "Name of the destination host."
+    sampleValues: ["fortiguard.com"]
+
+  # ==========================================
+  # APPLICATION / SERVICE
+  # ==========================================
+  - name: service
+    type: String
+    description: "Name of the service/protocol."
+    sampleValues: ["HTTPS"]
+
+  - name: app
+    type: String
+    description: "Name of the application identified by Application Control."
+    sampleValues: ["HTTPS.BROWSER"]
+
+  - name: appcat
+    type: String
+    description: "Category of the application."
+    sampleValues: ["Web.Client"]
+
+  - name: appid
+    type: Integer
+    description: "ID of the application."
+    sampleValues: ["40568"]
+
+  - name: apprisk
+    type: String
+    description: "Risk level of the application."
+    sampleValues: ["medium", "high", "low", "elevated", "critical"]
+
+  - name: countapp
+    type: Integer
+    description: "Number of Application Control logs associated with the session."
+    sampleValues: ["1"]
+
+  # ==========================================
+  # VOLUME COUNTERS
+  # ==========================================
+  - name: rcvdbyte
+    type: Long
+    description: "Number of bytes received in the session."
+    sampleValues: ["39898"]
+
+  - name: rcvdpkt
+    type: Long
+    description: "Number of packets received in the session."
+    sampleValues: ["37"]
+
+  - name: sentbyte
+    type: Long
+    description: "Number of bytes sent in the session."
+    sampleValues: ["1850"]
+
+  - name: sentpkt
+    type: Long
+    description: "Number of packets sent in the session."
+    sampleValues: ["25"]
+
+  # ==========================================
+  # POLICY & ACTION
+  # ==========================================
+  - name: action
+    type: String
+    description: "Status of the session. 'deny' = blocked by firewall policy; 'start' = session start; other values (e.g. 'close', 'timeout') indicate an allowed session and how it closed."
+    sampleValues: ["close", "deny", "start", "timeout"]
+
+  - name: policyid
+    type: Integer
+    description: "ID of the firewall policy governing the traffic."
+    sampleValues: ["1"]
+
+  - name: poluuid
+    type: String
+    description: "UUID of the firewall policy."
+    sampleValues: ["707a0d88-c972-51e7-bbc7-4d421660557b"]
+
+  - name: policytype
+    type: String
+    description: "Type of policy that matched."
+    sampleValues: ["policy"]
+
+  - name: policymode
+    type: String
+    description: "Firewall policy mode."
+    sampleValues: ["learn"]
+
+  - name: utmaction
+    type: String
+    description: "Security action performed by UTM inspection."
+    sampleValues: ["allow", "block"]
+
+  - name: utmref
+    type: String
+    description: "UTM reference number (may be a compound value such as N-NNNNNN)."
+    sampleValues: ["0-220586"]
+
+  - name: level
+    type: String
+    description: "Security/severity level rating of the log."
+    sampleValues: ["notice", "warning", "information"]
+
+  - name: msg
+    type: String
+    description: "Human-readable log message text."
+
+  # ==========================================
+  # LOG CLASSIFICATION
+  # ==========================================
+  - name: type
+    type: String
+    description: "Log type. See https://docs.fortinet.com/document/fortigate/7.6.6/fortios-log-message-reference/374445/type"
+    sampleValues: ["traffic"]
+
+  - name: subtype
+    type: String
+    description: "Subtype of the traffic log. See https://docs.fortinet.com/document/fortigate/7.6.6/fortios-log-message-reference/195419/subtype"
+    sampleValues: ["forward"]
+
+  - name: logid
+    type: String
+    description: "Log ID. See https://docs.fortinet.com/document/fortigate/7.6.6/fortios-log-message-reference/656858/log-id-definitions"
+    sampleValues: ["0000000013"]
+
+  # ==========================================
+  # EXTENDED FIELDS
+  # ==========================================
+  - name: _fields
+    type: Dynamic
+    description: "Extended fields not modeled as top-level columns, stored as a JSON object. Contents vary by logid (each traffic subtype emits its own extra key=value pairs). Query sub-keys with dot/bracket notation, e.g. _fields.foo or _fields['foo']."
+
+  - name: _fields.sentdelta
+    type: String
+    description: "Incremental bytes sent since the previous log for this session (numeric value stored as a string in the _fields JSON bag; wrap in tolong() to aggregate). Prefer over sentbyte for per-interval bandwidth, falling back to sentbyte when absent, e.g. coalesce(tolong(_fields.sentdelta), sentbyte)."
+    sampleValues: ["1850"]
+
+  - name: _fields.rcvddelta
+    type: String
+    description: "Incremental bytes received since the previous log for this session (numeric value stored as a string in the _fields JSON bag; wrap in tolong() to aggregate). Prefer over rcvdbyte for per-interval bandwidth, falling back to rcvdbyte when absent, e.g. coalesce(tolong(_fields.rcvddelta), rcvdbyte)."
+    sampleValues: ["39898"]

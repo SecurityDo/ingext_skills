@@ -1,0 +1,16 @@
+description: >-
+  For the past 7 days, the Office365 / Azure AD accounts with the most failed
+  logins. Counts failures, the number of distinct source IPs seen, and the most
+  recent failure time, broken down by user and login error code.
+datatype: Office365
+kql: |
+  Office365
+  | where timestamp > ago(7d)
+  | where Workload == "AzureActiveDirectory"
+  | where Operation == "UserLoginFailed"
+  | summarize failures = count(),
+              distinct_ips = dcount(ClientIP),
+              last_seen = max(timestamp)
+          by UserId, ErrorNumber
+  | top 50 by failures desc
+tags: [office365, azure-ad, authentication, failed-login]

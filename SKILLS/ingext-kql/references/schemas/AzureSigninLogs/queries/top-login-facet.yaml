@@ -1,0 +1,21 @@
+description: >-
+  A faceted breakdown of Azure AD sign-ins over the past 7 days. Renames the key
+  sign-in fields to short aliases, then produces value distributions across app,
+  authentication requirement, client app, IP address, user, conditional-access
+  status, authentication method, and result / failure reason.
+datatype: AzureSigninLogs
+kql: |
+  AzureSigninLogs
+  | where TimeGenerated > ago(7d)
+  | project-rename
+      AppName=AppDisplayName,
+      AuthReq=AuthenticationRequirement,
+      ClientApp=ClientAppUsed,
+      IPAddr=IPAddress,
+      UPName=UserPrincipalName,
+      CondStat=ConditionalAccessStatus,
+      AuthMethod=AuthenticationMethodsUsed,
+      Result=ResultType,
+      FailReason=ResultDescription
+  | facet by AppName, AuthReq, ClientApp, IPAddr, UPName, CondStat, AuthMethod, Result, FailReason
+tags: [azure-ad, signin-logs, authentication, facet]

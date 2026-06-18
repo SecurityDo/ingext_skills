@@ -1,0 +1,14 @@
+description: >-
+  For a specific user over the past 90 days, a daily timeline of successful vs.
+  failed sign-ins (UserLoggedIn / UserLoginFailed), bucketed by day. Drives the
+  sign-in activity chart in the investigation report. Replace the UserId value
+  with the account being investigated.
+datatype: Office365
+kql: |
+  Office365
+  | where timestamp > ago(90d)
+  | where tolower(UserId) == "username@acme.com"
+  | where Operation in ("UserLoggedIn", "UserLoginFailed")
+  | summarize logins = count() by bin(timestamp, 1d), Operation
+  | order by timestamp asc
+tags: [office365, user-investigation, sign-in, timeline, azure-ad]

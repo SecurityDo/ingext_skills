@@ -1,0 +1,73 @@
+description: |-
+  Returns all directory group, role, and permission changes where the specified
+  user was the target within the selected time range. This report helps
+  investigators determine whether the user's access, privileges, or group
+  memberships were modified after a security alert.
+
+  Key insights provided:
+  - Groups or roles the user was added to or removed from
+  - Ownership or app-role changes affecting the user
+  - Who or what initiated the change
+  - Whether the operation succeeded or failed
+  - Correlation IDs and modified properties for follow-up investigation
+datatype: AzureAuditLogs
+kql: |
+  let UserEmail = tolower("adele.vance@contoso.onmicrosoft.com");
+  let StartTime = ago(7d);
+  let EndTime = now();
+  AzureAuditLogs
+  | where TimeGenerated between (StartTime .. EndTime)
+  | where ActivityDisplayName has_any (
+      "Add member to group",
+      "Remove member from group",
+      "Add owner to group",
+      "Remove owner from group",
+      "Add member to role",
+      "Remove member from role",
+      "Add eligible member to role",
+      "Remove eligible member from role",
+      "Add app role assignment",
+      "Remove app role assignment",
+      "Add app role assignment grant to user",
+      "Remove app role assignment grant from user"
+  )
+  | extend
+      InitiatedByUserUPN = tolower(tostring(InitiatedBy.user.userPrincipalName)),
+      InitiatedByUserId = tostring(InitiatedBy.user.id),
+      InitiatedByAppName = tostring(InitiatedBy.app.displayName),
+      InitiatedByAppId = tostring(InitiatedBy.app.appId),
+      InitiatedByServicePrincipalId = tostring(InitiatedBy.app.servicePrincipalId)
+  | mv-expand TargetResource = TargetResources
+  | extend
+      TargetType = tostring(TargetResource.type),
+      TargetId = tostring(TargetResource.id),
+      TargetName = tostring(TargetResource.displayName),
+      TargetUPN = tolower(tostring(TargetResource.userPrincipalName)),
+      TargetText = tolower(tostring(TargetResource)),
+      ModifiedProperties = TargetResource.modifiedProperties
+  | where TargetUPN == UserEmail
+     or TargetText has UserEmail
+  | project
+      TimeGenerated,
+      ActivityDisplayName,
+      AADOperationType,
+      Category,
+      Result,
+      ResultReason,
+      TargetType,
+      TargetId,
+      TargetName,
+      TargetUPN,
+      InitiatedByUserUPN,
+      InitiatedByUserId,
+      InitiatedByAppName,
+      InitiatedByAppId,
+      InitiatedByServicePrincipalId,
+      ModifiedProperties,
+      CorrelationId,
+      Id,
+      InitiatedBy,
+      TargetResources,
+      AdditionalDetails
+  | order by TimeGenerated desc
+tags: [azure-ad, audit-logs, directory-changes, group-membership, role-assignment, target-user]

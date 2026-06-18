@@ -1,0 +1,18 @@
+description: >-
+  For a specific user over the past 90 days, failed sign-ins grouped by the
+  application (ApplicationId) and logon-error reason, with failure count,
+  distinct source IPs and last-seen time. Pinpoints which app/OAuth client is
+  generating sign-in failures (e.g. redirect-URI / InvalidReplyTo errors).
+  Replace the UserId value with the account being investigated.
+datatype: Office365
+kql: |
+  Office365
+  | where timestamp > ago(90d)
+  | where tolower(UserId) == "username@acme.com"
+  | where Operation == "UserLoginFailed"
+  | summarize failures = count(),
+              distinct_ips = dcount(ClientIP),
+              last_seen = max(timestamp)
+          by ApplicationId, LogonError
+  | top 50 by failures desc
+tags: [office365, user-investigation, failed-login, application, oauth]

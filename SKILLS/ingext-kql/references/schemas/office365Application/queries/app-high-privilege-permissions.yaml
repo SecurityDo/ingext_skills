@@ -1,0 +1,43 @@
+description: >-
+  Finds application registrations that request high-privilege Microsoft Graph (or
+  other API) application permissions (type == "Role", i.e. app-only consent that
+  does not require a signed-in user). Flattens the nested requiredResourceAccess
+  structure and keeps only sensitive permissions. This is a core app-governance
+  report for spotting over-privileged or risky service principals after an alert
+  or during access review.
+datatype: office365Application
+kql: |
+  let HighPrivPerms = dynamic([
+      "Directory.Read.All", "Directory.ReadWrite.All",
+      "User.Read.All", "User.ReadWrite.All",
+      "Group.Read.All", "Group.ReadWrite.All",
+      "Mail.Read", "Mail.ReadWrite",
+      "AuditLog.Read.All", "Application.ReadWrite.All",
+      "AppRoleAssignment.ReadWrite.All",
+      "RoleManagement.ReadWrite.Directory"
+  ]);
+  office365Application
+  | mv-expand rra = requiredResourceAccess
+  | mv-expand ra = rra.resourceAccess
+  | extend
+      ResourceName = tostring(rra.resourceName),
+      Permission = tostring(ra.permission),
+      PermType = tostring(ra.type)
+  | where PermType == "Role"
+  | where Permission in (HighPrivPerms)
+  | project
+      displayName,
+      appId,
+      ResourceName,
+      Permission,
+      PermType
+  | order by displayName asc, Permission asc
+tags: [office365, entra-id, applications, app-permissions, over-privilege, security]
+expected_output: |
+  Application permissions matching the high-privilege list (sanitized).
+
+  displayName               appId                                  ResourceName     Permission           PermType
+  Contoso Audit Connector   aef75665-0000-0000-0000-000000000001   Microsoft Graph  AuditLog.Read.All    Role
+  Contoso Audit Connector   aef75665-0000-0000-0000-000000000001   Microsoft Graph  Directory.Read.All   Role
+  Contoso Audit Connector   aef75665-0000-0000-0000-000000000001   Microsoft Graph  Group.Read.All       Role
+  Contoso Audit Connector   aef75665-0000-0000-0000-000000000001   Microsoft Graph  User.Read.All        Role

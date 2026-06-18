@@ -1,0 +1,229 @@
+schema: NetworkFortigateEvent
+description: "Schema for FortiGate event and UTM logs (type=event and type=utm). Fields above _fields are shared across FortiGate log families (see FortiGate Traffic for matching definitions); subtype-specific columns are held in the _fields dynamic JSON bag keyed by logid. Reference: https://docs.fortinet.com/document/fortigate/7.6.6/fortios-log-message-reference/357866/log-message-fields"
+fields:
+
+  # ==========================================
+  # TIMESTAMPS & RECORD METADATA
+  # ==========================================
+  - name: TimeGenerated
+    type: DateTime
+    description: "Event timestamp (UTC), normalized to epoch milliseconds. Primary time column for range filters (e.g. where TimeGenerated > ago(1d))."
+
+  - name: _Size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting. Not sourced from FortiGate."
+
+  - name: _Type
+    type: String
+    description: "The name of the table/index. Set by the index engine."
+
+  - name: date
+    type: String
+    description: "Calendar day (year-month-day) when the log was recorded."
+    sampleValues: ["2017-11-15"]
+
+  - name: time
+    type: String
+    description: "Wall-clock time when the log was recorded."
+    sampleValues: ["11:44:16"]
+
+  - name: eventtime
+    type: Long
+    description: "Epoch time (nanoseconds) the log was triggered by FortiGate."
+    sampleValues: ["1510775056"]
+
+  - name: tz
+    type: String
+    description: "Timezone offset of the log timestamp."
+    sampleValues: ["-0800", "+0000"]
+
+  # ==========================================
+  # LOG CLASSIFICATION
+  # ==========================================
+  - name: logid
+    type: String
+    description: "Log ID. See https://docs.fortinet.com/document/fortigate/7.6.6/fortios-log-message-reference/656858/log-id-definitions"
+    sampleValues: ["0000000013"]
+
+  - name: type
+    type: String
+    description: "Log type (event or utm for this table). See https://docs.fortinet.com/document/fortigate/7.6.6/fortios-log-message-reference/374445/type"
+    sampleValues: ["event", "utm"]
+
+  - name: subtype
+    type: String
+    description: "Subtype of the log. See https://docs.fortinet.com/document/fortigate/7.6.6/fortios-log-message-reference/195419/subtype"
+    sampleValues: ["system"]
+
+  - name: action
+    type: String
+    description: "Action taken or session status. For UTM logs this is the security action (e.g. blocked, passthrough); for event logs it describes the event action."
+    sampleValues: ["close", "blocked", "passthrough"]
+
+  - name: level
+    type: String
+    description: "Security/severity level rating."
+    sampleValues: ["notice", "warning", "error"]
+
+  - name: msg
+    type: String
+    description: "Human-readable log message text."
+
+  # ==========================================
+  # REPORTING DEVICE
+  # ==========================================
+  - name: devid
+    type: String
+    description: "Serial number of the FortiGate device that reported the log."
+    sampleValues: ["FGVM02Q105060010"]
+
+  - name: devname
+    type: String
+    description: "Name of the FortiGate device that reported the log."
+    sampleValues: ["FGVM02Q105060010"]
+
+  - name: vd
+    type: String
+    description: "Name of the virtual domain (VDOM) in which the log was recorded."
+    sampleValues: ["vdom1"]
+
+  - name: vrf
+    type: Integer
+    description: "Virtual Routing and Forwarding (VRF) identifier."
+
+  # ==========================================
+  # SESSION
+  # ==========================================
+  - name: sessionid
+    type: Long
+    description: "Identifier for the session."
+    sampleValues: ["8058"]
+
+  - name: direction
+    type: String
+    description: "Message/packet direction."
+    sampleValues: ["incoming", "outgoing"]
+
+  - name: proto
+    type: Integer
+    description: "IP protocol number (6=TCP, 17=UDP, 1=ICMP, etc.)."
+    sampleValues: ["6"]
+
+  - name: service
+    type: String
+    description: "Name of the service/protocol."
+    sampleValues: ["HTTPS"]
+
+  # ==========================================
+  # SOURCE
+  # ==========================================
+  - name: srcip
+    type: String
+    description: "IP address (IPv4/IPv6) of the traffic's origin."
+    sampleValues: ["10.1.100.155"]
+
+  - name: srcport
+    type: Integer
+    description: "Port number of the traffic's origin."
+    sampleValues: ["40772"]
+
+  - name: srccountry
+    type: String
+    description: "Name of the source country (or 'Reserved' for private/reserved ranges)."
+    sampleValues: ["Reserved", "United States"]
+
+  - name: srcintf
+    type: String
+    description: "Interface name of the traffic's origin."
+    sampleValues: ["port12"]
+
+  - name: srcintfrole
+    type: String
+    description: "Role of the source interface."
+    sampleValues: ["undefined", "lan", "wan"]
+
+  - name: srcdomain
+    type: String
+    description: "Source domain (e.g. Active Directory domain) of the originating user or host."
+
+  # ==========================================
+  # DESTINATION
+  # ==========================================
+  - name: dstip
+    type: String
+    description: "Destination IP address (IPv4/IPv6)."
+    sampleValues: ["203.0.113.15"]
+
+  - name: dstport
+    type: Integer
+    description: "Port number of the traffic's destination."
+    sampleValues: ["443"]
+
+  - name: dstcountry
+    type: String
+    description: "Name of the destination country."
+    sampleValues: ["United States"]
+
+  - name: dstintf
+    type: String
+    description: "Interface of the traffic's destination."
+    sampleValues: ["port11"]
+
+  - name: dstintfrole
+    type: String
+    description: "Role of the destination interface."
+    sampleValues: ["undefined", "lan", "wan"]
+
+  # ==========================================
+  # POLICY
+  # ==========================================
+  - name: policyid
+    type: Integer
+    description: "ID of the firewall policy governing the traffic."
+    sampleValues: ["1"]
+
+  # ==========================================
+  # APPLICATION
+  # ==========================================
+  - name: app
+    type: String
+    description: "Name of the application identified by Application Control."
+    sampleValues: ["HTTPS.BROWSER"]
+
+  - name: appcat
+    type: String
+    description: "Category of the application."
+    sampleValues: ["Web.Client"]
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: user
+    type: String
+    description: "Authenticated user name."
+
+  - name: unauthuser
+    type: String
+    description: "Unauthenticated user name (source identity before authentication)."
+
+  - name: group
+    type: String
+    description: "User group name."
+
+  # ==========================================
+  # WEB / URL
+  # ==========================================
+  - name: hostname
+    type: String
+    description: "Host name of a URL."
+
+  - name: url
+    type: String
+    description: "URL address."
+
+  # ==========================================
+  # EXTENDED FIELDS
+  # ==========================================
+  - name: _fields
+    type: Dynamic
+    description: "Extended fields not modeled as top-level columns, stored as a JSON object. Contents vary by logid (each event/utm subtype emits its own extra key=value pairs). Query sub-keys with dot/bracket notation, e.g. _fields.foo or _fields['foo']."

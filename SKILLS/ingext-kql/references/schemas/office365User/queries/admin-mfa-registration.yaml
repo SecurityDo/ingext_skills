@@ -1,0 +1,34 @@
+description: >-
+  Lists all administrative users (userRegistration.isAdmin == true) and their
+  MFA and SSPR registration status, highlighting privileged accounts that are
+  not protected by MFA. This is a key hygiene report after an alert or during
+  access review: an enabled admin without a registered MFA method is a
+  high-priority risk.
+datatype: office365User
+kql: |
+  office365User
+  | where tobool(userRegistration.isAdmin) == true
+  | extend
+      Roles = strcat_array(roles, ", "),
+      MfaCapable = tobool(userRegistration.isMfaCapable),
+      MfaRegistered = tobool(userRegistration.isMfaRegistered),
+      SsprRegistered = tobool(userRegistration.isSsprRegistered),
+      PreferredSecondary = tostring(userRegistration.userPreferredMethodForSecondaryAuthentication)
+  | project
+      userPrincipalName,
+      displayName,
+      Roles,
+      accountEnabled,
+      MfaCapable,
+      MfaRegistered,
+      SsprRegistered,
+      PreferredSecondary,
+      createdDateTime
+  | order by MfaRegistered asc, userPrincipalName asc
+tags: [office365, entra-id, users, admin, mfa, security-hygiene]
+expected_output: |
+  Admin accounts with MFA/SSPR status; rows without MFA sort first (sanitized).
+
+  userPrincipalName          displayName   Roles                  accountEnabled  MfaCapable  MfaRegistered  SsprRegistered  PreferredSecondary
+  alex.wilber@contoso.com    Alex Wilber   User Administrator     true            false       false          false           (empty)
+  adele.vance@contoso.com    Adele Vance   Global Administrator   true            true        true           true            sms

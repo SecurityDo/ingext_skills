@@ -1,0 +1,359 @@
+schema: Office365
+description: Unified schema for Microsoft 365 audit events. Use 'applicableWorkloads' to determine if a field is valid for the queried workload.
+fields:
+
+  # ==========================================
+  # COMMON FIELDS (Available in All/Most Workloads)
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Event timestamp (UTC), normalized to epoch milliseconds. converted from the field CreationTime. Primary time column for range filters (e.g. where TimeGenerated > ago(1d))."
+    applicableWorkloads: ["All"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting"
+
+  - name: CreationTime
+    type: String
+    description: "The date and time the event occurred."
+    applicableWorkloads: ["All"]
+
+  - name: Id
+    type: String
+    description: "The unique identifier for the audit record."
+    applicableWorkloads: ["All"]
+
+  - name: Operation
+    type: String
+    description: "The specific action that was performed (e.g., UserLoggedIn, MailItemsAccessed)."
+    applicableWorkloads: ["All"]
+
+  - name: Workload
+    type: String
+    description: "The O365 service where the event occurred."
+    sampleValues: ["MicrosoftTeams", "Exchange", "AzureActiveDirectory"]
+    applicableWorkloads: ["All"]
+
+  - name: UserId
+    type: String
+    description: "The UPN (email address) of the user who performed the action."
+    applicableWorkloads: ["All"]
+
+  - name: UserKey
+    type: String
+    description: "An alternative identifier for the user or app."
+    applicableWorkloads: ["All"]
+
+  - name: UserType
+    type: Integer
+    description: "Integer indicating the type of user (e.g., Regular, System, Service Principal)."
+    applicableWorkloads: ["All"]
+
+  - name: OrganizationId
+    type: String
+    description: "The GUID of the tenant's organization."
+    applicableWorkloads: ["All"]
+
+  - name: RecordType
+    type: Integer
+    description: "Integer indicating the type of audit record."
+    applicableWorkloads: ["All"]
+
+  - name: Version
+    type: Integer
+    description: "The version number of the record format."
+    applicableWorkloads: ["All"]
+
+  - name: ResultStatus
+    type: String
+    description: "The outcome of the operation."
+    sampleValues: ["Success", "Succeeded", "Failed"]
+    applicableWorkloads: ["Exchange", "AzureActiveDirectory"]
+
+  # ==========================================
+  # ENRICHMENT (Added by Ingext)
+  # ==========================================
+  - name: _behaviors
+    type: DynamicArray
+    description: "A list of behavior rule names that this event triggered. Each element is a string. Use mv-expand to flatten before grouping, e.g. `mv-expand _behaviors | summarize count() by Behaviors = _behaviors`."
+    sampleValues: ["O365_AzureAD_UserLoggedIn"]
+    applicableWorkloads: ["All"]
+
+  # ==========================================
+  # GEO-IP & NETWORK (Commonly Enriched)
+  # ==========================================
+  - name: _ip.city
+    type: String
+    description: "GeoIP resolved city."
+    applicableWorkloads: ["All"]
+
+  - name: _ip.country
+    type: String
+    description: "GeoIP resolved country."
+    applicableWorkloads: ["All"]
+
+  - name: _ip.countryCode
+    type: String
+    description: "Two-letter country code."
+    applicableWorkloads: ["All"]
+
+  - name: _ip.isp
+    type: String
+    description: "Internet Service Provider of the client IP."
+    applicableWorkloads: ["All"]
+
+  - name: _ip.org
+    type: String
+    description: "Organization owning the client IP ASN."
+    applicableWorkloads: ["All"]
+
+  - name: _ip.latitude
+    type: Float
+    description: "GeoIP latitude."
+    applicableWorkloads: ["All"]
+
+  - name: _ip.longitude
+    type: Float
+    description: "GeoIP longitude."
+    applicableWorkloads: ["All"]
+
+  # ==========================================
+  # APP ACCESS CONTEXT
+  # ==========================================
+  - name: AppAccessContext.AADSessionId
+    type: String
+    description: "The Entra ID session identifier."
+    applicableWorkloads: ["MicrosoftTeams", "Exchange"]
+
+  - name: AppAccessContext.IssuedAtTime
+    type: DateTime
+    description: "The time the access token was issued."
+    applicableWorkloads: ["MicrosoftTeams", "Exchange"]
+
+  - name: AppAccessContext.UniqueTokenId
+    type: String
+    description: "Unique identifier for the access token."
+    applicableWorkloads: ["MicrosoftTeams", "Exchange"]
+
+  - name: AppAccessContext.APIId
+    type: String
+    description: "The API application ID used for access."
+    applicableWorkloads: ["Exchange"]
+
+  - name: AppAccessContext.ClientAppId
+    type: String
+    description: "The client application ID."
+    applicableWorkloads: ["Exchange"]
+
+  # ==========================================
+  # MICROSOFT TEAMS SPECIFIC FIELDS
+  # ==========================================
+  - name: ObjectId
+    type: String
+    description: "The target object of the operation (e.g., TeamsGraphService)."
+    applicableWorkloads: ["MicrosoftTeams", "AzureActiveDirectory"]
+
+  # ==========================================
+  # EXCHANGE SPECIFIC FIELDS
+  # ==========================================
+  - name: ActorInfoString
+    type: String
+    description: "Details about the actor/client executing the action."
+    applicableWorkloads: ["Exchange"]
+
+  - name: ClientInfoString
+    type: String
+    description: "Information about the client application."
+    applicableWorkloads: ["Exchange"]
+    
+  - name: ClientAppId
+    type: String
+    description: "The application ID of the client."
+    applicableWorkloads: ["Exchange"]
+
+  - name: AppId
+    type: String
+    description: "The App ID used."
+    applicableWorkloads: ["Exchange"]
+
+  - name: ClientIPAddress
+    type: String
+    description: "The IPv4 or IPv6 address of the client accessing the mailbox."
+    applicableWorkloads: ["Exchange"]
+
+  - name: ExternalAccess
+    type: Boolean
+    description: "Indicates if the access was from an external user."
+    applicableWorkloads: ["Exchange"]
+
+  - name: InternalLogonType
+    type: Integer
+    description: "Internal Exchange logon type."
+    applicableWorkloads: ["Exchange"]
+
+  - name: LogonType
+    type: Integer
+    description: "Type of logon (e.g., Owner, Admin, Delegate)."
+    applicableWorkloads: ["Exchange"]
+
+  - name: LogonUserSid
+    type: String
+    description: "The Security Identifier (SID) of the user who logged on."
+    applicableWorkloads: ["Exchange"]
+
+  - name: MailboxGuid
+    type: String
+    description: "The GUID of the mailbox being accessed."
+    applicableWorkloads: ["Exchange"]
+
+  - name: MailboxOwnerSid
+    type: String
+    description: "The SID of the mailbox owner."
+    applicableWorkloads: ["Exchange"]
+
+  - name: MailboxOwnerUPN
+    type: String
+    description: "The UPN of the mailbox owner."
+    applicableWorkloads: ["Exchange"]
+
+  - name: OperationCount
+    type: Integer
+    description: "The number of times the operation occurred."
+    applicableWorkloads: ["Exchange"]
+
+  - name: OperationPropertiesFields.MailAccessType
+    type: String
+    description: "The type of mailbox access performed (e.g., Bind)."
+    applicableWorkloads: ["Exchange"]
+
+  - name: OrganizationName
+    type: String
+    description: "The onmicrosoft.com domain name."
+    applicableWorkloads: ["Exchange"]
+
+  - name: OriginatingServer
+    type: String
+    description: "The Exchange server that originated the event."
+    applicableWorkloads: ["Exchange"]
+
+  - name: TokenTenantId
+    type: String
+    description: "The tenant ID of the authentication token."
+    applicableWorkloads: ["Exchange"]
+
+  - name: Folders
+    type: DynamicArray
+    description: "Array of folders and mail items accessed. Requires mv-expand to query sub-properties like FolderItems.Subject."
+    applicableWorkloads: ["Exchange"]
+
+  # ==========================================
+  # AZURE ACTIVE DIRECTORY SPECIFIC FIELDS
+  # ==========================================
+  - name: ActorContextId
+    type: String
+    description: "The context ID (tenant) of the actor."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: ActorIpAddress
+    type: String
+    description: "The IP address of the actor generating the event."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: ApplicationId
+    type: String
+    description: "The App ID associated with the Entra ID event."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: AzureActiveDirectoryEventType
+    type: Integer
+    description: "The type of AAD event."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: ClientIP
+    type: String
+    description: "The client IP address for the AAD login."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: ErrorNumber
+    type: String
+    description: "Error code associated with failed authentications."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: InterSystemsId
+    type: String
+    description: "Cross-system tracking ID."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: IntraSystemId
+    type: String
+    description: "Internal system tracking ID."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: SupportTicketId
+    type: String
+    description: "Support ticket associated with admin actions."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: TargetContextId
+    type: String
+    description: "The context ID of the target object."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: Actor
+    type: DynamicArray
+    description: "Array of actor details (ID, Type). Requires mv-expand."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: Target
+    type: DynamicArray
+    description: "Array of target objects (ID, Type). Requires mv-expand."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: ModifiedProperties
+    type: DynamicArray
+    description: "Array of properties changed during an administrative event."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  # --- AAD Parsed Maps ---
+  - name: DevicePropertiesFields.BrowserType
+    type: String
+    description: "The browser used during the AAD operation."
+    sampleValues: ["Chrome", "Edge", "Safari"]
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: DevicePropertiesFields.OS
+    type: String
+    description: "The Operating System of the client."
+    sampleValues: ["Linux", "Windows", "MacOs"]
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: DevicePropertiesFields.IsCompliant
+    type: String
+    description: "String boolean indicating if the device meets compliance policies."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: DevicePropertiesFields.IsCompliantAndManaged
+    type: String
+    description: "String boolean indicating if the device is both compliant and managed."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: DevicePropertiesFields.SessionId
+    type: String
+    description: "The device/browser session ID."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: ExtendedPropertiesFields.RequestType
+    type: String
+    description: "The specific type of login or request."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: ExtendedPropertiesFields.ResultStatusDetail
+    type: String
+    description: "Additional details on the login result (e.g., Redirect, MFA Required)."
+    applicableWorkloads: ["AzureActiveDirectory"]
+
+  - name: ExtendedPropertiesFields.UserAgent
+    type: String
+    description: "The raw User-Agent string from the client."
+    applicableWorkloads: ["AzureActiveDirectory"]

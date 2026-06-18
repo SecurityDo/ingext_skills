@@ -1,0 +1,90 @@
+description: |-
+  Returns all directory group, role, and permission changes initiated by the
+  specified user within the selected time range. This report helps investigators
+  understand what actions the user performed in Azure Active Directory, including
+  adding or removing members from groups, assigning roles, or modifying
+  ownership. It is particularly useful after a security alert to determine
+  whether the account was used to make unauthorized privilege or access changes.
+
+  Key insights provided:
+  - Group and role membership changes performed by the user
+  - Target users, groups, or roles affected by each action
+  - Whether the operation succeeded or failed
+  - Correlation IDs for linking related activities
+  - Full change details (via modified properties)
+
+  Typical use cases:
+  - Investigating potential account compromise or insider activity
+  - Tracking privilege escalation or lateral movement
+  - Auditing administrative actions performed by a user
+datatype: AzureAuditLogs
+kql: |
+  let UserEmail = tolower("adele.vance@contoso.onmicrosoft.com");
+  let StartTime = ago(7d);
+  let EndTime = now();
+  AzureAuditLogs
+  | where TimeGenerated between (StartTime .. EndTime)
+  | where ActivityDisplayName has_any (
+      "Add member to group",
+      "Remove member from group",
+      "Add owner to group",
+      "Remove owner from group",
+      "Add member to role",
+      "Remove member from role",
+      "Add eligible member to role",
+      "Remove eligible member from role",
+      "Add app role assignment",
+      "Remove app role assignment",
+      "Add app role assignment grant to user",
+      "Remove app role assignment grant from user"
+  )
+  | extend
+      InitiatedByUserUPN = tolower(tostring(InitiatedBy.user.userPrincipalName)),
+      InitiatedByUserId = tostring(InitiatedBy.user.id),
+      InitiatedByAppName = tostring(InitiatedBy.app.displayName),
+      InitiatedByAppId = tostring(InitiatedBy.app.appId),
+      InitiatedByServicePrincipalId = tostring(InitiatedBy.app.servicePrincipalId)
+  | where InitiatedByUserUPN == UserEmail
+  | mv-expand TargetResource = TargetResources
+  | extend
+      TargetType = tostring(TargetResource.type),
+      TargetId = tostring(TargetResource.id),
+      TargetName = tostring(TargetResource.displayName),
+      TargetUPN = tolower(tostring(TargetResource.userPrincipalName)),
+      ModifiedProperties = TargetResource.modifiedProperties
+  | project
+      TimeGenerated,
+      ActivityDisplayName,
+      AADOperationType,
+      Category,
+      Result,
+      ResultReason,
+      InitiatedByUserUPN,
+      InitiatedByUserId,
+      TargetType,
+      TargetId,
+      TargetName,
+      TargetUPN,
+      ModifiedProperties,
+      CorrelationId,
+      Id,
+      InitiatedBy,
+      TargetResources,
+      AdditionalDetails
+  | order by TimeGenerated desc
+tags: [azure-ad, audit-logs, directory-changes, group-membership, role-assignment, user-activity]
+expected_output: |
+  Core columns shown; the wide InitiatedBy / TargetResources / AdditionalDetails
+  JSON columns and consistently-empty columns are omitted for readability.
+
+  TimeGenerated             ActivityDisplayName  AADOperationType  Category         Result   InitiatedByUserUPN                   TargetType  TargetId
+  2026-05-07T19:21:21.161Z  Add owner to group   Other             GroupManagement  success  adele.vance@contoso.onmicrosoft.com  Group       22222222-2222-2222-2222-222222222222
+
+  Example InitiatedBy (JSON):
+  {"app": null, "user": {"id": "11111111-1111-1111-1111-111111111111", "ipAddress": "192.0.2.37", "userPrincipalName": "adele.vance@contoso.onmicrosoft.com"}}
+
+  Example TargetResources (JSON, one element per mv-expand row):
+  [{"id": "44444444-4444-4444-4444-444444444444", "type": "User", "userPrincipalName": "alex.wilber@contoso.com",
+    "modifiedProperties": [{"displayName": "Group.ObjectID", "newValue": "\"22222222-2222-2222-2222-222222222222\""},
+                           {"displayName": "Group.DisplayName", "newValue": "\"SG-Example Users\""}]},
+   {"id": "22222222-2222-2222-2222-222222222222", "type": "Group", "groupType": "unknownFutureValue", "modifiedProperties": []}]

@@ -1,0 +1,13 @@
+description: >-
+  For a specific user over the past 90 days, the count of Office365 audit events
+  broken down by workload (Exchange, SharePoint, MicrosoftTeams,
+  AzureActiveDirectory, etc.). Gives a quick profile of where the account is
+  active. Replace the UserId value with the account being investigated.
+datatype: Office365
+kql: |
+  Office365
+  | where timestamp > ago(90d)
+  | where tolower(UserId) == "username@acme.com"
+  | summarize events = count() by Workload
+  | order by events desc
+tags: [office365, user-investigation, workload, profile]

@@ -1,0 +1,123 @@
+schema: behavior
+description: >-
+  Fluency behavior timeline event (notable event). Each record represents one
+  behavior detected for an entity (the "key") by a behavior rule, along with a
+  risk contribution and first-seen/recurrence history. Rule-specific details are
+  carried in the attributes array and its map form, AttributeMap.
+fields:
+
+  # ==========================================
+  # CORE / TIMING
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Event timestamp (UTC), normalized to epoch milliseconds. converted from the field CreationTime. Primary time column for range filters (e.g. where TimeGenerated > ago(1d))."
+    applicableWorkloads: ["All"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting"
+
+  - name: uuid
+    type: String
+    description: "Unique identifier of this behavior record."
+    sampleValues: ["12345678-90ab-cdef-1234-567890abcdef"]
+
+  - name: sequence
+    type: Long
+    description: "Event time in nanoseconds since the Unix epoch (the same instant as timestamp, which is in milliseconds, but at finer resolution). Useful as a high-precision sort key to order events that share the same millisecond timestamp."
+    sampleValues: ["1781722099135130400"]
+
+  # ==========================================
+  # BEHAVIOR / RULE
+  # ==========================================
+  - name: behavior
+    type: String
+    description: "High-level behavior category that was observed."
+    sampleValues: ["application activity"]
+
+  - name: behaviorRule
+    type: String
+    description: "Name of the rule that produced this behavior."
+    sampleValues: ["SCC_Threat_Intelligence_Mail_Data"]
+
+  - name: ruleDescription
+    type: String
+    description: "Human-readable description or source of the behavior rule."
+    sampleValues: ["Security Compliance Center"]
+
+  - name: description
+    type: String
+    description: "Free-text description of the behavior instance; often empty."
+
+  # ==========================================
+  # RISK SCORING
+  # ==========================================
+  - name: riskScore
+    type: Integer
+    description: "Risk points contributed by this behavior. >3000 score will trigger AI assist investigation"
+    sampleValues: ["0"]
+
+  - name: scoreLevel
+    type: String
+    description: "Bucketed risk level for the behavior, stored as a string."
+    sampleValues: ["0", "<1000", "1000-2000", "2000-4000", "4000-8000", ">8000"]
+
+  # ==========================================
+  # ENTITY (KEY)
+  # ==========================================
+  - name: key
+    type: String
+    description: "The entity the behavior is attributed to (interpretation depends on keyType, e.g. a username or email address)."
+    sampleValues: ["adele.vance@contoso.com"]
+
+  - name: keyType
+    type: String
+    description: "Type of the key value."
+    sampleValues: ["username"]
+
+  - name: originalKey
+    type: String
+    description: "Original key value before any normalization; usually identical to key."
+
+  - name: originalKeyType
+    type: String
+    description: "Original key type before any normalization; usually identical to keyType."
+    sampleValues: ["username"]
+
+  # ==========================================
+  # HISTORY (Dynamic object)
+  # ==========================================
+  - name: history
+    type: Dynamic
+    description: >-
+      First-seen / recurrence flags for this behavior. Object with boolean
+      sub-fields: BehaviorFirstSeen (first time this behavior is seen overall),
+      KeyBehaviorFirstSeen (first time this behavior is seen for this key),
+      KeyFirstSeen (first time this key is seen at all), and ReOccurrence
+      (the behavior has occurred before). Access via dot notation, e.g.
+      history.KeyFirstSeen == true.
+
+  # ==========================================
+  # ATTRIBUTES (rule-specific detail)
+  # ==========================================
+  - name: AttributeMap
+    type: Dynamic
+    description: >-
+      Map (object) form of the attributes array, keyed by each attribute's
+      aliase with its value. This is the convenient lookup form for
+      rule-specific fields; access via AttributeMap.<alias> or
+      AttributeMap["<alias>"] (e.g. AttributeMap.ThreatVerdict). The set of keys
+      varies by behaviorRule. Missing values are stored as the literal
+      "__undefined". Keys seen for SCC_Threat_Intelligence_Mail_Data: Customer,
+      Operation, RecordType, UserType, IP, ThreatDetectionMethod, ThreatP1Sender,
+      ThreatP2Sender, ThreatPolicyIndicator, ThreatPolicyAction, ThreatSubjectLine,
+      ThreatVerdict.
+
+  - name: attributes
+    type: Dynamic
+    description: >-
+      Array of the rule-specific attributes, each an object with key (the source
+      field name, e.g. @fields.Verdict), aliase (the friendly name used as the
+      AttributeMap key, e.g. ThreatVerdict), and value. Use mv-expand to work
+      over individual attributes; for direct lookups prefer AttributeMap.

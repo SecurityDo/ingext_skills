@@ -1,0 +1,217 @@
+schema: office365InstalledApp
+description: >-
+  Microsoft 365 / Entra ID (Azure AD) service principal (enterprise application)
+  snapshot collected by Ingext. Each record is the tenant-local instance of an
+  application — including first-party Microsoft apps, gallery/SaaS apps, and the
+  service principals backing your own app registrations. This is distinct from
+  office365Application (the app registration / global definition); office365InstalledApp
+  is what is actually installed/consented in the tenant. The object is stored as a
+  dynamic JSON document, so arrays (servicePrincipalNames, oauth2PermissionScopes)
+  require mv-expand. Useful for enterprise-app inventory, consent/credential review,
+  and spotting disabled or credentialed service principals.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "converted from the field createdDateTime. Primary time column for range filters (e.g. where timestamp > ago(1d))."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the service principal record; typically the id (object id) or appId. Unique per resource: each _key holds the latest snapshot, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: id
+    type: String
+    description: "The service principal's Entra ID object ID (GUID); the tenant-local instance identifier, distinct from appId."
+    sampleValues: ["00da0565-0000-0000-0000-000000000001"]
+
+  - name: appId
+    type: String
+    description: "The application (client) ID (GUID) this service principal is an instance of. For first-party apps this is a Microsoft well-known constant."
+    sampleValues: ["6208afad-753e-4995-bbe1-1dfd204b3030"]
+
+  - name: displayName
+    type: String
+    description: "The service principal display name."
+    sampleValues: ["Teams ACL management service"]
+
+  - name: appDisplayName
+    type: String
+    description: "The display name of the underlying application; usually matches displayName."
+    sampleValues: ["Teams ACL management service"]
+
+  - name: appDescription
+    type: String
+    description: "Description of the underlying application; may be null."
+
+  - name: appOwnerOrganizationId
+    type: String
+    description: "Tenant ID (GUID) that owns the application. f8cdef31-a31e-4b4a-93e4-5f571e91255a indicates a Microsoft first-party app; your own tenant ID indicates an app homed in your tenant."
+    sampleValues: ["f8cdef31-a31e-4b4a-93e4-5f571e91255a"]
+
+  - name: createdByAppId
+    type: String
+    description: "The appId of the application that created this service principal; may be null."
+
+  - name: applicationTemplateId
+    type: String
+    description: "The gallery template ID the app was instantiated from; null for non-gallery apps."
+
+  - name: servicePrincipalType
+    type: String
+    description: "The type of the service principal."
+    sampleValues: ["Application", "ManagedIdentity", "Legacy", "SocialIdp"]
+
+  - name: servicePrincipalNames
+    type: DynamicArray
+    description: "Array of identifier (SPN) strings for the service principal, typically including the appId and any app ID URIs. Use mv-expand to enumerate."
+
+  - name: alternativeNames
+    type: DynamicArray
+    description: "Array of alternative name strings; for managed identities this holds the Azure resource ID. Usually empty."
+
+  # ==========================================
+  # STATUS & AUDIENCE
+  # ==========================================
+  - name: accountEnabled
+    type: Boolean
+    description: "Whether the service principal is enabled for sign-in. A disabled enterprise app cannot be used to authenticate."
+    sampleValues: ["true", "false"]
+
+  - name: isDisabled
+    type: Boolean
+    description: "Whether the service principal is disabled; may be null."
+
+  - name: disabledByMicrosoftStatus
+    type: String
+    description: "Set when Microsoft has disabled the service principal (e.g. for policy violation); null otherwise."
+
+  - name: appRoleAssignmentRequired
+    type: Boolean
+    description: "Whether users must be assigned an app role before they can sign in (user assignment required)."
+    sampleValues: ["true", "false"]
+
+  - name: signInAudience
+    type: String
+    description: "Which accounts can sign in to the underlying application."
+    sampleValues: ["AzureADMyOrg", "AzureADMultipleOrgs", "AzureADandPersonalMicrosoftAccount"]
+
+  # ==========================================
+  # CREDENTIALS (security)
+  # ==========================================
+  - name: passwordCredentials
+    type: DynamicArray
+    description: >-
+      Array of client-secret objects on the service principal (keyId, displayName,
+      hint, startDateTime, endDateTime; secretText is never returned). Credentials
+      on a service principal are a key consent/hygiene signal. Use mv-expand to
+      check expiry."
+
+  - name: keyCredentials
+    type: DynamicArray
+    description: "Array of certificate credential objects on the service principal (keyId, displayName, type, usage, startDateTime, endDateTime). Use mv-expand to inspect."
+
+  - name: preferredTokenSigningKeyThumbprint
+    type: String
+    description: "Thumbprint of the certificate used to sign tokens (SAML SSO); may be null."
+
+  - name: tokenEncryptionKeyId
+    type: String
+    description: "keyId of the keyCredential used to encrypt tokens; may be null."
+
+  # ==========================================
+  # PERMISSIONS & ROLES
+  # ==========================================
+  - name: appRoles
+    type: DynamicArray
+    description: "Array of application roles the app defines and that can be assigned to users/groups/apps (id, value, displayName, allowedMemberTypes, isEnabled). Use mv-expand."
+
+  - name: oauth2PermissionScopes
+    type: DynamicArray
+    description: "Array of delegated permission scopes the service principal exposes to client apps (id, value, adminConsentDisplayName, type, isEnabled). Use mv-expand."
+
+  - name: resourceSpecificApplicationPermissions
+    type: DynamicArray
+    description: "Array of resource-specific application permissions the app exposes (e.g. Teams RSC permissions). Usually empty."
+
+  # ==========================================
+  # SSO & URLS
+  # ==========================================
+  - name: preferredSingleSignOnMode
+    type: String
+    description: "The configured single sign-on mode for the app (e.g. saml, password, oidc); may be null."
+
+  - name: samlSingleSignOnSettings
+    type: Dynamic
+    description: "SAML single sign-on settings object (e.g. relayState); null when SAML SSO is not configured."
+
+  - name: homepage
+    type: String
+    description: "The home page / landing URL of the app; may be null."
+
+  - name: loginUrl
+    type: String
+    description: "The URL where users sign in to the app (for SP-initiated SSO); may be null."
+
+  - name: logoutUrl
+    type: String
+    description: "The URL used to sign users out; may be null."
+
+  - name: replyUrls
+    type: DynamicArray
+    description: "Array of reply/redirect URL strings registered for the service principal. Use mv-expand to enumerate."
+
+  - name: notificationEmailAddresses
+    type: DynamicArray
+    description: "Array of email addresses notified about the app (e.g. certificate expiry for SAML apps). Usually empty."
+
+  # ==========================================
+  # METADATA
+  # ==========================================
+  - name: description
+    type: String
+    description: "Free-text description of the service principal; may be null."
+
+  - name: notes
+    type: String
+    description: "Administrative notes about the service principal; may be null."
+
+  - name: tags
+    type: DynamicArray
+    description: "Array of tag strings on the service principal (e.g. WindowsAzureActiveDirectoryIntegratedApp). Use mv-expand."
+
+  - name: addIns
+    type: DynamicArray
+    description: "Array of add-in definitions exposing the app's functionality to host services; usually empty."
+
+  - name: info
+    type: Dynamic
+    description: "Branding/links object: logoUrl, marketingUrl, privacyStatementUrl, supportUrl, termsOfServiceUrl."
+
+  # ==========================================
+  # LIFECYCLE
+  # ==========================================
+  - name: createdDateTime
+    type: DateTime
+    description: "When the service principal was created in the tenant (UTC)."
+    sampleValues: ["2021-05-19T18:10:42Z"]
+
+  - name: deletedDateTime
+    type: DateTime
+    description: "When the service principal was soft-deleted (UTC); null if active."
+
+  # ==========================================
+  # PUBLISHER & GOVERNANCE
+  # ==========================================
+  - name: verifiedPublisher
+    type: Dynamic
+    description: "Verified publisher object: displayName, verifiedPublisherId, addedDateTime. All null when the app has no verified publisher (a trust signal)."

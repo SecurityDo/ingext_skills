@@ -1,0 +1,15 @@
+description: >-
+  For a specific user over the past 90 days, OAuth application consent and
+  permission-grant events (Consent to application., Add delegated permission
+  grant., Add app role assignment grant to user.) with the target app and
+  modified properties. Used to detect illicit-consent / OAuth-app abuse. Replace
+  the UserId value with the account being investigated.
+datatype: Office365
+kql: |
+  Office365
+  | where timestamp > ago(90d)
+  | where tolower(UserId) == "username@acme.com"
+  | where Operation in ("Consent to application.", "Add delegated permission grant.", "Add app role assignment grant to user.")
+  | project timestamp, Operation, ClientIP, ResultStatus, ModifiedProperties, ExtendedProperties, Target, Actor
+  | order by timestamp asc
+tags: [office365, user-investigation, oauth, consent, azure-ad]

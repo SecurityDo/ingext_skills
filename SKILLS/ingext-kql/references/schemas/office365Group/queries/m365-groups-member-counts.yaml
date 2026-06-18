@@ -1,0 +1,26 @@
+description: >-
+  Lists Microsoft 365 ("Unified") groups with their member counts and key
+  settings (visibility, mail/security flags), ordered by size. Useful for group
+  inventory, spotting empty or oversized collaboration groups, and reviewing the
+  visibility of M365 groups during an access review.
+datatype: office365Group
+kql: |
+  office365Group
+  | where groupTypes has "Unified"
+  | extend MemberCount = array_length(members)
+  | project
+      displayName,
+      id,
+      mail,
+      visibility,
+      securityEnabled,
+      mailEnabled,
+      MemberCount,
+      createdDateTime
+  | order by MemberCount desc
+tags: [office365, entra-id, groups, microsoft365-groups, membership, inventory]
+expected_output: |
+  Microsoft 365 groups with member counts (sanitized).
+
+  displayName           id                                     mail                      visibility  securityEnabled  mailEnabled  MemberCount  createdDateTime
+  Contoso Project Team  4db0f80b-0000-0000-0000-000000000001   projectteam@contoso.com   Private     false            true         3            2022-12-19T02:16:28Z

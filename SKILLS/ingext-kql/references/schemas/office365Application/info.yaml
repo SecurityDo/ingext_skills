@@ -1,0 +1,256 @@
+schema: office365Application
+description: >-
+  Microsoft 365 / Entra ID (Azure AD) application registration snapshot collected
+  by Ingext. Each record is the current state of one app registration: identity,
+  credentials (client secrets and certificates), requested API permissions,
+  redirect/auth configuration, and publisher/governance settings. The application
+  object is stored as a dynamic JSON document, so nested objects are accessed with
+  dot notation (e.g. web.implicitGrantSettings.enableIdTokenIssuance) and arrays
+  require mv-expand. Useful for app-governance and credential-hygiene reporting
+  (e.g. over-privileged apps, expiring secrets).
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "converted from the field createdDateTime. Primary time column for range filters (e.g. where timestamp > ago(1d))."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the application record; typically the application's id (object id) or appId. Unique per resource: each _key holds the latest snapshot, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: id
+    type: String
+    description: "The application's Entra ID object ID (GUID); distinct from appId."
+    sampleValues: ["0ee039ca-0000-0000-0000-000000000001"]
+
+  - name: appId
+    type: String
+    description: "The application (client) ID (GUID) used in OAuth flows."
+    sampleValues: ["aef75665-0000-0000-0000-000000000001"]
+
+  - name: displayName
+    type: String
+    description: "The application's display name."
+    sampleValues: ["Contoso Audit Connector"]
+
+  - name: uniqueName
+    type: String
+    description: "Optional immutable unique name for the application; may be null."
+
+  - name: publisherDomain
+    type: String
+    description: "The verified publisher domain of the application."
+    sampleValues: ["contoso.com"]
+
+  - name: createdByAppId
+    type: String
+    description: "The appId (GUID) of the application that created this registration."
+    sampleValues: ["18ed3507-0000-0000-0000-000000000001"]
+
+  - name: applicationTemplateId
+    type: String
+    description: "The template ID used to create the app from the gallery; null for custom apps."
+
+  - name: servicePrincipalLockConfiguration
+    type: Dynamic
+    description: >-
+      Object controlling which sensitive properties are locked on the backing
+      service principal. Sub-fields (booleans): isEnabled, allProperties,
+      credentialsWithUsageSign, credentialsWithUsageVerify, identifierUris,
+      tokenEncryptionKeyId. Access e.g. servicePrincipalLockConfiguration.isEnabled."
+
+  # ==========================================
+  # LIFECYCLE & AUDIENCE
+  # ==========================================
+  - name: createdDateTime
+    type: DateTime
+    description: "When the application registration was created (UTC)."
+    sampleValues: ["2026-05-06T18:51:51Z"]
+
+  - name: deletedDateTime
+    type: DateTime
+    description: "When the application was soft-deleted (UTC); null if active."
+
+  - name: signInAudience
+    type: String
+    description: "Which accounts can sign in to the application."
+    sampleValues: ["AzureADMyOrg", "AzureADMultipleOrgs", "AzureADandPersonalMicrosoftAccount"]
+
+  - name: disabledByMicrosoftStatus
+    type: String
+    description: "Set when Microsoft has disabled the app (e.g. for policy violation); null otherwise."
+
+  # ==========================================
+  # STATUS FLAGS
+  # ==========================================
+  - name: isDisabled
+    type: Boolean
+    description: "Whether the application is disabled; may be null."
+
+  - name: isDeviceOnlyAuthSupported
+    type: Boolean
+    description: "Whether device-only (no user) authentication is supported; may be null."
+
+  - name: isFallbackPublicClient
+    type: Boolean
+    description: "Whether the app is treated as a public (non-confidential) client when the type is ambiguous; may be null."
+
+  - name: nativeAuthenticationApisEnabled
+    type: String
+    description: "Whether native authentication APIs are enabled; may be null."
+
+  # ==========================================
+  # CREDENTIALS (security)
+  # ==========================================
+  - name: passwordCredentials
+    type: DynamicArray
+    description: >-
+      Array of client-secret objects, each with keyId, displayName, hint (first
+      3 chars), startDateTime, endDateTime (expiry), and customKeyIdentifier
+      (secretText is never returned). Key for secret-expiry/hygiene reports. Use
+      mv-expand, e.g. mv-expand passwordCredentials | extend Expiry =
+      todatetime(passwordCredentials.endDateTime) | where Expiry < now()+30d."
+
+  - name: keyCredentials
+    type: DynamicArray
+    description: >-
+      Array of certificate credential objects (keyId, displayName, type, usage,
+      startDateTime, endDateTime). Use mv-expand to inspect certificate expiry,
+      similar to passwordCredentials."
+
+  # ==========================================
+  # API PERMISSIONS (security)
+  # ==========================================
+  - name: requiredResourceAccess
+    type: DynamicArray
+    description: >-
+      Array describing the API permissions the app requests. Each element has
+      resourceAppId (the target API's appId, e.g. 00000003-0000-0000-c000-000000000000
+      for Microsoft Graph), resourceName, and a resourceAccess array whose
+      elements have id (the permission GUID), permission (e.g. AuditLog.Read.All),
+      type (Role = application permission, Scope = delegated), and displayType.
+      Central to over-privilege analysis. Flatten with nested mv-expand, e.g.
+      mv-expand requiredResourceAccess | mv-expand ra = requiredResourceAccess.resourceAccess
+      | extend Permission = tostring(ra.permission), PermType = tostring(ra.type)."
+
+  # ==========================================
+  # EXPOSED API & ROLES
+  # ==========================================
+  - name: appRoles
+    type: DynamicArray
+    description: "Array of application roles the app defines and can assign to users/apps (id, value, displayName, allowedMemberTypes, isEnabled). Use mv-expand."
+
+  - name: api
+    type: Dynamic
+    description: >-
+      Object describing the API the app exposes. Sub-fields: oauth2PermissionScopes
+      (array of delegated scopes the app exposes), preAuthorizedApplications,
+      knownClientApplications, acceptMappedClaims, requestedAccessTokenVersion.
+      Access e.g. api.requestedAccessTokenVersion or mv-expand api.oauth2PermissionScopes."
+
+  - name: identifierUris
+    type: DynamicArray
+    description: "Array of application ID URI strings that identify the app within its tenant."
+
+  # ==========================================
+  # AUTH / REDIRECT CONFIGURATION
+  # ==========================================
+  - name: web
+    type: Dynamic
+    description: >-
+      Web platform settings. Sub-fields: homePageUrl, logoutUrl, redirectUris
+      (array), redirectUriSettings, and implicitGrantSettings (object with
+      enableAccessTokenIssuance and enableIdTokenIssuance booleans). Implicit-grant
+      flags are security-relevant; access via web.implicitGrantSettings.enableIdTokenIssuance."
+
+  - name: web.implicitGrantSettings.enableAccessTokenIssuance
+    type: Boolean
+    description: "Whether the app can request access tokens via the implicit grant flow (legacy; a security concern if true)."
+
+  - name: web.implicitGrantSettings.enableIdTokenIssuance
+    type: Boolean
+    description: "Whether the app can request ID tokens via the implicit grant flow (legacy; a security concern if true)."
+
+  - name: spa
+    type: Dynamic
+    description: "Single-page application platform settings; contains redirectUris (array)."
+
+  - name: publicClient
+    type: Dynamic
+    description: "Public/native client platform settings; contains redirectUris (array)."
+
+  - name: defaultRedirectUri
+    type: String
+    description: "The default redirect URI for the app; may be null."
+
+  - name: groupMembershipClaims
+    type: String
+    description: "Configures the groups claim emitted in tokens (e.g. SecurityGroup, All); may be null."
+
+  - name: optionalClaims
+    type: Dynamic
+    description: "Optional claims configuration for the tokens the app receives; may be null."
+
+  - name: tokenEncryptionKeyId
+    type: String
+    description: "keyId of the keyCredential used to encrypt tokens issued to the app; may be null."
+
+  # ==========================================
+  # METADATA
+  # ==========================================
+  - name: description
+    type: String
+    description: "Free-text description of the application; may be null."
+
+  - name: notes
+    type: String
+    description: "Administrative notes about the application; may be null."
+
+  - name: tags
+    type: DynamicArray
+    description: "Array of custom tag strings applied to the application."
+
+  - name: info
+    type: Dynamic
+    description: "Branding/links object: logoUrl, marketingUrl, privacyStatementUrl, supportUrl, termsOfServiceUrl."
+
+  - name: addIns
+    type: DynamicArray
+    description: "Array of add-in definitions that expose the app's functionality to host services; usually empty."
+
+  - name: serviceManagementReference
+    type: String
+    description: "Reference to the app/service in an external service or asset-management database; may be null."
+
+  - name: samlMetadataUrl
+    type: String
+    description: "The SAML metadata URL for the app; may be null."
+
+  # ==========================================
+  # PUBLISHER & GOVERNANCE
+  # ==========================================
+  - name: verifiedPublisher
+    type: Dynamic
+    description: "Verified publisher object: displayName, verifiedPublisherId, addedDateTime. All null when the app has no verified publisher (a trust signal)."
+
+  - name: certification
+    type: Dynamic
+    description: "Microsoft 365 certification details for the app; null if not certified."
+
+  - name: parentalControlSettings
+    type: Dynamic
+    description: "Parental control object: legalAgeGroupRule (e.g. Allow) and countriesBlockedForMinors (array)."
+
+  - name: requestSignatureVerification
+    type: Dynamic
+    description: "Settings for verifying signed authentication requests; may be null."

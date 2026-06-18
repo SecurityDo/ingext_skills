@@ -1,0 +1,16 @@
+description: >-
+  For a specific user over the past 90 days, every failed sign-in
+  (UserLoginFailed) listed individually with the source IP, result status,
+  logon-error reason, the application involved (ApplicationId) and the request
+  context (user agent / request type) from ExtendedProperties. Use to triage
+  whether failures are credential attacks or benign app/OAuth errors. Replace the
+  UserId value with the account being investigated.
+datatype: Office365
+kql: |
+  Office365
+  | where timestamp > ago(90d)
+  | where tolower(UserId) == "username@acme.com"
+  | where Operation == "UserLoginFailed"
+  | project timestamp, ClientIP, ResultStatus, LogonError, ApplicationId, ExtendedProperties
+  | order by timestamp asc
+tags: [office365, user-investigation, failed-login, authentication, azure-ad]

@@ -1,0 +1,126 @@
+description: |-
+  Returns the sign-in activity history for the specified user within the selected
+  time range. This report provides a detailed timeline of the user's
+  authentication events in Azure Active Directory, helping investigators assess
+  whether the account shows signs of compromise, unusual access patterns, or
+  suspicious behavior following a security alert.
+
+  Key insights provided:
+  - Successful and failed sign-in attempts
+  - Source IP addresses and geographic locations
+  - Applications and resources accessed
+  - Device and client information (OS, browser, managed/compliant status)
+  - Authentication context (interactive vs non-interactive, client app)
+  - Conditional Access results and enforcement outcomes
+  - Risk indicators (if available)
+datatype: AzureSigninLogs
+kql: |
+  let UserEmail = tolower("adele.vance@contoso.com");
+  let StartTime = ago(7d);
+  let EndTime = now();
+  AzureSigninLogs
+  | where TimeGenerated between (StartTime .. EndTime)
+  | where tolower(UserPrincipalName) == UserEmail
+  | extend
+      ResultCode = tostring(ResultType),
+      ResultStatus = iff(ResultType == "0", "Success", "Failure"),
+      ErrorCode = tostring(Status.errorCode),
+      FailureReason = tostring(Status.failureReason),
+      StatusDetail = tostring(Status.additionalDetails),
+      Country = tostring(Location),
+      City = tostring(LocationDetails.city),
+      State = tostring(LocationDetails.state),
+      Latitude = todouble(LocationDetails.geoCoordinates.latitude),
+      Longitude = todouble(LocationDetails.geoCoordinates.longitude),
+      DeviceName = tostring(DeviceDetail.displayName),
+      DeviceId = tostring(DeviceDetail.deviceId),
+      OS = tostring(DeviceDetail.operatingSystem),
+      Browser = tostring(DeviceDetail.browser),
+      IsCompliant = tostring(DeviceDetail.isCompliant),
+      IsManaged = tostring(DeviceDetail.isManaged),
+      TrustType = tostring(DeviceDetail.trustType)
+  | project
+      TimeGenerated,
+      UserPrincipalName,
+      UserDisplayName,
+      UserId,
+      AppDisplayName,
+      AppId,
+      ResourceDisplayName,
+      ResourceId,
+      IPAddress,
+      Country,
+      State,
+      City,
+      IsInteractive,
+      ClientAppUsed,
+      UserAgent,
+      DeviceName,
+      DeviceId,
+      OS,
+      Browser,
+      IsManaged,
+      IsCompliant,
+      TrustType,
+      ConditionalAccessStatus,
+      ResultStatus,
+      ResultCode,
+      ErrorCode,
+      FailureReason,
+      StatusDetail,
+      RiskLevelDuringSignIn,
+      RiskLevelAggregated,
+      RiskState,
+      CorrelationId,
+      Id,
+      DeviceDetail,
+      MfaDetail,
+      AuthenticationDetails,
+      AuthenticationAppDeviceDetails,
+      AuthenticationProcessingDetails,
+      NetworkLocationDetails
+  | order by TimeGenerated desc
+tags: [azure-ad, signin-logs, authentication, user-activity, investigation]
+expected_output: |
+  Single sign-in record shown vertically (40 projected columns); null/empty
+  columns (UserId, MfaDetail, AuthenticationAppDeviceDetails) are omitted.
+
+  TimeGenerated:            2026-06-16T23:54:49Z
+  UserPrincipalName:        adele.vance@contoso.com
+  UserDisplayName:          Adele Vance
+  AppDisplayName:           Windows Sign In
+  AppId:                    38aa3b87-a06d-4817-b275-7a316988d93b
+  ResourceDisplayName:      Windows Azure Active Directory
+  ResourceId:               00000002-0000-0000-c000-000000000000
+  IPAddress:                192.0.2.239
+  Country / State / City:   US / Washington / Redmond
+  IsInteractive:            true
+  ClientAppUsed:            Mobile Apps and Desktop clients
+  UserAgent:                Windows-AzureAD-Authentication-Provider/1.0
+  DeviceName:               CONTOSO-PC01
+  DeviceId:                 11111111-1111-1111-1111-111111111111
+  OS / Browser:             Windows / (empty)
+  IsManaged / IsCompliant:  true / true
+  TrustType:                Hybrid Azure AD joined
+  ConditionalAccessStatus:  notApplied
+  ResultStatus:             Success
+  ResultCode / ErrorCode:   0 / 0
+  FailureReason:            Other.
+  StatusDetail:             MFA requirement satisfied by claim in the token
+  RiskLevelDuringSignIn:    none
+  RiskLevelAggregated:      none
+  RiskState:                none
+  CorrelationId:            22222222-2222-2222-2222-222222222222
+  Id:                       33333333-3333-3333-3333-333333333333
+
+  DeviceDetail (JSON):
+  {"deviceId": "11111111-1111-1111-1111-111111111111", "displayName": "CONTOSO-PC01", "isCompliant": true, "isManaged": true, "operatingSystem": "Windows", "trustType": "Hybrid Azure AD joined", "browser": ""}
+
+  AuthenticationDetails (JSON):
+  [{"authenticationMethod": "Password", "authenticationMethodDetail": "Password Hash Sync", "authenticationStepDateTime": "2026-06-16T23:54:49Z", "authenticationStepResultDetail": "Correct password", "succeeded": true}]
+
+  AuthenticationProcessingDetails (JSON):
+  [{"key": "Token Binding Attempted", "value": "True"}, {"key": "Token Binding Satisfied", "value": "True"}, {"key": "Root Key Type", "value": "SessionKey"}]
+
+  NetworkLocationDetails (JSON):
+  [{"networkNames": ["United States"], "networkType": "namedNetwork"}]

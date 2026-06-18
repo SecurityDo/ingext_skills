@@ -1,0 +1,43 @@
+description: >-
+  Lists email threat-intelligence behaviors detected by the Security Compliance
+  Center mail-data rule over the past 7 days, surfacing messages with a "Phish"
+  verdict. The rule-specific details (verdict, detection method, senders,
+  subject) are pulled out of AttributeMap. Useful for triaging recent phishing
+  detections and identifying the senders and subjects involved.
+datatype: behavior
+kql: |
+  behavior
+  | where timestamp > ago(7d)
+  | where behaviorRule == "SCC_Threat_Intelligence_Mail_Data"
+  | extend
+      Verdict = tostring(AttributeMap.ThreatVerdict),
+      DetectionMethod = tostring(AttributeMap.ThreatDetectionMethod),
+      P1Sender = tostring(AttributeMap.ThreatP1Sender),
+      P2Sender = tostring(AttributeMap.ThreatP2Sender),
+      Subject = tostring(AttributeMap.ThreatSubjectLine),
+      RecordType = tostring(AttributeMap.RecordType)
+  | where Verdict == "Phish"
+  | project
+      timestamp,
+      key,
+      Verdict,
+      DetectionMethod,
+      P1Sender,
+      P2Sender,
+      Subject,
+      riskScore,
+      uuid
+  | order by timestamp desc
+tags: [fluency, behavior, threat-intelligence, email, phishing, office365]
+expected_output: |
+  Single behavior record shown (sanitized).
+
+  timestamp:        2026-06-17T13:22:00Z
+  key:              bounce+abc123xyz@example.com
+  Verdict:          Phish
+  DetectionMethod:  Spoof external domain
+  P1Sender:         bounce+abc123xyz@example.com
+  P2Sender:         j.sender@example.net
+  Subject:          Quarterly Business Review
+  riskScore:        0
+  uuid:             12345678-90ab-cdef-1234-567890abcdef

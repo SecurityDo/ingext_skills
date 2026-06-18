@@ -1,0 +1,18 @@
+description: >-
+  For a specific user over the past 90 days, sign-in success vs. failure totals
+  per application (ApplicationId), with first/last seen. Helps confirm whether a
+  failing app is also succeeding (transient/config error) or only failing
+  (suspicious). Replace the UserId value with the account being investigated.
+datatype: Office365
+kql: |
+  Office365
+  | where timestamp > ago(90d)
+  | where tolower(UserId) == "username@acme.com"
+  | where Operation in ("UserLoggedIn", "UserLoginFailed")
+  | summarize success = countif(Operation == "UserLoggedIn"),
+              failed  = countif(Operation == "UserLoginFailed"),
+              firstSeen = min(timestamp),
+              lastSeen  = max(timestamp)
+          by ApplicationId
+  | order by success desc
+tags: [office365, user-investigation, application, sign-in, azure-ad]

@@ -1,0 +1,153 @@
+schema: AzureAuditLogs
+description: "Schema for the Azure Active Directory (Entra ID) AuditLogs table. Contains system activity records for user and group management, application and directory changes, and other administrative operations. Query the table as AuditLogs. Reference: https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/auditlogs"
+fields:
+
+  # ==========================================
+  # TIMESTAMPS & RECORD METADATA
+  # ==========================================
+  - name: TimeGenerated
+    type: DateTime
+    description: "Event timestamp (UTC), normalized to epoch milliseconds. Primary time column for range filters (e.g. where TimeGenerated > ago(1d))."
+
+  - name: _Size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting. Not sourced from AuditLogs."
+
+  - name: Type
+    type: String
+    description: "The name of the table/index. Set by the index engine."
+    sampleValues: ["AuditLogs"]
+
+  - name: ActivityDateTime
+    type: DateTime
+    description: "Date and time the activity was performed (UTC), normalized to epoch milliseconds."
+
+  - name: SourceSystem
+    type: String
+    description: "The type of agent the event was collected by."
+    sampleValues: ["Azure"]
+
+  # ==========================================
+  # ACTIVITY / OPERATION
+  # ==========================================
+  - name: ActivityDisplayName
+    type: String
+    description: "Activity name or operation name. See the Azure AD activity list for the full set."
+    sampleValues: ["Create User", "Add member to group", "Update application"]
+
+  - name: OperationName
+    type: String
+    description: "Name of the operation."
+
+  - name: OperationVersion
+    type: String
+    description: "REST API version requested by the client."
+
+  - name: AADOperationType
+    type: String
+    description: "Type of the operation."
+    sampleValues: ["Add", "Update", "Delete", "Other"]
+
+  - name: Category
+    type: String
+    description: "Category of the directory activity."
+    sampleValues: ["UserManagement", "GroupManagement", "ApplicationManagement", "RoleManagement", "Policy"]
+
+  - name: LoggedByService
+    type: String
+    description: "Service that initiated the activity."
+    sampleValues: ["Core Directory", "Self-service Password Management", "Privileged Identity Management"]
+
+  - name: Level
+    type: String
+    description: "Message type. Currently always 'Informational'."
+    sampleValues: ["Informational"]
+
+  - name: DurationMs
+    type: Long
+    description: "Property is not used and can be ignored."
+
+  # ==========================================
+  # IDENTITY / INITIATOR
+  # ==========================================
+  - name: Identity
+    type: String
+    description: "Identity from the token presented when the request was made. Can be a user account, system account, or service principal."
+
+  - name: InitiatedBy
+    type: Dynamic
+    description: "User or app that initiated the activity, stored as a JSON object. Query sub-keys with dot/bracket notation, e.g. InitiatedBy.user.userPrincipalName or InitiatedBy.app.displayName."
+
+  # ==========================================
+  # TARGET / DETAILS
+  # ==========================================
+  - name: TargetResources
+    type: Dynamic
+    description: "Information on which resource(s) were changed by the activity, stored as a JSON array. Target resource type can be User, Device, Directory, App, Role, Group, Policy, or Other. Requires mv-expand to flatten before querying sub-properties (e.g. displayName, type, modifiedProperties)."
+
+  - name: AdditionalDetails
+    type: Dynamic
+    description: "Additional details on the activity, stored as a JSON object/array. Query sub-keys directly with dot/bracket notation."
+
+  # ==========================================
+  # RESULT
+  # ==========================================
+  - name: Result
+    type: String
+    description: "Result of the activity."
+    sampleValues: ["success", "failure", "timeout", "unknownFutureValue"]
+
+  - name: ResultType
+    type: String
+    description: "Result of the operation."
+    sampleValues: ["Success", "Failure"]
+
+  - name: ResultDescription
+    type: String
+    description: "Additional description of the result."
+
+  - name: ResultReason
+    type: String
+    description: "Describes the cause of failure or timeout results."
+
+  - name: ResultSignature
+    type: String
+    description: "Property is not used and can be ignored."
+
+  # ==========================================
+  # CORRELATION / TENANT
+  # ==========================================
+  - name: Id
+    type: String
+    description: "GUID that uniquely identifies the activity."
+
+  - name: CorrelationId
+    type: String
+    description: "Optional GUID passed by the client. Helps correlate client-side operations with server-side operations and is useful when tracking logs that span services."
+
+  - name: AADTenantId
+    type: String
+    description: "ID of the AAD tenant."
+
+  # ==========================================
+  # RESOURCE
+  # ==========================================
+  - name: Resource
+    type: String
+    description: "Resource associated with the record."
+
+  - name: ResourceGroup
+    type: String
+    description: "Resource group associated with the record."
+
+  - name: ResourceId
+    type: String
+    description: "Resource ID associated with the record."
+
+  - name: ResourceProvider
+    type: String
+    description: "Resource provider associated with the record."
+
+  - name: Location
+    type: String
+    description: "Location of the datacenter."

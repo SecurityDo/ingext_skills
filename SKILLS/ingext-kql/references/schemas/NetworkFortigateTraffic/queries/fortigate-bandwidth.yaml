@@ -1,0 +1,23 @@
+description: >-
+  The top 10 source IPs by total bandwidth (bytes sent plus received) through
+  the FortiGate over the past hour. Uses the per-interval sent/received deltas
+  rather than the cumulative session counters, and excludes the periodic
+  log-rotation event (logid 0000000020).
+datatype: NetworkFortigateTraffic
+kql: |
+  NetworkFortigateTraffic
+  | where TimeGenerated > ago(1h)
+  | where logid != "0000000020"
+  | extend sent = coalesce(tolong(_fields.sentdelta), sentbyte),
+           rcvd = coalesce(tolong(_fields.rcvddelta), rcvdbyte)
+  | summarize event_count = count(),
+              total_sentbyte = sum(sent),
+              total_rcvdbyte = sum(rcvd) by srcip
+  | extend total_bytes = total_sentbyte + total_rcvdbyte
+  | top 10 by total_bytes desc
+tags: [fortigate, network, bandwidth, top-talkers]
+expected_output: |
+  srcip          event_count  total_sentbyte  total_rcvdbyte  total_bytes
+  10.0.5.20      42351        24130294655     288508467       24418803122
+  203.0.113.14   9153         66417944        72770910        139188854
+  192.168.86.45  4531         13362371        66369737        79732108

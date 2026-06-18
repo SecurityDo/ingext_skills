@@ -1,0 +1,31 @@
+description: >-
+  Finds enabled devices that have not signed in for more than 90 days
+  (approximateLastSignInDateTime older than the threshold), i.e. stale device
+  registrations that should be reviewed and cleaned up. Stale, still-enabled
+  device objects expand the attack surface and are a common access-review finding.
+datatype: office365Device
+kql: |
+  let StaleThreshold = 90d;
+  office365Device
+  | where accountEnabled == true
+  | extend LastSeen = todatetime(approximateLastSignInDateTime)
+  | where isnotempty(LastSeen) and LastSeen < ago(StaleThreshold)
+  | extend DaysSinceSeen = datetime_diff('day', now(), LastSeen)
+  | project
+      displayName,
+      deviceId,
+      username,
+      operatingSystem,
+      operatingSystemVersion,
+      trustType,
+      profileType,
+      LastSeen,
+      DaysSinceSeen,
+      registrationDateTime
+  | order by LastSeen asc
+tags: [office365, entra-id, devices, stale-devices, inventory, security-hygiene]
+expected_output: |
+  Enabled devices not seen in over 90 days (sanitized).
+
+  displayName        deviceId                                username                  operatingSystem  operatingSystemVersion  trustType  profileType       LastSeen              DaysSinceSeen  registrationDateTime
+  DESKTOP-CONTOSO01  5ff27b9d-0000-0000-0000-000000000001    adele.vance@contoso.com   Windows          10.0.18363.0            Workplace  RegisteredDevice  2021-09-11T07:40:53Z  1740           2020-01-18T23:38:03Z

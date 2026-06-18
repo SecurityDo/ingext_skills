@@ -1,0 +1,215 @@
+schema: office365Device
+description: >-
+  Microsoft 365 / Entra ID (Azure AD) device resource snapshot collected by Ingext.
+  Each record is the current state of one registered/joined device: identity, OS and
+  hardware, compliance and management status, trust/join type, on-prem sync, and
+  registration timestamps. The device object is stored as a dynamic JSON document,
+  so nested objects are accessed with dot notation (e.g.
+  extensionAttributes.extensionAttribute1) and arrays require mv-expand. Useful for
+  device-inventory, stale-device, and compliance reporting.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "converted from the field createdDateTime. Primary time column for range filters (e.g. where timestamp > ago(1d))."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the device record; typically the device's id (object id) or deviceId. Unique per resource: each _key holds the latest snapshot, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: id
+    type: String
+    description: "The device's Entra ID object ID (GUID); distinct from deviceId."
+    sampleValues: ["05eddeb3-0000-0000-0000-000000000001"]
+
+  - name: deviceId
+    type: String
+    description: "The device ID (GUID) that identifies the device across Entra ID and Intune."
+    sampleValues: ["5ff27b9d-0000-0000-0000-000000000001"]
+
+  - name: displayName
+    type: String
+    description: "The device name (hostname)."
+    sampleValues: ["DESKTOP-CONTOSO01"]
+
+  - name: username
+    type: String
+    description: "The UPN of the primary/registering user of the device."
+    sampleValues: ["adele.vance@contoso.com"]
+
+  # ==========================================
+  # OS & HARDWARE
+  # ==========================================
+  - name: operatingSystem
+    type: String
+    description: "The device operating system."
+    sampleValues: ["Windows", "iOS", "Android", "MacMDM", "Linux"]
+
+  - name: operatingSystemVersion
+    type: String
+    description: "The OS version/build string."
+    sampleValues: ["10.0.18363.0"]
+
+  - name: manufacturer
+    type: String
+    description: "Device hardware manufacturer; may be null."
+
+  - name: model
+    type: String
+    description: "Device hardware model; may be null."
+
+  - name: deviceVersion
+    type: Integer
+    description: "Internal device object version number."
+    sampleValues: ["2"]
+
+  # ==========================================
+  # STATUS, TRUST & COMPLIANCE
+  # ==========================================
+  - name: accountEnabled
+    type: Boolean
+    description: "Whether the device account is enabled in the directory."
+    sampleValues: ["true", "false"]
+
+  - name: trustType
+    type: String
+    description: "How the device is joined/registered to Entra ID: Workplace (registered), AzureAd (joined), ServerAd (hybrid joined)."
+    sampleValues: ["Workplace", "AzureAd", "ServerAd"]
+
+  - name: profileType
+    type: String
+    description: "The device profile type."
+    sampleValues: ["RegisteredDevice", "SecureVM", "Printer", "Shared", "IoT"]
+
+  - name: deviceOwnership
+    type: String
+    description: "Ownership of the device; may be null."
+    sampleValues: ["Company", "Personal"]
+
+  - name: isCompliant
+    type: Boolean
+    description: "Whether the device is compliant with management (Intune) policy; may be null."
+
+  - name: isManaged
+    type: Boolean
+    description: "Whether the device is managed by an MDM (e.g. Intune); may be null."
+
+  - name: isRooted
+    type: Boolean
+    description: "Whether the device is rooted/jailbroken; may be null."
+
+  - name: complianceExpirationDateTime
+    type: DateTime
+    description: "When the device's compliance status expires (UTC); may be null."
+
+  # ==========================================
+  # MANAGEMENT & ENROLLMENT
+  # ==========================================
+  - name: managementType
+    type: String
+    description: "How the device is managed (e.g. MDM); may be null."
+
+  - name: mdmAppId
+    type: String
+    description: "The app ID of the MDM managing the device; may be null."
+
+  - name: enrollmentType
+    type: String
+    description: "The device enrollment type; may be null."
+
+  - name: enrollmentProfileName
+    type: String
+    description: "The enrollment profile applied to the device; may be null."
+
+  - name: deviceCategory
+    type: String
+    description: "Administrator-assigned device category; may be null."
+
+  - name: deviceMetadata
+    type: String
+    description: "Free-form device metadata; may be null."
+
+  - name: externalSourceName
+    type: String
+    description: "Name of the external source that registered the device; may be null."
+
+  - name: sourceType
+    type: String
+    description: "Type of the source that registered the device; may be null."
+
+  # ==========================================
+  # ON-PREMISES SYNC
+  # ==========================================
+  - name: onPremisesSyncEnabled
+    type: Boolean
+    description: "Whether the device is synced from on-premises AD; may be null."
+
+  - name: onPremisesLastSyncDateTime
+    type: DateTime
+    description: "Last time the device synced from on-premises AD (UTC); may be null."
+
+  - name: domainName
+    type: String
+    description: "The on-premises domain the device belongs to; may be null."
+
+  # ==========================================
+  # TIMESTAMPS
+  # ==========================================
+  - name: createdDateTime
+    type: DateTime
+    description: "When the device object was created (UTC)."
+    sampleValues: ["2020-01-18T23:38:03Z"]
+
+  - name: registrationDateTime
+    type: DateTime
+    description: "When the device was registered in Entra ID (UTC)."
+    sampleValues: ["2020-01-18T23:38:03Z"]
+
+  - name: approximateLastSignInDateTime
+    type: DateTime
+    description: "Approximate last sign-in/activity time of the device (UTC). Useful for stale-device detection."
+    sampleValues: ["2021-09-11T07:40:53Z"]
+
+  - name: deletedDateTime
+    type: DateTime
+    description: "When the device was soft-deleted (UTC); null if active."
+
+  # ==========================================
+  # SECURITY & PHYSICAL IDS
+  # ==========================================
+  - name: alternativeSecurityIds
+    type: DynamicArray
+    description: >-
+      Array of alternative security identifier objects, each with type, key (a
+      base64-encoded certificate/key blob), and identityProvider. Use mv-expand
+      to inspect."
+
+  - name: physicalIds
+    type: DynamicArray
+    description: >-
+      Array of physical identifier strings used to correlate the device (e.g.
+      [HWID]:..., [GID]:..., [USER-HWID]:...). Use mv-expand to filter."
+
+  - name: systemLabels
+    type: DynamicArray
+    description: "Array of system-applied label strings on the device; often empty."
+
+  # ==========================================
+  # EXTENSION ATTRIBUTES
+  # ==========================================
+  - name: extensionAttributes
+    type: Dynamic
+    description: >-
+      Object holding 15 organization-defined custom attributes,
+      extensionAttribute1 through extensionAttribute15 (each a string or null).
+      Access via dot notation, e.g. extensionAttributes.extensionAttribute1."

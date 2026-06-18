@@ -1,0 +1,31 @@
+description: >-
+  Inventory of enabled enterprise applications (service principals) in the tenant,
+  classifying each as a Microsoft first-party app or a third-party / own-tenant app
+  (via appOwnerOrganizationId) and counting any credentials (client secrets +
+  certificates) attached to the service principal. Credentialed or third-party
+  enterprise apps are prime targets for consent/credential review after an alert.
+datatype: office365InstalledApp
+kql: |
+  let MicrosoftTenantId = "f8cdef31-a31e-4b4a-93e4-5f571e91255a";
+  office365InstalledApp
+  | where accountEnabled == true
+  | extend
+      Publisher = iff(appOwnerOrganizationId == MicrosoftTenantId, "Microsoft (first-party)", "Third-party / own tenant"),
+      CredentialCount = array_length(passwordCredentials) + array_length(keyCredentials)
+  | project
+      displayName,
+      appId,
+      id,
+      servicePrincipalType,
+      Publisher,
+      appRoleAssignmentRequired,
+      signInAudience,
+      CredentialCount,
+      createdDateTime
+  | order by CredentialCount desc, displayName asc
+tags: [office365, entra-id, enterprise-apps, service-principals, inventory, security]
+expected_output: |
+  Enabled enterprise apps with publisher classification and credential count (sanitized).
+
+  displayName                    appId                                  id                                     servicePrincipalType  Publisher                  appRoleAssignmentRequired  signInAudience        CredentialCount  createdDateTime
+  Teams ACL management service   6208afad-753e-4995-bbe1-1dfd204b3030   00da0565-0000-0000-0000-000000000001   Application           Microsoft (first-party)    false                      AzureADMultipleOrgs   0                2021-05-19T18:10:42Z

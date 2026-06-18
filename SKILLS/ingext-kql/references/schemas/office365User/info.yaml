@@ -1,0 +1,282 @@
+schema: office365User
+description: >-
+  Microsoft 365 / Entra ID (Azure AD) user resource snapshot collected by Ingext.
+  Each record is the current state of one directory user: profile, account status,
+  assigned licenses and service plans, group and role memberships, registered
+  authentication methods, and MFA/SSPR registration details. The user object is
+  stored as a dynamic JSON document, so nested objects are accessed with dot
+  notation (e.g. userRegistration.isMfaRegistered) and arrays require mv-expand.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "converted from the field createdDateTime. Primary time column for range filters (e.g. where timestamp > ago(1d))."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the user record; typically the user's userId or userPrincipalName. Unique per resource: each _key holds the latest snapshot, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # IDENTITY & PROFILE
+  # ==========================================
+  - name: id
+    type: String
+    description: "The user's Entra ID object ID (GUID)."
+    sampleValues: ["be74e305-0000-0000-0000-000000000001"]
+
+  - name: userPrincipalName
+    type: String
+    description: "The user's UPN (sign-in name), usually an email address."
+    sampleValues: ["adele.vance@contoso.com"]
+
+  - name: mail
+    type: String
+    description: "The user's primary SMTP email address."
+    sampleValues: ["adele.vance@contoso.com"]
+
+  - name: displayName
+    type: String
+    description: "The user's display name."
+    sampleValues: ["Adele Vance"]
+
+  - name: givenName
+    type: String
+    description: "First name."
+    sampleValues: ["Adele"]
+
+  - name: surname
+    type: String
+    description: "Last name."
+    sampleValues: ["Vance"]
+
+  - name: jobTitle
+    type: String
+    description: "Job title; may be null."
+
+  - name: department
+    type: String
+    description: "Department; may be null."
+
+  - name: companyName
+    type: String
+    description: "Company name; may be null."
+
+  - name: officeLocation
+    type: String
+    description: "Office location; may be null."
+
+  - name: usageLocation
+    type: String
+    description: "Two-letter country code for license/service usage location."
+    sampleValues: ["US"]
+
+  - name: preferredLanguage
+    type: String
+    description: "User's preferred language/locale."
+    sampleValues: ["en-US"]
+
+  - name: createdDateTime
+    type: DateTime
+    description: "When the user account was created (UTC)."
+    sampleValues: ["2017-01-10T18:27:42Z"]
+
+  # ==========================================
+  # ACCOUNT STATUS & POLICY
+  # ==========================================
+  - name: accountEnabled
+    type: Boolean
+    description: "Whether the account is enabled for sign-in."
+    sampleValues: ["true", "false"]
+
+  - name: userType
+    type: String
+    description: "Directory user type."
+    sampleValues: ["Member", "Guest"]
+
+  - name: passwordPolicies
+    type: String
+    description: "Password policies applied to the user (e.g. DisablePasswordExpiration, None)."
+    sampleValues: ["None"]
+
+  # ==========================================
+  # CONTACT
+  # ==========================================
+  - name: mobilePhone
+    type: String
+    description: "Mobile phone number; may be null."
+
+  - name: businessPhones
+    type: DynamicArray
+    description: "Array of business phone number strings; often empty."
+
+  # ==========================================
+  # LICENSES & SERVICE PLANS
+  # ==========================================
+  - name: assignedLicenses
+    type: DynamicArray
+    description: >-
+      Array of assigned license objects, each with skuId (the license SKU GUID,
+      a Microsoft well-known identifier) and disabledPlans (array of disabled
+      service plan GUIDs). Use mv-expand to enumerate, e.g.
+      mv-expand assignedLicenses | extend skuId = tostring(assignedLicenses.skuId)."
+
+  - name: assignedPlans
+    type: DynamicArray
+    description: >-
+      Array of assigned service plan objects, each with assignedDateTime,
+      capabilityStatus (e.g. Enabled, Deleted), service (e.g. exchange,
+      SharePoint, CRM), and servicePlanId (Microsoft well-known GUID). Use
+      mv-expand to count active services, e.g.
+      mv-expand assignedPlans | where assignedPlans.capabilityStatus == 'Enabled'."
+
+  # ==========================================
+  # GROUP & ROLE MEMBERSHIP
+  # ==========================================
+  - name: groupIDs
+    type: DynamicArray
+    description: "Array of group object ID (GUID) strings the user is a member of. Parallel to groups."
+
+  - name: groups
+    type: DynamicArray
+    description: "Array of group display-name strings the user is a member of. Parallel to groupIDs. Use mv-expand to filter, e.g. mv-expand groups | where groups == 'SecOps'."
+    sampleValues: ["All Users", "Sales", "Marketing"]
+
+  - name: roleIDs
+    type: DynamicArray
+    description: "Array of directory role template ID (GUID) strings assigned to the user. Parallel to roles."
+
+  - name: roles
+    type: DynamicArray
+    description: "Array of directory role display-name strings assigned to the user. Useful for finding privileged accounts. Use mv-expand to filter, e.g. mv-expand roles | where roles == 'Global Administrator'."
+    sampleValues: ["Global Administrator", "User Administrator"]
+
+  # ==========================================
+  # IDENTITIES, SIGN-IN & APP ACCESS
+  # ==========================================
+  - name: identities
+    type: DynamicArray
+    description: >-
+      Array of identity objects describing how the user signs in, each with
+      issuer, issuerAssignedId, and signInType (e.g. userPrincipalName). Use
+      mv-expand to inspect federated vs cloud identities."
+
+  - name: oauth2Applications
+    type: DynamicArray
+    description: "Array of OAuth2 application display-name strings the user has granted/consented access to. Use mv-expand to enumerate consented apps."
+
+  # ==========================================
+  # AUTHENTICATION METHODS
+  # ==========================================
+  - name: authMethodCount
+    type: Integer
+    description: "Number of registered authentication methods."
+    sampleValues: ["3"]
+
+  - name: authMethods
+    type: DynamicArray
+    description: "Array of registered authentication method strings (e.g. microsoftAuthenticatorPush, mobilePhone, softwareOneTimePasscode)."
+
+  # ==========================================
+  # AUTH / MFA / SSPR REGISTRATION (userRegistration.*)
+  # ==========================================
+  - name: userRegistration.id
+    type: String
+    description: "User object ID within the registration details; matches the top-level id."
+
+  - name: userRegistration.userPrincipalName
+    type: String
+    description: "UPN within the registration details."
+    sampleValues: ["adele.vance@contoso.com"]
+
+  - name: userRegistration.userDisplayName
+    type: String
+    description: "Display name within the registration details."
+    sampleValues: ["Adele Vance"]
+
+  - name: userRegistration.userType
+    type: String
+    description: "User type within the registration details."
+    sampleValues: ["member", "guest"]
+
+  - name: userRegistration.isAdmin
+    type: Boolean
+    description: "Whether the user holds an administrative role."
+    sampleValues: ["true", "false"]
+
+  - name: userRegistration.isMfaCapable
+    type: Boolean
+    description: "Whether the user is capable of performing MFA (has a usable method)."
+    sampleValues: ["true", "false"]
+
+  - name: userRegistration.isMfaRegistered
+    type: Boolean
+    description: "Whether the user has registered an MFA method."
+    sampleValues: ["true", "false"]
+
+  - name: userRegistration.isPasswordlessCapable
+    type: Boolean
+    description: "Whether the user can sign in passwordless."
+    sampleValues: ["true", "false"]
+
+  - name: userRegistration.isSsprCapable
+    type: Boolean
+    description: "Whether the user is capable of self-service password reset."
+    sampleValues: ["true", "false"]
+
+  - name: userRegistration.isSsprEnabled
+    type: Boolean
+    description: "Whether SSPR is enabled for the user."
+    sampleValues: ["true", "false"]
+
+  - name: userRegistration.isSsprRegistered
+    type: Boolean
+    description: "Whether the user has registered for SSPR."
+    sampleValues: ["true", "false"]
+
+  - name: userRegistration.isRegistered
+    type: Boolean
+    description: "Whether the user has registered any security info."
+    sampleValues: ["true", "false"]
+
+  - name: userRegistration.isCapable
+    type: Boolean
+    description: "Whether the user is capable of combined security registration."
+    sampleValues: ["true", "false"]
+
+  - name: userRegistration.isEnabled
+    type: Boolean
+    description: "Whether combined security registration is enabled for the user."
+    sampleValues: ["true", "false"]
+
+  - name: userRegistration.isSystemPreferredAuthenticationMethodEnabled
+    type: Boolean
+    description: "Whether system-preferred authentication method is enabled."
+    sampleValues: ["true", "false"]
+
+  - name: userRegistration.lastUpdatedDateTime
+    type: DateTime
+    description: "When the registration details were last updated (UTC)."
+
+  - name: userRegistration.authMethods
+    type: DynamicArray
+    description: "Array of authentication method strings available to the user (mirrors top-level authMethods)."
+
+  - name: userRegistration.methodsRegistered
+    type: DynamicArray
+    description: "Array of authentication methods the user has actually registered."
+
+  - name: userRegistration.systemPreferredAuthenticationMethods
+    type: DynamicArray
+    description: "Array of system-preferred authentication method strings (e.g. PhoneAppNotification)."
+
+  - name: userRegistration.userPreferredMethodForSecondaryAuthentication
+    type: String
+    description: "The user's preferred secondary authentication method."
+    sampleValues: ["sms", "push"]

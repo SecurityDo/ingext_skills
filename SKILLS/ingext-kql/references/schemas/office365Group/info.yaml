@@ -1,0 +1,202 @@
+schema: office365Group
+description: >-
+  Microsoft 365 / Entra ID (Azure AD) group resource snapshot collected by Ingext.
+  Each record is the current state of one group: identity, mail settings, group
+  type and security flags, membership (and dynamic membership rule), lifecycle
+  timestamps, and on-premises sync details. The group object is stored as a dynamic
+  JSON document, so arrays (members, proxyAddresses, groupTypes) require mv-expand.
+  Useful for membership audits, group-inventory, and security/role-assignable group
+  reporting.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "converted from the field createdDateTime. Primary time column for range filters (e.g. where timestamp > ago(1d))."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the group record; typically the group's id (object id). Unique per resource: each _key holds the latest snapshot, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: id
+    type: String
+    description: "The group's Entra ID object ID (GUID)."
+    sampleValues: ["4db0f80b-0000-0000-0000-000000000001"]
+
+  - name: displayName
+    type: String
+    description: "The group's display name."
+    sampleValues: ["Contoso Project Team"]
+
+  - name: description
+    type: String
+    description: "Free-text description of the group; may be null."
+    sampleValues: ["Contoso project workspace"]
+
+  - name: mailNickname
+    type: String
+    description: "The mail alias (nickname) for the group."
+    sampleValues: ["projectteam"]
+
+  - name: uniqueName
+    type: String
+    description: "Optional immutable unique name for the group; may be null."
+
+  - name: classification
+    type: String
+    description: "Administrator-defined data classification for the group (e.g. Confidential); may be null."
+
+  - name: visibility
+    type: String
+    description: "Visibility of the group and its content."
+    sampleValues: ["Private", "Public", "HiddenMembership"]
+
+  # ==========================================
+  # MAIL
+  # ==========================================
+  - name: mail
+    type: String
+    description: "The group's primary SMTP email address; null for non-mail-enabled groups."
+    sampleValues: ["projectteam@contoso.com"]
+
+  - name: mailEnabled
+    type: Boolean
+    description: "Whether the group is mail-enabled."
+    sampleValues: ["true", "false"]
+
+  - name: proxyAddresses
+    type: DynamicArray
+    description: "Array of proxy address strings (e.g. SMTP:/smtp: email aliases, SPO: SharePoint addresses). Use mv-expand to enumerate."
+
+  # ==========================================
+  # GROUP TYPE & SECURITY
+  # ==========================================
+  - name: groupTypes
+    type: DynamicArray
+    description: "Array of group type strings: 'Unified' indicates a Microsoft 365 group; 'DynamicMembership' indicates rule-based membership; empty indicates a security or distribution group. Use mv-expand to filter."
+    sampleValues: ["Unified", "DynamicMembership"]
+
+  - name: securityEnabled
+    type: Boolean
+    description: "Whether the group is a security group (can be used to grant access)."
+    sampleValues: ["true", "false"]
+
+  - name: isAssignableToRole
+    type: Boolean
+    description: "Whether the group can be assigned to an Entra ID directory role (role-assignable group); a privileged, security-sensitive flag. May be null."
+
+  - name: securityIdentifier
+    type: String
+    description: "The cloud security identifier (SID) of the group."
+    sampleValues: ["S-1-12-1-0000000000-0000000000-0000000000-0000000000"]
+
+  # ==========================================
+  # MEMBERSHIP
+  # ==========================================
+  - name: members
+    type: DynamicArray
+    description: "Array of member object ID (GUID) strings (users, groups, or service principals). Use mv-expand to flatten, e.g. mv-expand members | summarize count()."
+
+  - name: membershipRule
+    type: String
+    description: "The dynamic membership rule (OData expression) when the group uses DynamicMembership; null for assigned groups."
+
+  - name: membershipRuleProcessingState
+    type: String
+    description: "Processing state of the dynamic membership rule (e.g. On, Paused); null for assigned groups."
+
+  # ==========================================
+  # LIFECYCLE
+  # ==========================================
+  - name: createdDateTime
+    type: DateTime
+    description: "When the group was created (UTC)."
+    sampleValues: ["2022-12-19T02:16:28Z"]
+
+  - name: renewedDateTime
+    type: DateTime
+    description: "When the group was last renewed (UTC)."
+    sampleValues: ["2022-12-19T02:16:28Z"]
+
+  - name: expirationDateTime
+    type: DateTime
+    description: "When the group is scheduled to expire (UTC); null if no expiration policy applies."
+
+  - name: deletedDateTime
+    type: DateTime
+    description: "When the group was soft-deleted (UTC); null if active."
+
+  # ==========================================
+  # ON-PREMISES SYNC
+  # ==========================================
+  - name: onPremisesSyncEnabled
+    type: Boolean
+    description: "Whether the group is synced from on-premises AD; may be null."
+
+  - name: onPremisesLastSyncDateTime
+    type: DateTime
+    description: "Last time the group synced from on-premises AD (UTC); may be null."
+
+  - name: onPremisesDomainName
+    type: String
+    description: "On-premises domain name of the group; may be null."
+
+  - name: onPremisesNetBiosName
+    type: String
+    description: "On-premises NetBIOS name of the group; may be null."
+
+  - name: onPremisesSamAccountName
+    type: String
+    description: "On-premises SAM account name of the group; may be null."
+
+  - name: onPremisesSecurityIdentifier
+    type: String
+    description: "On-premises security identifier (SID) of the group; may be null."
+
+  - name: onPremisesProvisioningErrors
+    type: DynamicArray
+    description: "Array of provisioning error objects from on-premises sync; usually empty."
+
+  # ==========================================
+  # PROVISIONING & OPTIONS
+  # ==========================================
+  - name: creationOptions
+    type: DynamicArray
+    description: "Array of creation option strings set when the group was created (e.g. ProvisionGroupHomepage, SPSiteLanguage:1033)."
+
+  - name: resourceBehaviorOptions
+    type: DynamicArray
+    description: "Array of behavior option strings controlling group features (e.g. WelcomeEmailDisabled); usually empty."
+
+  - name: resourceProvisioningOptions
+    type: DynamicArray
+    description: "Array of provisioning option strings (e.g. 'Team' when the group is Teams-enabled); usually empty."
+
+  - name: serviceProvisioningErrors
+    type: DynamicArray
+    description: "Array of service provisioning error objects; usually empty."
+
+  - name: infoCatalogs
+    type: DynamicArray
+    description: "Array of information catalog strings associated with the group; usually empty."
+
+  - name: preferredDataLocation
+    type: String
+    description: "Preferred data location (geo) for the group's data; may be null."
+
+  - name: preferredLanguage
+    type: String
+    description: "Preferred language/locale for the group; may be null."
+
+  - name: theme
+    type: String
+    description: "Color theme of the Microsoft 365 group; may be null."
