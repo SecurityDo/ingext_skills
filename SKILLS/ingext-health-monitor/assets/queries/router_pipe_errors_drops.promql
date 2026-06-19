@@ -1,0 +1,14 @@
+# Step 4 — Router / pipe error & drop check (tool: prom_query)
+# Answers: are routers erroring (and which pipe), and how much is being dropped?
+# `<window>` = chosen window (default 7d). Only action="error" is a real failure;
+# `abort` (normal routing) and `drop` (intentional discard) are NOT errors.
+
+# Step 4a — router-level errors (one series per router).
+sum by (id, application) (increase(platform_component_total{component="router", action="error"}[<window>]))
+
+# Step 4b — drill into the pipe (only if 4a found errors): pipe-level processing errors.
+sum by (pipe, processor) (increase(platform_processor_total{action="error"}[<window>]))
+
+# Step 4c — router & sink drops (event count, not bytes). Informational unless
+# drops > 5% of ingress event count (then DROP HIGH).
+sum by (component, id, application) (increase(platform_component_total{component=~"router|datasink", action="drop"}[<window>]))

@@ -1,0 +1,7 @@
+# Step 7 — Queue backlog check (tool: prom_query)
+# Answers: are any internal management queues backing up right now?
+# ingext_queue_length is a GAUGE — query it RAW (no rate()/increase()/*_over_time).
+# Current value only. One series per service (behavior, ml, datalake, eventwatch).
+# PASS if all services ≤ 1000; FAIL if any service > 1000 (significant backlog).
+
+sum by (service) (ingext_queue_length)

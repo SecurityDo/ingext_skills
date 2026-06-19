@@ -1,6 +1,6 @@
 ---
 name: ingext-health-monitor
-version: 1.0.0
+version: 1.0.1
 description: Check the health of an Ingext / Fluency site and produce a clear status report. Trigger whenever the user asks about site health, whether data is flowing, if Ingext is working, if the site is healthy, whether ingestion is active, whether there are router or pipe errors (and which pipe is failing), how much data is being dropped at routers or sinks, how much data is being egressed (by event type and destination), whether ingestion has spiked or suddenly stopped (anomalies/outages), or whether any queues are backing up (backlog) — or any phrasing like "check the health", "is data coming in?", "is the site healthy?", "run a health check", "monitor site health", "check Ingext status", "is ingestion working?", "any errors in the routers?", "which pipe is erroring?", "how much data is being dropped?", "how much are we egressing?", "did ingestion spike or drop?", "are the queues backing up?", "any backlog?". Always use this skill for any question about whether the Ingext platform is ingesting data correctly, whether the pipeline is erroring or dropping data, how much is being egressed, whether ingestion looks anomalous, whether queues are backed up, or whether users are logging in — even if the user doesn't say "health check" explicitly.
 ---
 
@@ -28,6 +28,21 @@ and no ingestion anomalies, queues are not backing up, and real (non-internal) u
 skill runs up to seven independent checks — login activity, data ingress, router/pipe errors,
 router/sink drops, egress (by event type and destination), ingestion anomalies, and queue backlog —
 and aggregates them into a single status report (HTML).
+
+## Query assets
+
+The query for each check lives under `assets/queries/` (one file per check) and
+is the source of truth — the inline queries in the steps below mirror them.
+Substitute the chosen `<window>` everywhere it appears.
+
+| Check | Asset file |
+|---|---|
+| Step 2 — Login activity | `assets/queries/login_activity.txt` (audit_search params) |
+| Step 3 — Data ingress | `assets/queries/data_ingress.promql` |
+| Step 4 — Router/pipe errors & drops | `assets/queries/router_pipe_errors_drops.promql` |
+| Step 5 — Egress | `assets/queries/egress.promql` |
+| Step 6 — Ingestion anomaly | `assets/queries/ingestion_anomaly.promql` |
+| Step 7 — Queue backlog | `assets/queries/queue_backlog.promql` |
 
 ## Monitoring window (default 7 days)
 
@@ -59,7 +74,7 @@ Look through the tools available in your current session for anything matching `
 
 This check answers: *Are real (non-internal) users logging in?*
 
-**Call `audit_search`** with:
+**Call `audit_search`** with (→ `assets/queries/login_activity.txt`):
 - `query`: `"action:login"`
 - `rangeFrom`: epoch milliseconds for the start of the window (now − `<window-in-ms>`; the 7-day default is now − 7 × 86400 × 1000)
 - `rangeTo`: epoch milliseconds for now
@@ -99,7 +114,7 @@ datasources** — the `platform_component_bytes` counter with `component="dataso
 `action="input"` (`input` = data received by the source). These are monotonic counters, so wrap
 them in `increase()` over the `<window>` (default 7 days).
 
-**Call `prom_query`** with:
+**Call `prom_query`** with (→ `assets/queries/data_ingress.promql`):
 - `query`: `sum(increase(platform_component_bytes{component="datasource", action="input"}[<window>]))`
 - `time`: omit (defaults to now)
 
@@ -135,6 +150,8 @@ is being dropped at routers/sinks?*
 Only the `error` action counts as a failure. **Do not** treat `abort` or `drop` as errors —
 `abort` means a pipe deliberately handed the event to the next pipe in the same router (normal
 routing), and `drop` is an intentional discard. Only `action="error"` is a real failure.
+
+All three Step 4 queries are in `assets/queries/router_pipe_errors_drops.promql`.
 
 **Step 4a — router-level errors.** Call `prom_query` with:
 - `query`: `sum by (id, application) (increase(platform_component_total{component="router", action="error"}[<window>]))`
@@ -177,7 +194,7 @@ breakdown for the report.
 This check answers: *Is data flowing out of the platform, and to where?* Egress is the output volume
 measured at the sinks. Report it broken down by **event type** and by **destination**.
 
-**Call `prom_query` twice** (in the same message):
+**Call `prom_query` twice** (in the same message) (→ `assets/queries/egress.promql`):
 - By event type: `sum by (eventType) (increase(platform_egress_bytes[<window>]))`
 - By destination: `sum by (dest) (increase(platform_egress_bytes[<window>]))`
 
@@ -203,7 +220,7 @@ static "Data Ingressed" KPI with a live anomaly signal.
 sum (other sources keep the total high). A spike or outage must therefore be detected **per
 datasource**.
 
-**Call `prom_query_range`** to get the per-source ingress rate trend over the window:
+**Call `prom_query_range`** to get the per-source ingress rate trend over the window (→ `assets/queries/ingestion_anomaly.promql`):
 - `query`: `sum by (application) (rate(platform_component_bytes{component="datasource", action="input"}[1h]))`
 - `from`: `-<window>`
 - `to`: `-0h`  (literal `now` is rejected — use `-0h`)
@@ -245,7 +262,7 @@ This check answers: *Are any internal management queues backing up right now?* I
 `ingext_queue_length` **gauge** — an instantaneous value, so query it **raw** (no `rate()` /
 `increase()`, no `*_over_time`). Look at the **current value only**, not historical data.
 
-**Call `prom_query` once**:
+**Call `prom_query` once** (→ `assets/queries/queue_backlog.promql`):
 - Current depth by service: `sum by (service) (ingext_queue_length)`
 
 This returns one series per `service` (`behavior`, `ml`, `datalake`, `eventwatch`) with its current

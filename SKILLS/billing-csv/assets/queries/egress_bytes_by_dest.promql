@@ -1,0 +1,18 @@
+# Data STORED — bytes egressed to each destination (datalake vs eventwatch)
+#
+# platform_egress_bytes is a monotonic counter, so it MUST be wrapped in
+# increase(...) over the billing window. The `dest` label splits the two
+# billable destinations:
+#   dest="datalake"   -> "Ingress Datalake (Bytes)"
+#   dest="eventwatch" -> "Ingress Eventwatch (Bytes)"
+#
+# Replace <PERIOD> with the billing-cycle length in days (e.g. 30d, 31d) and run
+# prom_query with time = "-<offsetSeconds>s" (the cycle-end expressed as a
+# relative offset from now — see SKILL.md Step 3). The metrics tools reject
+# epoch/RFC3339 timestamps; only relative offsets work.
+#
+# Verified against the live tenant:
+#   - 24h window:        datalake 385,216,542 B,  eventwatch 15,538,039 B
+#   - May 2026 (31d):    datalake ~3.78 GB,        eventwatch ~270 MB
+
+sum by (dest) (increase(platform_egress_bytes[<PERIOD>]))

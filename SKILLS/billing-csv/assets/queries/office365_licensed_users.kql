@@ -1,0 +1,20 @@
+// Office365 / Entra ID — licensed (billable) users
+// Returns one row per (user, skuId). office365User is a resource snapshot
+// table, so NO time filter and NO dedup are needed.
+//
+// Billing rule: a user counts as a paid/billable user if they
+//   (a) are a Member (userType == "Member") — guests are excluded, AND
+//   (b) hold at least one assigned license whose skuId appears in
+//       assets/Microsoft365_LicenseTable.csv (that CSV has already had all
+//       free/trial/developer SKUs removed — every entry is a paid license).
+// Downstream: keep rows whose skuId is in the CSV, then count distinct
+// userPrincipalName.
+//
+// Validated against the office365User schema via the ingext-kql skill (validate_kql: ok).
+
+office365User
+| where userType == "Member"
+| mv-expand assignedLicenses
+| extend skuId = tostring(assignedLicenses.skuId)
+| where isnotempty(skuId)
+| distinct userPrincipalName, skuId

@@ -1,0 +1,21 @@
+// Google Workspace — users (billable user count)
+//
+// ⚠️ PLACEHOLDER / UNVALIDATED — REFINE LATER ⚠️
+// This tenant currently exposes NO Google Workspace table:
+//   - list_data_tables returns only office365* resource tables.
+//   - The ingext-kql schema knowledge base has no Google schema.
+// Because the ingext-kql skill must never guess a schema, this query could
+// NOT be validated with validate_kql. The table name and every field below
+// are ASSUMED and must be confirmed against the real schema once a Google
+// Workspace user table is connected to the tenant.
+//
+// Intent (mirrors the Office365 licensed-users logic): return one row per
+// Google Workspace user so the billing step can count distinct users.
+// Google Workspace seats are licensed per-account, so — unlike Office365 —
+// there is no per-SKU paid/free filter to apply here (every provisioned,
+// non-suspended user is billable). Adjust once the schema is known.
+
+// TODO confirm real table name (e.g. googleWorkspaceUser?) and field names.
+googleWorkspaceUser
+| where isSuspended == false        // TODO confirm field for active/suspended
+| distinct primaryEmail             // TODO confirm unique-user identifier field

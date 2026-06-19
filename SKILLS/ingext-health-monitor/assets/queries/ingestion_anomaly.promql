@@ -1,0 +1,15 @@
+# Step 6 — Ingestion anomaly check (tool: prom_query_range)
+# Answers: has any datasource's ingestion spiked or suddenly stopped?
+# Evaluate EACH datasource (application) independently — a single source stopping
+# is invisible in a platform-wide sum.
+#
+# Range params:
+#   from     : -<window>          (e.g. -7d)
+#   to       : -0h                (literal `now` is rejected — use -0h)
+#   interval : scale to ~100–200 points (10m for 24h, 1h for 7d, 3h–6h for 30d)
+# Inner rate() smoothing window: keep 1h for multi-day windows; drop to ~5m for sub-day.
+#
+# Per series: baseline = median of points; skip ~0 (inactive) sources; spike = bucket
+# > 5× that source's median; outage = active source dropping to ~0 (esp. most-recent buckets).
+
+sum by (application) (rate(platform_component_bytes{component="datasource", action="input"}[1h]))

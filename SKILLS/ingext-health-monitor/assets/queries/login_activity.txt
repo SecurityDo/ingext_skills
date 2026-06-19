@@ -1,0 +1,13 @@
+# Step 2 — Login activity check (tool: audit_search)
+#
+# Not a PromQL/KQL query — these are the audit_search parameters.
+#   query     : action:login
+#   rangeFrom : epoch ms for start of window  (now − <window-in-ms>; 7d default = now − 7*86400*1000)
+#   rangeTo   : epoch ms for now
+#   limit     : 100
+#
+# Evaluate: keep successful logins (no `error` field); classify by email/username as
+# internal (@fluencysecurity.com, @ingext.io, @security.do) vs external. PASS if any
+# external successful login; FAIL otherwise. See SKILL.md Step 2 for full logic.
+
+action:login

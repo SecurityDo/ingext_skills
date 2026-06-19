@@ -1,6 +1,6 @@
 ---
 name: ingext-promql
-version: 1.0.0
+version: 1.0.1
 description: >
   Generate and run PromQL / MetricsQL queries for the Fluency / Ingext platform metrics store
   (VictoriaMetrics). Use this skill whenever the user asks about platform throughput, ingest,
@@ -72,8 +72,12 @@ e.g. `mcp__<uuid>__prom_query`). Both are read-only.
 
 | Tool | When to use |
 |---|---|
-| `prom_query` | Instant query — value(s) at a single point in time. Current status, point-in-time totals. Args: `query`, optional `time` (relative like `-1h`/`now`, or epoch ms). |
-| `prom_query_range` | Range query — a time series over a window. Trends, usage/billing reports, charts. Args: `query`, `from`, `to` (relative or epoch ms), `interval` (step, e.g. `1h`, `5m`). |
+| `prom_query` | Instant query — value(s) at a single point in time. Current status, point-in-time totals. Args: `query`, optional `time` (**relative offset only** — e.g. `-1h`, `-0h`; see Time format). |
+| `prom_query_range` | Range query — a time series over a window. Trends, usage/billing reports, charts. Args: `query`, `from`, `to` (**relative offsets only**), `interval` (step, e.g. `1h`, `5m`). |
+
+> ⚠️ Despite what the tool descriptions say, **epoch milliseconds and RFC3339 timestamps are
+> rejected** by `time` / `from` / `to` on the live instance (`invalid time: invalid character` /
+> `unexpected character`). Only **relative offsets** work. See **Time format** below.
 
 Both return a `resultType` plus a `series` list; each series carries its label `metric` map and a
 `points` array of `{timestamp (epoch ms), value}`.
@@ -108,9 +112,37 @@ aggregate with `sum` / `sum by (<label>)`. Filter on labels with `{label="value"
 - **Trend / time series / histogram over a window** → `prom_query_range`. Pass `query`, `from`,
   `to`, and an `interval` step appropriate to the window (e.g. `5m` for a few hours, `1h` for a day).
 
-**Time format (important):** use relative offsets like `-24h`, `-1h`, or epoch milliseconds. For
-"now", use **`-0h`** — the literal string `now` is rejected by the range tool (`invalid offset`).
-`prom_query`'s `time` defaults to now when omitted, so you rarely need to pass it.
+**Time format (important — verified on the live instance):** `time` / `from` / `to` accept
+**relative offsets ONLY**. Anything else is rejected:
+
+- ✅ **Relative offsets** — `-24h`, `-7d`, `-30d`, `-90m`, `-1617600s`. Units `s`/`m`/`h`/`d` all
+  work, including second granularity.
+- ✅ **"Now"** — use **`-0h`**. The literal string `now` is rejected on **both** tools
+  (`invalid time: invalid offset`) — do **not** use it, even though the tool description lists it.
+- ❌ **Epoch milliseconds / epoch seconds** — rejected (`invalid time: invalid character`), even
+  though the tool descriptions claim epoch ms is accepted. Do not pass epoch.
+- ❌ **RFC3339 / ISO-8601** (e.g. `2026-06-01T00:00:00Z`) — rejected (`invalid time: unexpected
+  character`).
+
+`prom_query`'s `time` defaults to now when omitted, so for a "right now" query just leave it off.
+
+**Targeting an absolute instant (e.g. a calendar month boundary):** since absolute timestamps are
+rejected, convert the wanted instant into a relative offset from now, in **seconds**:
+`offsetSeconds = floor(now_epoch_s − target_epoch_s)`, then pass `time = "-<offsetSeconds>s"`. A few
+seconds of drift between computing the offset and the query running is harmless over multi-hour
+windows. Example — to total the bytes for **May 2026** (a 31-day month) evaluated at the `2026-06-01
+00:00 UTC` boundary:
+
+```
+# offsetSeconds = now − 2026-06-01T00:00:00Z, e.g. 1617977
+prom_query(
+  query = 'sum by (dest) (increase(platform_egress_bytes[31d]))',
+  time  = '-1617977s'      # lands within seconds of the calendar boundary
+)
+```
+
+The same `-<offsetSeconds>s` trick applies to `prom_query_range` `from` / `to`. For a whole-month
+total prefer this single instant `increase([<days>d])` over summing a range.
 
 The tools are on the connected Fluency / Ingext MCP connector (`mcp__<uuid>__prom_query` /
 `mcp__<uuid>__prom_query_range`). If multiple Ingext connectors are connected and the user hasn't

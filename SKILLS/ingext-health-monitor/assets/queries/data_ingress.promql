@@ -1,0 +1,12 @@
+# Step 3 — Data ingress check (tool: prom_query)
+# Answers: is data flowing into the platform?
+# `<window>` = the chosen monitoring window (default 7d). Counters → wrap in increase().
+
+# Headline: total bytes received by all datasources over the window.
+sum(increase(platform_component_bytes{component="datasource", action="input"}[<window>]))
+
+# Optional — event count over the window.
+sum(increase(platform_component_total{component="datasource", action="input"}[<window>]))
+
+# Optional — top sources: ingress bytes per source application.
+sum by (application) (increase(platform_component_bytes{component="datasource", action="input"}[<window>]))

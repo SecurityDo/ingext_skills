@@ -1,0 +1,20 @@
+# Data DROPPED — total bytes dropped across the platform -> "Data Dropped (Bytes)"
+#
+# platform_component_bytes is a monotonic counter, so wrap it in increase(...)
+# over the billing window, filtered to action="drop".
+#
+# IMPORTANT — avoid double-counting: a `pipe` lives inside a `router`, and the
+# platform records the same drop at BOTH the pipe and router granularity (their
+# drop byte counts are identical). Summing across ALL components therefore
+# double-counts. Scope to component=~"router|datasink" to get the true total
+# (router-level drops + any datasink drops, with pipe excluded).
+#
+# Replace <PERIOD> with the billing-cycle length in days (e.g. 30d, 31d) and run
+# prom_query with time = "-<offsetSeconds>s" (the cycle-end as a relative offset
+# from now — see SKILL.md Step 3). The metrics tools reject epoch/RFC3339
+# timestamps; only relative offsets work.
+#
+# Verified against the live tenant (24h window): 73,271 B total
+# (router 73,271 = pipe 73,271; datasink 0).
+
+sum(increase(platform_component_bytes{component=~"router|datasink", action="drop"}[<PERIOD>]))

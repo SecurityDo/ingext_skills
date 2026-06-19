@@ -1,0 +1,9 @@
+# Step 5 — Egress check (tool: prom_query)
+# Answers: is data flowing out of the platform, and to where?
+# `<window>` = chosen window (default 7d). Both groupings sum to the same total.
+
+# By event type (top types).
+sum by (eventType) (increase(platform_egress_bytes[<window>]))
+
+# By destination (e.g. eventwatch vs datalake).
+sum by (dest) (increase(platform_egress_bytes[<window>]))
