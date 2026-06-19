@@ -1,6 +1,6 @@
 ---
 name: ingext-promql
-version: 1.0.1
+version: 1.0.2
 description: >
   Generate and run PromQL / MetricsQL queries for the Fluency / Ingext platform metrics store
   (VictoriaMetrics). Use this skill whenever the user asks about platform throughput, ingest,
@@ -72,12 +72,8 @@ e.g. `mcp__<uuid>__prom_query`). Both are read-only.
 
 | Tool | When to use |
 |---|---|
-| `prom_query` | Instant query — value(s) at a single point in time. Current status, point-in-time totals. Args: `query`, optional `time` (**relative offset only** — e.g. `-1h`, `-0h`; see Time format). |
-| `prom_query_range` | Range query — a time series over a window. Trends, usage/billing reports, charts. Args: `query`, `from`, `to` (**relative offsets only**), `interval` (step, e.g. `1h`, `5m`). |
-
-> ⚠️ Despite what the tool descriptions say, **epoch milliseconds and RFC3339 timestamps are
-> rejected** by `time` / `from` / `to` on the live instance (`invalid time: invalid character` /
-> `unexpected character`). Only **relative offsets** work. See **Time format** below.
+| `prom_query` | Instant query — value(s) at a single point in time. Current status, point-in-time totals. Args: `query`, optional `time` (relative offset, epoch ms, or RFC3339 — see Time format). |
+| `prom_query_range` | Range query — a time series over a window. Trends, usage/billing reports, charts. Args: `query`, `from`, `to` (relative offset, epoch ms, or RFC3339), `interval` (step, e.g. `1h`, `5m`). |
 
 Both return a `resultType` plus a `series` list; each series carries its label `metric` map and a
 `points` array of `{timestamp (epoch ms), value}`.
@@ -112,37 +108,33 @@ aggregate with `sum` / `sum by (<label>)`. Filter on labels with `{label="value"
 - **Trend / time series / histogram over a window** → `prom_query_range`. Pass `query`, `from`,
   `to`, and an `interval` step appropriate to the window (e.g. `5m` for a few hours, `1h` for a day).
 
-**Time format (important — verified on the live instance):** `time` / `from` / `to` accept
-**relative offsets ONLY**. Anything else is rejected:
+**Time format (verified on the live instance):** `time` / `from` / `to` accept **all three** of the
+following, and they return identical results for the same instant:
 
 - ✅ **Relative offsets** — `-24h`, `-7d`, `-30d`, `-90m`, `-1617600s`. Units `s`/`m`/`h`/`d` all
   work, including second granularity.
-- ✅ **"Now"** — use **`-0h`**. The literal string `now` is rejected on **both** tools
-  (`invalid time: invalid offset`) — do **not** use it, even though the tool description lists it.
-- ❌ **Epoch milliseconds / epoch seconds** — rejected (`invalid time: invalid character`), even
-  though the tool descriptions claim epoch ms is accepted. Do not pass epoch.
-- ❌ **RFC3339 / ISO-8601** (e.g. `2026-06-01T00:00:00Z`) — rejected (`invalid time: unexpected
-  character`).
+- ✅ **Epoch milliseconds** — e.g. `1781827200000`.
+- ✅ **RFC3339 / ISO-8601** — e.g. `2026-06-19T00:00:00Z`.
+- ✅ **"Now"** — use **`-0h`**. (The bare literal `now` is the one form that may be rejected
+  (`invalid offset`); `-0h` is the safe way to say "now".)
 
 `prom_query`'s `time` defaults to now when omitted, so for a "right now" query just leave it off.
 
-**Targeting an absolute instant (e.g. a calendar month boundary):** since absolute timestamps are
-rejected, convert the wanted instant into a relative offset from now, in **seconds**:
-`offsetSeconds = floor(now_epoch_s − target_epoch_s)`, then pass `time = "-<offsetSeconds>s"`. A few
-seconds of drift between computing the offset and the query running is harmless over multi-hour
-windows. Example — to total the bytes for **May 2026** (a 31-day month) evaluated at the `2026-06-01
+**Targeting an absolute instant (e.g. a calendar month boundary):** prefer an **epoch-ms or RFC3339
+timestamp** — it pins the exact instant with no drift, so it is the cleanest choice for billing
+windows. Example — total the bytes for **May 2026** (a 31-day month) evaluated at the `2026-06-01
 00:00 UTC` boundary:
 
 ```
-# offsetSeconds = now − 2026-06-01T00:00:00Z, e.g. 1617977
 prom_query(
   query = 'sum by (dest) (increase(platform_egress_bytes[31d]))',
-  time  = '-1617977s'      # lands within seconds of the calendar boundary
+  time  = '2026-06-01T00:00:00Z'      # or epoch ms 1780272000000
 )
 ```
 
-The same `-<offsetSeconds>s` trick applies to `prom_query_range` `from` / `to`. For a whole-month
-total prefer this single instant `increase([<days>d])` over summing a range.
+A relative offset (`time = "-<offsetSeconds>s"` where `offsetSeconds = now − target`) also works and
+yields the same value, but carries a few seconds of drift between computing the offset and running
+the query, so an absolute timestamp is preferred when you need an exact boundary.
 
 The tools are on the connected Fluency / Ingext MCP connector (`mcp__<uuid>__prom_query` /
 `mcp__<uuid>__prom_query_range`). If multiple Ingext connectors are connected and the user hasn't
