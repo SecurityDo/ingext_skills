@@ -31,7 +31,7 @@ tables, sign-in timeline and recommendations.
 This is **distinct** from `azure-user-signin-investigation`, which depends on three
 FPL reports and the `AzureSigninLogs`/`AzureAuditLogs` tables and focuses on Azure
 AD sign-in history + directory changes. This skill needs only an `Office365`
-datalake index (Office 365 Management Activity API data) and focuses on mailbox /
+data table (Office 365 Management Activity API data) and focuses on mailbox /
 Exchange activity, inbox rules, OAuth consents and a geolocated source-IP map.
 
 ## Required inputs
