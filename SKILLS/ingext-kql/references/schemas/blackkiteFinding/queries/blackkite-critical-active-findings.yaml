@@ -1,0 +1,31 @@
+description: >-
+  Active, high-priority Black Kite findings on monitored vendor attack surfaces:
+  keeps open findings that are Critical/High, in CISA KEV, or have a high EPSS
+  exploitation probability, and flags any without a remediation ticket. Use to
+  prioritize third-party vulnerability outreach — KEV and high-EPSS issues first.
+datatype: blackkiteFinding
+kql: |
+  blackkiteFinding
+  | where Status == "Active"
+  | extend HighEpss = Epss >= 0.5
+  | where Severity in ("Critical", "High") or InKev == true or HighEpss
+  | extend HasTicket = isnotempty(tostring(Ticket.TicketId)) or array_length(Tickets) > 0
+  | project
+      timestamp,
+      Domain,
+      IpAddress,
+      ProductName,
+      CveId,
+      Severity,
+      CvssScore,
+      Epss,
+      InKev,
+      HasTicket,
+      Title
+  | order by InKev desc, CvssScore desc, Epss desc
+tags: [blackkite, third-party-risk, attack-surface, vulnerability, cve, kev, security]
+expected_output: |
+  Active high-priority third-party findings, exploited/critical first (sanitized).
+
+  timestamp                    Domain       IpAddress       ProductName    CveId            Severity  CvssScore  Epss   InKev  HasTicket  Title
+  2026-06-02T09:49:13.833Z     contoso.com  198.51.100.23   apache/2.4.58  CVE-2026-28780   Critical  9.8        0.663  false  false      Possible Vulnerability

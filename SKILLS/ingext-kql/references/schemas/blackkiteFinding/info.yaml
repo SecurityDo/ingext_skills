@@ -1,0 +1,163 @@
+schema: blackkiteFinding
+description: >-
+  Black Kite third-party cyber-risk finding collected by Ingext from the Black Kite
+  API. Each record is one vulnerability/control finding discovered on a monitored
+  vendor's external attack surface: the affected asset (domain/subdomain, IP, port,
+  product), the associated CVE with its CVSS/CWE/EPSS scoring and CISA KEV status,
+  severity and lifecycle status, and any linked remediation ticket. The object is
+  stored as a dynamic JSON document, so nested objects use dot notation
+  (e.g. Ticket.Status) and arrays (References, Tickets) require mv-expand.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Extracted from the FindingDate field — when Black Kite recorded the finding. Primary time column for range filters (e.g. where timestamp > ago(7d))."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the finding; mapped to the FindingId field (unique per finding instance, so the same CVE on multiple assets is kept separately). Each _key holds the latest snapshot for that finding, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # VULNERABILITY IDENTITY & SCORING
+  # ==========================================
+  - name: CveId
+    type: String
+    description: "The CVE identifier for the vulnerability."
+    sampleValues: ["CVE-2026-28780"]
+
+  - name: CvssScore
+    type: Real
+    description: "CVSS base score (0.0-10.0) for the CVE. Higher is more severe; >= 9.0 is Critical."
+    sampleValues: ["9.8"]
+
+  - name: CweId
+    type: String
+    description: "The CWE weakness category identifier associated with the vulnerability."
+    sampleValues: ["CWE-122"]
+
+  - name: CwssScore
+    type: Real
+    description: "CWSS (Common Weakness Scoring System) score; often null."
+
+  - name: Epss
+    type: Real
+    description: "EPSS probability (0.0-1.0) that the CVE will be exploited in the wild within 30 days. Use to prioritize beyond CVSS."
+    sampleValues: ["0.663"]
+
+  - name: InKev
+    type: Boolean
+    description: "Whether the CVE is listed in CISA's Known Exploited Vulnerabilities (KEV) catalog. true indicates confirmed in-the-wild exploitation."
+    sampleValues: ["true", "false"]
+
+  - name: PublishDate
+    type: DateTime
+    description: "When the CVE was published (UTC)."
+    sampleValues: ["2026-05-05T22:16:00.000Z"]
+
+  - name: References
+    type: DynamicArray
+    description: "Array of reference URL strings (NVD, CAPEC, vendor advisories) for the CVE. Use mv-expand to enumerate."
+    sampleValues: ["https://nvd.nist.gov/vuln/detail/CVE-2026-28780"]
+
+  - name: Detail
+    type: String
+    description: "Long-form description of the vulnerability and remediation guidance (may contain newlines)."
+
+  - name: Title
+    type: String
+    description: "Short title/label for the finding."
+    sampleValues: ["Possible Vulnerability"]
+
+  # ==========================================
+  # SEVERITY & LIFECYCLE
+  # ==========================================
+  - name: Severity
+    type: String
+    description: "Black Kite severity rating for the finding."
+    sampleValues: ["Critical", "High", "Medium", "Low"]
+
+  - name: Status
+    type: String
+    description: "Lifecycle status of the finding. Filter on 'Active' for open issues."
+    sampleValues: ["Active", "Resolved", "Mitigated"]
+
+  - name: Output
+    type: String
+    description: "Result of the control check that produced the finding."
+    sampleValues: ["Failed", "Passed"]
+
+  - name: ControlId
+    type: String
+    description: "Identifier of the Black Kite control/check that generated the finding."
+    sampleValues: ["PATCH-001"]
+
+  - name: FindingId
+    type: Integer
+    description: "Black Kite's unique numeric ID for this specific finding instance; source of _key."
+    sampleValues: ["600000001"]
+
+  - name: FindingDate
+    type: DateTime
+    description: "When the finding was recorded (UTC); source of timestamp."
+    sampleValues: ["2026-06-02T09:49:13.833Z"]
+
+  - name: LastCheckDate
+    type: DateTime
+    description: "When the control was last evaluated for this asset (UTC)."
+    sampleValues: ["2026-06-02T09:49:13.500Z"]
+
+  # ==========================================
+  # AFFECTED ASSET
+  # ==========================================
+  - name: Domain
+    type: String
+    description: "The monitored vendor domain the finding belongs to."
+    sampleValues: ["contoso.com"]
+
+  - name: SubDomain
+    type: String
+    description: "Specific subdomain the finding was observed on; often null."
+
+  - name: IpAddress
+    type: String
+    description: "IP address of the affected asset."
+    sampleValues: ["198.51.100.23"]
+
+  - name: Port
+    type: Integer
+    description: "Network port the finding relates to; often null."
+
+  - name: ProductName
+    type: String
+    description: "Detected product and version on the asset (vendor/product format)."
+    sampleValues: ["apache/2.4.58"]
+
+  - name: Tags
+    type: DynamicArray
+    description: "Array of tag strings applied to the finding; often null. Use mv-expand to enumerate."
+
+  # ==========================================
+  # REMEDIATION TICKETS
+  # ==========================================
+  - name: Ticket.TicketId
+    type: String
+    description: "ID of the primary linked remediation ticket; null when none."
+
+  - name: Ticket.Status
+    type: String
+    description: "Status of the primary linked ticket; null when none."
+
+  - name: Ticket.Owner
+    type: String
+    description: "Owner of the primary linked ticket; null when none."
+
+  - name: Tickets
+    type: DynamicArray
+    description: "Array of all linked remediation ticket objects (each with TicketId, Status, Owner); empty when none. Use mv-expand to enumerate."

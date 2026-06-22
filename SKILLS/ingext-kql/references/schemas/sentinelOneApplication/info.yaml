@@ -1,0 +1,156 @@
+schema: sentinelOneApplication
+description: >-
+  SentinelOne application-inventory resource snapshot collected by Ingext from the
+  SentinelOne management API (installed applications). Each record is one
+  application installed on one endpoint: application identity (name, version,
+  publisher, signed/risk), install/update timestamps, size, and a denormalized set
+  of agent.* fields identifying the endpoint it is installed on. Because each row
+  is per (agent, application), the same application appears once per endpoint it is
+  installed on. The object is stored as a dynamic JSON document; use mv-expand for
+  any nested arrays.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Record poll time — when Ingext collected this application snapshot from the SentinelOne API. Primary time column for range filters (e.g. where timestamp > ago(1d)). For application lifecycle use installedAt, createdAt, or updatedAt instead."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the application record; mapped to the 'id' field (unique per agent+application). Unique per resource: each _key holds the latest snapshot, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # APPLICATION IDENTITY
+  # ==========================================
+  - name: id
+    type: String
+    description: "SentinelOne's internal ID for this application-on-endpoint record (a numeric string); source of _key."
+    sampleValues: ["2000000000000000001"]
+
+  - name: name
+    type: String
+    description: "Application display name."
+    sampleValues: ["Slack", "Google Chrome", "Zoom"]
+
+  - name: version
+    type: String
+    description: "Installed version of the application."
+    sampleValues: ["4.43.43"]
+
+  - name: publisher
+    type: String
+    description: "Vendor/publisher of the application as reported by the OS package metadata."
+    sampleValues: ["Slack Technologies Inc."]
+
+  - name: osType
+    type: String
+    description: "OS family the application is installed on (mirrors agentOsType)."
+    sampleValues: ["windows", "macos", "linux"]
+
+  - name: type
+    type: String
+    description: "Application record type as classified by SentinelOne."
+    sampleValues: ["app", "extension", "patch"]
+
+  - name: signed
+    type: Boolean
+    description: "Whether the application binary/package is digitally signed. false on an unexpected app can indicate higher risk."
+    sampleValues: ["true", "false"]
+
+  - name: riskLevel
+    type: String
+    description: "SentinelOne-assigned risk level for the application (e.g. based on known vulnerabilities)."
+    sampleValues: ["none", "low", "medium", "high", "critical"]
+
+  - name: size
+    type: Integer
+    description: "Application installed size in bytes, as reported by SentinelOne for this app (NOTE: this is the application's size from the resource, not an ingest-accounting value)."
+    sampleValues: ["125108"]
+
+  # ==========================================
+  # APPLICATION LIFECYCLE TIMESTAMPS
+  # ==========================================
+  - name: installedAt
+    type: DateTime
+    description: "When the application was installed on the endpoint (UTC). Date-only precision is common."
+    sampleValues: ["2025-03-17T00:00:00Z"]
+
+  - name: createdAt
+    type: DateTime
+    description: "When this application record was first created in the SentinelOne console (UTC)."
+    sampleValues: ["2025-04-02T11:24:57.531003Z"]
+
+  - name: updatedAt
+    type: DateTime
+    description: "When this application record was last updated in the SentinelOne console (UTC)."
+    sampleValues: ["2025-04-04T07:42:32.318672Z"]
+
+  - name: UpdatedOn
+    type: Integer
+    description: "Last-update time as a Unix epoch in milliseconds (numeric form of updatedAt). Use unixtime_milliseconds_todatetime(UpdatedOn) to convert."
+    sampleValues: ["1743752552318"]
+
+  # ==========================================
+  # ENDPOINT / AGENT (denormalized agent.*)
+  # ==========================================
+  - name: agentId
+    type: String
+    description: "SentinelOne internal agent ID of the endpoint this application is installed on. Joins to sentinelOneAgent.id."
+    sampleValues: ["2000000000000000002"]
+
+  - name: agentUuid
+    type: String
+    description: "Agent UUID of the endpoint (32-hex form, no dashes). Identifies the endpoint; relates to sentinelOneAgent.uuid."
+    sampleValues: ["00000000000000000000000000000001"]
+
+  - name: agentComputerName
+    type: String
+    description: "Hostname of the endpoint the application is installed on."
+    sampleValues: ["alex-hpprobook"]
+
+  - name: agentDomain
+    type: String
+    description: "Network domain or workgroup of the endpoint."
+    sampleValues: ["WORKGROUP", "CONTOSO"]
+
+  - name: agentMachineType
+    type: String
+    description: "Form factor of the endpoint."
+    sampleValues: ["laptop", "desktop", "server"]
+
+  - name: agentOsType
+    type: String
+    description: "OS family of the endpoint."
+    sampleValues: ["windows", "macos", "linux"]
+
+  - name: agentVersion
+    type: String
+    description: "SentinelOne agent version on the endpoint."
+    sampleValues: ["24.1.5.277"]
+
+  - name: agentNetworkStatus
+    type: String
+    description: "Network connectivity/isolation state of the endpoint's agent."
+    sampleValues: ["connected", "disconnected"]
+
+  - name: agentOperationalState
+    type: String
+    description: "Operational state of the agent on the endpoint."
+    sampleValues: ["na", "normal"]
+
+  - name: agentInfected
+    type: Boolean
+    description: "Whether the endpoint's agent currently reports unresolved threats."
+    sampleValues: ["true", "false"]
+
+  - name: agentIsActive
+    type: Boolean
+    description: "Whether the endpoint's agent is currently active (recently checked in)."
+    sampleValues: ["true", "false"]
+
+  - name: agentIsDecommissioned
+    type: Boolean
+    description: "Whether the endpoint's agent has been decommissioned."
+    sampleValues: ["true", "false"]

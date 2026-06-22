@@ -1,0 +1,259 @@
+schema: sentinelOneAgent
+description: >-
+  SentinelOne endpoint agent resource snapshot collected by Ingext from the
+  SentinelOne management API (agents inventory). Each record is the current state
+  of one installed agent/endpoint: hardware and OS, agent version and health,
+  protection/mitigation posture, scan and threat status, network/management
+  connectivity, site/group placement, and last logged-in user. The object is
+  stored as a dynamic JSON document, so nested objects are accessed with dot
+  notation (e.g. activeDirectory.computerDistinguishedName) and arrays require
+  mv-expand.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Record poll time — when Ingext collected this agent snapshot from the SentinelOne API. The agent resource has no creation-time field, so timestamp reflects collection, not agent install. Primary time column for range filters (e.g. where timestamp > ago(1d)). For agent-reported recency use updatedAt or lastActiveDate."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the agent record; mapped to the 'uuid' field. Unique per resource: each _key holds the latest snapshot, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: uuid
+    type: String
+    description: "The agent's globally unique identifier (GUID). Stable across reinstalls of the same endpoint; source of _key."
+    sampleValues: ["00000000-0000-0000-0000-000000000001"]
+
+  - name: id
+    type: String
+    description: "SentinelOne's internal agent ID (a numeric string), unique within the management console."
+    sampleValues: ["1000000000000000001"]
+
+  - name: computerName
+    type: String
+    description: "The endpoint's hostname."
+    sampleValues: ["adele-macbookpro"]
+
+  - name: lastLoggedInUserName
+    type: String
+    description: "Username of the last interactive user on the endpoint."
+    sampleValues: ["adele.vance"]
+
+  # ==========================================
+  # SITE / GROUP / TENANT
+  # ==========================================
+  - name: accountName
+    type: String
+    description: "SentinelOne account (top-level tenant) the agent belongs to."
+    sampleValues: ["Contoso - Production"]
+
+  - name: siteId
+    type: String
+    description: "ID of the SentinelOne site the agent belongs to (numeric string)."
+    sampleValues: ["1000000000000000002"]
+
+  - name: siteName
+    type: String
+    description: "Name of the SentinelOne site the agent belongs to."
+    sampleValues: ["Contoso"]
+
+  - name: groupName
+    type: String
+    description: "Name of the policy group the agent is assigned to within its site. Drives the applied protection policy."
+    sampleValues: ["Workstations", "Servers"]
+
+  - name: customer
+    type: String
+    description: "Ingext-side label identifying the SentinelOne data source/integration this record came from."
+    sampleValues: ["SentinelOneAPI-Contoso"]
+
+  - name: externalId
+    type: String
+    description: "Optional external/correlation ID for the endpoint; often empty."
+
+  - name: pluginName
+    type: String
+    description: "Name of the collecting plugin/integration; often empty."
+
+  # ==========================================
+  # HARDWARE & OS
+  # ==========================================
+  - name: modelName
+    type: String
+    description: "Hardware model of the endpoint."
+    sampleValues: ["MacBookPro18,3"]
+
+  - name: machineType
+    type: String
+    description: "Form factor / machine type."
+    sampleValues: ["laptop", "desktop", "server"]
+
+  - name: osType
+    type: String
+    description: "OS family."
+    sampleValues: ["macos", "windows", "linux"]
+
+  - name: osName
+    type: String
+    description: "OS product name."
+    sampleValues: ["macOS", "Windows 11"]
+
+  - name: osRevision
+    type: String
+    description: "OS version/build string."
+    sampleValues: ["15.6.1 (24G90)"]
+
+  - name: osUsername
+    type: String
+    description: "OS account the agent runs/reports as."
+    sampleValues: ["root"]
+
+  - name: domain
+    type: String
+    description: "Network domain associated with the endpoint (AD domain or DNS suffix); may be a workgroup or DNS domain."
+    sampleValues: ["contoso.com"]
+
+  # ==========================================
+  # NETWORK & CONNECTIVITY
+  # ==========================================
+  - name: externalIp
+    type: String
+    description: "Public/egress IP last seen for the endpoint."
+    sampleValues: ["198.51.100.23"]
+
+  - name: lastIpToMgmt
+    type: String
+    description: "Local IP the agent last used to reach the SentinelOne management console."
+    sampleValues: ["192.0.2.44"]
+
+  - name: networkStatus
+    type: String
+    description: "Network isolation/connectivity state of the agent."
+    sampleValues: ["connected", "disconnected", "disconnecting"]
+
+  # ==========================================
+  # AGENT HEALTH & STATE
+  # ==========================================
+  - name: agentVersion
+    type: String
+    description: "Installed SentinelOne agent version."
+    sampleValues: ["24.3.2.7753"]
+
+  - name: isActive
+    type: Boolean
+    description: "Whether the agent is currently active (recently checked in / running)."
+    sampleValues: ["true", "false"]
+
+  - name: isUpToDate
+    type: Boolean
+    description: "Whether the agent is running the expected/current version. false flags endpoints needing an agent upgrade."
+    sampleValues: ["true", "false"]
+
+  - name: isDecommissioned
+    type: Boolean
+    description: "Whether the agent has been decommissioned in the console."
+    sampleValues: ["true", "false"]
+
+  - name: isUninstalled
+    type: Boolean
+    description: "Whether the agent has been uninstalled from the endpoint."
+    sampleValues: ["true", "false"]
+
+  - name: isPendingUninstall
+    type: Boolean
+    description: "Whether an uninstall is pending for the agent."
+    sampleValues: ["true", "false"]
+
+  - name: lastActiveDate
+    type: DateTime
+    description: "When the agent was last seen active (UTC). Use to find stale/offline endpoints."
+    sampleValues: ["2026-06-20T09:10:15.757743Z"]
+
+  - name: updatedAt
+    type: DateTime
+    description: "When the agent record was last updated in the SentinelOne console (UTC)."
+    sampleValues: ["2026-06-21T11:42:46.99295Z"]
+
+  - name: offSecond
+    type: Integer
+    description: "Seconds the endpoint has been offline / not reporting (0 when currently online)."
+    sampleValues: ["105509"]
+
+  # ==========================================
+  # PROTECTION POSTURE
+  # ==========================================
+  - name: mitigationMode
+    type: String
+    description: "Active-threat mitigation policy mode. 'protect' enforces automatic mitigation; 'detect' only alerts. Endpoints in 'detect' are not auto-remediating."
+    sampleValues: ["protect", "detect"]
+
+  - name: mitigationModeSuspicious
+    type: String
+    description: "Suspicious-threat mitigation policy mode (separate from confirmed active threats)."
+    sampleValues: ["protect", "detect"]
+
+  # ==========================================
+  # THREAT & SCAN STATUS
+  # ==========================================
+  - name: infected
+    type: Boolean
+    description: "Whether the endpoint currently has unresolved threats (is considered infected)."
+    sampleValues: ["true", "false"]
+
+  - name: activeThreats
+    type: Integer
+    description: "Count of unresolved/active threats on the endpoint. > 0 indicates threats needing attention."
+    sampleValues: ["0", "1"]
+
+  - name: threatRebootRequired
+    type: Boolean
+    description: "Whether a reboot is required to complete threat mitigation."
+    sampleValues: ["true", "false"]
+
+  - name: scanStatus
+    type: String
+    description: "State of the most recent full disk scan."
+    sampleValues: ["finished", "started", "aborted", "none"]
+
+  - name: scanStartedAt
+    type: DateTime
+    description: "When the most recent scan started (UTC); may be null if never scanned."
+    sampleValues: ["2023-01-25T06:12:02.140101Z"]
+
+  - name: scanFinishedAt
+    type: DateTime
+    description: "When the most recent scan finished (UTC); may be null if never completed."
+    sampleValues: ["2023-01-31T06:23:32.392201Z"]
+
+  - name: appsVulnerabilityStatus
+    type: String
+    description: "Application vulnerability posture reported for the endpoint."
+    sampleValues: ["up_to_date", "patch_required", "not_applicable"]
+
+  # ==========================================
+  # ACTIVE DIRECTORY (activeDirectory.*)
+  # ==========================================
+  - name: activeDirectory.computerDistinguishedName
+    type: String
+    description: "Distinguished name (DN) of the computer object in Active Directory; empty when not domain-joined."
+
+  - name: activeDirectory.lastUserDistinguishedName
+    type: String
+    description: "DN of the last AD user on the endpoint; empty when not available."
+
+  - name: activeDirectory.computerMemberOf
+    type: DynamicArray
+    description: "Array of AD group DNs the computer object is a member of; often empty. Use mv-expand to enumerate."
+
+  - name: activeDirectory.lastUserMemberOf
+    type: DynamicArray
+    description: "Array of AD group DNs the last user is a member of; often empty. Use mv-expand to enumerate."

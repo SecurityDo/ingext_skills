@@ -1,0 +1,180 @@
+schema: gsuiteUser
+description: >-
+  Google Workspace (GSuite) directory user resource snapshot collected by Ingext
+  from the Google Admin SDK Directory API (resource kind admin#directory#user).
+  Each record is the current state of one directory user: profile/name, primary
+  and alias email addresses, org unit placement, account/security status, 2-Step
+  Verification enforcement, and recovery info. The user object is stored as a
+  dynamic JSON document, so nested objects are accessed with dot notation
+  (e.g. name.fullName) and arrays require mv-expand (e.g. emails, languages).
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Converted from the field creationTime. Primary time column for range filters (e.g. where timestamp > ago(1d))."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the user record; same as 'id' field. Unique per resource: each _key holds the latest snapshot, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # IDENTITY & PROFILE
+  # ==========================================
+  - name: id
+    type: String
+    description: "The user's unique, immutable Google directory ID (a numeric string). Stable even if the primary email changes."
+    sampleValues: ["100000000000000000001"]
+
+  - name: primaryEmail
+    type: String
+    description: "The user's primary email address (sign-in name). Changing it does not change id."
+    sampleValues: ["adele.vance@contoso.com"]
+
+  - name: kind
+    type: String
+    description: "Resource type string returned by the Directory API; always admin#directory#user for this data type."
+    sampleValues: ["admin#directory#user"]
+
+  - name: customerId
+    type: String
+    description: "Immutable ID of the Google Workspace customer (account) the user belongs to."
+    sampleValues: ["C00000000"]
+
+  - name: etag
+    type: String
+    description: "Entity tag (version identifier) of the resource as returned by the API."
+
+  - name: orgUnitPath
+    type: String
+    description: "Full path of the organizational unit the user belongs to, starting at the root '/'. Used to scope policy and for OU-based filtering."
+    sampleValues: ["/", "/Sales", "/Contractors"]
+
+  # ==========================================
+  # NAME (name.*)
+  # ==========================================
+  - name: name.fullName
+    type: String
+    description: "The user's full display name (given + family)."
+    sampleValues: ["Adele Vance"]
+
+  - name: name.givenName
+    type: String
+    description: "First name."
+    sampleValues: ["Adele"]
+
+  - name: name.familyName
+    type: String
+    description: "Last name."
+    sampleValues: ["Vance"]
+
+  # ==========================================
+  # EMAIL ADDRESSES & ALIASES
+  # ==========================================
+  - name: emails
+    type: DynamicArray
+    description: >-
+      Array of email objects for the user, each with address and optional
+      primary (Boolean, true on the primary address) and type/customType. Use
+      mv-expand to enumerate, e.g.
+      mv-expand emails | extend addr = tostring(emails.address).
+    sampleValues: ["adele.vance@contoso.com"]
+
+  - name: nonEditableAliases
+    type: DynamicArray
+    description: "Array of alias email-address strings that are owned/managed by the domain and cannot be edited by the admin (e.g. aliases on secondary domains)."
+    sampleValues: ["adele@contoso.io", "adele@contoso.net"]
+
+  - name: recoveryEmail
+    type: String
+    description: "Recovery email address used for account recovery; often an external/personal address. May be absent."
+
+  - name: recoveryPhone
+    type: String
+    description: "Recovery phone number in E.164 format used for account recovery. May be absent."
+
+  # ==========================================
+  # ACCOUNT STATUS & ADMIN
+  # ==========================================
+  - name: agreedToTerms
+    type: Boolean
+    description: "Whether the user has agreed to the Google Workspace terms of service (true after first sign-in)."
+    sampleValues: ["true", "false"]
+
+  - name: suspended
+    type: Boolean
+    description: "Whether the account is suspended (blocked from sign-in). Absent or false for active users."
+    sampleValues: ["true", "false"]
+
+  - name: archived
+    type: Boolean
+    description: "Whether the account is archived. Absent or false for active users."
+    sampleValues: ["true", "false"]
+
+  - name: changePasswordAtNextLogin
+    type: Boolean
+    description: "Whether the user is forced to change their password at next sign-in."
+    sampleValues: ["true", "false"]
+
+  - name: isAdmin
+    type: Boolean
+    description: "Whether the user is a super administrator of the Workspace account. Present when set; key for finding privileged accounts."
+    sampleValues: ["true", "false"]
+
+  - name: isDelegatedAdmin
+    type: Boolean
+    description: "Whether the user is a delegated administrator (granted admin roles short of super admin)."
+    sampleValues: ["true", "false"]
+
+  - name: includeInGlobalAddressList
+    type: Boolean
+    description: "Whether the user is shown in the organization's global address list (directory)."
+    sampleValues: ["true", "false"]
+
+  - name: isMailboxSetup
+    type: Boolean
+    description: "Whether the user's Gmail mailbox has been provisioned/set up."
+    sampleValues: ["true", "false"]
+
+  # ==========================================
+  # 2-STEP VERIFICATION (2SV / MFA)
+  # ==========================================
+  - name: isEnforcedIn2Sv
+    type: Boolean
+    description: "Whether 2-Step Verification (MFA) is enforced for the user. Combine with isEnrolledIn2Sv to find users required but not yet enrolled."
+    sampleValues: ["true", "false"]
+
+  - name: isEnrolledIn2Sv
+    type: Boolean
+    description: "Whether the user has enrolled in 2-Step Verification. Present when set; absent users are typically not enrolled."
+    sampleValues: ["true", "false"]
+
+  # ==========================================
+  # ACTIVITY
+  # ==========================================
+  - name: creationTime
+    type: DateTime
+    description: "When the user account was created (UTC). Source for the timestamp column."
+    sampleValues: ["2026-05-04T08:31:15.000Z"]
+
+  - name: lastLoginTime
+    type: DateTime
+    description: "When the user last signed in (UTC). The epoch value 1970-01-01T00:00:00.000Z indicates the user has never signed in."
+    sampleValues: ["2026-06-10T12:08:00.000Z"]
+
+  # ==========================================
+  # LOCALE
+  # ==========================================
+  - name: languages
+    type: DynamicArray
+    description: >-
+      Array of language objects, each with languageCode and preference
+      (e.g. 'preferred'). Use mv-expand to read, e.g.
+      mv-expand languages | extend lang = tostring(languages.languageCode).
+    sampleValues: ["en"]

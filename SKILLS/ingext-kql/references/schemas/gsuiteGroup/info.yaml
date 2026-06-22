@@ -1,0 +1,92 @@
+schema: gsuiteGroup
+description: >-
+  Google Workspace (GSuite) directory group resource snapshot collected by Ingext
+  from the Google Admin SDK Directory API (resource kind admin#directory#group).
+  Each record is the current state of one group: name/email, description, alias
+  addresses, direct member count, and the expanded member list (each member with
+  email, role, status, and type). The group object is stored as a dynamic JSON
+  document, so nested objects are accessed with dot notation and arrays require
+  mv-expand (e.g. members, nonEditableAliases).
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Record poll time — when Ingext collected this group snapshot. The group resource has no creation-time field, so timestamp reflects collection, not group creation. Primary time column for range filters (e.g. where timestamp > ago(1d))."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the group record; same as 'id' field. Unique per resource: each _key holds the latest snapshot, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # IDENTITY & PROFILE
+  # ==========================================
+  - name: id
+    type: String
+    description: "The group's unique, immutable Google directory ID. Stable even if the group email changes."
+    sampleValues: ["01abcde20fghij3"]
+
+  - name: email
+    type: String
+    description: "The group's primary email address. Changing it does not change id."
+    sampleValues: ["administrators@contoso.com"]
+
+  - name: name
+    type: String
+    description: "The group's display name."
+    sampleValues: ["Administrators"]
+
+  - name: description
+    type: String
+    description: "Free-text description of the group's purpose; may be empty."
+    sampleValues: ["Group for all administrators"]
+
+  - name: kind
+    type: String
+    description: "Resource type string returned by the Directory API; always admin#directory#group for this data type."
+    sampleValues: ["admin#directory#group"]
+
+  - name: etag
+    type: String
+    description: "Entity tag (version identifier) of the resource as returned by the API."
+
+  - name: adminCreated
+    type: Boolean
+    description: "Whether the group was created by an administrator (true) rather than by a user. User-created groups can indicate self-service/shadow collaboration."
+    sampleValues: ["true", "false"]
+
+  # ==========================================
+  # ALIASES
+  # ==========================================
+  - name: nonEditableAliases
+    type: DynamicArray
+    description: "Array of alias email-address strings owned/managed by the domain that cannot be edited by the admin (e.g. aliases on secondary domains). Use mv-expand to enumerate."
+    sampleValues: ["administrators@contoso.io", "administrators@contoso.net"]
+
+  - name: aliases
+    type: DynamicArray
+    description: "Array of editable alias email-address strings for the group. May be absent when the group has no custom aliases."
+
+  # ==========================================
+  # MEMBERSHIP
+  # ==========================================
+  - name: directMembersCount
+    type: String
+    description: "Number of direct members in the group, returned by the API as a STRING (not an integer). Cast before arithmetic/sorting, e.g. toint(directMembersCount). Counts direct members only, not members inherited via nested groups."
+    sampleValues: ["3"]
+
+  - name: members
+    type: DynamicArray
+    description: >-
+      Array of member objects, each with email, id, role (OWNER, MANAGER, or
+      MEMBER), status (ACTIVE, SUSPENDED, ARCHIVED), type (USER, GROUP, or
+      EXTERNAL), and kind (admin#directory#member). Use mv-expand to flatten, e.g.
+      mv-expand members | extend memberEmail = tostring(members.email),
+      memberRole = tostring(members.role). Note: present only when the snapshot
+      includes expanded membership; the count alone is in directMembersCount.

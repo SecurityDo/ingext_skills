@@ -1,0 +1,31 @@
+description: >-
+  Google Workspace group membership inventory: lists groups with their direct
+  member count and a breakdown of owners/managers and any external (non-USER /
+  EXTERNAL) members expanded from the member list. Useful for access reviews,
+  spotting groups with external members, and finding privileged distribution
+  lists (e.g. an administrators group) after an alert.
+datatype: gsuiteGroup
+kql: |
+  gsuiteGroup
+  | extend DirectMembers = toint(directMembersCount)
+  | mv-expand member = members
+  | extend
+      memberEmail = tostring(member.email),
+      memberRole = tostring(member.role),
+      memberType = tostring(member.type),
+      memberStatus = tostring(member.status)
+  | summarize
+      DirectMembers = take_any(DirectMembers),
+      ExpandedMembers = count(),
+      Owners = countif(memberRole == "OWNER"),
+      Managers = countif(memberRole == "MANAGER"),
+      ExternalMembers = countif(memberType == "EXTERNAL"),
+      SuspendedMembers = countif(memberStatus == "SUSPENDED")
+      by name, email, adminCreated
+  | order by ExternalMembers desc, DirectMembers desc, name asc
+tags: [gsuite, google-workspace, groups, membership, access-review, security]
+expected_output: |
+  Groups with member-role/type breakdown (sanitized).
+
+  name            email                        adminCreated  DirectMembers  ExpandedMembers  Owners  Managers  ExternalMembers  SuspendedMembers
+  Administrators  administrators@contoso.com   true          3              3                1       0         0                0

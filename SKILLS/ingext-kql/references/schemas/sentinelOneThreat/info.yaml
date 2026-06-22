@@ -1,0 +1,281 @@
+schema: sentinelOneThreat
+description: >-
+  SentinelOne threat/detection resource snapshot collected by Ingext from the
+  SentinelOne management API (threats). Each record is one detected threat on one
+  endpoint: the threat file/process and its classification, analyst verdict and
+  mitigation/incident status, the behavioral indicators that fired, and
+  denormalized agent context at both detection time (agentDetectionInfo) and the
+  current/real-time state (agentRealtimeInfo). The object is stored as a dynamic
+  JSON document, so nested objects use dot notation (e.g. threatInfo.classification)
+  and arrays (indicators, mitigationStatus) require mv-expand.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Threat detection time, derived from the createdOn field (a Unix epoch in milliseconds). Primary time column for range filters (e.g. where timestamp > ago(1d)). Equivalent to unixtime_milliseconds_todatetime(createdOn) and to threatInfo.createdAt."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the threat record; mapped to the 'id' field (equal to threatInfo.threatId). Unique per resource: each _key holds the latest snapshot, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # IDENTITY & TIME
+  # ==========================================
+  - name: id
+    type: String
+    description: "SentinelOne threat ID (a numeric string); source of _key and equal to threatInfo.threatId."
+    sampleValues: ["2000000000000000003"]
+
+  - name: createdOn
+    type: Integer
+    description: "Threat creation time as a Unix epoch in milliseconds (numeric source of timestamp). Convert with unixtime_milliseconds_todatetime(createdOn)."
+    sampleValues: ["1779431170623"]
+
+  # ==========================================
+  # INDICATORS (array)
+  # ==========================================
+  - name: indicators
+    type: DynamicArray
+    description: >-
+      Array of behavioral indicator objects that contributed to the detection,
+      each with category (MITRE-style tactic, e.g. Persistence, Execution,
+      Discovery, Defense Evasion, Infostealer) and description (human-readable
+      behavior). Use mv-expand to enumerate, e.g.
+      mv-expand indicators | summarize count() by tostring(indicators.category).
+    sampleValues: ["Persistence", "Execution", "Discovery"]
+
+  # ==========================================
+  # MITIGATION (array)
+  # ==========================================
+  - name: mitigationStatus
+    type: DynamicArray
+    description: "Array of mitigation-action objects describing remediation actions taken (e.g. kill, quarantine) and their per-action status. Empty when no automated mitigation occurred. Distinct from the scalar threatInfo.mitigationStatus. Use mv-expand to inspect."
+
+  # ==========================================
+  # THREAT INFO (threatInfo.*)
+  # ==========================================
+  - name: threatInfo.threatId
+    type: String
+    description: "Threat ID within threatInfo; matches the top-level id."
+    sampleValues: ["2000000000000000003"]
+
+  - name: threatInfo.threatName
+    type: String
+    description: "Name of the detected threat (often the file/application name)."
+    sampleValues: ["Grammarly Desktop"]
+
+  - name: threatInfo.classification
+    type: String
+    description: "Threat classification."
+    sampleValues: ["Malware", "PUA", "Ransomware", "Trojan"]
+
+  - name: threatInfo.classificationSource
+    type: String
+    description: "What produced the classification."
+    sampleValues: ["Static", "Cloud", "Behavioral"]
+
+  - name: threatInfo.confidenceLevel
+    type: String
+    description: "Engine confidence in the detection."
+    sampleValues: ["malicious", "suspicious"]
+
+  - name: threatInfo.analystVerdict
+    type: String
+    description: "Analyst's verdict on the threat after review."
+    sampleValues: ["undefined", "true_positive", "false_positive", "suspicious"]
+
+  - name: threatInfo.analystVerdictDescription
+    type: String
+    description: "Human-readable form of analystVerdict."
+    sampleValues: ["Undefined", "True Positive", "False Positive"]
+
+  - name: threatInfo.mitigationStatus
+    type: String
+    description: "Scalar mitigation status for the threat."
+    sampleValues: ["not_mitigated", "mitigated", "marked_as_benign"]
+
+  - name: threatInfo.incidentStatus
+    type: String
+    description: "Incident workflow status for the threat. Use to find open detections."
+    sampleValues: ["unresolved", "in_progress", "resolved"]
+
+  - name: threatInfo.automaticallyResolved
+    type: Boolean
+    description: "Whether the threat was automatically resolved without analyst action."
+    sampleValues: ["true", "false"]
+
+  - name: threatInfo.createdAt
+    type: DateTime
+    description: "When the threat was created/detected (UTC); ISO form of createdOn."
+    sampleValues: ["2026-05-22T06:26:10.623405Z"]
+
+  - name: threatInfo.processUser
+    type: String
+    description: "OS user under which the threatening process/file ran."
+    sampleValues: ["alex.wilber"]
+
+  - name: threatInfo.publisherName
+    type: String
+    description: "Signing publisher of the file, when present."
+    sampleValues: ["Grammarly, Inc"]
+
+  - name: threatInfo.filePath
+    type: String
+    description: "Full path of the detected file on the endpoint."
+    sampleValues: ["/Applications/Grammarly Desktop.app/Contents/MacOS/Grammarly Desktop"]
+
+  - name: threatInfo.fileSize
+    type: Integer
+    description: "Size of the detected file in bytes."
+    sampleValues: ["157280"]
+
+  - name: threatInfo.fileExtensionType
+    type: String
+    description: "Detected file extension/type category; may be empty."
+
+  - name: threatInfo.fileVerificationType
+    type: String
+    description: "Code-signing verification result for the file."
+    sampleValues: ["SignedVerified", "NotSigned", "SignedUnverified"]
+
+  - name: threatInfo.sha1
+    type: String
+    description: "SHA-1 hash of the detected file."
+    sampleValues: ["da39a3ee5e6b4b0d3255bfef95601890afd80709"]
+
+  - name: threatInfo.cloudFilesHashVerdict
+    type: String
+    description: "Reputation verdict for the file hash from SentinelOne cloud; may be empty."
+    sampleValues: ["black", "white", "unknown"]
+
+  - name: threatInfo.whiteningOptions
+    type: DynamicArray
+    description: "Exclusion/whitening options applicable to the threat; null when none."
+
+  # ==========================================
+  # AGENT AT DETECTION (agentDetectionInfo.*)
+  # ==========================================
+  - name: agentDetectionInfo.agentUuid
+    type: String
+    description: "UUID of the endpoint as recorded at detection time. Relates to sentinelOneAgent.uuid."
+    sampleValues: ["00000000-0000-0000-0000-000000000001"]
+
+  - name: agentDetectionInfo.agentVersion
+    type: String
+    description: "Agent version at detection time."
+    sampleValues: ["25.2.1.8151"]
+
+  - name: agentDetectionInfo.agentOsName
+    type: String
+    description: "Endpoint OS name at detection time."
+    sampleValues: ["macOS", "Windows 11"]
+
+  - name: agentDetectionInfo.agentMitigationMode
+    type: String
+    description: "Mitigation policy mode in effect at detection time. 'detect' means the threat was not auto-mitigated."
+    sampleValues: ["protect", "detect"]
+
+  - name: agentDetectionInfo.agentLastLoggedInUserName
+    type: String
+    description: "Last logged-in user on the endpoint at detection time."
+    sampleValues: ["alex.wilber"]
+
+  - name: agentDetectionInfo.agentDomain
+    type: String
+    description: "Endpoint domain/workgroup at detection time; may be empty."
+
+  - name: agentDetectionInfo.accountName
+    type: String
+    description: "SentinelOne account name at detection time."
+    sampleValues: ["Contoso - Production"]
+
+  - name: agentDetectionInfo.siteName
+    type: String
+    description: "SentinelOne site name at detection time."
+    sampleValues: ["Contoso"]
+
+  - name: agentDetectionInfo.groupName
+    type: String
+    description: "Policy group name at detection time."
+    sampleValues: ["Workstations"]
+
+  - name: agentDetectionInfo.agentIpV4
+    type: String
+    description: "Comma-separated list of the endpoint's local IPv4 addresses at detection time. Split on ',' to enumerate."
+    sampleValues: ["127.0.0.1,192.0.2.22"]
+
+  - name: agentDetectionInfo.externalIp
+    type: String
+    description: "Public/egress IP of the endpoint at detection time."
+    sampleValues: ["198.51.100.23"]
+
+  # ==========================================
+  # AGENT REAL-TIME (agentRealtimeInfo.*)
+  # ==========================================
+  - name: agentRealtimeInfo.agentComputerName
+    type: String
+    description: "Current hostname of the endpoint. Primary field for identifying the affected machine."
+    sampleValues: ["alex-macbookpro"]
+
+  - name: agentRealtimeInfo.agentUuid
+    type: String
+    description: "Current UUID of the endpoint. Relates to sentinelOneAgent.uuid."
+    sampleValues: ["00000000-0000-0000-0000-000000000001"]
+
+  - name: agentRealtimeInfo.agentMachineType
+    type: String
+    description: "Current form factor of the endpoint."
+    sampleValues: ["laptop", "desktop", "server"]
+
+  - name: agentRealtimeInfo.agentVersion
+    type: String
+    description: "Current agent version on the endpoint."
+    sampleValues: ["25.2.1.8151"]
+
+  - name: agentRealtimeInfo.agentOsName
+    type: String
+    description: "Current endpoint OS name."
+    sampleValues: ["macOS"]
+
+  - name: agentRealtimeInfo.agentMitigationMode
+    type: String
+    description: "Current mitigation policy mode on the endpoint."
+    sampleValues: ["protect", "detect"]
+
+  - name: agentRealtimeInfo.accountName
+    type: String
+    description: "Current SentinelOne account name."
+    sampleValues: ["Contoso - Production"]
+
+  - name: agentRealtimeInfo.siteName
+    type: String
+    description: "Current SentinelOne site name."
+    sampleValues: ["Contoso"]
+
+  - name: agentRealtimeInfo.groupName
+    type: String
+    description: "Current policy group name."
+    sampleValues: ["Workstations"]
+
+  - name: agentRealtimeInfo.agentDomain
+    type: String
+    description: "Current endpoint domain/workgroup; may be empty."
+
+  - name: agentRealtimeInfo.agentLastLoggedInUserName
+    type: String
+    description: "Current last logged-in user; may be empty if not reported in real time."
+
+  - name: agentRealtimeInfo.agentIpV4
+    type: String
+    description: "Current comma-separated local IPv4 list; may be empty if not reported in real time."
+
+  - name: agentRealtimeInfo.externalIp
+    type: String
+    description: "Current public/egress IP; may be empty if not reported in real time."

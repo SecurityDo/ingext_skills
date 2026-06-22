@@ -1,0 +1,41 @@
+description: >-
+  SentinelOne endpoint posture review: surfaces agents that need attention —
+  infected or with active threats, not in 'protect' mitigation mode, out-of-date
+  agent version, or stale (not active and offline for a long time). Excludes
+  uninstalled/decommissioned agents. Useful for triaging endpoint coverage gaps
+  and confirming protection posture after an alert.
+datatype: sentinelOneAgent
+kql: |
+  sentinelOneAgent
+  | where isUninstalled == false and isDecommissioned == false
+  | extend
+      HasThreats = infected == true or activeThreats > 0,
+      NotProtecting = mitigationMode != "protect",
+      Stale = isActive == false and offSecond > 86400
+  | where HasThreats or NotProtecting or isUpToDate == false or Stale
+  | extend Reasons = strcat_array(pack_array(
+      iff(HasThreats, "threats", ""),
+      iff(NotProtecting, "not-protecting", ""),
+      iff(isUpToDate == false, "outdated-agent", ""),
+      iff(Stale, "stale", "")), " ")
+  | project
+      computerName,
+      siteName,
+      groupName,
+      osName,
+      agentVersion,
+      activeThreats,
+      infected,
+      mitigationMode,
+      isUpToDate,
+      networkStatus,
+      lastActiveDate,
+      Reasons,
+      uuid
+  | order by activeThreats desc, lastActiveDate asc
+tags: [sentinelone, edr, endpoint, threats, posture, security]
+expected_output: |
+  Agents needing attention with the reason flags (sanitized).
+
+  computerName       siteName  groupName     osName  agentVersion  activeThreats  infected  mitigationMode  isUpToDate  networkStatus  lastActiveDate            Reasons  uuid
+  adele-macbookpro   Contoso   Workstations  macOS   24.3.2.7753   0              false     protect         true        connected      2026-06-20T09:10:15.757743Z  stale    00000000-0000-0000-0000-000000000001

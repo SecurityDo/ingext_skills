@@ -1,0 +1,32 @@
+description: >-
+  Open SentinelOne threats triage: lists detections that are still unresolved and
+  not mitigated, with the affected endpoint/user, classification and confidence,
+  the analyst verdict, and the set of behavioral indicator categories that fired.
+  Endpoints in 'detect' mitigation mode did not auto-remediate, so these warrant
+  manual response. Ordered to surface the most recent, high-confidence detections.
+datatype: sentinelOneThreat
+kql: |
+  sentinelOneThreat
+  | where threatInfo.incidentStatus == "unresolved"
+      and threatInfo.mitigationStatus == "not_mitigated"
+  | extend IndicatorCount = array_length(indicators)
+  | project
+      timestamp,
+      ComputerName = tostring(agentRealtimeInfo.agentComputerName),
+      User = tostring(threatInfo.processUser),
+      ThreatName = tostring(threatInfo.threatName),
+      Classification = tostring(threatInfo.classification),
+      Confidence = tostring(threatInfo.confidenceLevel),
+      AnalystVerdict = tostring(threatInfo.analystVerdict),
+      MitigationMode = tostring(agentRealtimeInfo.agentMitigationMode),
+      IndicatorCount,
+      FilePath = tostring(threatInfo.filePath),
+      Sha1 = tostring(threatInfo.sha1),
+      id
+  | order by timestamp desc
+tags: [sentinelone, edr, threats, incident-response, triage, security]
+expected_output: |
+  Unresolved, not-mitigated detections with endpoint and classification (sanitized).
+
+  timestamp                    ComputerName      User         ThreatName         Classification  Confidence  AnalystVerdict  MitigationMode  IndicatorCount  FilePath                                                              Sha1                                      id
+  2026-05-22T06:26:10.623405Z  alex-macbookpro   alex.wilber  Grammarly Desktop  Malware         suspicious  undefined       detect          10              /Applications/Grammarly Desktop.app/Contents/MacOS/Grammarly Desktop  da39a3ee5e6b4b0d3255bfef95601890afd80709  2000000000000000003

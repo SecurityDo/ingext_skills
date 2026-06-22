@@ -1,0 +1,34 @@
+description: >-
+  Google Workspace users for whom 2-Step Verification is enforced but who have not
+  yet enrolled, plus super/delegated admins, ordered to surface privileged and
+  unprotected accounts first. Active (non-suspended) users where isEnforcedIn2Sv is
+  true but isEnrolledIn2Sv is not true are the highest-risk gap; admins without 2SV
+  are prime takeover targets after an alert.
+datatype: gsuiteUser
+kql: |
+  gsuiteUser
+  | where tobool(coalesce(suspended, false)) == false
+  | extend
+      Enforced2Sv = tobool(coalesce(isEnforcedIn2Sv, false)),
+      Enrolled2Sv = tobool(coalesce(isEnrolledIn2Sv, false)),
+      IsAdmin = tobool(coalesce(isAdmin, false)) or tobool(coalesce(isDelegatedAdmin, false))
+  | extend Gap2Sv = Enforced2Sv and not(Enrolled2Sv)
+  | where Gap2Sv or IsAdmin
+  | project
+      primaryEmail,
+      FullName = tostring(name.fullName),
+      orgUnitPath,
+      IsAdmin,
+      Enforced2Sv,
+      Enrolled2Sv,
+      Gap2Sv,
+      lastLoginTime,
+      creationTime
+  | order by Gap2Sv desc, IsAdmin desc, primaryEmail asc
+tags: [gsuite, google-workspace, mfa, 2sv, admins, security]
+expected_output: |
+  Active users with a 2SV enforcement gap or admin privilege (sanitized).
+
+  primaryEmail                FullName      orgUnitPath  IsAdmin  Enforced2Sv  Enrolled2Sv  Gap2Sv  lastLoginTime             creationTime
+  sam.cole@contoso.com        Sam Cole      /Sales       false    true         false        true    2026-06-09T11:02:00.000Z  2026-04-18T09:15:00.000Z
+  adele.vance@contoso.com     Adele Vance   /            true     true         true         false   2026-06-10T12:08:00.000Z  2026-05-04T08:31:15.000Z

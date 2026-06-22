@@ -1,6 +1,6 @@
 ---
 name: azure-user-signin-investigation
-version: 1.0.1
+version: 1.0.2
 description: >-
   Investigate a user's Azure AD / Entra ID sign-in and directory-change activity by querying
   the AzureSigninLogs / AzureAuditLogs datalake tables directly with KQL, and combining the
@@ -47,6 +47,12 @@ before running:
 | `assets/queries/signin.kql` | `signin.json` | Sign-in history |
 | `assets/queries/dir_changes_initiated.kql` | `dir_init.json` | Directory changes initiated by user |
 | `assets/queries/dir_changes_targeting.kql` | `dir_target.json` | Directory changes targeting user |
+
+> **Directory-change coverage (v1.0.2):** the two directory queries match group / role /
+> app-role membership changes **plus** identity-security events — password resets / changes,
+> MFA / security-info (authentication method) registration & changes, device registration, and
+> session-token / account-disable events. These are high-signal account-takeover indicators and
+> are flagged distinctly in the report's Diagnostic Findings.
 
 ## Required arguments
 

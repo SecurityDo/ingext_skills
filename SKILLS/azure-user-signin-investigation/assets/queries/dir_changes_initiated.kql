@@ -1,15 +1,30 @@
 // GetDirectoryChangesInitiatedByUser (extracted from the FPL report) — direct KQL.
-// Directory group/role/permission changes the subject user *initiated*.
+// Directory / identity changes the subject user *initiated*.
 // Placeholders: {USER} = lower-cased UPN, {FROM}/{TO} = epoch-ms window bounds.
 let UserEmail = tolower("{USER}");
 AzureAuditLogs
 | where TimeGenerated between (unixtime_milliseconds_todatetime({FROM}) .. unixtime_milliseconds_todatetime({TO}))
 | where ActivityDisplayName has_any (
+    // group / role / app-role membership
     "Add member to group", "Remove member from group",
     "Add owner to group", "Remove owner from group",
     "Add member to role", "Remove member from role",
     "Add eligible member to role", "Remove eligible member from role",
-    "Add app role assignment", "Remove app role assignment")
+    "Add app role assignment", "Remove app role assignment",
+    // password
+    "Reset password (by admin)", "Reset user password", "Change user password",
+    "Self-service password reset flow activity progress",
+    // MFA / security info / authentication methods
+    "User registered security info", "User changed default security info",
+    "User deleted security info", "User registered all required security info",
+    "User started security info registration",
+    "Admin registered security info", "Admin updated security info", "Admin deleted security info",
+    "POST UserAuthMethod.SecurityInfoRegistrationCallback",
+    // device registration
+    "Add device", "Update device", "Register device",
+    "Add registered owner to device", "Add registered users to device",
+    // session / account state
+    "Update StsRefreshTokenValidFrom Timestamp", "Disable account")
 | extend
     InitiatedByUserUPN = tolower(tostring(InitiatedBy.user.userPrincipalName)),
     InitiatedByAppName = tostring(InitiatedBy.app.displayName)
@@ -18,5 +33,5 @@ AzureAuditLogs
     TargetName = tostring(TargetResource.displayName),
     TargetUPN  = tolower(tostring(TargetResource.userPrincipalName))
 | where InitiatedByUserUPN == UserEmail
-| project TimeGenerated, ActivityDisplayName, Result, InitiatedByUserUPN, InitiatedByAppName, TargetName, TargetUPN, CorrelationId
+| project TimeGenerated, ActivityDisplayName, Category, Result, InitiatedByUserUPN, InitiatedByAppName, TargetName, TargetUPN, CorrelationId
 | order by TimeGenerated desc

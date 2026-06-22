@@ -1227,7 +1227,7 @@ def _sev_pill(sev):
     m = {"Critical":"fail","High":"fail","Medium":"med","Low":"low","Info":"info"}
     return f'<span class="pill {m.get(sev,"info")}">{esc(sev)}</span>'
 
-def build_diagnostics(cols, rows, dir_init_rows, dir_target_rows, user_record, username):
+def build_diagnostics(cols, rows, dir_init_cols, dir_init_rows, dir_target_cols, dir_target_rows, user_record, username):
     """Interpret the collected sign-in + directory data into a verdict and findings.
     Uses only data already gathered (no new queries). Returns (verdict_html, findings_html)."""
     import collections
@@ -1254,6 +1254,26 @@ def build_diagnostics(cols, rows, dir_init_rows, dir_target_rows, user_record, u
     is_priv=any(any(k in (rn or "").lower() for k in ("admin","global","privileged")) for rn in roles)
 
     findings=[]  # (title, evidence, severity)
+
+    # identity-security events surfaced by the widened directory queries
+    def _acts(c, rws):
+        ai=_gcol(c, "ActivityDisplayName", "activity", "operationname")
+        return [str(r[ai]).strip() for r in rws if ai is not None and ai < len(r) and r[ai]]
+    all_acts=_acts(dir_init_cols, dir_init_rows)+_acts(dir_target_cols, dir_target_rows)
+    def _match(*subs): return sorted({a for a in all_acts if any(x in a.lower() for x in subs)})
+    mfa=_match("security info","securityinfo","authentication method","auth method","securityinforegistration","strongauthentication")
+    pwd=_match("password")
+    dev=_match("device")
+    sess=_match("refreshtoken","stsrefreshtoken","disable account")
+    if mfa:
+        findings.append(("Authentication method / MFA change",
+                         f"{', '.join(mfa[:3])} — strong account-takeover indicator","High"))
+    if pwd:
+        findings.append(("Password reset / change on the account", ", ".join(pwd[:2]),"High"))
+    if dev:
+        findings.append(("Device registration change", ", ".join(dev[:2]),"Medium"))
+    if sess:
+        findings.append(("Session-token revoke / account-state change", ", ".join(sess[:2]),"Medium"))
     if risky:
         lv=[x for x in sorted({val(r,rlx) for r in risky}|{val(r,rstx) for r in risky}) if x and x.lower()!="none"]
         findings.append(("Entra Identity Protection risk",
@@ -1265,8 +1285,8 @@ def build_diagnostics(cols, rows, dir_init_rows, dir_target_rows, user_record, u
         findings.append(("Sign-ins from multiple countries",
                          f"{len(countries)} countries: {', '.join(countries[:5])} — check for impossible travel",
                          "High" if (risky or fails) else "Medium"))
-    if fails:
-        sev="High" if total and len(fails) > max(3, total*0.3) else "Medium"
+    if fails and (len(fails) >= 5 or (total and len(fails)/total > 0.2)):
+        sev="High" if total and len(fails) > max(5, total*0.3) else "Medium"
         ec=collections.Counter(val(r,erx) for r in fails if val(r,erx))
         top=f" (top error {ec.most_common(1)[0][0]})" if ec else ""
         findings.append(("Failed sign-ins", f"{len(fails)} of {total} sign-ins failed{top}", sev))
@@ -1283,8 +1303,13 @@ def build_diagnostics(cols, rows, dir_init_rows, dir_target_rows, user_record, u
 
     rank={"Critical":4,"High":3,"Medium":2,"Low":1}
     worst=max((rank.get(s,0) for _,_,s in findings), default=0)
-    if risky and (fails or len(countries)>1 or dir_target_rows):
+    id_sec=bool(mfa) or bool(pwd)
+    if risky and (fails or len(countries)>1 or dir_target_rows or id_sec):
         worst=4  # combo escalation
+    elif id_sec and (risky or fails or len(countries)>1):
+        worst=4
+    elif mfa and pwd:
+        worst=4
     sev_name={4:"Critical",3:"High",2:"Medium",1:"Low",0:"Low"}[worst]
     sev_cls={"Critical":"sev-critical","High":"sev-high","Medium":"sev-medium","Low":"sev-low"}[sev_name]
 
@@ -1392,7 +1417,8 @@ def main():
     geo_section     = build_geo_breakdown(signin_cols, signin_rows)
     insights_strip  = build_insights(signin_cols, signin_rows, dir_init_rows, dir_target_rows)
     verdict_banner, diagnostics_section = build_diagnostics(
-        signin_cols, signin_rows, dir_init_rows, dir_target_rows, user_record, args.username)
+        signin_cols, signin_rows, dir_init_cols, dir_init_rows, dir_target_cols, dir_target_rows,
+        user_record, args.username)
 
     # Load template
     template_path = Path(args.template)

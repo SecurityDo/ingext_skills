@@ -1,0 +1,33 @@
+description: >-
+  SentinelOne software inventory rollup: aggregates installed applications across
+  endpoints to show, per application+version, how many endpoints have it, whether
+  it is unsigned, and its highest reported risk level. Surfaces risky or unsigned
+  software and rare installs worth investigating after an alert. Drop the summarize
+  to list raw per-endpoint installs.
+datatype: sentinelOneApplication
+kql: |
+  sentinelOneApplication
+  | where agentIsDecommissioned == false
+  | summarize
+      Installs = dcount(agentUuid),
+      Endpoints = make_set(agentComputerName, 50),
+      AnyUnsigned = countif(signed == false) > 0,
+      MaxRisk = max(riskLevel)
+      by name, version, publisher, osType
+  | where AnyUnsigned or MaxRisk !in ("none", "")
+  | project
+      name,
+      version,
+      publisher,
+      osType,
+      Installs,
+      AnyUnsigned,
+      MaxRisk,
+      Endpoints
+  | order by MaxRisk desc, Installs desc, name asc
+tags: [sentinelone, edr, endpoint, software-inventory, vulnerability, security]
+expected_output: |
+  Risky or unsigned applications rolled up by app+version (sanitized).
+
+  name   version    publisher                  osType   Installs  AnyUnsigned  MaxRisk  Endpoints
+  Slack  4.43.43    Slack Technologies Inc.    windows  1         true         none     ["alex-hpprobook"]
