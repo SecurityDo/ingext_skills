@@ -258,6 +258,23 @@ def load_report(path: str) -> dict:
         for key in ("result", "data", "response"):
             if key in data and isinstance(data[key], dict) and "objects" in data[key]:
                 return data[key]
+
+    # kql_search DataSet shape: {"data":{"Tables":[{"Columns":[{"ColumnName":..}],
+    # "Rows":[[..]]}]}} or a bare {"Tables":[...]}.  Normalise to the
+    # {"objects":[{"table":{"columns":[{"name":..}],"rows":[[..]]}}]} shape used below.
+    tabs = None
+    if isinstance(data, dict):
+        if isinstance(data.get("data"), dict) and "Tables" in data["data"]:
+            tabs = data["data"]["Tables"]
+        elif "Tables" in data:
+            tabs = data["Tables"]
+    if tabs:
+        objs = []
+        for t in tabs:
+            cols = [{"name": c.get("ColumnName")} for c in t.get("Columns", [])]
+            objs.append({"name": t.get("TableName", "t"),
+                         "table": {"columns": cols, "rows": t.get("Rows", [])}})
+        return {"objects": objs}
     return {"objects": []}
 
 
@@ -1040,6 +1057,276 @@ def build_recommendations(signin_rows, dir_init_rows, dir_target_rows,
 
 
 
+# ─────────────────────────────────────────────
+# Geo / source-IP breakdown + derived insights
+# ─────────────────────────────────────────────
+
+def _gcol(cols, *names):
+    low = [c.lower() for c in cols]
+    for n in names:
+        if n.lower() in low:
+            return low.index(n.lower())
+    return None
+
+def _short_ip(ip):
+    ip = str(ip)
+    return ip if len(ip) <= 20 else ip[:17] + "…"
+
+def _loc_str(country, city, state):
+    def ok(v): return v and str(v).strip().lower() not in ("", "none", "null")
+    parts = [str(p).strip() for p in (city, state) if ok(p)]
+    loc = ", ".join(parts)
+    c = str(country).strip() if ok(country) else ""
+    if loc and c: return f"{loc} · {c}"
+    return loc or c or "—"
+
+def build_geo_breakdown(cols, rows):
+    """Per-IP and per-country source breakdown from the sign-in rows."""
+    if not cols or not rows:
+        return '<div class="panel"><p class="empty-notice">No sign-in events in this window.</p></div>'
+    ipx = _gcol(cols, "IPAddress", "ip", "clientip")
+    if ipx is None:
+        return '<div class="panel"><p class="empty-notice">Sign-in data has no IP column.</p></div>'
+    cox = _gcol(cols, "Country", "location"); cix = _gcol(cols, "City"); stx = _gcol(cols, "State")
+    rsx = _gcol(cols, "ResultStatus", "result", "status")
+    tsx = find_timestamp_column(cols); tsi = cols.index(tsx) if tsx else None
+
+    ipagg = {}
+    for r in rows:
+        ip = str(r[ipx]).strip() if ipx < len(r) else ""
+        if not ip or ip.lower() in ("none", "null"):
+            continue
+        d = ipagg.setdefault(ip, {"events":0,"ok":0,"fail":0,"country":"","city":"","state":"","first":None,"last":None})
+        d["events"] += 1
+        res = str(r[rsx]).lower() if rsx is not None and rsx < len(r) else ""
+        if res in ("failure","failed","error"): d["fail"] += 1
+        elif res in ("success","succeeded"): d["ok"] += 1
+        if cox is not None and not d["country"] and cox < len(r): d["country"] = str(r[cox])
+        if cix is not None and not d["city"] and cix < len(r): d["city"] = str(r[cix])
+        if stx is not None and not d["state"] and stx < len(r): d["state"] = str(r[stx])
+        if tsi is not None and tsi < len(r):
+            dt = parse_timestamp(r[tsi])
+            if dt:
+                if d["first"] is None or dt < d["first"]: d["first"] = dt
+                if d["last"]  is None or dt > d["last"]:  d["last"]  = dt
+    if not ipagg:
+        return '<div class="panel"><p class="empty-notice">No sign-in events carried a source IP.</p></div>'
+
+    ip_items = sorted(ipagg.items(), key=lambda kv: -kv[1]["events"])
+    max_ev = max(d["events"] for _, d in ip_items) or 1
+    iprows = ""
+    for ip, d in ip_items[:50]:
+        loc = _loc_str(d["country"], d["city"], d["state"])
+        fail_cell = f'<span class="pill fail">{d["fail"]}</span>' if d["fail"] else "0"
+        barw = int(round(d["events"] / max_ev * 100))
+        iprows += (
+            f'<tr><td class="mono">{esc(ip)}</td>'
+            f'<td class="wrap">{esc(loc)}</td>'
+            f'<td class="bar-cell"><span class="bar" style="width:{barw}%"></span>'
+            f'<span class="bar-txt">{d["events"]}</span></td>'
+            f'<td>{d["ok"]}</td><td>{fail_cell}</td>'
+            f'<td>{fmt_dt(d["first"])}</td><td>{fmt_dt(d["last"])}</td></tr>'
+        )
+    ip_table = (
+        '<table class="data"><thead><tr><th style="width:24%">Source IP</th><th>Location</th>'
+        '<th style="width:13%">Events</th><th style="width:8%">OK</th><th style="width:8%">Fail</th>'
+        '<th style="width:15%">First</th><th style="width:15%">Last</th></tr></thead>'
+        f'<tbody>{iprows}</tbody></table>'
+    )
+
+    cagg = {}
+    for ip, d in ipagg.items():
+        c = d["country"] if d["country"] and d["country"].lower() not in ("none","null","") else "Unknown"
+        v = cagg.setdefault(c, {"ips":0,"events":0,"fail":0})
+        v["ips"] += 1; v["events"] += d["events"]; v["fail"] += d["fail"]
+    crows = ""
+    for c, v in sorted(cagg.items(), key=lambda kv: -kv[1]["events"]):
+        fc = f'<span class="pill fail">{v["fail"]}</span>' if v["fail"] else "0"
+        crows += f'<tr><td class="wrap">{esc(c)}</td><td>{v["ips"]}</td><td>{v["events"]}</td><td>{fc}</td></tr>'
+    c_table = (
+        '<table class="data"><thead><tr><th>Country</th><th>IPs</th><th>Events</th><th>Fail</th></tr></thead>'
+        f'<tbody>{crows}</tbody></table>'
+    )
+
+    n_ip = len(ipagg); n_co = len(cagg)
+    return (
+        '<div class="geo-grid">'
+        f'<div class="panel"><div class="panel-header"><h2 class="panel-title">By Source IP</h2>'
+        f'<span class="panel-subtitle">{n_ip} IP{"s" if n_ip!=1 else ""}</span></div>{ip_table}</div>'
+        f'<div class="panel"><div class="panel-header"><h2 class="panel-title">By Country</h2>'
+        f'<span class="panel-subtitle">{n_co} countr{"ies" if n_co!=1 else "y"}</span></div>{c_table}</div>'
+        '</div>'
+    )
+
+def build_insights(cols, rows, dir_init_rows, dir_target_rows):
+    def card(label, val, sub, cls="i-navy"):
+        return (f'<div class="insight {cls}"><div class="i-label">{esc(label)}</div>'
+                f'<div class="i-val">{val}</div><div class="i-sub">{esc(sub)}</div></div>')
+    if not cols or not rows:
+        return card("Sign-in activity", "None", "no sign-in events in window", "i-amber")
+    ipx=_gcol(cols,"IPAddress","ip","clientip"); cox=_gcol(cols,"Country","location")
+    cix=_gcol(cols,"City"); stx=_gcol(cols,"State"); rsx=_gcol(cols,"ResultStatus","result","status")
+    apx=_gcol(cols,"AppDisplayName","appname","application"); cax=_gcol(cols,"ConditionalAccessStatus")
+    rlx=_gcol(cols,"RiskLevelDuringSignIn"); rstx=_gcol(cols,"RiskState")
+    total=len(rows)
+    ok=sum(1 for r in rows if rsx is not None and rsx<len(r) and str(r[rsx]).lower() in ("success","succeeded"))
+    fail=sum(1 for r in rows if rsx is not None and rsx<len(r) and str(r[rsx]).lower() in ("failure","failed","error"))
+    ips={}; countries={}; apps={}
+    for r in rows:
+        if ipx is not None and ipx<len(r):
+            ip=str(r[ipx]).strip()
+            if ip and ip.lower() not in ("none","null"): ips[ip]=ips.get(ip,0)+1
+        if cox is not None and cox<len(r):
+            c=str(r[cox]).strip()
+            if c and c.lower() not in ("none","null",""): countries[c]=countries.get(c,0)+1
+        if apx is not None and apx<len(r):
+            a=str(r[apx]).strip()
+            if a and a.lower() not in ("none","null",""): apps[a]=apps.get(a,0)+1
+    cards=[]
+    n_co=len(countries)
+    co_sub=", ".join(sorted(countries, key=lambda k:-countries[k])[:3]) or "no geo data"
+    cards.append(card("Countries", str(n_co), co_sub, "i-navy" if n_co<=1 else "i-amber"))
+    pct=round(ok/total*100) if total else 0
+    succ_cls="i-green" if fail==0 else ("i-amber" if fail < max(1,total*0.3) else "i-red")
+    cards.append(card("Auth success", f"{pct}%", f"{ok} ok · {fail} failed", succ_cls))
+    if ips:
+        top_ip=max(ips, key=ips.get); loc=""
+        for r in rows:
+            if ipx is not None and ipx<len(r) and str(r[ipx]).strip()==top_ip:
+                loc=_loc_str(str(r[cox]) if cox is not None and cox<len(r) else "",
+                             str(r[cix]) if cix is not None and cix<len(r) else "",
+                             str(r[stx]) if stx is not None and stx<len(r) else ""); break
+        cards.append(card("Busiest source", esc(loc or "—"), f"{_short_ip(top_ip)} · {ips[top_ip]} events", "i-blue"))
+    if apps:
+        ta=max(apps, key=apps.get)
+        cards.append(card("Top application", esc(ta), f"{apps[ta]} of {total} events", "i-blue"))
+    ca_na=sum(1 for r in rows if cax is not None and cax<len(r) and str(r[cax]).lower() in ("notapplied","not applied"))
+    risky=0
+    for r in rows:
+        rl=str(r[rlx]).lower() if rlx is not None and rlx<len(r) else ""
+        rs=str(r[rstx]).lower() if rstx is not None and rstx<len(r) else ""
+        if rl in ("low","medium","high") or rs in ("atrisk","confirmedcompromised"): risky+=1
+    if risky:
+        cards.append(card("Risky sign-ins", str(risky), "Entra risk level/state flagged", "i-red"))
+    elif ca_na:
+        cards.append(card("Conditional Access", f"{ca_na} notApplied", "CA policy did not apply", "i-amber"))
+    dch=len(dir_init_rows)+len(dir_target_rows)
+    cards.append(card("Directory changes", str(dch), f"{len(dir_init_rows)} by · {len(dir_target_rows)} to user",
+                      "i-green" if dch==0 else "i-red"))
+    return "\n".join(cards)
+
+
+# ─────────────────────────────────────────────
+# Diagnostic assessment (verdict + findings)
+# ─────────────────────────────────────────────
+
+LEGACY_CLIENTS = {"other clients","imap4","pop3","smtp","authenticated smtp","exchange activesync",
+                  "mapi over http","offline address book","autodiscover","exchange web services"}
+
+def _sev_pill(sev):
+    m = {"Critical":"fail","High":"fail","Medium":"med","Low":"low","Info":"info"}
+    return f'<span class="pill {m.get(sev,"info")}">{esc(sev)}</span>'
+
+def build_diagnostics(cols, rows, dir_init_rows, dir_target_rows, user_record, username):
+    """Interpret the collected sign-in + directory data into a verdict and findings.
+    Uses only data already gathered (no new queries). Returns (verdict_html, findings_html)."""
+    import collections
+    def val(r, i): return str(r[i]).strip() if i is not None and i < len(r) else ""
+    rsx=_gcol(cols,"ResultStatus","result","status"); cox=_gcol(cols,"Country","location")
+    ipx=_gcol(cols,"IPAddress","ip","clientip"); cax=_gcol(cols,"ConditionalAccessStatus")
+    rlx=_gcol(cols,"RiskLevelDuringSignIn"); rstx=_gcol(cols,"RiskState")
+    capp=_gcol(cols,"ClientAppUsed"); erx=_gcol(cols,"ErrorCode")
+    total=len(rows)
+
+    fails=[r for r in rows if val(r,rsx).lower() in ("failure","failed","error")]
+    risky=[r for r in rows if val(r,rlx).lower() in ("low","medium","high")
+           or val(r,rstx).lower() in ("atrisk","confirmedcompromised")]
+    countries=sorted({val(r,cox) for r in rows if val(r,cox) and val(r,cox).lower() not in ("none","null")})
+    ips=sorted({val(r,ipx) for r in rows if val(r,ipx) and val(r,ipx).lower() not in ("none","null")})
+    ca_na=[r for r in rows if val(r,cax).lower() in ("notapplied","not applied")]
+    legacy=sorted({val(r,capp) for r in rows if val(r,capp).lower() in LEGACY_CLIENTS})
+
+    roles=[]
+    if isinstance(user_record,dict):
+        rr=user_record.get("roles") or user_record.get("directoryRoles") or {}
+        if isinstance(rr,dict): roles=list(rr.keys())
+        elif isinstance(rr,list): roles=[(x.get("displayName") if isinstance(x,dict) else str(x)) for x in rr]
+    is_priv=any(any(k in (rn or "").lower() for k in ("admin","global","privileged")) for rn in roles)
+
+    findings=[]  # (title, evidence, severity)
+    if risky:
+        lv=[x for x in sorted({val(r,rlx) for r in risky}|{val(r,rstx) for r in risky}) if x and x.lower()!="none"]
+        findings.append(("Entra Identity Protection risk",
+                         f"{len(risky)} sign-in(s) flagged ({', '.join(lv) or 'risk state set'})","High"))
+    if dir_target_rows:
+        findings.append(("Privilege / directory changes to the account",
+                         f"{len(dir_target_rows)} change(s) targeting {username} (role / group / app-role)","High"))
+    if len(countries)>1:
+        findings.append(("Sign-ins from multiple countries",
+                         f"{len(countries)} countries: {', '.join(countries[:5])} — check for impossible travel",
+                         "High" if (risky or fails) else "Medium"))
+    if fails:
+        sev="High" if total and len(fails) > max(3, total*0.3) else "Medium"
+        ec=collections.Counter(val(r,erx) for r in fails if val(r,erx))
+        top=f" (top error {ec.most_common(1)[0][0]})" if ec else ""
+        findings.append(("Failed sign-ins", f"{len(fails)} of {total} sign-ins failed{top}", sev))
+    if legacy:
+        findings.append(("Legacy authentication",
+                         f"Legacy client(s) used: {', '.join(legacy[:4])} — bypasses modern MFA","Medium"))
+    if ca_na:
+        ctx=" on a privileged account" if is_priv else ""
+        findings.append(("Conditional Access not applied",
+                         f"{len(ca_na)} sign-in(s) with CA notApplied{ctx}", "Low"))
+    if dir_init_rows:
+        findings.append(("Directory changes initiated by user",
+                         f"{len(dir_init_rows)} change(s) made by {username} — verify authorised","Medium"))
+
+    rank={"Critical":4,"High":3,"Medium":2,"Low":1}
+    worst=max((rank.get(s,0) for _,_,s in findings), default=0)
+    if risky and (fails or len(countries)>1 or dir_target_rows):
+        worst=4  # combo escalation
+    sev_name={4:"Critical",3:"High",2:"Medium",1:"Low",0:"Low"}[worst]
+    sev_cls={"Critical":"sev-critical","High":"sev-high","Medium":"sev-medium","Low":"sev-low"}[sev_name]
+
+    if not findings:
+        tag="Clear"; sev_cls="sev-low"
+        head="No strong compromise indicators"
+        sub=(f"All {total} sign-in(s) succeeded from {len(ips)} IP(s) in "
+             f"{len(countries) or 1} location(s); no risky sign-ins and no directory changes to the account. "
+             "Activity is consistent with normal use.")
+    else:
+        heads={"Critical":"Likely compromise indicators","High":"Suspicious — investigate",
+               "Medium":"Anomalies present — review","Low":"Minor findings"}
+        tag=sev_name; head=heads[sev_name]
+        sub="Signals: " + "; ".join(t for t,_,_ in findings[:4])
+        sub += "." if len(findings)<=4 else f"; +{len(findings)-4} more."
+        if is_priv:
+            sub += " Subject holds a privileged directory role."
+
+    verdict=(f'<div class="verdict {sev_cls}"><div class="v-tag">{esc(tag)}</div>'
+             f'<div class="v-body"><p class="v-head">{esc(head)}</p>'
+             f'<p class="v-sub">{esc(sub)}</p></div></div>')
+
+    if findings:
+        order={"Critical":0,"High":1,"Medium":2,"Low":3}
+        fr="".join(
+            f'<tr class="{"sev-high" if s in ("Critical","High") else ("sev-med" if s=="Medium" else "")}">'
+            f'<td class="wrap"><strong>{esc(t)}</strong></td><td class="wrap">{esc(e)}</td>'
+            f'<td>{_sev_pill(s)}</td></tr>'
+            for t,e,s in sorted(findings, key=lambda x: order.get(x[2],9)))
+        diag=('<div class="panel"><div class="panel-header"><h2 class="panel-title">Findings detail</h2>'
+              f'<span class="panel-subtitle">{len(findings)} finding(s)</span></div>'
+              '<table class="data"><thead><tr><th style="width:30%">Finding</th><th>Evidence</th>'
+              '<th style="width:14%">Severity</th></tr></thead>'
+              f'<tbody>{fr}</tbody></table></div>')
+    else:
+        diag=('<div class="panel"><div class="panel-header"><h2 class="panel-title">Findings detail</h2>'
+              '<span class="panel-subtitle">0 findings</span></div>'
+              '<p class="empty-notice">No diagnostic findings triggered by the heuristics — '
+              'sign-in and directory activity looks consistent with normal use.</p></div>')
+    return verdict, diag
+
+
 def main():
     parser = argparse.ArgumentParser(description="Build O365 User Investigation HTML report")
     parser.add_argument("--username",    required=True)
@@ -1102,6 +1389,10 @@ def main():
     dir_target_table= build_table(dir_target_cols, dir_target_rows, DIR_PREFERRED, max_rows=50, max_cols=7)
     next_steps      = build_recommendations(signin_rows, dir_init_rows, dir_target_rows,
                                             signin_cols, args.username)
+    geo_section     = build_geo_breakdown(signin_cols, signin_rows)
+    insights_strip  = build_insights(signin_cols, signin_rows, dir_init_rows, dir_target_rows)
+    verdict_banner, diagnostics_section = build_diagnostics(
+        signin_cols, signin_rows, dir_init_rows, dir_target_rows, user_record, args.username)
 
     # Load template
     template_path = Path(args.template)
@@ -1140,6 +1431,10 @@ def main():
         "{{dir_init_table}}":    dir_init_table,
         "{{dir_target_table}}":  dir_target_table,
         "{{next_steps_items}}":  next_steps,
+        "{{geo_section}}":       geo_section,
+        "{{insights_strip}}":    insights_strip,
+        "{{verdict_banner}}":     verdict_banner,
+        "{{diagnostics_section}}": diagnostics_section,
     }
     output_html = template
     for placeholder, value in replacements.items():

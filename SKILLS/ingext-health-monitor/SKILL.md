@@ -1,7 +1,19 @@
 ---
 name: ingext-health-monitor
 version: 1.0.1
-description: Check the health of an Ingext / Fluency site and produce a clear status report. Trigger whenever the user asks about site health, whether data is flowing, if Ingext is working, if the site is healthy, whether ingestion is active, whether there are router or pipe errors (and which pipe is failing), how much data is being dropped at routers or sinks, how much data is being egressed (by event type and destination), whether ingestion has spiked or suddenly stopped (anomalies/outages), or whether any queues are backing up (backlog) — or any phrasing like "check the health", "is data coming in?", "is the site healthy?", "run a health check", "monitor site health", "check Ingext status", "is ingestion working?", "any errors in the routers?", "which pipe is erroring?", "how much data is being dropped?", "how much are we egressing?", "did ingestion spike or drop?", "are the queues backing up?", "any backlog?". Always use this skill for any question about whether the Ingext platform is ingesting data correctly, whether the pipeline is erroring or dropping data, how much is being egressed, whether ingestion looks anomalous, whether queues are backed up, or whether users are logging in — even if the user doesn't say "health check" explicitly.
+description: >-
+  Check the health of an Ingext / Fluency site and produce a clear status report — whether
+  data is flowing, whether ingestion is active or has spiked/stopped (anomalies, outages),
+  router or pipe errors (and which pipe is failing), how much data is being dropped at routers
+  or sinks, how much is being egressed (by event type and destination), and whether any queues
+  are backing up (backlog). Trigger on any phrasing like "check the health", "is data coming
+  in?", "is the site healthy?", "run a health check", "monitor site health", "check Ingext
+  status", "is ingestion working?", "any errors in the routers?", "which pipe is erroring?",
+  "how much data is being dropped?", "how much are we egressing?", "did ingestion spike or
+  drop?", "are the queues backing up?". Always use this skill for any question about whether
+  the platform is ingesting correctly, erroring or dropping data, how much is egressed,
+  whether ingestion looks anomalous, or whether queues are backed up — even if the user
+  doesn't say "health check".
 ---
 
 # Ingext Site Health Monitor

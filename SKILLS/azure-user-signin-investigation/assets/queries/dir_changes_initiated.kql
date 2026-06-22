@@ -1,0 +1,22 @@
+// GetDirectoryChangesInitiatedByUser (extracted from the FPL report) — direct KQL.
+// Directory group/role/permission changes the subject user *initiated*.
+// Placeholders: {USER} = lower-cased UPN, {FROM}/{TO} = epoch-ms window bounds.
+let UserEmail = tolower("{USER}");
+AzureAuditLogs
+| where TimeGenerated between (unixtime_milliseconds_todatetime({FROM}) .. unixtime_milliseconds_todatetime({TO}))
+| where ActivityDisplayName has_any (
+    "Add member to group", "Remove member from group",
+    "Add owner to group", "Remove owner from group",
+    "Add member to role", "Remove member from role",
+    "Add eligible member to role", "Remove eligible member from role",
+    "Add app role assignment", "Remove app role assignment")
+| extend
+    InitiatedByUserUPN = tolower(tostring(InitiatedBy.user.userPrincipalName)),
+    InitiatedByAppName = tostring(InitiatedBy.app.displayName)
+| mv-expand TargetResource = TargetResources
+| extend
+    TargetName = tostring(TargetResource.displayName),
+    TargetUPN  = tolower(tostring(TargetResource.userPrincipalName))
+| where InitiatedByUserUPN == UserEmail
+| project TimeGenerated, ActivityDisplayName, Result, InitiatedByUserUPN, InitiatedByAppName, TargetName, TargetUPN, CorrelationId
+| order by TimeGenerated desc

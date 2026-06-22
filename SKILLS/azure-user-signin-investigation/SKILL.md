@@ -1,43 +1,57 @@
 ---
 name: azure-user-signin-investigation
-version: 1.0.0
+version: 1.0.1
 description: >-
-  Investigate a user's Azure AD / Entra ID SIGN-IN and DIRECTORY-CHANGE activity
-  on Fluency by running the three saved FPL reports — GetUserSigninHistory,
-  GetDirectoryChangesInitiatedByUser, GetDirectoryChangesTargetingUser — and
-  combining them into one HTML report (sign-in timeline, executive summary,
-  per-report tables, recommendations). These reports read the AzureSigninLogs /
-  AzureAuditLogs datalake tables. USE THIS SKILL WHEN the focus is Azure AD sign-ins
-  (IPs/apps/success-failure/location) and directory changes (role/group/password
-  changes the user made or that targeted the user), AND the tenant has those three
-  FPL reports deployed. Triggers: "investigate Azure AD/Entra user X", "pull X's
-  sign-in history on Fluency", "what directory changes did X make/receive",
-  "run the Azure sign-in investigation for jane@corp.com".
-  DO NOT use this for mailbox/Exchange content (inbox rules, sends, OAuth consents)
-  or when the FPL reports / AzureSigninLogs tables are absent — for that use the
-  `office-user-investigation` skill, which queries the Office365 datalake table
-  directly with KQL.
+  Investigate a user's Azure AD / Entra ID sign-in and directory-change activity by querying
+  the AzureSigninLogs / AzureAuditLogs datalake tables directly with KQL, and combining the
+  results into one HTML report (sign-in timeline, summary, per-section tables, recommendations).
+  Use when the focus is Azure AD sign-ins (IPs, apps, success/failure, location) and directory
+  changes (role/group/password changes the user made or received). The only dependency is the
+  AzureSigninLogs / AzureAuditLogs tables — no saved FPL reports are required. Triggers:
+  "investigate Azure AD/Entra user X", "pull X's sign-in history", "what directory changes did
+  X make/receive", "run the Azure sign-in investigation for jane@corp.com". Do NOT use for
+  mailbox/Exchange content (inbox rules, sends, OAuth consents) or when AzureSigninLogs is
+  absent — use the office-user-investigation skill, which queries the Office365 table instead.
 ---
 
 # Azure AD User Sign-in & Directory-Change Investigation
 
-Produce a comprehensive, single-page HTML investigation report for a specific Microsoft 365 / Azure AD user by running three Fluency reports and combining the results into one readable document.
+Produce a comprehensive, single-page HTML investigation report for a specific Microsoft 365 /
+Azure AD user by running three **KQL queries directly** against the Azure datalake tables and
+combining the results into one readable document.
 
-## Required reports
+## Required data tables
 
-This skill depends on exactly these three FPL reports being present in the user's Fluency catalog:
+This skill queries these datalake tables directly — **no saved FPL reports are needed**:
 
-| Report name | What it covers |
-|---|---|
-| `GetDirectoryChangesInitiatedByUser` | Azure AD / Entra directory changes the subject user *made* (e.g. adding group members, modifying accounts) |
-| `GetDirectoryChangesTargetingUser` | Directory changes made *to* the subject user's account (e.g. password resets, role assignments) |
-| `GetUserSigninHistory` | Sign-in events for the subject user (IPs, apps, success/failure, location) |
+| Table | Used by | Covers |
+|---|---|---|
+| `AzureSigninLogs` | sign-in query | Sign-in events for the user (IPs, apps, success/failure, location, device) |
+| `AzureAuditLogs` | both directory-change queries | Azure AD / Entra directory changes the user *made* and changes *targeting* the user |
 
-If **any** of the three reports is missing from the catalog, stop immediately and tell the user which report(s) are absent. Do not substitute another report or proceed with partial data.
+If `AzureSigninLogs` (or `AzureAuditLogs`) is not present on the tenant, stop and tell the user
+this tenant doesn't ingest Azure AD sign-in / audit data, so this skill can't run.
+
+## Bundled queries
+
+The three KQL queries live in `assets/queries/` (extracted from the original
+`GetUserSigninHistory`, `GetDirectoryChangesInitiatedByUser`, and
+`GetDirectoryChangesTargetingUser` FPL reports). Each uses three placeholders you substitute
+before running:
+
+- `{USER}` → the **lower-cased** UPN
+- `{FROM}` / `{TO}` → the window bounds as **epoch milliseconds**
+
+| File | Saves to | Section |
+|---|---|---|
+| `assets/queries/signin.kql` | `signin.json` | Sign-in history |
+| `assets/queries/dir_changes_initiated.kql` | `dir_init.json` | Directory changes initiated by user |
+| `assets/queries/dir_changes_targeting.kql` | `dir_target.json` | Directory changes targeting user |
 
 ## Required arguments
 
-Every run needs three values. If the user's message does not include all three, use `AskUserQuestion` to collect the missing ones before doing anything else.
+Every run needs three values. If the user's message does not include all three, use
+`AskUserQuestion` to collect the missing ones before doing anything else.
 
 | Argument | Description | Example |
 |---|---|---|
@@ -45,172 +59,136 @@ Every run needs three values. If the user's message does not include all three, 
 | `from` | Investigation window start — Unix timestamp **in milliseconds** | `1746057600000` |
 | `to` | Investigation window end — Unix timestamp **in milliseconds** | `1746316800000` |
 
-When asking for the time range, offer human-friendly options (e.g. "Last 24 hours", "Last 7 days", "Last 30 days", "Custom range") and convert the chosen option to milliseconds yourself using the current time.
+When asking for the time range, offer human-friendly options (e.g. "Last 24 hours", "Last 7
+days", "Last 30 days", "Custom range") and convert the chosen option to milliseconds yourself.
 
 ---
 
 ## Pipeline
 
 ```
-1. list_reports              → verify all 3 required reports exist
-   └─ any missing → stop, tell user which are absent
+1. list_data_tables          → confirm AzureSigninLogs + AzureAuditLogs exist
+   └─ either missing → stop, tell the user this tenant has no Azure sign-in/audit data
 
 2. Collect from / to / username  (AskUserQuestion if not all provided)
 
 3. Run in parallel (same turn):
-   ├─ run_report: GetDirectoryChangesInitiatedByUser  (syncMode: false)
-   ├─ run_report: GetDirectoryChangesTargetingUser    (syncMode: false)
-   ├─ run_report: GetUserSigninHistory                (syncMode: false)
-   └─ get_azure_user_record: username=<username>      (call immediately, no polling needed)
+   ├─ kql_search: assets/queries/signin.kql                (-> signin.json)
+   ├─ kql_search: assets/queries/dir_changes_initiated.kql (-> dir_init.json)
+   ├─ kql_search: assets/queries/dir_changes_targeting.kql (-> dir_target.json)
+   └─ get_azure_user_record: username=<username>           (-> user.json)
 
-4. Poll the 3 report tasks; call get_report_result for each when completed
+4. Save each kql_search result to <workdir> as JSON
 
-5. Save each result to /tmp/ as JSON (reports → 3 files; user record → 1 file)
+5. Run scripts/build_report.py to produce the HTML
 
-6. Run scripts/build_report.py to produce the HTML
-
-7. Write output HTML and share a computer:// link
+6. Write output HTML and share a computer:// link
 ```
+
+Use a scratch working dir, e.g. `mkdir -p /tmp/azinv`.
 
 ---
 
-### Step 1 — Verify the three reports exist
+### Step 1 — Confirm the Azure tables exist
 
-Call `list_reports` on the FPL MCP connector. Scan the returned names using **case-insensitive** matching for each of the three required names. If even one is absent, respond with:
+Call `list_data_tables`. Confirm both `AzureSigninLogs` and `AzureAuditLogs` appear (as
+streamTables). If either is absent, respond:
 
-> **Investigation cannot proceed** — the following required report(s) are not available in your Fluency catalog:
-> - `MissingReportName`
->
-> Please ensure these reports are deployed to your Fluency instance before running this investigation.
+> **Investigation cannot proceed** — this tenant does not ingest the required Azure table(s):
+> `AzureSigninLogs` / `AzureAuditLogs`. Deploy the Azure Directory Audit connector before
+> running this investigation.
 
-Then stop. Do not proceed with any remaining steps.
+Then stop.
 
 ---
 
 ### Step 2 — Collect arguments
 
-If the user already supplied `username`, `from`, and `to` in their message, use those values directly.
-
-Otherwise, use `AskUserQuestion` to ask. Offer preset time-range options and convert them to milliseconds:
-
-- **Last 24 h**: `from = now_ms - 86_400_000`
-- **Last 7 days**: `from = now_ms - 604_800_000`
-- **Last 30 days**: `from = now_ms - 2_592_000_000`
+If the user already supplied `username`, `from`, and `to`, use them. Otherwise use
+`AskUserQuestion`. Presets: Last 24 h = `now-86_400_000`, 7 d = `now-604_800_000`,
+30 d = `now-2_592_000_000`.
 
 ---
 
-### Step 3 — Run reports and fetch user record in parallel
+### Step 3 — Run the three queries and fetch the user record
 
-In a **single turn**, fire all four calls at once:
+For each query file, read it, substitute `{USER}` (lower-cased UPN), `{FROM}` and `{TO}`
+(epoch-ms), and run it with `kql_search`. Fire all four calls in a **single turn**:
 
-**Three FPL reports** (async):
 ```
-tool:   mcp__…__run_report
-args:   name=<report-name>, syncMode=false,
-        arguments=[
-          { "name": "from",     "value": "<from_ms_as_string>" },
-          { "name": "to",       "value": "<to_ms_as_string>" },
-          { "name": "username", "value": "<username>" }
-        ]
+tool: mcp__…__kql_search   kql=<substituted signin.kql>
+tool: mcp__…__kql_search   kql=<substituted dir_changes_initiated.kql>
+tool: mcp__…__kql_search   kql=<substituted dir_changes_targeting.kql>
+tool: mcp__…__get_azure_user_record   username=<username>
 ```
 
-> **Important:** Pass `from` and `to` as **strings** (no `"type": "integer"`). The FPL reports internally call `timeConvert()` which expects the raw millisecond string. Do **not** pass a custom `fpl` parameter — use the saved report scripts unchanged.
+> The queries carry their own `TimeGenerated between (...)` bounds, so passing `rangeFrom`/
+> `rangeTo` is optional.
 
-**Azure AD user record** (synchronous, returns immediately):
-```
-tool:   get_azure_user_record
-args:   username=<username>
-```
-
-The user record call returns immediately — no polling needed. Save its result to `/tmp/o365inv_user.json`:
+Save each `kql_search` result **as returned** (the build script reads the raw
+`data.Tables[0]` shape directly):
 
 ```python
 import json
-# result = get_azure_user_record response (dict or string)
-with open("/tmp/o365inv_user.json", "w") as f:
-    json.dump(result if isinstance(result, dict) else {"raw": result}, f)
+json.dump(signin_result,     open("/tmp/azinv/signin.json","w"))
+json.dump(dir_init_result,   open("/tmp/azinv/dir_init.json","w"))
+json.dump(dir_target_result, open("/tmp/azinv/dir_target.json","w"))
+# user record:
+json.dump(user_record if isinstance(user_record, dict) else {"raw": user_record},
+          open("/tmp/azinv/user.json","w"))
 ```
 
-If `get_azure_user_record` returns an error (user not found, no integration configured), log a warning and continue — the report renders without the profile card.
+If `get_azure_user_record` errors, log a warning and continue — the report renders without the
+profile card.
 
-Poll the three FPL tasks with `get_report_task` until each is `completed` or `aborted`, then call `get_report_result` for each.
-
-If a report returns `aborted`, render that panel as "Report aborted — no data available" and continue with the other two.
-
-The `get_report_result` response has shape:
-```
-result.objects[0].table.columns  →  array of {name, isVariable, ...}  ← dict format
-result.objects[0].table.rows     →  array of dicts  (keyed by column name)  ← dict format
-```
-
-**No manual normalisation needed.** `build_report.py`'s `extract_rows()` function automatically handles both dict-format columns and dict-format rows.
-
-If `get_report_result` returns an **"Output too large"** error, it includes a file path where the result was persisted. Read that file using the `Read` tool (macOS host path) and parse it with:
-
-```python
-import json
-data = json.loads(open(path).read())
-result_objects = data["result"]["objects"]
-```
-
-Save each result to a temp file:
-
-```python
-import json
-# result_objects = get_report_result_response["result"]["objects"]
-with open("/tmp/o365inv_signin.json", "w") as f:
-    json.dump({"objects": result_objects}, f)
-# repeat for dir_init → /tmp/o365inv_dir_init.json
-# repeat for dir_target → /tmp/o365inv_dir_target.json
-```
+If a `kql_search` returns an **"Output too large"** error, it is saved to a file path — read
+that file with the `Read` tool and save its `data` object to the matching `<name>.json` (the
+parser is tolerant of the full raw tool result too). An empty result (`Rows: []`) is fine — that
+panel renders a "No events found" notice.
 
 ---
 
 ### Step 4 — Build the HTML report
 
-The bundled script `scripts/build_report.py` reads the three result files and the HTML template, then writes a fully-populated HTML file.
+`scripts/build_report.py` reads the three result files (it accepts the `kql_search`
+`data.Tables` shape as well as the legacy report shape) and fills `assets/report_template.html`.
 
 ```bash
 SKILL_DIR="<absolute-path-to-this-skill-directory>"
-OUTPUT_DIR="/tmp/o365inv_out"
-mkdir -p "${OUTPUT_DIR}/assets"
+OUTPUT_DIR="/tmp/azinv_out"; mkdir -p "${OUTPUT_DIR}/assets"
 
 python3 "${SKILL_DIR}/scripts/build_report.py" \
   --username    "<username>" \
   --from-ms     <from_ms> \
   --to-ms       <to_ms> \
-  --signin      /tmp/o365inv_signin.json \
-  --dir-init    /tmp/o365inv_dir_init.json \
-  --dir-target  /tmp/o365inv_dir_target.json \
-  --user-record /tmp/o365inv_user.json \
+  --signin      /tmp/azinv/signin.json \
+  --dir-init    /tmp/azinv/dir_init.json \
+  --dir-target  /tmp/azinv/dir_target.json \
+  --user-record /tmp/azinv/user.json \
   --template    "${SKILL_DIR}/assets/report_template.html" \
-  --output      "${OUTPUT_DIR}/o365_investigation.html"
-
-# --user-record is optional. If the file is absent or the tool returned an error,
-# the script renders the report without the profile card and exits 0.
+  --output      "${OUTPUT_DIR}/azure_investigation.html"
 ```
 
-The script prints the output path on success and exits 0. If it exits non-zero, surface stderr and stop.
+The script prints the output path and exits 0. If it exits non-zero, surface stderr and stop.
+`--user-record` is optional.
 
 ---
 
 ### Step 5 — Copy logo asset
 
-The Fluency logo is bundled with this skill in `assets/logo2.png`. Copy it to the output directory:
-
 ```bash
 cp "${SKILL_DIR}/assets/logo2.png" "${OUTPUT_DIR}/assets/"
 ```
 
-If the copy fails for any reason, continue — the report renders correctly without the logo.
+If the copy fails, continue — the report renders correctly without the logo.
 
 ---
 
 ### Step 6 — Copy to final location and share
 
-Copy the completed HTML to the user's workspace output directory, then provide a `computer://` link.
-
-Add a one-sentence chat summary of the most significant finding (e.g. "3 sign-ins from a new country detected; the user's admin role was modified twice during the investigation window.").
+Copy the completed HTML to the user's workspace output directory and provide a `computer://`
+link. Add a one-sentence chat summary of the most significant finding (e.g. "3 sign-ins from a
+new country detected; the user's admin role was modified twice during the window.").
 
 ---
 
@@ -220,9 +198,9 @@ The HTML report contains:
 
 - **Header**: username investigated, time window, date generated, Fluency logo
 - **KPI strip** (4 cards): Total sign-ins · Unique source IPs · Directory changes initiated · Directory changes targeting user
-- **Activity timeline**: SVG chart plotting all events across the investigation window, colour-coded by source (sign-ins = blue, changes initiated = amber, changes targeting = red)
+- **Activity timeline**: SVG chart plotting all events across the window, colour-coded by source (sign-ins = blue, changes initiated = amber, changes targeting = red)
 - **Executive summary**: 2–4 sentences naming the highest-signal findings
-- **Three data panels** (one per report): concise table of key columns, rows capped at 50
+- **Three data panels** (one per query): concise table of key columns, rows capped at 50
 - **Recommendations**: 4–6 prioritised next steps drawn from the actual findings
 
 ---
@@ -231,9 +209,9 @@ The HTML report contains:
 
 | Situation | Response |
 |---|---|
-| One or more required reports missing | Stop; list the missing report names; ask user to deploy them |
-| `run_report` errors | Surface the error; do not render a partial page |
-| A report returns empty data | Render that panel with a "No events found in this window" notice; continue |
+| `AzureSigninLogs` / `AzureAuditLogs` table missing | Stop; tell the user this tenant has no Azure sign-in/audit data |
+| `kql_search` errors | Surface the error; do not render a partial page |
+| A query returns empty data | Render that panel with a "No events found in this window" notice; continue |
 | `build_report.py` exits non-zero | Show stderr output and stop |
 | Logo not found | Continue without it — the report is still fully usable |
 | `get_azure_user_record` returns error | Log warning, omit profile card, continue — report is complete without it |
@@ -246,9 +224,13 @@ The HTML report contains:
 azure-user-signin-investigation/
 ├── SKILL.md
 ├── assets/
-│   └── report_template.html    ← Fluency-branded HTML scaffold with named placeholders
+│   ├── report_template.html    ← Fluency-branded HTML scaffold with named placeholders
+│   └── queries/                ← the three KQL queries (extracted from the FPL reports)
+│       ├── signin.kql
+│       ├── dir_changes_initiated.kql
+│       └── dir_changes_targeting.kql
 ├── evals/
 │   └── evals.json
 └── scripts/
-    └── build_report.py         ← Reads 3 report JSONs, builds timeline SVG + tables, fills template
+    └── build_report.py         ← Reads 3 result JSONs (kql_search or report shape), builds timeline SVG + tables, fills template
 ```

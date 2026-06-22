@@ -246,9 +246,19 @@ def main():
         if not ip or ip in ("NA", "null", "<>"):
             continue
         ev = num(r.get("events")); lo = num(r.get("logins")); fa = num(r.get("failed")); se = num(r.get("sends"))
-        cc, city, lat, lon = geolocate(reader, ip)
+        # Prefer the platform _ip enrichment (current, city-accurate) when the
+        # query supplies it; fall back to the bundled offline GeoLite2 DB.
+        cc   = (str(r.get("CC") or r.get("countryCode") or "")).strip() or None
+        city = (str(r.get("City") or r.get("city") or "")).strip() or None
+        isp  = (str(r.get("ISP") or r.get("isp") or "")).strip() or None
+        try:    lat = float(r.get("Lat")); lon = float(r.get("Lon"))
+        except (TypeError, ValueError): lat = lon = None
+        if not (cc and lat is not None and lon is not None):
+            gcc, gcity, glat, glon = geolocate(reader, ip)
+            cc = cc or gcc; city = city or gcity
+            if lat is None or lon is None: lat, lon = glat, glon
         pts.append({"ip":ip,"events":ev,"logins":lo,"failed":fa,"sends":se,
-                    "cc":cc,"city":city,"lat":lat,"lon":lon,
+                    "cc":cc,"city":city,"isp":isp,"lat":lat,"lon":lon,
                     "first":r.get("firstSeen"),"last":r.get("lastSeen")})
     pts.sort(key=lambda d:-d["events"])
 
@@ -374,6 +384,8 @@ def main():
                     f'<td>{_H.escape(str(p.get("Name","—")))}</td><td>{rule_effect(p)}</td></tr>')
     susp_html = "".join(
         f'<tr><td class=mono {"bad" if p["cls"] in ("foreign","attacker") else ""}>{p["ip"]}</td>'
+        f'<td>{ccn(p["cc"])} <span class=cc>{p["cc"] or "?"}</span></td><td>{p["city"] or "—"}</td>'
+        f'<td>{p.get("isp") or "—"}</td>'
         f'<td>{p["events"]}</td><td>{p["logins"]}</td><td>{p["failed"]}</td><td>{p["sends"]}</td>'
         f'<td>{str(p["first"])[:10]}</td><td>{str(p["last"])[:10]}</td></tr>'
         for p in pts[:30])
@@ -460,7 +472,7 @@ ol.rec{{padding-left:18px}}ol.rec li{{margin-bottom:9px}}.sev{{font-size:10px;fo
 <p class=note>Rules with obfuscated names, moves to low-visibility folders, mark-as-read and stop-processing flags are concealment techniques used to hijack payment/invoice threads.</p></section>''' if rr_html else ''}
 
 <section><h3 class=r>GeoIP map of all sign-ins &amp; activity</h3>
-<div class=geocaveat><b>&#9888; Geolocation is approximate.</b> Resolved locally from the bundled offline GeoLite City database. Country/city are indicative, not authoritative &mdash; confirm with live threat intelligence before formal attribution. Map crops to the region containing the activity; IPv6 mobile-carrier addresses are excluded by the upstream query.</div>
+<div class=geocaveat><b>&#9888; Geolocation is approximate.</b> Source-IP coordinates use the platform&rsquo;s live GeoIP enrichment (country / city / ISP) when present in the query, and fall back to the bundled offline GeoLite2 database otherwise. Treat as indicative, not authoritative &mdash; confirm with live threat intelligence before formal attribution.</div>
 {map_svg}
 <div class=maplegend><span><i style="background:#3fb950"></i>Primary user (home country)</span><span><i style="background:#4493f8"></i>Other home-country IPs</span><span><i style="background:#f85149"></i>Foreign access</span><span><i style="background:#b81d13"></i>Inbox-rule / BEC IPs</span><span>dot size &prop; event count</span></div>
 <div class=geogrid>
@@ -473,7 +485,7 @@ ol.rec{{padding-left:18px}}ol.rec li{{margin-bottom:9px}}.sev{{font-size:10px;fo
 {f'''<section><h3>Sign-in timeline (daily success vs. failed)</h3>{bars_svg}<p class=note>Blue = successful logins, red = failed.</p></section>''' if bars_svg else ''}
 
 <section><h3 class=r>Top source IPs</h3>
-<table><tr><th>IP</th><th>Events</th><th>Logins</th><th>Failed</th><th>Sends</th><th>First</th><th>Last</th></tr>{susp_html}</table></section>
+<table><tr><th>IP</th><th>Country</th><th>City</th><th>ISP</th><th>Events</th><th>Logins</th><th>Failed</th><th>Sends</th><th>First</th><th>Last</th></tr>{susp_html}</table></section>
 
 <section><h3 class=r>Recommended actions</h3><ol class=rec>
 {"".join(f'<li><span class="sev {sevc[s]}">{s}</span>{t}</li>' for s,t in recs)}

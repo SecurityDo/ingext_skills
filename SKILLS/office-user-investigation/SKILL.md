@@ -1,23 +1,19 @@
 ---
 name: office-user-investigation
-version: 1.0.0
+version: 1.0.1
 description: >-
-  Investigate a Microsoft 365 mailbox / Office 365 user by querying the
-  Ingext/Fluency **Office365 datalake table directly with KQL** (Office 365
-  Management Activity API data: Exchange, SharePoint, AzureActiveDirectory, DLP).
-  Runs a fixed KQL set (workload, operations, per-IP summary, sign-ins, inbox
-  rules, OAuth consents, daily timeline), geolocates every source IP offline
-  (GeoLite2), and produces a self-contained HTML report with a GeoIP map plus an
-  optional PDF. USE THIS SKILL WHEN the focus is MAILBOX / Office 365 activity —
-  Exchange operations, malicious/hidden INBOX RULES (Business Email Compromise),
-  OAuth application consents, mass deletes, and a geolocated source-IP map — OR
-  when the Azure FPL reports / AzureSigninLogs tables are NOT deployed but an
-  `Office365` datalake index exists. Triggers: "investigate O365/mailbox user X",
-  "look into mailbox activity for X", "check this account for BEC / inbox rules",
-  "run an Office user investigation", "geoip map of a user's logins".
-  DO NOT use this when the goal is purely Azure AD / Entra sign-in history and
-  directory-change auditing via the saved FPL reports — for that use the
-  `azure-user-signin-investigation` skill instead.
+  Investigate a Microsoft 365 mailbox / Office 365 user by querying the Office365 datalake
+  table directly with KQL (Exchange, SharePoint, AzureActiveDirectory, DLP). Runs a fixed KQL
+  set (workload, operations, per-IP summary, sign-ins, inbox rules, OAuth consents, daily
+  timeline), geolocates each source IP (platform GeoIP when available, offline GeoLite2 fallback), and produces a self-contained HTML
+  report with a GeoIP map plus an optional PDF. Use when the focus is mailbox / Office 365
+  activity — Exchange operations, hidden inbox rules (Business Email Compromise), OAuth
+  consents, mass deletes, and a geolocated source-IP map — or when the Azure FPL reports /
+  AzureSigninLogs are not deployed but an Office365 table exists. Triggers: "investigate
+  O365/mailbox user X", "look into mailbox activity for X", "check this account for BEC /
+  inbox rules", "geoip map of a user's logins". Do NOT use when the goal is purely Azure AD
+  sign-in history and directory-change auditing via the FPL reports — use the
+  azure-user-signin-investigation skill instead.
 ---
 
 # Office365 User Investigation (KQL-based)
@@ -42,8 +38,10 @@ Exchange activity, inbox rules, OAuth consents and a geolocated source-IP map.
 | `from` / `to` | Window as **epoch milliseconds** | `1773862340254` |
 | connector | Which Ingext/Fluency MCP connector (tenant) | e.g. the Anico connector |
 
-If any are missing, use `AskUserQuestion` first. Offer time presets and convert
-to ms yourself: Last 24h = `now-86_400_000`, 7d = `now-604_800_000`,
+`username` is required — if it's missing, use `AskUserQuestion` to collect it.
+**If no time window is specified, default to the last 7 days** (`from = now - 604_800_000`,
+`to = now`) and proceed without asking. If the user wants a different range, offer presets and
+convert to ms yourself: Last 24h = `now-86_400_000`, 7d = `now-604_800_000`,
 30d = `now-2_592_000_000`, 90d = `now-7_776_000_000`.
 Match `username` **case-insensitively** — the stored `UserId` casing often
 differs from what the user types.
@@ -53,9 +51,9 @@ differs from what the user types.
 ## Pipeline
 
 ```
-1. Confirm the Office365 index exists  (list_indexes -> look for datalakeIndex "Office365")
+1. Confirm the Office365 table exists  (list_data_tables -> look for the "Office365" table)
    └─ absent -> stop, tell the user this tenant has no Office365 datalake table
-2. Collect username / from / to        (AskUserQuestion if missing)
+2. Collect username (AskUserQuestion if missing); default window = last 7 days if unspecified
 3. Run the KQL queries below via kql_search (pass rangeFrom/rangeTo = from/to ms)
    Save each raw tool result to <workdir>/<name>.json
 4. (optional) get_azure_user_record    -> <workdir>/user_record.json
@@ -69,14 +67,13 @@ Use a scratch working dir, e.g. `mkdir -p /tmp/oui_work`.
 
 ---
 
-## Step 1 — Confirm the Office365 index
+## Step 1 — Confirm the Office365 table
 
-Call `list_indexes` on the connector. Confirm an entry whose `datalakeIndex` is
-`Office365`. If absent, stop and report that this tenant doesn't ingest Office365
-audit data, so this skill can't run. Optionally `describe_schema Office365` — the
-useful audit fields (`UserId`, `Operation`, `Workload`, `ResultStatus`,
-`ClientIP`, `Parameters`, `ModifiedProperties`, `Target`, `Actor`, `timestamp`)
-are dynamic JSON columns and can be projected directly.
+Call `list_data_tables` on the connector. Confirm an `Office365` table appears (in
+`streamTables`). If absent, stop and report that this tenant doesn't ingest Office365
+audit data, so this skill can't run. The useful audit fields (`UserId`, `Operation`,
+`Workload`, `ResultStatus`, `ClientIP`, `Parameters`, `ModifiedProperties`, `Target`,
+`Actor`, `timestamp`) are dynamic JSON columns and can be projected directly.
 
 ---
 
@@ -92,16 +89,25 @@ the filename shown (the build script parses the raw `data.Tables[0]` shape).
 ```kql
 Office365
 | where tolower(UserId) == "{USER}"
+| where Operation in ("UserLoggedIn","UserLoginFailed")   // login events only - avoids service-side / internal Microsoft IPs
 | where isnotempty(ClientIP)
 | summarize events=count(),
             logins=countif(Operation=="UserLoggedIn"),
             failed=countif(Operation=="UserLoginFailed"),
-            sends=countif(Operation=="Send"),
             firstSeen=min(timestamp), lastSeen=max(timestamp)
-  by ClientIP
+  by ClientIP,
+     Country=tostring(_ip.country), CC=tostring(_ip.countryCode), City=tostring(_ip.city),
+     ISP=tostring(_ip.isp), Lat=todouble(_ip.latitude), Lon=todouble(_ip.longitude)
 | sort by events desc
 | take 200
 ```
+
+> **Login-only + platform geo (v1.0.1):** the IP summary filters to `UserLoggedIn` /
+> `UserLoginFailed` so service-side events from internal Microsoft IP ranges (OneDrive /
+> SharePoint backends) are not mistaken for user sign-in locations. Each IP carries its
+> `Country`, `CC`, `City`, `ISP`, `Lat`, `Lon` from the platform `_ip` enrichment;
+> `build_report.py` plots those coordinates directly and only falls back to the offline
+> GeoLite2 DB for IPs the query did not geolocate.
 
 **workload.json**:
 ```kql
@@ -219,7 +225,7 @@ office-user-investigation/
 
 | Situation | Response |
 |---|---|
-| No `Office365` index on the tenant | Stop; tell the user this skill needs Office365 datalake data |
+| No `Office365` table on the tenant | Stop; tell the user this skill needs Office365 datalake data |
 | `ip_summary.json` empty | The user has no ClientIP-bearing events in the window; report "no activity found" |
 | Country outline missing | Build still works; dots plot, that country has no border — fetch its `<ISO3>.geo.json` |
 | WeasyPrint libs missing | Build HTML only; convert via the `html-to-pdf` skill |
