@@ -109,9 +109,12 @@ Then stop.
 
 ### Step 2 — Collect arguments
 
-If the user already supplied `username`, `from`, and `to`, use them. Otherwise use
-`AskUserQuestion`. Presets: Last 24 h = `now-86_400_000`, 7 d = `now-604_800_000`,
-30 d = `now-2_592_000_000`.
+If the user already supplied `username`, `from`, and `to` in their message, use those values directly. Otherwise, use `AskUserQuestion` to ask. Offer preset time-range options and convert them to milliseconds. `now_ms` is the authoritative millisecond epoch from the CURRENT TIME block of your system prompt — use it verbatim, do not recompute it. `to = now_ms`, and:                                                                                          
+  - **Last 24 h**: `from = now_ms - 86_400_000`
+  - **Last 7 days**: `from = now_ms - 604_800_000`
+  - **Last 30 days**: `from = now_ms - 2_592_000_000`  
+
+Sanity check before calling `run_report`: the year in the human-readable label you showed the user must equal the year of the epoch you pass. If they differ, you computed the epoch wrong — recompute from `now_ms`.  
 
 ---
 
