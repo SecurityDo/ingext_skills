@@ -3,12 +3,14 @@
 office-user-investigation : build_report.py
 
 Turns raw Office365-datalake KQL results (saved by the agent as JSON) into a
-single self-contained HTML investigation report + GeoIP map, and optionally a PDF.
+single self-contained HTML investigation report + source-IP map, and optionally a PDF.
 
-Geolocation is done OFFLINE via the bundled MaxMind GeoLite2-City database
-(pip package `maxminddb-geolite2`). Country outlines are loaded from
-assets/countries/<ISO3>.geo.json (seeded set) plus any <ISO3>.geo.json the agent
-fetched into <workdir>/countries/ for countries not already bundled.
+Geolocation requires NO IP lookup: the ip_summary query already returns each
+source IP's country / city / ISP / latitude / longitude from the platform `_ip`
+enrichment, and this script plots those values directly. Country outlines are
+loaded from assets/countries/<ISO3>.geo.json — all ~175 sovereign countries are
+pre-bundled (simplified 110m Natural Earth) — plus any <ISO3>.geo.json the agent
+drops into <workdir>/countries/ for a minor territory not in the standard set.
 
 Usage:
   python3 build_report.py \
@@ -83,21 +85,9 @@ def parse_ts(s):
         return None
 
 # ----------------------------- geolocation ----------------------------------
-def get_geo_reader():
-    from geolite2 import geolite2
-    return geolite2.reader()
-
-def geolocate(reader, ip):
-    try:
-        m = reader.get(ip)
-    except Exception:
-        m = None
-    if not m:
-        return (None, None, None, None)
-    cc = (m.get("country", {}) or {}).get("iso_code")
-    city = ((m.get("city", {}) or {}).get("names", {}) or {}).get("en")
-    loc = m.get("location", {}) or {}
-    return (cc, city, loc.get("latitude"), loc.get("longitude"))
+# No IP lookup is performed: the ip_summary KQL query returns country / city /
+# ISP / lat / lon per source IP from the platform `_ip` enrichment. This script
+# plots those values directly.
 
 CCNAME = {"US":"United States","ES":"Spain","IR":"Iran","DK":"Denmark","GB":"United Kingdom",
  "DE":"Germany","FR":"France","NL":"Netherlands","RU":"Russia","CN":"China","NG":"Nigeria",
@@ -237,7 +227,6 @@ def main():
     if not iprows:
         raise SystemExit("ERROR: ip_summary.json missing or empty in workdir")
 
-    reader = get_geo_reader()
     iso2to3 = load(os.path.join(a.skill_dir, "assets", "iso2_to_iso3.json")) or {}
 
     pts = []
@@ -246,17 +235,12 @@ def main():
         if not ip or ip in ("NA", "null", "<>"):
             continue
         ev = num(r.get("events")); lo = num(r.get("logins")); fa = num(r.get("failed")); se = num(r.get("sends"))
-        # Prefer the platform _ip enrichment (current, city-accurate) when the
-        # query supplies it; fall back to the bundled offline GeoLite2 DB.
+        # Geo comes straight from the query's platform `_ip` enrichment — no lookup.
         cc   = (str(r.get("CC") or r.get("countryCode") or "")).strip() or None
         city = (str(r.get("City") or r.get("city") or "")).strip() or None
         isp  = (str(r.get("ISP") or r.get("isp") or "")).strip() or None
         try:    lat = float(r.get("Lat")); lon = float(r.get("Lon"))
         except (TypeError, ValueError): lat = lon = None
-        if not (cc and lat is not None and lon is not None):
-            gcc, gcity, glat, glon = geolocate(reader, ip)
-            cc = cc or gcc; city = city or gcity
-            if lat is None or lon is None: lat, lon = glat, glon
         pts.append({"ip":ip,"events":ev,"logins":lo,"failed":fa,"sends":se,
                     "cc":cc,"city":city,"isp":isp,"lat":lat,"lon":lon,
                     "first":r.get("firstSeen"),"last":r.get("lastSeen")})
@@ -289,7 +273,7 @@ def main():
     missing = sorted({iso2to3.get(cc, cc) for cc in needed} - have)
     if missing:
         print("WARN: no outline bundled for ISO3:", ",".join(missing),
-              "(dots still plotted; fetch these into <workdir>/countries/ for full coverage)")
+              "(minor territory outside the bundled ~175 sovereign set; dots still plotted)")
 
     # ---- metrics & signals ----
     tot_events = sum(p["events"] for p in pts)
@@ -472,7 +456,7 @@ ol.rec{{padding-left:18px}}ol.rec li{{margin-bottom:9px}}.sev{{font-size:10px;fo
 <p class=note>Rules with obfuscated names, moves to low-visibility folders, mark-as-read and stop-processing flags are concealment techniques used to hijack payment/invoice threads.</p></section>''' if rr_html else ''}
 
 <section><h3 class=r>GeoIP map of all sign-ins &amp; activity</h3>
-<div class=geocaveat><b>&#9888; Geolocation is approximate.</b> Source-IP coordinates use the platform&rsquo;s live GeoIP enrichment (country / city / ISP) when present in the query, and fall back to the bundled offline GeoLite2 database otherwise. Treat as indicative, not authoritative &mdash; confirm with live threat intelligence before formal attribution.</div>
+<div class=geocaveat><b>&#9888; Geolocation is approximate.</b> Source-IP country / city / ISP and coordinates come from the platform&rsquo;s GeoIP enrichment returned by the query (no separate IP lookup is performed). Treat as indicative, not authoritative &mdash; confirm with live threat intelligence before formal attribution.</div>
 {map_svg}
 <div class=maplegend><span><i style="background:#3fb950"></i>Primary user (home country)</span><span><i style="background:#4493f8"></i>Other home-country IPs</span><span><i style="background:#f85149"></i>Foreign access</span><span><i style="background:#b81d13"></i>Inbox-rule / BEC IPs</span><span>dot size &prop; event count</span></div>
 <div class=geogrid>

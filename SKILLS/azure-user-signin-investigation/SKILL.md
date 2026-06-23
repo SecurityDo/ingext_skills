@@ -1,6 +1,6 @@
 ---
 name: azure-user-signin-investigation
-version: 1.0.2
+version: 1.0.3
 description: >-
   Investigate a user's Azure AD / Entra ID sign-in and directory-change activity by querying
   the AzureSigninLogs / AzureAuditLogs datalake tables directly with KQL, and combining the
@@ -56,14 +56,16 @@ before running:
 
 ## Required arguments
 
-Every run needs three values. If the user's message does not include all three, use
-`AskUserQuestion` to collect the missing ones before doing anything else.
+Every run needs these values. Only `username` is mandatory — if it's missing, use
+`AskUserQuestion` to collect it before doing anything else. **If no time range is supplied,
+default to the last 7 days and proceed without asking** (`to = now_ms`,
+`from = now_ms - 604_800_000`); the other presets are still offered on request.
 
 | Argument | Description | Example |
 |---|---|---|
-| `username` | The UPN or display name of the user to investigate | `john@contoso.com` |
-| `from` | Investigation window start — Unix timestamp **in milliseconds** | `1746057600000` |
-| `to` | Investigation window end — Unix timestamp **in milliseconds** | `1746316800000` |
+| `username` | The UPN or display name of the user to investigate (**required**) | `john@contoso.com` |
+| `from` | Investigation window start — Unix timestamp **in milliseconds** (default: `now_ms - 604_800_000`, i.e. 7 days ago) | `1746057600000` |
+| `to` | Investigation window end — Unix timestamp **in milliseconds** (default: `now_ms`) | `1746316800000` |
 
 When asking for the time range, offer human-friendly options (e.g. "Last 24 hours", "Last 7 days", "Last 30 days", "Custom range"). To convert the chosen option to milliseconds, use the authoritative `now` epoch given in the CURRENT TIME block of your system prompt and **subtract** — never compute the current epoch from memory. The human-readable date you show the user MUST correspond to the epoch you actually pass (a common bug is showing this year's date but passing last year's epoch).
 
@@ -75,7 +77,7 @@ When asking for the time range, offer human-friendly options (e.g. "Last 24 hour
 1. list_data_tables          → confirm AzureSigninLogs + AzureAuditLogs exist
    └─ either missing → stop, tell the user this tenant has no Azure sign-in/audit data
 
-2. Collect from / to / username  (AskUserQuestion if not all provided)
+2. Collect username (AskUserQuestion if missing); default from/to to last 7 days if not supplied
 
 3. Run in parallel (same turn):
    ├─ kql_search: assets/queries/signin.kql                (-> signin.json)
@@ -109,9 +111,14 @@ Then stop.
 
 ### Step 2 — Collect arguments
 
-If the user already supplied `username`, `from`, and `to` in their message, use those values directly. Otherwise, use `AskUserQuestion` to ask. Offer preset time-range options and convert them to milliseconds. `now_ms` is the authoritative millisecond epoch from the CURRENT TIME block of your system prompt — use it verbatim, do not recompute it. `to = now_ms`, and:                                                                                          
+`username` is required — if it's missing, use `AskUserQuestion` to collect it. For the time
+range: if the user supplied `from`/`to`, use those directly; **if they supplied no time range,
+default to the last 7 days and proceed without asking** (`from = now_ms - 604_800_000`,
+`to = now_ms`). Only ask about the window if the user wants to choose one or asks for a
+different range. `now_ms` is the authoritative millisecond epoch from the CURRENT TIME block of
+your system prompt — use it verbatim, do not recompute it. `to = now_ms`, and:
   - **Last 24 h**: `from = now_ms - 86_400_000`
-  - **Last 7 days**: `from = now_ms - 604_800_000`
+  - **Last 7 days** (default): `from = now_ms - 604_800_000`
   - **Last 30 days**: `from = now_ms - 2_592_000_000`  
 
 Sanity check before calling `run_report`: the year in the human-readable label you showed the user must equal the year of the epoch you pass. If they differ, you computed the epoch wrong — recompute from `now_ms`.  
