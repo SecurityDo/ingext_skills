@@ -65,8 +65,7 @@ Every run needs three values. If the user's message does not include all three, 
 | `from` | Investigation window start — Unix timestamp **in milliseconds** | `1746057600000` |
 | `to` | Investigation window end — Unix timestamp **in milliseconds** | `1746316800000` |
 
-When asking for the time range, offer human-friendly options (e.g. "Last 24 hours", "Last 7
-days", "Last 30 days", "Custom range") and convert the chosen option to milliseconds yourself.
+When asking for the time range, offer human-friendly options (e.g. "Last 24 hours", "Last 7 days", "Last 30 days", "Custom range"). To convert the chosen option to milliseconds, use the authoritative `now` epoch given in the CURRENT TIME block of your system prompt and **subtract** — never compute the current epoch from memory. The human-readable date you show the user MUST correspond to the epoch you actually pass (a common bug is showing this year's date but passing last year's epoch).
 
 ---
 
