@@ -1,0 +1,177 @@
+schema: Meraki
+description: Unified schema for Cisco Meraki log events. Use 'applicableFacility' to determine if a field is valid for the queried facility. The 'facility' field identifies the event category; most network-flow facilities share a common 5-tuple (src/dst/sport/dport/protocol) plus the client mac.
+fields:
+
+  # ==========================================
+  # COMMON FIELDS (Available in All/Most facilities)
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Event timestamp (UTC), normalized to epoch milliseconds. Primary time column for range filters (e.g. where TimeGenerated > ago(1d))."
+    applicableFacility: ["All"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+    applicableFacility: ["All"]
+
+  - name: facility
+    type: String
+    description: "The event type/category. Determines which fields are populated."
+    sampleValues: ["flows", "firewall", "urls", "events", "ip_flow_start", "ip_flow_end", "vpn_firewall", "l7_firewall", "security_event"]
+    applicableFacility: ["All"]
+
+  - name: labels.device
+    type: String
+    description: "The reporting device name (from the @labels block)."
+    sampleValues: ["Client_North_AP"]
+    applicableFacility: ["All"]
+
+  - name: labels.facility
+    type: String
+    description: "The event facility as reported in the @labels block; mirrors the top-level facility field."
+    applicableFacility: ["All"]
+
+  # ==========================================
+  # NETWORK 5-TUPLE (Shared by flow/firewall facilities)
+  # ==========================================
+  - name: src
+    type: String
+    description: "Source IP address of the connection. NOTE: in the security_event facility this field carries the port appended as IP:port (e.g. 192.168.112.46:49675); split on ':' to separate IP from port. In flow/firewall facilities it is a bare IP and the port is in sport."
+    sampleValues: ["192.168.112.92", "172.29.99.204", "192.168.112.46:49675"]
+    applicableFacility: ["flows", "firewall", "ip_flow_start", "ip_flow_end", "urls", "vpn_firewall", "l7_firewall", "security_event"]
+
+  - name: dst
+    type: String
+    description: "Destination IP address of the connection. NOTE: in the security_event facility this field carries the port appended as IP:port (e.g. 203.0.113.13:80); split on ':' to separate IP from port. In flow/firewall facilities it is a bare IP and the port is in dport."
+    sampleValues: ["192.168.112.75", "208.67.220.220", "8.8.8.8", "203.0.113.13:80"]
+    applicableFacility: ["flows", "firewall", "ip_flow_start", "ip_flow_end", "urls", "vpn_firewall", "l7_firewall", "security_event"]
+
+  - name: sport
+    type: Integer
+    description: "Source (ephemeral) port of the connection."
+    sampleValues: ["36258", "33403", "55757"]
+    applicableFacility: ["flows", "firewall", "ip_flow_start", "ip_flow_end", "urls", "vpn_firewall", "l7_firewall"]
+
+  - name: dport
+    type: Integer
+    description: "Destination port of the connection (e.g. 53 DNS, 443 HTTPS)."
+    sampleValues: ["15500", "53", "443"]
+    applicableFacility: ["flows", "firewall", "ip_flow_start", "ip_flow_end", "urls", "vpn_firewall", "l7_firewall"]
+
+  - name: protocol
+    type: String
+    description: "IP transport protocol."
+    sampleValues: ["tcp", "udp"]
+    applicableFacility: ["flows", "firewall", "ip_flow_start", "ip_flow_end", "vpn_firewall", "l7_firewall"]
+
+  - name: mac
+    type: String
+    description: "MAC address of the client device involved in the flow."
+    sampleValues: ["F8:4E:58:A2:CC:D2", "C8:A6:EF:3D:36:04"]
+    applicableFacility: ["flows", "firewall", "urls", "vpn_firewall", "security_event"]
+
+  # ==========================================
+  # FLOWS FACILITY
+  # ==========================================
+  - name: action
+    type: String
+    description: "The disposition applied to the event. For the flows facility this is the access-policy decision (allow/deny); for the security_event facility it is the threat-protection action taken on the scanned object (e.g. block/allow)."
+    sampleValues: ["allow", "deny", "block"]
+    applicableFacility: ["flows", "security_event"]
+
+  # ==========================================
+  # FIREWALL / VPN_FIREWALL FACILITIES
+  # ==========================================
+  - name: pattern
+    type: String
+    description: "The firewall rule pattern that matched the flow, including the action and source/destination match expression."
+    sampleValues: ["allow (src 10.151.234.0/24 || src 10.151.218.128/25)", "0 all"]
+    applicableFacility: ["firewall", "vpn_firewall"]
+
+  # ==========================================
+  # L7_FIREWALL FACILITY
+  # ==========================================
+  - name: decision
+    type: String
+    description: "The layer-7 firewall disposition applied to the flow."
+    sampleValues: ["blocked", "allowed"]
+    applicableFacility: ["l7_firewall"]
+
+  # ==========================================
+  # IP_FLOW_START / IP_FLOW_END FACILITIES (NAT)
+  # ==========================================
+  - name: translated_src_ip
+    type: String
+    description: "The NAT-translated (public) source IP address that the internal src was rewritten to."
+    sampleValues: ["203.0.113.12", "203.0.113.11"]
+    applicableFacility: ["ip_flow_start", "ip_flow_end"]
+
+  - name: translated_port
+    type: Integer
+    description: "The NAT-translated source port that the internal sport was rewritten to."
+    sampleValues: [63231, 5019]
+    applicableFacility: ["ip_flow_start", "ip_flow_end"]
+
+  # ==========================================
+  # URLS FACILITY (HTTP/Web request logging)
+  # ==========================================
+  - name: agent
+    type: String
+    description: "The HTTP User-Agent string reported by the client."
+    sampleValues: ["Windows Microsoft Windows 11 Enterprise ZTunnel/1.0"]
+    applicableFacility: ["urls"]
+
+  - name: http_method
+    type: String
+    description: "The HTTP request method."
+    sampleValues: ["CONNECT", "GET", "POST"]
+    applicableFacility: ["urls"]
+
+  - name: request
+    type: String
+    description: "The full HTTP request line, including method and target URL."
+    sampleValues: ["CONNECT https://bf74291tsy.bf.dynatrace.com:443"]
+    applicableFacility: ["urls"]
+
+  - name: url
+    type: String
+    description: "The URL accessed by the client (urls facility) or, for the security_event facility, the URL the scanned/downloaded file was retrieved from."
+    sampleValues: ["https://bf74291tsy.bf.dynatrace.com:443", "http://download.windowsupdate.com/c/msdownload/update/others/2026/06/45555689_ee37b9aa549e8b7a68802635ee3ad0ded39c5050.cab"]
+    applicableFacility: ["urls", "security_event"]
+
+  # ==========================================
+  # EVENTS FACILITY (Device/system messages)
+  # ==========================================
+  - name: message
+    type: String
+    description: "Free-text device or system event message (e.g. spanning-tree, port, and switching notifications)."
+    sampleValues: ["Port 8 received a BPDU from F8:9E:28:C6:A7:7A, expected 00:84:1E:04:68:99"]
+    applicableFacility: ["events"]
+
+  # ==========================================
+  # SECURITY_EVENT FACILITY (AMP / threat protection — file scanning, IDS/IPS)
+  # ==========================================
+  - name: subType
+    type: String
+    description: "The specific kind of security event. Identifies why the record was generated and which fields are meaningful (e.g. file-scan vs intrusion alerts)."
+    sampleValues: ["security_filtering_file_scanned", "security_filtering_disposition_change", "ids_alerted"]
+    applicableFacility: ["security_event"]
+
+  - name: disposition
+    type: String
+    description: "Advanced Malware Protection (AMP) verdict assigned to the scanned file/object. 'malicious' flags a confirmed-bad file (typically paired with action=block); 'clean'/'unknown' indicate no/insufficient threat signal."
+    sampleValues: ["malicious", "clean", "unknown"]
+    applicableFacility: ["security_event"]
+
+  - name: sha256
+    type: String
+    description: "SHA-256 hash of the scanned file/object. Primary IOC for pivoting on the file and for threat-intel lookups."
+    sampleValues: ["ea5154c98023e6be3de5626e59f2366ef70b1cf6b323b8ae60afa669c0b42d63"]
+    applicableFacility: ["security_event"]
+
+  - name: name
+    type: String
+    description: "Name of the detected threat/signature (or file name) for the security event. Often empty when only the file hash/URL is reported."
+    sampleValues: ["", "W32.Auto.ea5154"]
+    applicableFacility: ["security_event"]

@@ -1,0 +1,19 @@
+description: >-
+  Qualys host inventory breakdown: counts tracked hosts by operating system,
+  tracking method, and Cloud Agent status to give a quick picture of fleet
+  composition and how assets are being monitored. Useful as a starting point
+  before drilling into a specific OS family or agent-coverage gap.
+datatype: qualysHost
+kql: |
+  qualysHost
+  | summarize Hosts = count(),
+              WithAgent = countif(trackingMethod == "QAGENT"),
+              AgentActive = countif(agentInfo.status == "STATUS_ACTIVE"),
+              LastVulnScan = max(lastVulnScan)
+          by Os = os
+  | order by Hosts desc
+tags: [qualys, host, inventory, asset-management]
+expected_output: |
+  Os                           Hosts  WithAgent  AgentActive  LastVulnScan
+  Ubuntu Linux 24.04.4 Server  42     40         39           2026-06-28T14:05:28Z
+  Windows Server 2022          18     18         17           2026-06-28T11:22:10Z

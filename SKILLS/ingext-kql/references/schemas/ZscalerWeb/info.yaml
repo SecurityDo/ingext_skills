@@ -1,0 +1,216 @@
+schema: ZscalerWeb
+description: >-
+  Zscaler Internet Access (ZIA) web proxy transaction log, streamed by Ingext from
+  a Zscaler NSS (Nanolog Streaming Service) web-log feed. Each record is one
+  HTTP/HTTPS transaction a user's device made through the Zscaler cloud proxy:
+  who/where (login, department, location, client device), the request (URL, host,
+  method, user-agent), the proxy verdict (action, applied rule), the response
+  (status code, sizes, timing), and security/classification context (URL category
+  class, cloud-app name/class, malware/threat, DLP, risk score). Field semantics
+  follow the Zscaler "NSS Feed Output Format: Web Logs" specification. Most numeric
+  fields arrive as JSON strings, so cast with toint()/tolong()/todouble() before
+  arithmetic. timestamp is parsed from the 'time' field.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Transaction time, parsed from the 'time' field (Zscaler ctime-style string, e.g. 'Thu Jun 25 04:05:07 2026', UTC). Primary time column for range filters (e.g. where timestamp > ago(1d))."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting. Distinct from reqsize/respsize (the proxied transaction sizes)."
+
+  - name: time
+    type: String
+    description: "Transaction timestamp as emitted by Zscaler — a ctime-format string ('Ddd Mmm DD HH:MM:SS YYYY'), not a parsed DateTime. Source of the 'timestamp' column; use 'timestamp' for range filters/arithmetic."
+    sampleValues: ["Thu Jun 25 04:05:07 2026"]
+
+  # ==========================================
+  # ACTION / RULE
+  # ==========================================
+  - name: action
+    type: String
+    description: "Proxy disposition of the transaction. 'Allowed' = permitted; 'Blocked' = denied by policy."
+    sampleValues: ["Allowed", "Blocked"]
+
+  - name: ruletype
+    type: String
+    description: "Type of policy rule that determined the action (e.g. URL Filtering, Cloud App, File Type). 'None' when no specific rule type applied."
+    sampleValues: ["None", "URL Filtering", "Cloud App"]
+
+  - name: rulelabel
+    type: String
+    description: "Name/label of the specific policy rule that fired. 'None' when the transaction matched no named rule."
+    sampleValues: ["None"]
+
+  # ==========================================
+  # USER / DEVICE / LOCATION
+  # ==========================================
+  - name: login
+    type: String
+    description: "Authenticated user identity (typically the UPN/email) for the transaction."
+    sampleValues: ["adele.vance@contoso.com"]
+
+  - name: dept
+    type: String
+    description: "Department the user belongs to (from the Zscaler/identity directory)."
+    sampleValues: ["Default Department"]
+
+  - name: location
+    type: String
+    description: "Zscaler location the traffic egressed from. 'Road Warrior' denotes a remote/off-network user via Zscaler Client Connector."
+    sampleValues: ["Road Warrior"]
+
+  - name: devicehostname
+    type: String
+    description: "Hostname of the client device that made the request."
+    sampleValues: ["CONTOSO-WS01"]
+
+  - name: deviceowner
+    type: String
+    description: "Owner/enrolled user of the client device (short account name), as reported by Zscaler Client Connector."
+    sampleValues: ["avance"]
+
+  # ==========================================
+  # NETWORK
+  # ==========================================
+  - name: cip
+    type: String
+    description: "Client IP address — the internal/source IP of the user's device."
+    sampleValues: ["10.10.10.32"]
+
+  - name: sip
+    type: String
+    description: "Server IP address — the destination/origin server the request was made to."
+    sampleValues: ["192.0.2.133"]
+
+  - name: proto
+    type: String
+    description: "Application/transport protocol of the transaction."
+    sampleValues: ["HTTPS", "HTTP"]
+
+  # ==========================================
+  # REQUEST
+  # ==========================================
+  - name: eurl
+    type: String
+    description: "Requested URL (host + path), URL-encoded. The primary field for URL/destination analysis."
+    sampleValues: ["api.edge-gateway.example.com/playback/telemetry/v2/actions"]
+
+  - name: ereferer
+    type: String
+    description: "HTTP Referer URL of the request, URL-encoded. 'None' when absent."
+    sampleValues: ["www.example.com/"]
+
+  - name: reqmethod
+    type: String
+    description: "HTTP request method."
+    sampleValues: ["GET", "POST", "CONNECT"]
+
+  - name: reqsize
+    type: Integer
+    description: "Total request size in bytes (stored as a string; cast with tolong())."
+    sampleValues: ["2147"]
+
+  - name: ua
+    type: String
+    description: "Client User-Agent string of the request."
+    sampleValues: ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"]
+
+  - name: contenttype
+    type: String
+    description: "Content-Type of the transaction body as seen by the proxy."
+    sampleValues: ["application/json"]
+
+  # ==========================================
+  # RESPONSE / TIMING
+  # ==========================================
+  - name: respcode
+    type: Integer
+    description: "HTTP response status code returned to the client (stored as a string; cast with toint())."
+    sampleValues: ["202", "200", "403"]
+
+  - name: respsize
+    type: Integer
+    description: "Total response size in bytes (stored as a string; cast with tolong())."
+    sampleValues: ["991"]
+
+  - name: ctime
+    type: Integer
+    description: "Client transaction time in milliseconds — time spent on the client side of the transaction (stored as a string; cast with toint())."
+    sampleValues: ["107"]
+
+  - name: stime
+    type: Integer
+    description: "Server transaction time in milliseconds — time the origin server took to respond (stored as a string; cast with toint())."
+    sampleValues: ["106"]
+
+  # ==========================================
+  # URL CLASSIFICATION
+  # ==========================================
+  - name: urlcat
+    type: String
+    description: "Zscaler URL category of the destination (most specific category)."
+    sampleValues: ["Entertainment", "Professional Services"]
+
+  - name: urlsupercat
+    type: String
+    description: "URL super-category (parent grouping of urlcat)."
+    sampleValues: ["Entertainment/Recreation"]
+
+  - name: urlclass
+    type: String
+    description: "URL class — the policy-oriented grouping/risk class of the category (e.g. Bandwidth Loss, Business Use, Security Risk)."
+    sampleValues: ["Bandwidth Loss"]
+
+  # ==========================================
+  # CLOUD APPLICATION
+  # ==========================================
+  - name: appname
+    type: String
+    description: "Cloud application identified for the transaction (from Zscaler's app catalog). 'None' when not a recognized app."
+    sampleValues: ["SiriusXM Satellite Radio"]
+
+  - name: appclass
+    type: String
+    description: "Class/category of the cloud application."
+    sampleValues: ["Streaming Media"]
+
+  # ==========================================
+  # SECURITY / THREAT
+  # ==========================================
+  - name: riskscore
+    type: Integer
+    description: "Zscaler risk score for the transaction (0–100; higher = riskier). Stored as a string; cast with toint()."
+    sampleValues: ["10"]
+
+  - name: threatname
+    type: String
+    description: "Name of the threat detected in the transaction. 'None' when clean."
+    sampleValues: ["None"]
+
+  - name: malwarecat
+    type: String
+    description: "Malware category detected. 'None' when clean."
+    sampleValues: ["None"]
+
+  - name: unscannabletype
+    type: String
+    description: "Reason the content could not be scanned (e.g. encrypted/oversized), if any. 'None' when fully scanned."
+    sampleValues: ["None"]
+
+  # ==========================================
+  # DLP
+  # ==========================================
+  - name: dlpeng
+    type: String
+    description: "DLP engine that matched the transaction. 'None' when no DLP engine fired."
+    sampleValues: ["None"]
+
+  - name: dlpdict
+    type: String
+    description: "DLP dictionary/dictionaries matched. 'None' when no dictionary matched."
+    sampleValues: ["None"]

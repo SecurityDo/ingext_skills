@@ -1,0 +1,125 @@
+schema: ZscalerDNS
+description: >-
+  Zscaler Internet Access (ZIA) DNS control log, streamed by Ingext from a Zscaler
+  NSS DNS-log feed. Each record is one DNS request/response the Zscaler cloud
+  firewall's DNS control processed: who/where (user, department, location, client
+  device), the query (name and record type) and answer, the client source and
+  Zscaler server destination addresses, the DNS category, and the policy actions
+  and matched rules applied separately to the request and the response. Field
+  semantics follow the Zscaler "NSS Feed Output Format: DNS Logs" specification.
+  Numeric fields arrive as JSON strings; cast with toint() before arithmetic.
+  timestamp is parsed from the 'datetime' field.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "DNS transaction time, parsed from the 'datetime' field (Zscaler ctime-style string, e.g. 'Thu Jun 25 04:05:06 2026', UTC). Primary time column for range filters (e.g. where timestamp > ago(1d))."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: datetime
+    type: String
+    description: "DNS transaction timestamp as emitted by Zscaler — a ctime-format string ('Ddd Mmm DD HH:MM:SS YYYY'), not a parsed DateTime. Source of the 'timestamp' column; use 'timestamp' for range filters/arithmetic."
+    sampleValues: ["Thu Jun 25 04:05:06 2026"]
+
+  # ==========================================
+  # USER / DEVICE / LOCATION
+  # ==========================================
+  - name: user
+    type: String
+    description: "Authenticated user identity (typically the UPN/email) that issued the DNS request."
+    sampleValues: ["adele.vance@contoso.com"]
+
+  - name: department
+    type: String
+    description: "Department the user belongs to, URL-encoded (e.g. 'Field%20Supervision'). url_decode() to display."
+    sampleValues: ["Sales%20Department"]
+
+  - name: location
+    type: String
+    description: "Zscaler location the request egressed from, URL-encoded. 'Road%20Warrior' denotes a remote/off-network user via Zscaler Client Connector."
+    sampleValues: ["Road%20Warrior"]
+
+  - name: devicehostname
+    type: String
+    description: "Hostname of the client device that issued the DNS request."
+    sampleValues: ["CONTOSO-WS02"]
+
+  - name: deviceowner
+    type: String
+    description: "Owner/enrolled user of the client device (short account name), as reported by Zscaler Client Connector."
+    sampleValues: ["avance"]
+
+  # ==========================================
+  # NETWORK
+  # ==========================================
+  - name: clt_sip
+    type: String
+    description: "Client source IP — the internal/source IP of the device that issued the DNS request."
+    sampleValues: ["10.10.10.179"]
+
+  - name: srv_dip
+    type: String
+    description: "Server destination IP — the Zscaler DNS resolver/service IP the request was sent to."
+    sampleValues: ["192.0.2.156"]
+
+  - name: srv_dport
+    type: Integer
+    description: "Server destination port for the DNS request (typically 53). Stored as a string; cast with toint()."
+    sampleValues: ["53"]
+
+  # ==========================================
+  # DNS QUERY / RESPONSE
+  # ==========================================
+  - name: dns_req
+    type: String
+    description: "Queried domain name (the DNS request). Primary field for domain/destination analysis."
+    sampleValues: ["unitedstates.smartscreen.microsoft.com"]
+
+  - name: dns_reqtype
+    type: String
+    description: "DNS record type requested."
+    sampleValues: ["A", "AAAA", "CNAME", "TXT"]
+
+  - name: dns_resp
+    type: String
+    description: "DNS response returned (e.g. the resolved IP or answer). 'None'/empty when the request was blocked or unanswered."
+    sampleValues: ["192.0.2.10"]
+
+  - name: category
+    type: String
+    description: "Zscaler category of the queried domain."
+    sampleValues: ["O365_Azure_MS Apps"]
+
+  - name: durationms
+    type: Integer
+    description: "DNS transaction duration in milliseconds (stored as a string; cast with toint())."
+    sampleValues: ["0"]
+
+  # ==========================================
+  # POLICY (request and response handled separately)
+  # ==========================================
+  - name: reqaction
+    type: String
+    description: "Action applied to the DNS request by DNS control policy ('Allow', 'Block', 'Redirect')."
+    sampleValues: ["Allow", "Block"]
+
+  - name: reqrulelabel
+    type: String
+    description: "Name/label of the DNS rule that matched the request."
+    sampleValues: ["Default Firewall DNS Rule"]
+
+  - name: resaction
+    type: String
+    description: "Action applied to the DNS response by DNS control policy ('Allow', 'Block')."
+    sampleValues: ["Allow", "Block"]
+
+  - name: resrulelabel
+    type: String
+    description: "Name/label of the DNS rule that matched the response."
+    sampleValues: ["Default Firewall DNS Rule"]

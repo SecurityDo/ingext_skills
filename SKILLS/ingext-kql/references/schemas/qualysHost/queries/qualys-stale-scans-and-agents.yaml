@@ -1,0 +1,40 @@
+description: >-
+  Qualys host hygiene review: surfaces tracked hosts that are falling out of
+  coverage — not scanned for vulnerabilities recently, or running a Cloud Agent
+  that has not checked in lately. Flags each host with the reason(s) so coverage
+  gaps can be triaged after a vulnerability or audit finding. Adjust the staleness
+  thresholds to your scanning cadence.
+datatype: qualysHost
+kql: |
+  let VulnScanMaxAge = 14d;
+  let AgentCheckinMaxAge = 3d;
+  qualysHost
+  | extend
+      VulnScanStale = isnull(lastVulnScan) or lastVulnScan < ago(VulnScanMaxAge),
+      AgentStale = trackingMethod == "QAGENT"
+          and (isnull(agentInfo.lastCheckedIn) or todatetime(agentInfo.lastCheckedIn) < ago(AgentCheckinMaxAge)),
+      AgentInactive = trackingMethod == "QAGENT" and agentInfo.status != "STATUS_ACTIVE"
+  | where VulnScanStale or AgentStale or AgentInactive
+  | extend Reasons = strcat_array(pack_array(
+      iff(VulnScanStale, "vuln-scan-stale", ""),
+      iff(AgentStale, "agent-not-checking-in", ""),
+      iff(AgentInactive, "agent-inactive", "")), " ")
+  | project
+      name,
+      address,
+      os,
+      trackingMethod,
+      agentStatus = agentInfo.status,
+      agentVersion,
+      lastVulnScan,
+      lastComplianceScan,
+      lastCheckedIn = agentInfo.lastCheckedIn,
+      Reasons,
+      id
+  | order by lastVulnScan asc
+tags: [qualys, host, vulnerability-management, cloud-agent, coverage, hygiene]
+expected_output: |
+  Hosts needing attention with reason flags (sanitized).
+
+  name             address     os                          trackingMethod  agentStatus    agentVersion  lastVulnScan          Reasons
+  ns2.contoso.com  192.0.2.6   Ubuntu Linux 24.04.4 Server  QAGENT          STATUS_ACTIVE  7.4.0.32      2026-05-30T14:05:28Z  vuln-scan-stale

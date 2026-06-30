@@ -1,0 +1,25 @@
+description: >-
+  Zscaler DNS control requests that were blocked over the last 24 hours, grouped by
+  queried domain and category. A request is treated as blocked when either the
+  request or the response action was 'Block'. Highlights which domains DNS policy
+  is denying, the matched rule, and how many users/devices attempted them — useful
+  for spotting malware callbacks, policy hits, and noisy clients.
+datatype: ZscalerDNS
+kql: |
+  ZscalerDNS
+  | where timestamp > ago(24h)
+  | where reqaction == "Block" or resaction == "Block"
+  | summarize
+      Requests = count(),
+      Users = dcount(user),
+      Devices = dcount(devicehostname),
+      ReqTypes = make_set(dns_reqtype)
+      by dns_req, category, Rule = reqrulelabel
+  | order by Requests desc
+tags: [zscaler, zia, dns, dns-control, blocked, security]
+expected_output: |
+  Blocked DNS requests by domain and category (sanitized).
+
+  dns_req                          category            Rule                       Requests  Users  Devices  ReqTypes
+  malware-c2.example.net           Botnet              Block Known Malware DNS    88        4      4        ["A","AAAA"]
+  ads.tracker.example.com          Web Advertisements  Block Advertising          61        15     17       ["A"]

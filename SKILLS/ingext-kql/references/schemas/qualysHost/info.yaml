@@ -1,0 +1,215 @@
+schema: qualysHost
+description: >-
+  Qualys host asset snapshot collected by Ingext from the Qualys API (host asset
+  inventory, typically VMDR / Cloud Agent). Each record is the current state of
+  one tracked host: identity (name/FQDN/DNS/NetBIOS, Qualys host IDs), network
+  address, operating system and hardware, the last vulnerability / compliance
+  scan and boot times, and — for agent-tracked hosts — a nested agentInfo object
+  describing the Cloud Agent (version, modules, check-in, status, geolocation).
+  The object is stored as a dynamic JSON document, so nested fields are accessed
+  with dot notation (e.g. agentInfo.status). timestamp is parsed from the
+  'created' field and _key is mapped to the 'name' field.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Extracted from the 'created' field — when the host asset was first created/registered in Qualys. Primary time column for range filters (e.g. where timestamp > ago(30d)). For recency of activity use lastVulnScan, lastComplianceScan, or agentInfo.lastCheckedIn instead, and 'modified' for the last record update."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the host record; mapped to the 'name' field (the host's FQDN/asset name). Unique per host: each _key holds the latest snapshot, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: name
+    type: String
+    description: "Host asset name as tracked by Qualys, typically the FQDN. Source of _key."
+    sampleValues: ["ns2.contoso.com"]
+
+  - name: id
+    type: Integer
+    description: "Qualys Asset Manager host asset ID (the modern internal identifier)."
+    sampleValues: ["13730177"]
+
+  - name: qwebHostId
+    type: Integer
+    description: "Qualys legacy QWEB host ID, used by the classic VM API and in many report URLs. May be 0/absent for hosts never scanned by the scanner."
+    sampleValues: ["5284099"]
+
+  - name: fqdn
+    type: String
+    description: "Fully qualified domain name of the host."
+    sampleValues: ["ns2.contoso.com"]
+
+  - name: dnsHostName
+    type: String
+    description: "DNS host name resolved for the asset."
+    sampleValues: ["ns2.contoso.com"]
+
+  - name: netbiosName
+    type: String
+    description: "NetBIOS name of the host; commonly empty for non-Windows assets."
+    sampleValues: [""]
+
+  - name: domain
+    type: String
+    description: "Network domain of the host; may be empty."
+    sampleValues: ["contoso.com", ""]
+
+  - name: networkGuid
+    type: String
+    description: "GUID of the Qualys network the asset belongs to (asset-grouping/network segmentation construct)."
+    sampleValues: ["00000000-0000-0000-0000-000000000001"]
+
+  # ==========================================
+  # NETWORK
+  # ==========================================
+  - name: address
+    type: String
+    description: "Primary IP address of the host as recorded by Qualys (the scanned/managed interface)."
+    sampleValues: ["192.0.2.6"]
+
+  # ==========================================
+  # OS & HARDWARE
+  # ==========================================
+  - name: os
+    type: String
+    description: "Operating system product string as detected by Qualys."
+    sampleValues: ["Ubuntu Linux 24.04.4 Server", "Windows Server 2022"]
+
+  - name: manufacturer
+    type: String
+    description: "Hardware (or virtualization) manufacturer."
+    sampleValues: ["Microsoft Corporation", "VMware, Inc."]
+
+  - name: model
+    type: String
+    description: "Hardware/platform model."
+    sampleValues: ["Virtual Machine"]
+
+  - name: biosDescription
+    type: String
+    description: "BIOS vendor/version description string."
+    sampleValues: ["American Megatrends Inc. 090008  02/27/2023"]
+
+  - name: timezone
+    type: String
+    description: "Time zone reported for the host."
+    sampleValues: ["UTC"]
+
+  # ==========================================
+  # ACTIVITY / SCAN TIMESTAMPS
+  # ==========================================
+  - name: created
+    type: DateTime
+    description: "When the host asset was created/registered in Qualys (UTC). Source of the 'timestamp' column."
+    sampleValues: ["2023-05-31T12:09:53Z"]
+
+  - name: modified
+    type: DateTime
+    description: "When the host asset record was last modified in Qualys (UTC). Tracks the most recent update to any field."
+    sampleValues: ["2026-06-28T17:09:55Z"]
+
+  - name: lastVulnScan
+    type: DateTime
+    description: "When the host was last scanned for vulnerabilities (UTC). Stale or missing values flag assets outside the scanning cadence."
+    sampleValues: ["2026-06-28T14:05:28Z"]
+
+  - name: lastComplianceScan
+    type: DateTime
+    description: "When the host was last scanned for policy compliance (UTC). Empty for hosts not in a compliance scope."
+    sampleValues: ["2026-06-27T09:45:42Z"]
+
+  - name: lastSystemBoot
+    type: DateTime
+    description: "Last operating-system boot time reported for the host (UTC). Useful for uptime / pending-reboot analysis."
+    sampleValues: ["2026-06-11T03:30:48Z"]
+
+  - name: lastLoggedOnUser
+    type: String
+    description: "Last user observed logged on to the host."
+    sampleValues: ["adele.vance"]
+
+  # ==========================================
+  # TRACKING
+  # ==========================================
+  - name: type
+    type: String
+    description: "Asset type."
+    sampleValues: ["HOST"]
+
+  - name: trackingMethod
+    type: String
+    description: "How Qualys tracks/identifies this host. QAGENT = Cloud Agent; IP/DNS/NETBIOS = scanner-based tracking by that attribute. QAGENT hosts populate the agentInfo object."
+    sampleValues: ["QAGENT", "IP", "DNS"]
+
+  - name: agentVersion
+    type: String
+    description: "Cloud Agent version (top-level convenience copy of agentInfo.agentVersion). Empty/absent for scanner-only hosts."
+    sampleValues: ["7.4.0.32"]
+
+  # ==========================================
+  # CLOUD AGENT (agentInfo.*) — present when trackingMethod == QAGENT
+  # ==========================================
+  - name: agentInfo.agentId
+    type: String
+    description: "Unique identifier (GUID) of the Qualys Cloud Agent installed on the host."
+    sampleValues: ["00000000-0000-0000-0000-000000000002"]
+
+  - name: agentInfo.agentVersion
+    type: String
+    description: "Installed Cloud Agent version."
+    sampleValues: ["7.4.0.32"]
+
+  - name: agentInfo.status
+    type: String
+    description: "Current Cloud Agent status. STATUS_ACTIVE indicates a healthy, reporting agent; other values indicate inactive/uninstalled/errored agents."
+    sampleValues: ["STATUS_ACTIVE", "STATUS_INACTIVE"]
+
+  - name: agentInfo.activatedModule
+    type: String
+    description: "Comma-separated list of Qualys modules activated on the agent (e.g. AGENT_VM = Vulnerability Management, AGENT_PM = Patch Management, AGENT_SCA = Security Configuration Assessment). Split on ',' to enumerate."
+    sampleValues: ["AGENT_PM,AGENT_VM,AGENT_SCA"]
+
+  - name: agentInfo.chirpStatus
+    type: String
+    description: "Agent manifest/communication ('chirp') status reported during check-in."
+    sampleValues: ["Manifest Downloaded"]
+
+  - name: agentInfo.lastCheckedIn
+    type: DateTime
+    description: "When the Cloud Agent last checked in to the Qualys platform (UTC). The freshest liveness signal for agent-tracked hosts; stale values flag offline agents."
+    sampleValues: ["2026-06-28T17:09:55Z"]
+
+  - name: agentInfo.connectedFrom
+    type: String
+    description: "Public/egress IP address the agent last connected from. May differ from 'address' (the host's internal interface)."
+    sampleValues: ["198.51.100.142"]
+
+  - name: agentInfo.platform
+    type: String
+    description: "Agent-reported OS platform."
+    sampleValues: ["LINUX_UBUNTU", "WINDOWS"]
+
+  - name: agentInfo.location
+    type: String
+    description: "Human-readable geolocation of the agent's connecting IP."
+    sampleValues: ["Washington,Virginia United States"]
+
+  - name: agentInfo.locationGeoLatitude
+    type: Real
+    description: "Latitude of the agent's connecting IP (stored as a number)."
+    sampleValues: ["38.7095"]
+
+  - name: agentInfo.locationGeoLongtitude
+    type: String
+    description: "Longitude of the agent's connecting IP. NOTE: spelled 'Longtitude' (Qualys field typo) and stored as a string, not a number — cast with todouble() before numeric comparison."
+    sampleValues: ["-78.1539"]

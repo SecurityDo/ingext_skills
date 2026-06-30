@@ -1,0 +1,303 @@
+schema: CortexAlert
+description: >-
+  PaloAlto Cortex XDR alert, imported by Ingext from the Cortex XDR API
+  (Get Alerts / alerts endpoint). Each record is one detection raised by a Cortex
+  detector (XDR Agent local analysis, BIOC, correlation, firewall, etc.) on one
+  endpoint: the alert identity and classification, the affected agent/host, the
+  triggering rule, resolution/matching status, and a nested 'events' array holding
+  the raw causality-graph event(s) that produced the alert (actor/causality/OS
+  process lineage, file/registry/network actions, and firewall fields). Alerts are
+  grouped into a CortexIncident via case_id (= the incident's incident_id). The
+  object is stored as a dynamic JSON document, so nested fields use dot notation
+  (e.g. events[0].actor_process_image_name) and the 'events' array requires
+  mv-expand to enumerate. timestamp is parsed from detection_timestamp.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Alert detection time, derived from detection_timestamp (a Unix epoch in milliseconds). Primary time column for range filters (e.g. where timestamp > ago(1d)). Equivalent to unixtime_milliseconds_todatetime(detection_timestamp)."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  # ==========================================
+  # ALERT IDENTITY
+  # ==========================================
+  - name: alert_id
+    type: String
+    description: "Cortex XDR alert ID (numeric string), unique within the tenant."
+    sampleValues: ["7157"]
+
+  - name: external_id
+    type: String
+    description: "Globally unique alert identifier (hex/UUID) used by the Cortex API and for cross-system correlation."
+    sampleValues: ["9d509310edf04e649118b04795fcc391"]
+
+  - name: name
+    type: String
+    description: "Human-readable alert name (the rule/detector name that fired)."
+    sampleValues: ["Local Analysis Malware", "Behavioral Threat Detected"]
+
+  - name: description
+    type: String
+    description: "Free-text description of what the alert detected."
+    sampleValues: ["Suspicious executable detected"]
+
+  - name: category
+    type: String
+    description: "Alert category (high-level threat class)."
+    sampleValues: ["Malware", "Exploit", "Credential Access"]
+
+  - name: alert_type
+    type: String
+    description: "Cortex alert type/origin classification."
+    sampleValues: ["Unclassified", "Model"]
+
+  - name: severity
+    type: String
+    description: "Alert severity assigned by Cortex. Lowercase string. Order: informational < low < medium < high < critical."
+    sampleValues: ["medium", "high", "critical", "low", "informational"]
+
+  - name: source
+    type: String
+    description: "Detection source / sensor that produced the alert."
+    sampleValues: ["XDR Agent", "PAN NGFW", "XDR Analytics"]
+
+  - name: action
+    type: String
+    description: "Enforcement action the detector took on the offending entity (raw enum). REPORTED = detected only; BLOCKED/PREVENTED = stopped."
+    sampleValues: ["REPORTED", "BLOCKED", "DETECTED"]
+
+  - name: action_pretty
+    type: String
+    description: "Display-formatted version of 'action'."
+    sampleValues: ["Detected (Reported)", "Prevented (Blocked)"]
+
+  - name: mitre_tactic_id_and_name
+    type: String
+    description: "MITRE ATT&CK tactic id and name associated with the alert (e.g. 'TA0002 - Execution'). Null when not mapped."
+    sampleValues: ["TA0002 - Execution"]
+
+  - name: mitre_technique_id_and_name
+    type: String
+    description: "MITRE ATT&CK technique id and name associated with the alert (e.g. 'T1059 - Command and Scripting Interpreter'). Null when not mapped."
+    sampleValues: ["T1059 - Command and Scripting Interpreter"]
+
+  - name: bioc_category_enum_key
+    type: String
+    description: "BIOC (Behavioral Indicator of Compromise) category key; populated only for BIOC-rule alerts, otherwise null."
+
+  - name: bioc_indicator
+    type: String
+    description: "BIOC indicator detail; populated only for BIOC-rule alerts, otherwise null."
+
+  # ==========================================
+  # GROUPING / CASE
+  # ==========================================
+  - name: case_id
+    type: Integer
+    description: "ID of the CortexIncident this alert was grouped into. Equals CortexIncident.incident_id (as a number). Join key from alert to incident."
+    sampleValues: ["797"]
+
+  - name: deduplicate_tokens
+    type: String
+    description: "Hash token Cortex uses to deduplicate identical alerts; repeated alerts share a token."
+    sampleValues: ["6d15f78622044d5da24204c0db0fb1d5"]
+
+  - name: starred
+    type: Boolean
+    description: "Whether the alert has been starred/flagged by an analyst."
+    sampleValues: ["false"]
+
+  - name: is_whitelisted
+    type: Boolean
+    description: "Whether the alert matched an exclusion/allow policy and was whitelisted."
+    sampleValues: ["false"]
+
+  - name: is_pcap
+    type: Boolean
+    description: "Whether a packet capture (PCAP) is associated with the alert."
+    sampleValues: ["false"]
+
+  # ==========================================
+  # RESOLUTION / MATCHING STATUS
+  # ==========================================
+  - name: resolution_status
+    type: String
+    description: "Lifecycle/resolution state of the alert. STATUS_010_NEW = new/open; other STATUS_0xx_* values map to in-progress/resolved dispositions (e.g. resolved true/false positive)."
+    sampleValues: ["STATUS_010_NEW", "STATUS_070_RESOLVED_SECURITY_TESTING"]
+
+  - name: resolution_comment
+    type: String
+    description: "Analyst comment recorded when the alert was resolved; null while open."
+
+  - name: matching_status
+    type: String
+    description: "Whether the alert matched a Cortex correlation/service rule. UNMATCHABLE = not eligible for matching; MATCHED/UNMATCHED otherwise."
+    sampleValues: ["UNMATCHABLE", "MATCHED"]
+
+  - name: matching_service_rule_id
+    type: String
+    description: "ID of the service/correlation rule the alert matched; null when unmatched."
+
+  - name: filter_rule_id
+    type: String
+    description: "ID of the filtering/alert-exclusion rule applied; null when none."
+
+  - name: variation_rule_id
+    type: String
+    description: "ID of the alert-variation rule applied; null when none."
+
+  - name: attempt_counter
+    type: Integer
+    description: "Number of repeated attempts collapsed into this alert."
+    sampleValues: ["0"]
+
+  - name: end_match_attempt_ts
+    type: DateTime
+    description: "Timestamp (epoch ms) when correlation matching attempts ended; null when not applicable."
+
+  - name: last_modified_ts
+    type: DateTime
+    description: "When the alert record was last modified (epoch ms); null if never modified after insert."
+
+  - name: local_insert_ts
+    type: DateTime
+    description: "When Cortex first ingested/inserted the alert locally (Unix epoch in milliseconds). Slightly later than detection_timestamp; use detection_timestamp (timestamp) for detection recency."
+    sampleValues: ["1781698952544"]
+
+  - name: detection_timestamp
+    type: DateTime
+    description: "Detection time as a Unix epoch in milliseconds (numeric source of the 'timestamp' column). Convert with unixtime_milliseconds_todatetime(detection_timestamp)."
+    sampleValues: ["1781698942000"]
+
+  # ==========================================
+  # AGENT / HOST CONTEXT
+  # ==========================================
+  - name: agent_fqdn
+    type: String
+    description: "Fully qualified domain name of the endpoint that raised the alert."
+    sampleValues: ["FINANCE-WS01.contoso.com"]
+
+  - name: agent_device_domain
+    type: String
+    description: "AD/DNS domain the endpoint belongs to."
+    sampleValues: ["contoso.com"]
+
+  - name: host_name
+    type: String
+    description: "Short hostname of the affected endpoint."
+    sampleValues: ["FINANCE-WS01"]
+
+  - name: host_ip
+    type: String
+    description: "Host IP address(es) recorded for the endpoint; may be null."
+
+  - name: endpoint_id
+    type: String
+    description: "Cortex XDR Agent endpoint ID (GUID) of the affected host. Join key to other agent telemetry."
+    sampleValues: ["00000000000000000000000000000000"]
+
+  - name: agent_os_type
+    type: String
+    description: "Operating-system family of the endpoint."
+    sampleValues: ["Windows", "Linux", "Mac"]
+
+  - name: agent_os_sub_type
+    type: String
+    description: "OS version/build string."
+    sampleValues: ["10.0.22631"]
+
+  - name: agent_version
+    type: String
+    description: "Installed Cortex XDR Agent version."
+    sampleValues: ["9.2.0.120"]
+
+  - name: agent_data_collection_status
+    type: Boolean
+    description: "Whether full data collection was enabled on the agent at detection time."
+    sampleValues: ["false"]
+
+  - name: agent_ip_addresses_v6
+    type: String
+    description: "IPv6 address(es) of the agent; often null."
+
+  - name: mac
+    type: String
+    description: "Primary MAC address of the endpoint; may be null."
+
+  - name: mac_addresses
+    type: DynamicArray
+    description: "Array of MAC addresses for the endpoint; may be null."
+
+  # ==========================================
+  # DEVICE (external/USB) CONTEXT
+  # ==========================================
+  - name: device_type
+    type: String
+    description: "Type of external/peripheral device involved (e.g. for device-control alerts); null when not device-related."
+
+  - name: device_vendor_name
+    type: String
+    description: "Vendor name of the external device; null when not applicable."
+
+  - name: device_vendor_id
+    type: String
+    description: "USB/PCI vendor ID of the external device; null when not applicable."
+
+  - name: device_product_id
+    type: String
+    description: "Product ID of the external device; null when not applicable."
+
+  - name: device_serial_number
+    type: String
+    description: "Serial number of the external device; null when not applicable."
+
+  - name: malicious_urls
+    type: DynamicArray
+    description: "URLs flagged as malicious in the alert; null when none."
+
+  # ==========================================
+  # TAGS
+  # ==========================================
+  - name: tags
+    type: DynamicArray
+    description: "Current tags applied to the alert (data-source 'DS:' and endpoint-group 'EG:' conventions). Use mv-expand / has to filter."
+    sampleValues: ["DS:PANW/XDR Agent", "EG:PCs - OS - Workstation"]
+
+  - name: original_tags
+    type: DynamicArray
+    description: "Tags as originally assigned at ingest (before any later retagging)."
+    sampleValues: ["EG:PCs - Location - HQ", "DS:PANW/XDR Agent"]
+
+  - name: dynamic_fields
+    type: Dynamic
+    description: "Container for additional/dynamic Cortex fields not in the fixed schema; often null."
+
+  # ==========================================
+  # EVENTS (causality-graph array)
+  # ==========================================
+  - name: events
+    type: DynamicArray
+    description: >-
+      Array of the raw causality-graph event object(s) that produced the alert.
+      Use mv-expand to enumerate (mv-expand events | ... tostring(events.field)).
+      Each event carries process lineage at several levels — actor (the immediate
+      acting process: actor_process_image_name / _path / _command_line / _image_md5
+      / _image_sha256 / _os_pid / _signature_vendor / _signature_status),
+      causality_actor (the causality root process), and os_actor (the originating
+      OS process) — plus the affected entity via action_* fields:
+      file (action_file_name / _file_path / _file_md5 / _file_sha256),
+      registry (action_registry_full_key / _key_name / _value_name / _data),
+      network (action_local_ip / _local_port / _remote_ip / _remote_port /
+      action_external_hostname / action_country), and DNS (dns_query_name).
+      event_type/event_sub_type classify the event (e.g. 'Process Execution'),
+      event_timestamp is the per-event epoch-ms time, user_name is the acting user,
+      module_id names the detector (e.g. 'Local Analysis'), and fw_* fields carry
+      firewall context for network/NGFW-sourced alerts. Most fields are null for
+      any given alert depending on event_type.
+    sampleValues: ["Process Execution", "Network Connection", "File", "Registry"]

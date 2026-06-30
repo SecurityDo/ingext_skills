@@ -1,0 +1,24 @@
+description: >-
+  Blocked Zscaler web transactions over the last 24 hours, grouped by URL category
+  and the policy rule that blocked them. Surfaces which categories and rules are
+  driving denials and how many distinct users they affect — useful for tuning URL
+  filtering policy and spotting users repeatedly hitting blocked destinations.
+datatype: ZscalerWeb
+kql: |
+  ZscalerWeb
+  | where timestamp > ago(24h)
+  | where action == "Blocked"
+  | summarize
+      Blocks = count(),
+      Users = dcount(login),
+      TopUsers = make_set(login, 10),
+      MaxRisk = max(toint(riskscore))
+      by urlcat, urlclass, rulelabel
+  | order by Blocks desc
+tags: [zscaler, zia, web, proxy, url-filtering, security]
+expected_output: |
+  Blocked web transactions by category/rule with affected user counts (sanitized).
+
+  urlcat         urlclass          rulelabel              Blocks  Users  TopUsers                    MaxRisk
+  Streaming Media  Bandwidth Loss   Block Streaming        142     37     ["adele.vance@contoso.com"] 35
+  Adult Themes     Security Risk    Block Adult Content     19      8     ["adele.vance@contoso.com"] 80

@@ -1,0 +1,25 @@
+description: >-
+  Zscaler cloud firewall sessions that were blocked over the last 24 hours,
+  summarized by the matched rule and destination. Shows the blocked destination
+  server, port and country, the network application, how many sessions and users
+  were affected, and total bytes — useful for confirming firewall policy is
+  enforcing as intended and for investigating blocked outbound activity.
+datatype: ZscalerFirewall
+kql: |
+  ZscalerFirewall
+  | where timestamp > ago(24h)
+  | where action startswith "Block"
+  | summarize
+      Sessions = sum(toint(numsessions)),
+      Users = dcount(user),
+      OutBytes = sum(tolong(outbytes)),
+      InBytes = sum(tolong(inbytes))
+      by RuleLabel = url_decode(rulelabel), sdip, sdport, destcountry, nwapp
+  | order by Sessions desc
+tags: [zscaler, zia, firewall, network, blocked, security]
+expected_output: |
+  Blocked firewall sessions by rule and destination (sanitized).
+
+  RuleLabel              sdip          sdport  destcountry     nwapp  Sessions  Users  OutBytes  InBytes
+  Block Hotspot Shield   192.0.2.103   443     United States   tcp    54        12     43686     8478
+  Block Tor              192.0.2.77    9001    Germany         tcp    7         3      5663      1099

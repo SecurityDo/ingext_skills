@@ -1,0 +1,232 @@
+schema: ZscalerFirewall
+description: >-
+  Zscaler Internet Access (ZIA) cloud firewall session log, streamed by Ingext from
+  a Zscaler NSS firewall-log feed. Each record is one network session (or an
+  aggregate of sessions) the Zscaler cloud firewall processed: who/where (user,
+  department, location, client device, tunnel), the full client/server address
+  pairs across NAT (client source/dest and server source/dest IP:port), the
+  firewall verdict and matched rule, the network service/application, byte counts
+  and durations, and security context (IP category, threat, destination country).
+  Field semantics follow the Zscaler "NSS Feed Output Format: Firewall Logs"
+  specification. Most numeric fields arrive as JSON strings, so cast with
+  toint()/tolong()/todouble() before arithmetic. timestamp is parsed from the
+  'datetime' field.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Session time, parsed from the 'datetime' field (Zscaler ctime-style string, e.g. 'Thu Jun 25 04:05:06 2026', UTC). Primary time column for range filters (e.g. where timestamp > ago(1d))."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting. Distinct from inbytes/outbytes (the session byte counts)."
+
+  - name: datetime
+    type: String
+    description: "Session timestamp as emitted by Zscaler — a ctime-format string ('Ddd Mmm DD HH:MM:SS YYYY'), not a parsed DateTime. Source of the 'timestamp' column; use 'timestamp' for range filters/arithmetic."
+    sampleValues: ["Thu Jun 25 04:05:06 2026"]
+
+  # ==========================================
+  # ACTION / RULE
+  # ==========================================
+  - name: action
+    type: String
+    description: "Firewall disposition of the session. Examples: 'Allow', 'Block', 'Allow due to insufficient app data' (allowed because the app could not yet be classified). Filter with has/startswith since the string is descriptive."
+    sampleValues: ["Allow due to insufficient app data", "Block", "Allow"]
+
+  - name: rulelabel
+    type: String
+    description: "Name/label of the firewall rule that matched the session, URL-encoded (e.g. 'Block%20Hotspot%20Shield'). 'None' when no named rule matched. url_decode() to display."
+    sampleValues: ["Block%20Hotspot%20Shield", "None"]
+
+  - name: ipsrulelabel
+    type: String
+    description: "Name/label of the IPS (intrusion prevention) rule that matched, if any. 'None' when no IPS rule fired."
+    sampleValues: ["None"]
+
+  # ==========================================
+  # USER / DEVICE / LOCATION
+  # ==========================================
+  - name: user
+    type: String
+    description: "Authenticated user identity (typically the UPN/email) for the session."
+    sampleValues: ["adele.vance@contoso.com"]
+
+  - name: department
+    type: String
+    description: "Department the user belongs to, URL-encoded (e.g. 'Field%20Supervision'). url_decode() to display."
+    sampleValues: ["Sales%20Department"]
+
+  - name: locationname
+    type: String
+    description: "Zscaler location the session egressed from, URL-encoded. 'Road%20Warrior' denotes a remote/off-network user via Zscaler Client Connector."
+    sampleValues: ["Road%20Warrior"]
+
+  - name: devicehostname
+    type: String
+    description: "Hostname of the client device that originated the session."
+    sampleValues: ["CONTOSO-WS03"]
+
+  - name: deviceowner
+    type: String
+    description: "Owner/enrolled user of the client device (short account name), as reported by Zscaler Client Connector."
+    sampleValues: ["avance"]
+
+  # ==========================================
+  # CLIENT-SIDE ADDRESSES (as seen from the client)
+  # ==========================================
+  - name: csip
+    type: String
+    description: "Client source IP — the source IP of the originating client (for a Road Warrior, the device's public IP)."
+    sampleValues: ["198.51.100.23"]
+
+  - name: csport
+    type: Integer
+    description: "Client source port (stored as a string; cast with toint())."
+    sampleValues: ["60597"]
+
+  - name: cdip
+    type: String
+    description: "Client destination IP — the destination IP as seen by the client (pre-DNAT)."
+    sampleValues: ["192.0.2.68"]
+
+  - name: cdport
+    type: Integer
+    description: "Client destination port (stored as a string; cast with toint())."
+    sampleValues: ["443"]
+
+  # ==========================================
+  # SERVER-SIDE ADDRESSES (as seen from the server, after NAT)
+  # ==========================================
+  - name: ssip
+    type: String
+    description: "Server source IP — the source IP Zscaler presents toward the server (the SNAT/egress address)."
+    sampleValues: ["192.0.2.183"]
+
+  - name: ssport
+    type: Integer
+    description: "Server source port used by Zscaler toward the server (stored as a string; cast with toint())."
+    sampleValues: ["30768"]
+
+  - name: sdip
+    type: String
+    description: "Server destination IP — the actual destination server IP the session reached (post-DNAT)."
+    sampleValues: ["192.0.2.103"]
+
+  - name: sdport
+    type: Integer
+    description: "Server destination port (stored as a string; cast with toint())."
+    sampleValues: ["443"]
+
+  # ==========================================
+  # TUNNEL
+  # ==========================================
+  - name: tuntype
+    type: String
+    description: "Type of tunnel/forwarding method the traffic arrived on."
+    sampleValues: ["ZscalerClientConnector"]
+
+  - name: tsip
+    type: String
+    description: "Tunnel source IP (the GRE/IPSec tunnel endpoint); '0.0.0.0' for Client Connector / non-tunnel forwarding."
+    sampleValues: ["0.0.0.0"]
+
+  - name: tunsport
+    type: Integer
+    description: "Tunnel source port; '0' when not tunnel-forwarded (stored as a string; cast with toint())."
+    sampleValues: ["0"]
+
+  # ==========================================
+  # NAT / SESSION STATE
+  # ==========================================
+  - name: dnat
+    type: String
+    description: "Whether destination NAT was applied to the session ('Yes'/'No')."
+    sampleValues: ["No", "Yes"]
+
+  - name: stateful
+    type: String
+    description: "Whether the session was tracked statefully ('Yes'/'No')."
+    sampleValues: ["Yes", "No"]
+
+  - name: aggregate
+    type: String
+    description: "Whether this record aggregates multiple sessions ('Yes'/'No'). When 'Yes', numsessions/avgduration summarize the group."
+    sampleValues: ["No", "Yes"]
+
+  - name: numsessions
+    type: Integer
+    description: "Number of sessions represented by this record (>1 when aggregate='Yes'). Stored as a string; cast with toint()."
+    sampleValues: ["1"]
+
+  # ==========================================
+  # NETWORK SERVICE / APPLICATION
+  # ==========================================
+  - name: proto
+    type: String
+    description: "Transport protocol of the session."
+    sampleValues: ["TCP", "UDP", "ICMP"]
+
+  - name: nwsvc
+    type: String
+    description: "Zscaler network service classification for the session."
+    sampleValues: ["ZSCALER_PROXY_NW_SERVICES", "HTTP", "DNS"]
+
+  - name: nwapp
+    type: String
+    description: "Network application identified for the session."
+    sampleValues: ["tcp", "http", "dns"]
+
+  - name: ipcat
+    type: String
+    description: "IP/URL category of the destination. May indicate handling, e.g. 'SSL Inspection Bypass - Generic'."
+    sampleValues: ["SSL Inspection Bypass - Generic", "None"]
+
+  - name: destcountry
+    type: String
+    description: "Destination country resolved for the server IP."
+    sampleValues: ["United States"]
+
+  # ==========================================
+  # VOLUME / DURATION
+  # ==========================================
+  - name: inbytes
+    type: Integer
+    description: "Bytes received from the server (inbound to the client) for the session (stored as a string; cast with tolong())."
+    sampleValues: ["157"]
+
+  - name: outbytes
+    type: Integer
+    description: "Bytes sent by the client (outbound to the server) for the session (stored as a string; cast with tolong())."
+    sampleValues: ["809"]
+
+  - name: duration
+    type: Integer
+    description: "Session duration in seconds (stored as a string; cast with toint()). Use durationms for sub-second resolution."
+    sampleValues: ["0"]
+
+  - name: durationms
+    type: Integer
+    description: "Session duration in milliseconds (stored as a string; cast with toint())."
+    sampleValues: ["68"]
+
+  - name: avgduration
+    type: Integer
+    description: "Average session duration in milliseconds across aggregated sessions (stored as a string; cast with toint())."
+    sampleValues: ["68"]
+
+  # ==========================================
+  # THREAT
+  # ==========================================
+  - name: threatcat
+    type: String
+    description: "Threat category detected on the session. 'None' when clean."
+    sampleValues: ["None"]
+
+  - name: threatname
+    type: String
+    description: "Name of the threat detected on the session. 'None' when clean."
+    sampleValues: ["None"]
