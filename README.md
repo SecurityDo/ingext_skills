@@ -53,6 +53,7 @@ Alternatively, install a specific skill by name:
 | [ingext-health-monitor](#ingext-health-monitor) | Check whether a site is healthy and ingesting |
 | [add-connector](#add-connector) | Install a new application connector |
 | [create-ingext-audit-app](#create-ingext-audit-app) | Guide an Entra admin to register the `ingext-audit` app (Graph + O365 audit import) |
+| [create-ingext-defender-app](#create-ingext-defender-app) | Guide an Entra admin to register the `ingext-defender` app (Graph Security incidents + alerts) |
 | [html-to-pdf](#html-to-pdf) | Convert an HTML file to a PDF |
 
 ---
@@ -187,6 +188,24 @@ customer-owned app path — for Fluency's hosted OAuth consent flow use **add-co
 - "register the Azure app for Ingext audit import"
 - "set up the Fluency Azure application, I'm a Global Admin"
 - "walk me through the portal steps to make the ingext-audit app"
+
+### create-ingext-defender-app
+
+Guides an Azure AD / Entra admin through registering the **`ingext-defender`** application — a
+customer-owned, app-only registration that Fluency / Ingext authenticates as to export **Microsoft
+Defender** security incidents (`GET /security/incidents`) and alerts (`GET /security/alerts_v2`)
+through the Microsoft Graph Security API. It adds the two required **Application** permissions on
+Microsoft Graph (`SecurityIncident.Read.All`, `SecurityAlert.Read.All`), grants admin consent,
+creates a client secret, and hands back three fields — `tenantId`, `clientId`, `clientSecret` — for
+the downstream "install application" stage. Offers a ready-to-run PowerShell script (Microsoft.Graph
+SDK) or a manual portal walkthrough. Sibling of **create-ingext-audit-app** (audit-log import); for
+Fluency's hosted OAuth consent flow use **add-connector**.
+
+**Try:**
+- "create the ingext-defender app in our Entra tenant"
+- "register the Entra app for Microsoft Defender event export"
+- "set up the Azure app so Ingext can pull Defender incidents and alerts"
+- "walk me through the portal steps to make the ingext-defender app"
 
 ---
 
