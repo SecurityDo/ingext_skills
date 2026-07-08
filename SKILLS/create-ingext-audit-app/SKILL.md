@@ -2,18 +2,17 @@
 name: create-ingext-audit-app
 version: 1.0.0
 description: >-
-  Guide an Azure AD / Entra admin through creating the "ingext-audit" application registration
-  that Fluency / Ingext uses to import Office 365 Management audit events, Azure AD / Entra audit
-  events, and Azure AD resources (users, groups, devices, applications). Registers a customer-owned,
-  app-only (client-credentials) app, adds the nine required APPLICATION permissions across Microsoft
-  Graph and the Office 365 Management APIs, grants admin consent, creates a client secret, and hands
-  back exactly three fields — tenantId, clientId, clientSecret — for the downstream "install
-  application" stage to consume. Offers two paths: a ready-to-run PowerShell script (Microsoft.Graph
-  SDK) or a manual Azure-portal walkthrough. Triggers: "create the ingext-audit app", "register the
-  Azure/Entra app for Ingext audit import", "set up the Fluency Azure application", "onboard a
-  customer's Microsoft tenant to Ingext (app registration stage)". Onboarding flows call this before
-  the install-application stage. Do NOT use for the hosted OAuth consent flow (Fluency's multi-tenant
-  app + adminConsentEmail) — that is the add-connector skill's Office365 / AzureAudit connectors.
+  Guide an Azure AD / Entra admin through creating the "ingext-audit" app registration that
+  Fluency / Ingext uses to import Office 365 Management audit events, Azure AD / Entra audit
+  events, and Azure AD resources (users, groups, devices, applications). Registers a
+  customer-owned, app-only (client-credentials) app, adds nine APPLICATION permissions across
+  Microsoft Graph and the Office 365 Management APIs, grants admin consent, creates a client
+  secret, and returns three fields — tenantId, clientId, clientSecret — for the downstream
+  install-application stage. Offers a ready-to-run PowerShell script (Microsoft.Graph SDK) or a
+  manual portal walkthrough. Triggers: "create the ingext-audit app", "register the Azure/Entra
+  app for Ingext audit import", "onboard a customer tenant to Ingext (app registration stage)".
+  Do NOT use for the hosted OAuth consent flow (multi-tenant app + adminConsentEmail) — that's
+  the add-connector skill's Office365 / AzureAudit connectors.
 ---
 
 # Create the `ingext-audit` Entra Application
