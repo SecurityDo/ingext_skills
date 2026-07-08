@@ -52,6 +52,7 @@ Alternatively, install a specific skill by name:
 | [office-user-investigation](#office-user-investigation) | Investigate an M365 mailbox user (KQL + GeoIP) |
 | [ingext-health-monitor](#ingext-health-monitor) | Check whether a site is healthy and ingesting |
 | [add-connector](#add-connector) | Install a new application connector |
+| [create-ingext-audit-app](#create-ingext-audit-app) | Guide an Entra admin to register the `ingext-audit` app (Graph + O365 audit import) |
 | [html-to-pdf](#html-to-pdf) | Convert an HTML file to a PDF |
 
 ---
@@ -169,6 +170,23 @@ and deploys the connector instance.
 - "add the CrowdStrike connector"
 - "install the AWS SQS application"
 - "connect Office 365 to Ingext"
+
+### create-ingext-audit-app
+
+Guides an Azure AD / Entra admin through registering the **`ingext-audit`** application — a
+customer-owned, app-only registration that Fluency / Ingext authenticates as to import Office 365
+Management audit events, Azure AD audit events, and Azure AD resources (users, groups, devices,
+apps). It adds the nine required **Application** permissions across Microsoft Graph and the Office
+365 Management APIs, grants admin consent, creates a client secret, and hands back three fields —
+`tenantId`, `clientId`, `clientSecret` — for the downstream "install application" stage. Offers a
+ready-to-run PowerShell script (Microsoft.Graph SDK) or a manual portal walkthrough. This is the
+customer-owned app path — for Fluency's hosted OAuth consent flow use **add-connector**.
+
+**Try:**
+- "create the ingext-audit app in our Entra tenant"
+- "register the Azure app for Ingext audit import"
+- "set up the Fluency Azure application, I'm a Global Admin"
+- "walk me through the portal steps to make the ingext-audit app"
 
 ---
 

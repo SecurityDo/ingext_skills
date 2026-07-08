@@ -1,0 +1,44 @@
+{
+  "skill_name": "create-ingext-audit-app",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We're onboarding a new customer to Ingext and need to set up the Azure side. Can you help me create the ingext-audit application in our Entra tenant so Fluency can import our Office 365 and Azure AD audit logs? I have Global Admin.",
+      "expected_output": "The skill should explain it cannot run against the tenant itself and must guide the admin. It offers the PowerShell (recommended) and manual portal paths, lists the 9 required application permissions across Microsoft Graph and Office 365 Management APIs, covers app creation + admin consent + client secret, and ends by collecting the three fields tenantId, clientId, clientSecret (also as a JSON block).",
+      "files": [],
+      "expectations": [
+        "The skill clarifies that Claude cannot run this in the customer's tenant and guides the admin instead",
+        "Both the PowerShell script path and manual portal path are offered",
+        "All 9 application permissions are named across Microsoft Graph (6) and Office 365 Management APIs (3)",
+        "The workflow includes granting tenant-wide admin consent and creating a client secret",
+        "The final output is the three fields tenantId, clientId, clientSecret, presented as a JSON block",
+        "The skill does not attempt to start O365 subscriptions or configure the Fluency connector"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Register the Entra app for Ingext audit import using PowerShell. Walk me through it.",
+      "expected_output": "The skill should point the admin to assets/setup-ingext-audit.ps1, note the Microsoft.Graph module prerequisite and the interactive sign-in, explain the script is idempotent, and describe that it prints tenantId/clientId/clientSecret as JSON to hand to the install-application stage.",
+      "files": [],
+      "expectations": [
+        "The skill references the bundled setup-ingext-audit.ps1 script",
+        "It notes the Microsoft.Graph module prerequisite and interactive admin sign-in",
+        "It explains the script resolves permission role IDs dynamically and is idempotent",
+        "It describes the JSON output with the three fields for the downstream install-application stage"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I don't want to run any scripts — just tell me exactly what to click in the Azure portal to make the Fluency ingext-audit app.",
+      "expected_output": "The skill should give the manual portal walkthrough: New registration (single-tenant, named ingext-audit), copy tenant + client IDs, add the 6 Microsoft Graph and 3 Office 365 Management APIs application permissions (the latter via 'APIs my organization uses'), grant admin consent, create a 24-month client secret and copy its Value once, then hand off the three fields.",
+      "files": [],
+      "expectations": [
+        "The skill provides the manual Azure portal path only",
+        "It specifies single-tenant registration named ingext-audit",
+        "It instructs finding Office 365 Management APIs under 'APIs my organization uses'",
+        "It calls out granting admin consent and copying the client secret Value once",
+        "It collects tenantId, clientId, clientSecret at the end"
+      ]
+    }
+  ]
+}
