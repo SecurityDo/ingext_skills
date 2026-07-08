@@ -1,0 +1,44 @@
+{
+  "skill_name": "create-ingext-defender-app",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We're onboarding a new customer to Ingext and want to export Microsoft Defender incidents and alerts. Can you help me create the ingext-defender application in our Entra tenant so Fluency can pull Defender data? I have Global Admin.",
+      "expected_output": "The skill should explain it cannot run against the tenant itself and must guide the admin. It offers the PowerShell (recommended) and manual portal paths, lists the two required Microsoft Graph application permissions (SecurityIncident.Read.All, SecurityAlert.Read.All), covers app creation + admin consent + client secret, and ends by collecting the three fields tenantId, clientId, clientSecret (also as a JSON block).",
+      "files": [],
+      "expectations": [
+        "The skill clarifies that Claude cannot run this in the customer's tenant and guides the admin instead",
+        "Both the PowerShell script path and manual portal path are offered",
+        "Both application permissions are named: SecurityIncident.Read.All and SecurityAlert.Read.All on Microsoft Graph",
+        "The workflow includes granting tenant-wide admin consent and creating a client secret",
+        "The final output is the three fields tenantId, clientId, clientSecret, presented as a JSON block",
+        "The skill does not attempt to configure the Fluency connector or start the export"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Register the Entra app for Microsoft Defender event export using PowerShell. Walk me through it.",
+      "expected_output": "The skill should point the admin to assets/setup-ingext-defender.ps1, note the Microsoft.Graph module prerequisite and the interactive sign-in, explain the script is idempotent, and describe that it prints tenantId/clientId/clientSecret as JSON to hand to the install-application stage.",
+      "files": [],
+      "expectations": [
+        "The skill references the bundled setup-ingext-defender.ps1 script",
+        "It notes the Microsoft.Graph module prerequisite and interactive admin sign-in",
+        "It explains the script resolves permission role IDs dynamically and is idempotent",
+        "It describes the JSON output with the three fields for the downstream install-application stage"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I don't want to run any scripts — just tell me exactly what to click in the Azure portal to make the ingext-defender app for pulling Defender incidents and alerts.",
+      "expected_output": "The skill should give the manual portal walkthrough: New registration (single-tenant, named ingext-defender), copy tenant + client IDs, add the two Microsoft Graph application permissions (SecurityIncident.Read.All, SecurityAlert.Read.All) on the standard Microsoft Graph tab, grant admin consent, create a 24-month client secret and copy its Value once, then hand off the three fields.",
+      "files": [],
+      "expectations": [
+        "The skill provides the manual Azure portal path only",
+        "It specifies single-tenant registration named ingext-defender",
+        "It adds SecurityIncident.Read.All and SecurityAlert.Read.All on the standard Microsoft Graph tab (no 'APIs my organization uses' detour)",
+        "It calls out granting admin consent and copying the client secret Value once",
+        "It collects tenantId, clientId, clientSecret at the end"
+      ]
+    }
+  ]
+}
