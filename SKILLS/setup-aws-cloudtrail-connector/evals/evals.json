@@ -1,0 +1,43 @@
+{
+  "skill_name": "setup-aws-cloudtrail-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We store our AWS CloudTrail logs in an S3 bucket and want Ingext to import them in real time. Can you set up the CloudTrail connector for us? The bucket is acme-cloudtrail-logs in us-east-1, prefix AWSLogs/123456789012/CloudTrail/.",
+      "expected_output": "The skill walks the five-step runbook: call get_account_podrole for the tenant pod role ARN; have the customer run IngextSaasPodRole.yaml (trust-only role ingextAssumeRole trusting the pod ARN) and IngextS3SqsNotification.yaml (SQS queue + S3 ObjectCreated notification + read policy attached to ingextAssumeRole, with PodRoleARN left empty); register the role with add_assumed_role; then install AWS CloudTrail via create_connector using Region, SQS URL (the QueueURL output), and AWS Role (the registered displayName).",
+      "files": [],
+      "expectations": [
+        "Explains events flow S3 new-object notification -> SQS -> Ingext assumes a cross-account role to read the queue and bucket",
+        "Calls get_account_podrole first and uses its arn as the PodRoleARN the customer role trusts",
+        "Directs the customer to run both CloudFormation templates in their own AWS account (Claude cannot run them)",
+        "For step 3 leaves PodRoleARN empty so the read policy attaches to the existing step-2 role (ingextAssumeRole) instead of creating a new one",
+        "Registers the role with add_assumed_role and notes the displayName becomes the connector AWS Role",
+        "Installs AWS CloudTrail with create_connector passing Region, SQS URL (QueueURL), and AWS Role (the registered displayName)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "After I ran the two CloudFormation stacks, how do I register the IAM role with Fluency and make sure it actually works before installing the connector?",
+      "expected_output": "The skill should have the user register the ingextAssumeRole ARN via add_assumed_role (displayName + roleARN, plus externalID only if one was used), returning an id, then verify with test_assumed_role by display name expecting status:true, and only then proceed to create_connector. It should note the displayName is what the connector uses as AWS Role.",
+      "files": [],
+      "expectations": [
+        "Uses add_assumed_role with the roleARN from the stack outputs and a clear displayName",
+        "Notes externalID must be included only if used and must match the CloudFormation ExternalID",
+        "Verifies with test_assumed_role expecting status true, and mentions IAM propagation delay / retry",
+        "States the displayName becomes the AWS Role value in the connector install"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "The SQS queue we set up for the CloudTrail import is empty and no events are coming into Ingext. What's wrong?",
+      "expected_output": "The skill should point to the S3 -> SQS notification prefix not matching the actual CloudTrail object keys (e.g. AWSLogs/<acct>/CloudTrail/), or the notification not being present on the bucket, and separately to the assume-role trust (test_assumed_role) if the queue has messages but nothing imports. It should reference the read grant s3:GetObject on the bucket/prefix and CloudTrail's ~5-minute delivery batching.",
+      "files": [],
+      "expectations": [
+        "Identifies a prefix mismatch between S3BucketPrefix and where CloudTrail actually writes as a top cause",
+        "Suggests confirming the bucket notification lists the ingext queue entry and that CloudTrail batches roughly every 5 minutes",
+        "Distinguishes an empty queue (notification problem) from a draining queue that doesn't import (assume-role/permission problem)",
+        "References the s3:GetObject read grant scoped to the bucket prefix"
+      ]
+    }
+  ]
+}

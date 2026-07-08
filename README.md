@@ -52,6 +52,7 @@ Alternatively, install a specific skill by name:
 | [office-user-investigation](#office-user-investigation) | Investigate an M365 mailbox user (KQL + GeoIP) |
 | [ingext-health-monitor](#ingext-health-monitor) | Check whether a site is healthy and ingesting |
 | [add-connector](#add-connector) | Install a new application connector |
+| [setup-aws-cloudtrail-connector](#setup-aws-cloudtrail-connector) | Set up the AWS CloudTrail connector: S3 → SQS notification, cross-account role, real-time import |
 | [create-ingext-audit-app](#create-ingext-audit-app) | Guide an Entra admin to register the `ingext-audit` app (Graph + O365 audit import) |
 | [create-ingext-defender-app](#create-ingext-defender-app) | Guide an Entra admin to register the `ingext-defender` app (Graph Security incidents + alerts) |
 | [html-to-pdf](#html-to-pdf) | Convert an HTML file to a PDF |
@@ -171,6 +172,25 @@ and deploys the connector instance.
 - "add the CrowdStrike connector"
 - "install the AWS SQS application"
 - "connect Office 365 to Ingext"
+
+### setup-aws-cloudtrail-connector
+
+End-to-end setup of the **AWS CloudTrail** connector for **real-time** import from an existing
+customer S3 bucket (with an optional object prefix). CloudTrail delivers events to S3; this skill
+wires an S3 "new object" notification into a newly created **SQS** queue, grants Ingext cross-account
+read access via an STS **assume-role**, registers that role, and installs the connector. It drives
+the five-step runbook — `get_account_podrole` for the tenant pod role ARN → the customer runs the
+`IngextSaasPodRole` and `IngextS3SqsNotification` CloudFormation templates (bundled in `assets/`) →
+`add_assumed_role` to register the role → `create_connector` with Region, SQS URL, and AWS Role. The
+same plumbing fits other S3-notification sources (CloudWatch Logs S3, Fluent Bit S3, GuardDuty in
+S3) — swap the connector template in the final step. For a plain connector install with no AWS
+plumbing, use **add-connector**.
+
+**Try:**
+- "set up the AWS CloudTrail connector, our logs are in S3 bucket acme-cloudtrail in us-east-1"
+- "import CloudTrail from our S3 bucket into Ingext in real time"
+- "connect CloudTrail via SQS to Fluency"
+- "how do I register the IAM role and verify it before installing the CloudTrail connector?"
 
 ### create-ingext-audit-app
 

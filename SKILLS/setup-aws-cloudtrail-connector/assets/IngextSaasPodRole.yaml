@@ -1,0 +1,72 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  AWS Assumed Role Setup for Fluency/Ingext. Creates a trust-only role that the
+  Fluency/Ingext pod role can assume; permission policies are attached separately
+  by the individual integration templates (e.g. IngextS3SqsNotification.yaml).
+Parameters:
+
+  IAMRole:
+    Type: String
+    Default: ingextAssumeRole
+    Description: Role on customer's AWS account for Fluency/Ingext to assume
+
+  PodRoleARN:
+    Type: String
+    AllowedPattern: "^arn:aws:iam::[0-9]{12}:role/.+$"
+    ConstraintDescription: Must be an IAM role ARN (arn:aws:iam::<accountId>:role/<name>)
+    Description: The pod roleArn that is associated with the Fluency tenant ServiceAccount
+
+  ExternalID:
+    Type: String
+    Default: ""
+    Description: Site identifier for STS AssumeRole call (optional)
+
+Conditions:
+  HasExternalID: !Not [!Equals [!Ref ExternalID, ""]]
+
+Resources:
+  # Trust-only role: this template establishes the assume-role trust relationship
+  # only. The role has no permission policy of its own and cannot do anything until
+  # an integration template attaches one (by IAMRole name), so run this once to
+  # create the shared role, then run each integration template against it.
+  IAMRoleR:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref IAMRole
+      Description: Trust-only role for Fluency/Ingext Platform (policies attached separately)
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        # sts:TagSession is kept in a separate statement without the
+        # sts:ExternalId condition. When EKS Pod Identity chains AssumeRole,
+        # transitive session tags are auto-forwarded and sts:TagSession is
+        # evaluated against the trust policy; combining it with sts:AssumeRole
+        # under StringEquals sts:ExternalId causes TagSession to be implicitly
+        # denied even when the ExternalId is supplied correctly.
+        Statement:
+          !If
+            - HasExternalID
+            -
+              - Sid: AssumeWithExternalId
+                Effect: Allow
+                Principal:
+                  AWS: !Ref PodRoleARN
+                Action: sts:AssumeRole
+                Condition:
+                  StringEquals:
+                    sts:ExternalId: !Ref ExternalID
+              - Sid: TagSessionForChainedAssume
+                Effect: Allow
+                Principal:
+                  AWS: !Ref PodRoleARN
+                Action: sts:TagSession
+            -
+              - Effect: Allow
+                Principal:
+                  AWS: !Ref PodRoleARN
+                Action:
+                  - sts:AssumeRole
+                  - sts:TagSession
+
+Outputs:
+  RoleARN:
+    Value: !GetAtt IAMRoleR.Arn
