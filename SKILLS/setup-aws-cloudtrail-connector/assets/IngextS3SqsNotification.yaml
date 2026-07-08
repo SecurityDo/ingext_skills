@@ -1,0 +1,266 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Ingext S3 ingestion setup on an existing bucket: create an SQS queue, append an
+  S3 -> SQS object-created notification to the bucket (append-only, preserving any
+  existing notifications), and create a cross-account IAM role (assumable by the
+  Ingext pod role) with read access to the queue and the bucket prefix.
+
+Parameters:
+
+  S3Bucket:
+    Type: String
+    Description: Name of the existing S3 bucket to receive notifications from
+
+  S3BucketPrefix:
+    Type: String
+    Default: ""
+    Description: Object key prefix to scope notifications and read access (optional)
+
+  SQSQueueName:
+    Type: String
+    Default: ingext-s3-notification
+    Description: Name of the SQS queue to create for S3 event notifications
+
+  PodRoleARN:
+    Type: String
+    Default: ""
+    Description: >-
+      The Ingext pod roleArn that is allowed to assume the role created here.
+      Leave empty to skip role creation and instead attach the read policy to
+      an existing role named by IAMRole (e.g. one created by another AWS integration).
+
+  IAMRole:
+    Type: String
+    Default: ingextAssumeRole
+    Description: >-
+      Name of the IAM role. When PodRoleARN is set this role is created and
+      trusts PodRoleARN; when PodRoleARN is empty this must be an existing role
+      to which the read policy is attached.
+
+  ExternalID:
+    Type: String
+    Default: ""
+    Description: Site identifier for STS AssumeRole call (optional)
+
+Conditions:
+  HasExternalID: !Not [!Equals [!Ref ExternalID, ""]]
+  # Create the role only when a pod role ARN is supplied; otherwise attach the
+  # read policy to a pre-existing role named by IAMRole.
+  CreateRole: !Not [!Equals [!Ref PodRoleARN, ""]]
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # SQS queue that receives the S3 object-created notifications
+  # ---------------------------------------------------------------------------
+  SQSEventQueueR:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref SQSQueueName
+
+  SQSEventQueuePolicyR:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref SQSEventQueueR
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowS3SendMessage
+            Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt SQSEventQueueR.Arn
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub "arn:aws:s3:::${S3Bucket}"
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  # ---------------------------------------------------------------------------
+  # Lambda-backed custom resource that appends an S3 -> SQS notification to the
+  # existing bucket. CloudFormation cannot manage the NotificationConfiguration
+  # of a pre-existing bucket, so we do it out-of-band while preserving any
+  # notifications the bucket already has (append-only merge, keyed by Id).
+  # ---------------------------------------------------------------------------
+  NotificationLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ingext-s3-notification-setup
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              - Sid: BucketNotification
+                Effect: Allow
+                Action:
+                  - s3:GetBucketNotification
+                  - s3:PutBucketNotification
+                Resource: !Sub "arn:aws:s3:::${S3Bucket}"
+
+  NotificationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: !Sub "Append/remove Ingext S3->SQS notification on ${S3Bucket}"
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 60
+      Role: !GetAtt NotificationLambdaRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          s3 = boto3.client('s3')
+
+          def handler(event, context):
+              props = event.get('ResourceProperties', {})
+              bucket = props['Bucket']
+              our_id = props['Id']
+              queue_arn = props['QueueArn']
+              prefix = props.get('Prefix', '')
+              request_type = event['RequestType']
+
+              status = cfnresponse.SUCCESS
+              try:
+                  cfg = s3.get_bucket_notification_configuration(Bucket=bucket)
+                  cfg.pop('ResponseMetadata', None)
+
+                  # Preserve every existing notification; only manage our own entry.
+                  queues = [q for q in cfg.get('QueueConfigurations', [])
+                            if q.get('Id') != our_id]
+
+                  if request_type in ('Create', 'Update'):
+                      entry = {
+                          'Id': our_id,
+                          'QueueArn': queue_arn,
+                          'Events': ['s3:ObjectCreated:*'],
+                      }
+                      if prefix:
+                          entry['Filter'] = {
+                              'Key': {'FilterRules': [{'Name': 'prefix', 'Value': prefix}]}
+                          }
+                      queues.append(entry)
+
+                  if queues:
+                      cfg['QueueConfigurations'] = queues
+                  else:
+                      cfg.pop('QueueConfigurations', None)
+
+                  s3.put_bucket_notification_configuration(
+                      Bucket=bucket,
+                      NotificationConfiguration=cfg,
+                  )
+              except Exception as e:
+                  print('Error: %s' % e)
+                  status = cfnresponse.FAILED
+
+              # Stable PhysicalResourceId so Update targets the same resource.
+              cfnresponse.send(event, context, status, {}, physicalResourceId=our_id)
+
+  BucketNotification:
+    Type: Custom::S3BucketNotification
+    # Ensure the queue accepts messages from S3 before S3 validates the
+    # destination during PutBucketNotification.
+    DependsOn: SQSEventQueuePolicyR
+    Properties:
+      ServiceToken: !GetAtt NotificationFunction.Arn
+      Bucket: !Ref S3Bucket
+      QueueArn: !GetAtt SQSEventQueueR.Arn
+      Prefix: !Ref S3BucketPrefix
+      Id: !Sub "ingext-${SQSQueueName}"
+
+  # ---------------------------------------------------------------------------
+  # Read policy + cross-account role that Ingext assumes to consume the queue
+  # and download the notified objects.
+  # ---------------------------------------------------------------------------
+  S3ReadSQSReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      # When creating the role, it attaches this policy via its ManagedPolicyArns.
+      # When reusing an existing role, attach the policy to it here by name.
+      Roles: !If [CreateRole, !Ref "AWS::NoValue", [!Ref IAMRole]]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: sqsListen
+            Effect: Allow
+            Action:
+              - sqs:DeleteMessage
+              - sqs:GetQueueUrl
+              - sqs:ReceiveMessage
+            Resource: !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${SQSQueueName}"
+          - Sid: s3GetObject
+            Effect: Allow
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${S3Bucket}/${S3BucketPrefix}*"
+
+  IAMRoleR:
+    Type: AWS::IAM::Role
+    Condition: CreateRole
+    Properties:
+      RoleName: !Ref IAMRole
+      Description: Role for Ingext to read S3 notifications
+      ManagedPolicyArns:
+        - !Ref S3ReadSQSReadPolicy
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        # sts:TagSession is kept in a separate statement without the
+        # sts:ExternalId condition. When EKS Pod Identity chains AssumeRole,
+        # transitive session tags are auto-forwarded and sts:TagSession is
+        # evaluated against the trust policy; combining it with sts:AssumeRole
+        # under StringEquals sts:ExternalId causes TagSession to be implicitly
+        # denied even when the ExternalId is supplied correctly.
+        Statement:
+          !If
+            - HasExternalID
+            -
+              - Sid: AssumeWithExternalId
+                Effect: Allow
+                Principal:
+                  AWS: !Ref PodRoleARN
+                Action: sts:AssumeRole
+                Condition:
+                  StringEquals:
+                    sts:ExternalId: !Ref ExternalID
+              - Sid: TagSessionForChainedAssume
+                Effect: Allow
+                Principal:
+                  AWS: !Ref PodRoleARN
+                Action: sts:TagSession
+            -
+              - Effect: Allow
+                Principal:
+                  AWS: !Ref PodRoleARN
+                Action:
+                  - sts:AssumeRole
+                  - sts:TagSession
+
+Outputs:
+  QueueURL:
+    Description: SQS Queue URL
+    Value: !Ref SQSEventQueueR
+  QueueARN:
+    Description: ARN of the new Amazon SQS Queue
+    Value: !GetAtt SQSEventQueueR.Arn
+  RoleARN:
+    Description: ARN of the role for Ingext to assume
+    Value: !If
+      - CreateRole
+      - !GetAtt IAMRoleR.Arn
+      - !Sub "arn:aws:iam::${AWS::AccountId}:role/${IAMRole}"
