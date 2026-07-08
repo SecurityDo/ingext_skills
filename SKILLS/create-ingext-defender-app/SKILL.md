@@ -2,20 +2,17 @@
 name: create-ingext-defender-app
 version: 1.0.0
 description: >-
-  Guide an Azure AD / Entra admin through creating the "ingext-defender" application registration
-  that Fluency / Ingext uses to export Microsoft Defender security incidents and alerts through the
-  Microsoft Graph Security API (GET /security/incidents and GET /security/alerts_v2). Registers a
-  customer-owned, app-only (client-credentials) app, adds the two required APPLICATION permissions on
-  Microsoft Graph (SecurityIncident.Read.All, SecurityAlert.Read.All), grants admin consent, creates
-  a client secret, and hands back exactly three fields — tenantId, clientId, clientSecret — for the
-  downstream "install application" stage to consume. Offers two paths: a ready-to-run PowerShell
-  script (Microsoft.Graph SDK) or a manual Azure-portal walkthrough. Triggers: "create the
-  ingext-defender app", "register the Azure/Entra app for Microsoft Defender event export", "set up
-  the Azure app so Ingext can pull Defender incidents and alerts", "onboard a customer's Microsoft
-  tenant to Ingext Defender export (app registration stage)". Onboarding flows call this before the
-  install-application stage. Do NOT use for the hosted OAuth consent flow (Fluency's multi-tenant app
-  + adminConsentEmail) — that is the add-connector skill; nor for the audit-log importer — that is
-  create-ingext-audit-app. This is the customer-owned app path for Defender export.
+  Guide an Azure AD / Entra admin through creating the "ingext-defender" app registration that
+  Fluency / Ingext uses to export Microsoft Defender incidents and alerts via the Graph Security
+  API. Registers a customer-owned, app-only (client-credentials) app, adds two Graph APPLICATION
+  permissions (SecurityIncident.Read.All, SecurityAlert.Read.All), grants admin consent, creates a
+  client secret, and returns three fields — tenantId, clientId, clientSecret — for the downstream
+  install-application stage. Offers a ready-to-run PowerShell script (Microsoft.Graph SDK) or a
+  manual portal walkthrough. Triggers: "create the ingext-defender app", "register the Azure/Entra
+  app for Defender event export", "onboard a customer tenant to Ingext Defender export (app
+  registration stage)". Do NOT use for the hosted OAuth consent flow (multi-tenant app +
+  adminConsentEmail) — that's add-connector; nor the audit-log importer — that's
+  create-ingext-audit-app.
 ---
 
 # Create the `ingext-defender` Entra Application
