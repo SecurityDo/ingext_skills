@@ -7,9 +7,9 @@ description: >-
   method, user-agent), the proxy verdict (action, applied rule), the response
   (status code, sizes, timing), and security/classification context (URL category
   class, cloud-app name/class, malware/threat, DLP, risk score). Field semantics
-  follow the Zscaler "NSS Feed Output Format: Web Logs" specification. Most numeric
-  fields arrive as JSON strings, so cast with toint()/tolong()/todouble() before
-  arithmetic. timestamp is parsed from the 'time' field.
+  follow the Zscaler "NSS Feed Output Format: Web Logs" specification. The NSS feed
+  parser parses the numeric fields (reqsize, respsize, respcode, riskscore, ctime,
+  stime) as numbers. timestamp is parsed from the 'time' field.
 fields:
 
   # ==========================================
@@ -111,8 +111,8 @@ fields:
     sampleValues: ["GET", "POST", "CONNECT"]
 
   - name: reqsize
-    type: Integer
-    description: "Total request size in bytes (stored as a string; cast with tolong())."
+    type: Long
+    description: "Total request size in bytes. Parsed as an integer by the NSS feed parser."
     sampleValues: ["2147"]
 
   - name: ua
@@ -130,22 +130,22 @@ fields:
   # ==========================================
   - name: respcode
     type: Integer
-    description: "HTTP response status code returned to the client (stored as a string; cast with toint())."
+    description: "HTTP response status code returned to the client. Parsed as an integer by the NSS feed parser."
     sampleValues: ["202", "200", "403"]
 
   - name: respsize
-    type: Integer
-    description: "Total response size in bytes (stored as a string; cast with tolong())."
+    type: Long
+    description: "Total response size in bytes. Parsed as an integer by the NSS feed parser."
     sampleValues: ["991"]
 
   - name: ctime
     type: Integer
-    description: "Client transaction time in milliseconds — time spent on the client side of the transaction (stored as a string; cast with toint())."
+    description: "Client transaction time in milliseconds — time spent on the client side of the transaction. Parsed as an integer by the NSS feed parser."
     sampleValues: ["107"]
 
   - name: stime
     type: Integer
-    description: "Server transaction time in milliseconds — time the origin server took to respond (stored as a string; cast with toint())."
+    description: "Server transaction time in milliseconds — time the origin server took to respond. Parsed as an integer by the NSS feed parser."
     sampleValues: ["106"]
 
   # ==========================================
@@ -184,7 +184,7 @@ fields:
   # ==========================================
   - name: riskscore
     type: Integer
-    description: "Zscaler risk score for the transaction (0–100; higher = riskier). Stored as a string; cast with toint()."
+    description: "Zscaler risk score for the transaction (0–100; higher = riskier). Parsed as an integer by the NSS feed parser."
     sampleValues: ["10"]
 
   - name: threatname

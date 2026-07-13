@@ -1,0 +1,385 @@
+schema: falconAgent
+description: >-
+  CrowdStrike Falcon host/device resource snapshot collected by Ingext from the
+  Falcon Hosts (Devices) API. Each record is the current state of one endpoint
+  running the Falcon sensor: identity (device_id, hostname, domain, OU, site),
+  operating system and hardware/BIOS, network addresses, sensor version and
+  operational posture (RFM, containment, RTR), first/last-seen and last-login
+  activity, and the set of Falcon policies assigned to the host — as a keyed
+  device_policies object (one entry per policy type) and a flattened policies[]
+  array. The object is stored as a dynamic JSON document, so nested fields are
+  accessed with dot notation (e.g. device_policies.prevention.policy_id) and the
+  policies[] array requires mv-expand. timestamp is the capture time (when Ingext
+  collected the snapshot) and _key is mapped to the 'device_id' field.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Capture time — when Ingext collected this host snapshot from the Falcon Hosts API. The device resource has no record creation-time field, so timestamp reflects collection, not sensor install. Primary time column for range filters (e.g. where timestamp > ago(1d)). For host-reported recency use last_seen, last_login_timestamp, or modified_timestamp; for enrollment age use first_seen."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the host record; mapped to the 'device_id' field (the Falcon Agent ID / AID). Unique per host: each _key holds the latest snapshot, so no arg_max/dedup is needed. Join key to FalconAlert.agent_id."
+    sampleValues: ["22222222222222222222222222222222"]
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: device_id
+    type: String
+    description: "Falcon Agent ID (AID) — globally unique sensor id for the endpoint. Source of _key and the join key to FalconAlert.agent_id."
+    sampleValues: ["22222222222222222222222222222222"]
+
+  - name: hostname
+    type: String
+    description: "Endpoint hostname as reported by the sensor."
+    sampleValues: ["CORP-VM03"]
+
+  - name: cid
+    type: String
+    description: "Falcon Customer ID (tenant) that owns the host."
+    sampleValues: ["00000000000000000000000000000001"]
+
+  - name: machine_domain
+    type: String
+    description: "Active Directory domain the host is joined to; empty for workgroup hosts."
+    sampleValues: ["contoso.com"]
+
+  - name: ou
+    type: DynamicArray
+    description: "Active Directory organizational-unit path of the host, as an ordered array of OU components. mv-expand to enumerate."
+    sampleValues: ["_Computers", "Corporate", "Contoso"]
+
+  - name: site_name
+    type: String
+    description: "Active Directory site the host belongs to."
+    sampleValues: ["Default-First-Site-Name"]
+
+  - name: serial_number
+    type: String
+    description: "Hardware/BIOS serial number of the endpoint."
+    sampleValues: ["VMware-00 00 00 00 00 00 00 00-00 00 00 00 00 00 00 01"]
+
+  - name: groups
+    type: DynamicArray
+    description: "Falcon host-group ids the endpoint is a member of. mv-expand to enumerate; join to Falcon host-group definitions."
+    sampleValues: ["b0000000000000000000000000000001"]
+
+  - name: group_hash
+    type: String
+    description: "Hash summarizing the host's current group membership; changes when group assignment changes."
+
+  - name: tags
+    type: DynamicArray
+    description: "Falcon sensor/grouping tags applied to the host; empty when none."
+
+  - name: criticality
+    type: String
+    description: "Asset criticality assigned to the host (e.g. unassigned, low, medium, high, critical)."
+    sampleValues: ["unassigned"]
+
+  # ==========================================
+  # OPERATING SYSTEM / PLATFORM
+  # ==========================================
+  - name: platform_name
+    type: String
+    description: "OS platform family of the endpoint."
+    sampleValues: ["Windows", "Linux", "Mac"]
+
+  - name: platform_id
+    type: String
+    description: "Numeric Falcon platform id (as a string). 0 = Windows, 1 = Mac, 3 = Linux."
+    sampleValues: ["0"]
+
+  - name: os_version
+    type: String
+    description: "OS version/family name."
+    sampleValues: ["Windows 11"]
+
+  - name: os_product_name
+    type: String
+    description: "Full OS product/edition name."
+    sampleValues: ["Windows 11 Pro"]
+
+  - name: os_build
+    type: String
+    description: "OS build number."
+    sampleValues: ["26100"]
+
+  - name: build_number
+    type: String
+    description: "Windows build number (usually equals os_build)."
+    sampleValues: ["26100"]
+
+  - name: kernel_version
+    type: String
+    description: "Kernel / full OS build version string."
+    sampleValues: ["10.0.26100.8655"]
+
+  - name: major_version
+    type: String
+    description: "OS major version number (as a string)."
+    sampleValues: ["10"]
+
+  - name: minor_version
+    type: String
+    description: "OS minor version number (as a string)."
+    sampleValues: ["0"]
+
+  - name: service_pack_minor
+    type: String
+    description: "Minor service-pack number reported by the OS."
+    sampleValues: ["0"]
+
+  - name: product_type
+    type: String
+    description: "Numeric Windows product type (as a string). 1 = Workstation, 2 = Domain Controller, 3 = Server."
+    sampleValues: ["1"]
+
+  - name: product_type_desc
+    type: String
+    description: "Human-readable product type."
+    sampleValues: ["Workstation", "Server", "Domain Controller"]
+
+  - name: chassis_type
+    type: String
+    description: "SMBIOS chassis type code (as a string)."
+    sampleValues: ["1"]
+
+  - name: chassis_type_desc
+    type: String
+    description: "Human-readable chassis type (e.g. Desktop, Laptop, Other, Virtual)."
+    sampleValues: ["Other"]
+
+  - name: pointer_size
+    type: String
+    description: "CPU pointer size in bytes (8 = 64-bit, 4 = 32-bit), as a string."
+    sampleValues: ["8"]
+
+  # ==========================================
+  # HARDWARE / BIOS
+  # ==========================================
+  - name: system_manufacturer
+    type: String
+    description: "Hardware system manufacturer."
+    sampleValues: ["VMware, Inc.", "Dell Inc."]
+
+  - name: system_product_name
+    type: String
+    description: "Hardware system/model product name."
+    sampleValues: ["VMware20,1"]
+
+  - name: bios_manufacturer
+    type: String
+    description: "BIOS/firmware manufacturer."
+    sampleValues: ["VMware, Inc."]
+
+  - name: bios_version
+    type: String
+    description: "BIOS/firmware version string."
+    sampleValues: ["VMW201.00V.24504846.B64.2501180339"]
+
+  - name: cpu_vendor
+    type: String
+    description: "CPU vendor code reported by the sensor (as a string)."
+    sampleValues: ["0"]
+
+  - name: cpu_signature
+    type: String
+    description: "CPU signature/identifier (as a string)."
+    sampleValues: ["788210"]
+
+  # ==========================================
+  # NETWORK
+  # ==========================================
+  - name: local_ip
+    type: String
+    description: "Primary local (RFC1918) IP address of the host."
+    sampleValues: ["10.1.1.211"]
+
+  - name: external_ip
+    type: String
+    description: "Public/egress IP address the sensor connects from."
+    sampleValues: ["192.0.2.114"]
+
+  - name: connection_ip
+    type: String
+    description: "IP address of the interface the sensor used to connect to the Falcon cloud."
+    sampleValues: ["10.1.1.211"]
+
+  - name: default_gateway_ip
+    type: String
+    description: "Default gateway IP configured on the host."
+    sampleValues: ["10.1.1.1"]
+
+  - name: mac_address
+    type: String
+    description: "Primary MAC address of the host (dash-separated)."
+    sampleValues: ["00-1a-2b-3c-4d-5f"]
+
+  - name: connection_mac_address
+    type: String
+    description: "MAC address of the interface used for the sensor's cloud connection."
+    sampleValues: ["00-1a-2b-3c-4d-5f"]
+
+  # ==========================================
+  # SENSOR / AGENT POSTURE
+  # ==========================================
+  - name: agent_version
+    type: String
+    description: "Installed Falcon sensor version."
+    sampleValues: ["7.38.21003.0"]
+
+  - name: agent_load_flags
+    type: String
+    description: "Falcon sensor load flags bitmask (as a string)."
+    sampleValues: ["16"]
+
+  - name: agent_local_time
+    type: DateTime
+    description: "Local clock time reported by the sensor at last check-in (ISO-8601)."
+    sampleValues: ["2026-07-01T15:11:48.102Z"]
+
+  - name: config_id_base
+    type: String
+    description: "Sensor content config base id."
+    sampleValues: ["65994767"]
+
+  - name: config_id_build
+    type: String
+    description: "Sensor build id (matches agent_version build)."
+    sampleValues: ["21003"]
+
+  - name: config_id_platform
+    type: String
+    description: "Sensor config platform id (as a string)."
+    sampleValues: ["3"]
+
+  - name: provision_status
+    type: String
+    description: "Sensor provisioning status."
+    sampleValues: ["Provisioned", "NotProvisioned"]
+
+  - name: status
+    type: String
+    description: "Overall host containment/health status. 'normal' = not contained/isolated; 'contained'/'containment_pending'/'lift_containment_pending' during network containment."
+    sampleValues: ["normal"]
+
+  - name: filesystem_containment_status
+    type: String
+    description: "Filesystem containment status of the host."
+    sampleValues: ["normal"]
+
+  - name: host_hidden_status
+    type: String
+    description: "Whether the host is hidden in the Falcon console."
+    sampleValues: ["visible"]
+
+  - name: reduced_functionality_mode
+    type: String
+    description: "Whether the sensor is running in Reduced Functionality Mode (RFM). 'no' = full functionality; 'yes' = degraded (e.g. incompatible kernel)."
+    sampleValues: ["no"]
+
+  - name: rtr_state
+    type: String
+    description: "Real Time Response (RTR) availability for the host."
+    sampleValues: ["enabled"]
+
+  - name: safe_mode
+    type: String
+    description: "Whether the host is running in safe mode."
+    sampleValues: ["no"]
+
+  - name: meta
+    type: Dynamic
+    description: "Record versioning metadata from the Falcon API (meta.version, meta.version_string) used for optimistic concurrency; not security-relevant."
+
+  # ==========================================
+  # ACTIVITY / LOGIN TIMESTAMPS
+  # ==========================================
+  - name: first_seen
+    type: DateTime
+    description: "When the sensor first enrolled / the host was first seen by Falcon (ISO-8601). Enrollment age."
+    sampleValues: ["2023-11-27T18:10:37Z"]
+
+  - name: last_seen
+    type: DateTime
+    description: "Most recent sensor check-in time (ISO-8601). Primary recency/liveness signal — stale last_seen indicates an offline or decommissioned host."
+    sampleValues: ["2026-07-03T19:16:24Z"]
+
+  - name: last_reboot
+    type: DateTime
+    description: "Last OS reboot time reported by the host (ISO-8601)."
+    sampleValues: ["2026-06-13T16:49:16Z"]
+
+  - name: last_login_timestamp
+    type: DateTime
+    description: "Time of the last interactive login on the host (ISO-8601)."
+    sampleValues: ["2026-07-03T18:49:16Z"]
+
+  - name: last_login_user
+    type: String
+    description: "Username of the last interactive login on the host."
+    sampleValues: ["avance"]
+
+  - name: last_login_user_sid
+    type: String
+    description: "SID of the last interactive login user."
+    sampleValues: ["S-1-5-21-1111111111-2222222222-3333333333-1007"]
+
+  - name: modified_timestamp
+    type: DateTime
+    description: "When the host record was last modified in Falcon (ISO-8601)."
+    sampleValues: ["2026-07-03T19:30:06Z"]
+
+  # ==========================================
+  # POLICIES
+  # ==========================================
+  - name: device_policies
+    type: Dynamic
+    description: >-
+      Object of the Falcon policies currently assigned to the host, keyed by
+      policy type. Access with dot notation, e.g. device_policies.prevention,
+      device_policies.sensor_update, device_policies.firewall,
+      device_policies.device_control, device_policies.remote_response,
+      device_policies['content-update'], device_policies['host-retention'],
+      device_policies['exposure-management'], device_policies['logscale-collector'],
+      device_policies.global_config, device_policies['system-tray']. Each entry
+      carries: policy_id, policy_type, applied (bool), applied_date,
+      assigned_date, rule_groups, and settings_hash. Some types add fields —
+      firewall has rule_set_id; sensor_update has uninstall_protection. Use
+      device_policies.prevention.policy_id to group hosts by prevention policy and
+      device_policies.prevention.applied to find hosts where the assigned policy
+      has not yet applied.
+    sampleValues: ["prevention", "sensor_update", "firewall"]
+
+  - name: policies
+    type: DynamicArray
+    description: >-
+      Flattened array form of the host's policies (each element has the same
+      shape as a device_policies entry: policy_id, policy_type, applied,
+      applied_date, assigned_date, rule_groups, settings_hash). In this feed it
+      typically contains the prevention policy. mv-expand to enumerate.
+    sampleValues: ["prevention"]
+
+  # ==========================================
+  # MISC
+  # ==========================================
+  - name: notes
+    type: String
+    description: "Free-text analyst notes on the host; null when none."
+
+  - name: pod_labels
+    type: DynamicArray
+    description: "Kubernetes pod labels for containerized sensors; empty for regular endpoints."
+
+  - name: pod_annotations
+    type: DynamicArray
+    description: "Kubernetes pod annotations for containerized sensors; empty for regular endpoints."

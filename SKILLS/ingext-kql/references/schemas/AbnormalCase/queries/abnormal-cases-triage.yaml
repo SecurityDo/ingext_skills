@@ -1,0 +1,32 @@
+description: >-
+  Abnormal Security account-takeover cases from the last 7 days that still need
+  attention, as a triage queue. Reaches into the abx_body envelope for the
+  affected entity, verdict, and status, filters to open cases
+  (case_status == "ACTION_REQUIRED") that are not yet remediated, and rolls up
+  the named insight signals for each case so an analyst can see at a glance why
+  Abnormal opened it. Sorted by severity then newest first.
+datatype: AbnormalCase
+kql: |
+  AbnormalCase
+  | where timestamp > ago(7d)
+  | extend case_id = toint(abx_body.case_id),
+           entity = tostring(abx_body.entity.identifier),
+           severity = tostring(abx_body.severity),
+           confidence = tostring(abx_body.confidence),
+           trigger = tostring(abx_body.trigger_event),
+           caseStatus = tostring(abx_body.case_status),
+           remediation = tostring(abx_body.remediation_status),
+           description = tostring(abx_body.description)
+  | where caseStatus == "ACTION_REQUIRED" and remediation == "NOT_REMEDIATED"
+  | mv-apply ins = abx_body.insights on (
+      summarize Signals = make_set(tostring(ins.signal))
+    )
+  | project timestamp, case_id, entity, description, severity, confidence, trigger,
+            caseStatus, remediation, Signals
+  | order by severity asc, timestamp desc
+tags: [abnormal, account-takeover, ato, sign-in, triage, security]
+expected_output: |
+  Open, unremediated Abnormal cases needing review (sanitized).
+
+  timestamp                        case_id   entity                  description         severity  confidence  trigger  caseStatus       remediation      Signals
+  2026-07-06T21:36:04Z             20240281  jared.doss@contoso.com  Account Compromised MEDIUM    MEDIUM      SIGN_IN  ACTION_REQUIRED  NOT_REMEDIATED   ["Anonymizing IP Service Used","High-Risk Sign-In","Sign-In Baseline Deviation"]

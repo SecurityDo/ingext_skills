@@ -1,0 +1,560 @@
+schema: FalconAlert
+description: >-
+  CrowdStrike Falcon EDR alert, imported by Ingext from the Falcon Alerts API
+  (the unified /alerts detections endpoint). Each record is one alert on one
+  endpoint (agent_id / device). Alerts come in two shapes, distinguished by the
+  'type' field:
+
+    - type = "automated-lead" (product "automated-lead"): the AI-generated
+      summary/lead. Falcon's automated triage correlates related detections on a
+      host into a single lead. These records are sparse on process detail but
+      carry the rollup fields — score, aggregated mitre_attack[], the
+      threatgraph_indicators[] array that lists the supporting indicators, and
+      signal_start/end/updated timestamps spanning the correlated activity.
+      lead_id / id identify the lead.
+
+    - type = "signal" (product "automated-lead-context"): a supporting /
+      contextual alert (one underlying detection) that rolls up into a lead. It
+      is linked to its lead via aggregate_id = lead_id and carries the full
+      detection detail: triggering process (cmdline / filename / filepath / md5
+      / sha256), parent_details and grandparent_details process lineage, MITRE
+      tactic/technique, pattern_disposition (whether it was blocked/prevented),
+      prevention policy, the affected host 'device' object, and behavioral
+      context arrays (dns_requests[], files_accessed[], files_written[],
+      network_accesses[]).
+
+  Join a lead to its signals on FalconAlert(type="automated-lead").lead_id ==
+  FalconAlert(type="signal").aggregate_id. The object is stored as a dynamic
+  JSON document, so nested fields use dot notation (e.g. device.hostname,
+  parent_details.filename) and the arrays (mitre_attack, threatgraph_indicators,
+  dns_requests, files_written, files_accessed, network_accesses) require
+  mv-expand to enumerate. timestamp is parsed from the top-level 'timestamp'
+  field (crawl/emit time). Many fields are null on one type or the other.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Primary time column for range filters (e.g. where timestamp > ago(1d)). Derived from the event's top-level 'timestamp' (the alert emit/crawl time, ISO-8601 UTC). For detection recency prefer created_timestamp; for the correlated activity window on a lead use signal_start_timestamp / signal_end_timestamp."
+    sampleValues: ["2026-07-02T11:37:22.000Z"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: type
+    type: String
+    description: "Alert shape. 'automated-lead' = the AI-generated summary/lead; 'signal' = a supporting/contextual alert that rolls up into a lead. Filter on this to select one shape (e.g. where type == 'signal')."
+    sampleValues: ["automated-lead", "signal"]
+
+  - name: product
+    type: String
+    description: "Falcon product that produced the record. 'automated-lead' for the lead summary; 'automated-lead-context' for a supporting signal."
+    sampleValues: ["automated-lead", "automated-lead-context"]
+
+  # ==========================================
+  # ALERT IDENTITY
+  # ==========================================
+  - name: id
+    type: String
+    description: "Alert identifier within the tenant. For a lead it is 'automated-lead:<cid>:<lead_id>'; for a signal it is the underlying indicator id 'ind:<agent_id>:<...>'. Unique per record."
+    sampleValues: ["automated-lead:00000000000000000000000000000001:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", "ind:11111111111111111111111111111111:5332331531211-4-3535888"]
+
+  - name: composite_id
+    type: String
+    description: "Globally unique composite alert id used by the Falcon Alerts API (embeds cid and the alert id). Primary key for cross-system correlation and for the Falcon console deep link."
+    sampleValues: ["00000000000000000000000000000001:automated-lead:00000000000000000000000000000001:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"]
+
+  - name: lead_id
+    type: String
+    description: "Identifier of the automated lead. On a 'automated-lead' record this is the lead's own id; on a 'signal' record it is the lead the signal belongs to. Present on both types."
+    sampleValues: ["1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"]
+
+  - name: aggregate_id
+    type: String
+    description: "Grouping key. On a 'signal' it equals the parent lead's lead_id (join key: signal.aggregate_id == lead.lead_id). Empty/null on an 'automated-lead' record."
+    sampleValues: ["1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", ""]
+
+  - name: lead_type
+    type: String
+    description: "Sub-classification of an automated lead (e.g. 'simple'). Null on signals."
+    sampleValues: ["simple"]
+
+  - name: pattern_id
+    type: Integer
+    description: "Falcon pattern/detection id. On a lead this is the lead pattern (e.g. 185000); on a signal it is the specific indicator's pattern id (matches an entry in mitre_attack[] and threatgraph_indicators[])."
+    sampleValues: ["185000", "4"]
+
+  - name: name
+    type: String
+    description: "Alert name. On a lead this is the display name ('<host> at <time>'); on a signal it is the detection/scenario name."
+    sampleValues: ["CORP-WS01 at 2026-07-01T21:17:23Z", "SpearPhish4"]
+
+  - name: display_name
+    type: String
+    description: "Human-readable alert display name. For a lead, '<hostname> at <ISO time>'; for a signal, the indicator display name (e.g. the threatgraph indicator's display_name)."
+    sampleValues: ["CORP-WS01 at 2026-07-01T21:17:23Z", "ProductivityAppAsepWrite"]
+
+  - name: description
+    type: String
+    description: "Free-text description of what the alert detected. Often null on a lead; populated on a signal with the indicator's explanation."
+    sampleValues: ["Productivity app or one of its children wrote a registry key used for persistence"]
+
+  # ==========================================
+  # CLASSIFICATION / SCORING
+  # ==========================================
+  - name: severity
+    type: Integer
+    description: "Numeric severity of the alert (Falcon scale). Frequently null on automated-lead / signal records; use 'score' and severity_name where present."
+
+  - name: severity_name
+    type: String
+    description: "Human-readable severity (Informational/Low/Medium/High/Critical). May be null when severity is not set on the record."
+
+  - name: score
+    type: Integer
+    description: "Lead risk score (0-100) assigned by Falcon automated triage. Populated on 'automated-lead' records; null on signals."
+    sampleValues: ["40"]
+
+  - name: confidence
+    type: Integer
+    description: "Detection confidence, when provided; commonly null."
+
+  - name: objective
+    type: String
+    description: "Adversary objective (kill-chain stage) for the detection. Populated on signals (e.g. 'Keep Access'); null on leads."
+    sampleValues: ["Keep Access"]
+
+  - name: tactic
+    type: String
+    description: "MITRE ATT&CK tactic name for a signal's primary technique. Null on leads (see mitre_attack[] for the aggregated list)."
+    sampleValues: ["Persistence"]
+
+  - name: tactic_id
+    type: String
+    description: "MITRE ATT&CK tactic id (TA####) for a signal. Null on leads."
+    sampleValues: ["TA0003"]
+
+  - name: technique
+    type: String
+    description: "MITRE ATT&CK technique name for a signal. Null on leads."
+    sampleValues: ["Registry Run Keys / Startup Folder"]
+
+  - name: technique_id
+    type: String
+    description: "MITRE ATT&CK technique id (T####[.###]) for a signal. Null on leads."
+    sampleValues: ["T1547.001"]
+
+  - name: scenario
+    type: String
+    description: "Falcon scenario/behavior classification for a signal (e.g. 'malicious_document'). Null on leads."
+    sampleValues: ["malicious_document"]
+
+  - name: status
+    type: String
+    description: "Triage/workflow status of the alert (e.g. new, in_progress, closed, reopened)."
+    sampleValues: ["new"]
+
+  - name: is_closed
+    type: Boolean
+    description: "Whether the alert is closed. Present on leads."
+    sampleValues: ["false"]
+
+  - name: show_in_ui
+    type: Boolean
+    description: "Whether the alert is surfaced in the Falcon console UI."
+    sampleValues: ["true"]
+
+  - name: mitre_attack
+    type: DynamicArray
+    description: >-
+      Array of MITRE ATT&CK mappings for the alert. On a lead this aggregates all
+      techniques from the correlated signals; on a signal it is the single
+      technique that fired. Each element has pattern_id, tactic, tactic_id,
+      technique, technique_id. Enumerate with mv-expand (e.g. mv-expand
+      mitre_attack | summarize by tostring(mitre_attack.tactic),
+      tostring(mitre_attack.technique_id)).
+    sampleValues: ["Defense Evasion", "Persistence", "Process Injection", "Registry Run Keys / Startup Folder"]
+
+  # ==========================================
+  # THREATGRAPH INDICATORS (lead rollup)
+  # ==========================================
+  - name: threatgraph_indicators
+    type: DynamicArray
+    description: >-
+      On an 'automated-lead' record, the list of supporting indicators that were
+      correlated into the lead (each roughly corresponds to a 'signal' alert).
+      Null on signals. Enumerate with mv-expand. Each element carries:
+      description, display_name (indicator name), host_id, hostname, indicator_id,
+      indicator_type (e.g. AssociateIndicator / AssociateTreeIdWithRoot),
+      pattern_id, pattern_disposition, process_id, signal_association_timestamp,
+      and template_instance_id.
+    sampleValues: ["CommandLineStomping", "AccessibilityApiGenericAsepModified", "RemotePivotHollowing", "ProductivityAppAsepWrite"]
+
+  # ==========================================
+  # TENANT / AGENT / DEVICE
+  # ==========================================
+  - name: cid
+    type: String
+    description: "Falcon Customer ID (tenant) that owns the alert."
+    sampleValues: ["00000000000000000000000000000001"]
+
+  - name: origin_cid
+    type: String
+    description: "CID where the alert originated (differs from cid only in Falcon Flight Control / MSSP parent-child setups)."
+    sampleValues: ["00000000000000000000000000000001"]
+
+  - name: agent_id
+    type: String
+    description: "Falcon sensor/agent id (AID) of the endpoint that raised the alert. Equals device.device_id. Primary join key to other Falcon telemetry for the same host."
+    sampleValues: ["11111111111111111111111111111111"]
+
+  - name: device
+    type: Dynamic
+    description: >-
+      Nested object describing the affected endpoint. Sparse on an
+      'automated-lead' record (device_id, first/last_seen, groups); rich on a
+      'signal' record. Common fields (dot notation): device.device_id,
+      device.hostname, device.local_ip, device.external_ip, device.mac_address,
+      device.platform_name, device.os_version, device.machine_domain,
+      device.ou (array), device.site_name, device.system_manufacturer,
+      device.system_product_name, device.agent_version, device.first_seen,
+      device.last_seen, device.product_type_desc (Workstation/Server), and a
+      nested device.hostinfo (device.hostinfo.domain,
+      device.hostinfo.active_directory_dn_display[]).
+    sampleValues: ["CORP-WS01", "Windows 11", "contoso.com"]
+
+  # ==========================================
+  # SIGNAL: TRIGGERING PROCESS
+  # ==========================================
+  - name: cmdline
+    type: String
+    description: "Command line of the triggering process (signal only)."
+    sampleValues: ["\"C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE\" \"F:\\Data\\Workbook.xlsx\""]
+
+  - name: filename
+    type: String
+    description: "Image file name of the triggering process (signal only)."
+    sampleValues: ["EXCEL.EXE"]
+
+  - name: filepath
+    type: String
+    description: "Device-path of the triggering process image (signal only)."
+    sampleValues: ["\\Device\\HarddiskVolume3\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE"]
+
+  - name: alleged_filetype
+    type: String
+    description: "Alleged/declared file type of the triggering file (signal only)."
+    sampleValues: ["EXE"]
+
+  - name: md5
+    type: String
+    description: "MD5 hash of the triggering process image (signal only)."
+    sampleValues: ["843217d1f17dddcba994f0e6efbbb250"]
+
+  - name: sha1
+    type: String
+    description: "SHA1 hash of the triggering process image (signal only); may be all-zeros when unavailable."
+
+  - name: sha256
+    type: String
+    description: "SHA256 hash of the triggering process image (signal only). Join key for file reputation / prevalence lookups."
+    sampleValues: ["3bcf6222a10bf3f8b043e4137c8509bdc64309eb1ae95f956363f7c8299b0f2d"]
+
+  - name: global_prevalence
+    type: String
+    description: "Falcon global prevalence bucket for the triggering file (common/low/unique). Signal only."
+    sampleValues: ["common"]
+
+  - name: local_prevalence
+    type: String
+    description: "Falcon prevalence of the triggering file within this tenant. Signal only."
+    sampleValues: ["common"]
+
+  - name: cloud_indicator
+    type: String
+    description: "Whether the detection was cloud-based (string 'true'/'false'). Signal only."
+    sampleValues: ["false"]
+
+  # ==========================================
+  # SIGNAL: PROCESS LINEAGE / GRAPH IDS
+  # ==========================================
+  - name: process_id
+    type: String
+    description: "Falcon graph process id (falcon PID) of the triggering process (signal only)."
+    sampleValues: ["5332331531211"]
+
+  - name: local_process_id
+    type: String
+    description: "OS-native process id (PID) of the triggering process (signal only)."
+    sampleValues: ["2320"]
+
+  - name: parent_process_id
+    type: String
+    description: "Falcon graph process id of the parent process (signal only). Detail in parent_details."
+    sampleValues: ["5331778997860"]
+
+  - name: parent_details
+    type: Dynamic
+    description: >-
+      Nested object describing the parent process (signal only): parent_details.cmdline,
+      .filename, .filepath, .local_process_id, .process_id, .md5, .sha256,
+      .timestamp, .user_name, .user_id, .user_graph_id, .process_graph_id.
+    sampleValues: ["explorer.exe"]
+
+  - name: grandparent_details
+    type: Dynamic
+    description: >-
+      Nested object describing the grandparent process (signal only), same field
+      shape as parent_details (e.g. grandparent_details.filename,
+      grandparent_details.cmdline).
+    sampleValues: ["userinit.exe"]
+
+  - name: child_process_ids
+    type: DynamicArray
+    description: "Falcon graph process ids of the triggering process's children (signal only). mv-expand to enumerate."
+    sampleValues: ["pid:11111111111111111111111111111111:5332334943122"]
+
+  - name: triggering_process_graph_id
+    type: String
+    description: "Full Falcon graph id of the triggering process (pid:<aid>:<pid>). Signal only."
+    sampleValues: ["pid:11111111111111111111111111111111:5332331531211"]
+
+  - name: process_start_time
+    type: DateTime
+    description: "Start time of the triggering process as a Unix epoch (seconds). Signal only."
+    sampleValues: ["1782991874"]
+
+  - name: control_graph_id
+    type: String
+    description: "Falcon control-graph id (ctg:<aid>:<id>) linking the detection to its behavior graph (signal only)."
+    sampleValues: ["ctg:11111111111111111111111111111111:807454825018"]
+
+  - name: tree_id
+    type: String
+    description: "Detection tree id grouping related process activity (signal only)."
+    sampleValues: ["807454825018"]
+
+  - name: tree_root
+    type: String
+    description: "Root process (falcon PID) of the detection tree (signal only)."
+    sampleValues: ["5332331531211"]
+
+  # ==========================================
+  # SIGNAL: USER CONTEXT
+  # ==========================================
+  - name: user_name
+    type: String
+    description: "Acting user account name for the detection (signal only)."
+    sampleValues: ["avance"]
+
+  - name: user_names
+    type: DynamicArray
+    description: "All user account names associated with the detection (signal only)."
+    sampleValues: ["avance"]
+
+  - name: user_id
+    type: String
+    description: "SID of the acting user (signal only)."
+    sampleValues: ["S-1-5-21-1111111111-2222222222-3333333333-6716"]
+
+  - name: user_principal
+    type: String
+    description: "User principal name (UPN / email) of the acting user (signal only)."
+    sampleValues: ["adele.vance@contoso.com"]
+
+  - name: logon_domain
+    type: String
+    description: "Logon domain (NetBIOS) of the acting user (signal only)."
+    sampleValues: ["CONTOSO"]
+
+  # ==========================================
+  # SIGNAL: BEHAVIORAL CONTEXT ARRAYS
+  # ==========================================
+  - name: dns_requests
+    type: DynamicArray
+    description: >-
+      DNS lookups observed in the detection context (signal only). mv-expand to
+      enumerate. Each element: domain_name, request_type (A/AAAA/...),
+      interface_index, load_time (epoch-seconds-like counter).
+    sampleValues: ["messaging.engagement.office.com", "contoso.sharepoint.com"]
+
+  - name: files_accessed
+    type: DynamicArray
+    description: >-
+      Files read/opened in the detection context (signal only). Each element:
+      filename, filepath, timestamp (Unix epoch seconds). mv-expand to enumerate.
+    sampleValues: ["IconCache.db", "Workbook.xlsm"]
+
+  - name: files_written
+    type: DynamicArray
+    description: >-
+      Files created/written in the detection context (signal only). Each element:
+      filename, filepath, timestamp (Unix epoch seconds). mv-expand to enumerate.
+    sampleValues: ["Workbook.xlsm.LNK"]
+
+  - name: network_accesses
+    type: DynamicArray
+    description: >-
+      Network connections observed in the detection context (signal only). Each
+      element: connection_direction (Inbound/Outbound), protocol, local_address,
+      local_port, remote_address, remote_port, isIPV6, access_type,
+      access_timestamp (Unix epoch seconds). mv-expand to enumerate.
+    sampleValues: ["Outbound", "TCP"]
+
+  - name: source_hosts
+    type: DynamicArray
+    description: "Hostname(s) that are the source of the detection (signal only)."
+    sampleValues: ["CORP-WS01"]
+
+  - name: source_ips
+    type: DynamicArray
+    description: "Source IP address(es) of the detection (signal only)."
+    sampleValues: ["10.1.1.28"]
+
+  # ==========================================
+  # SIGNAL: PREVENTION / DISPOSITION
+  # ==========================================
+  - name: pattern_disposition
+    type: Integer
+    description: "Bitmask summarizing the action Falcon took on the detection (signal only). 0 = detect only / no prevention. See pattern_disposition_details for the decoded flags."
+    sampleValues: ["0"]
+
+  - name: pattern_disposition_description
+    type: String
+    description: "Human-readable description of the disposition (signal only), e.g. 'Detection, standard detection.'"
+    sampleValues: ["Detection, standard detection."]
+
+  - name: pattern_disposition_details
+    type: Dynamic
+    description: >-
+      Nested boolean flags decoding pattern_disposition (signal only): e.g.
+      pattern_disposition_details.detect, .process_blocked, .kill_process,
+      .quarantine_file, .operation_blocked, .sensor_only,
+      .prevention_provisioning_enabled. All false means detect-only.
+    sampleValues: ["false"]
+
+  - name: prevention_policy_id
+    type: String
+    description: "Id of the Falcon prevention policy applied to the host (signal only)."
+    sampleValues: ["a0000000000000000000000000000001"]
+
+  - name: prevention_policy_name
+    type: String
+    description: "Name of the Falcon prevention policy applied to the host (signal only)."
+    sampleValues: ["ActiveWin"]
+
+  # ==========================================
+  # SOURCES
+  # ==========================================
+  - name: source_products
+    type: DynamicArray
+    description: "Falcon source product(s) that contributed the alert (e.g. 'Automated Leads')."
+    sampleValues: ["Automated Leads"]
+
+  - name: source_vendors
+    type: DynamicArray
+    description: "Source vendor(s) for the alert."
+    sampleValues: ["CrowdStrike"]
+
+  - name: data_domains
+    type: DynamicArray
+    description: "Data domain(s) the alert pertains to (e.g. 'Endpoint'). Often null on a lead, populated on a signal."
+    sampleValues: ["Endpoint"]
+
+  # ==========================================
+  # TIMESTAMPS
+  # ==========================================
+  - name: created_timestamp
+    type: DateTime
+    description: "When Falcon created the alert record (ISO-8601 UTC). Best field for detection recency."
+    sampleValues: ["2026-07-01T21:17:41.193Z", "2026-07-02T11:38:25.766Z"]
+
+  - name: updated_timestamp
+    type: DateTime
+    description: "When the alert record was last updated (ISO-8601 UTC)."
+    sampleValues: ["2026-07-02T11:37:23.539Z"]
+
+  - name: crawled_timestamp
+    type: DateTime
+    description: "When Falcon's pipeline last crawled/emitted the alert (ISO-8601 UTC). Source of the 'timestamp' column."
+    sampleValues: ["2026-07-02T11:37:23.539Z"]
+
+  - name: context_timestamp
+    type: DateTime
+    description: "Time of the detection context (ISO-8601 UTC). On a lead this is often the zero time (0001-01-01T...); on a signal it is the real context time."
+    sampleValues: ["2026-07-02T11:37:18.458Z"]
+
+  - name: signal_start_timestamp
+    type: DateTime
+    description: "Start of the correlated activity window on a lead (earliest supporting signal). ISO-8601 UTC."
+    sampleValues: ["2026-07-01T21:17:23Z"]
+
+  - name: signal_end_timestamp
+    type: DateTime
+    description: "End of the correlated activity window on a lead (latest supporting signal). ISO-8601 UTC."
+    sampleValues: ["2026-07-02T11:37:18Z"]
+
+  - name: signal_updated_timestamp
+    type: DateTime
+    description: "Last time a supporting signal updated the lead. ISO-8601 UTC."
+    sampleValues: ["2026-07-02T11:37:18Z"]
+
+  - name: event_correlation_id
+    type: String
+    description: "Correlation id linking a signal to related detection events (signal only)."
+    sampleValues: ["00000000-0000-0000-0000-000000000001"]
+
+  # ==========================================
+  # LINKS / MISC
+  # ==========================================
+  - name: falcon_host_link
+    type: String
+    description: "Deep link into the Falcon console for this alert."
+    sampleValues: ["https://falcon.us-2.crowdstrike.com/automated-leads/00000000000000000000000000000001:automated-lead:00000000000000000000000000000001:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"]
+
+  - name: poly_id
+    type: String
+    description: "Opaque Falcon polymorphic/aggregation id for the alert."
+
+  - name: assigned_to_name
+    type: String
+    description: "Display name of the analyst the alert is assigned to; null when unassigned."
+
+  - name: assigned_to_uid
+    type: String
+    description: "Login/uid of the assignee; null when unassigned."
+
+  - name: assigned_to_uuid
+    type: String
+    description: "UUID of the assignee; null when unassigned."
+
+  - name: resolution
+    type: String
+    description: "Resolution disposition recorded when the alert is closed; null while open."
+
+  - name: tags
+    type: DynamicArray
+    description: "Analyst/automation tags applied to the alert; often null."
+
+  - name: ioc_context
+    type: DynamicArray
+    description: "IOC context objects associated with the alert; often empty/null."
+
+  - name: ioc_values
+    type: DynamicArray
+    description: "IOC values associated with the alert; often null."
+
+  - name: quarantined_files
+    type: DynamicArray
+    description: "Files quarantined in response to the alert; null when none."
+
+  - name: linked_case_ids
+    type: DynamicArray
+    description: "Ids of cases the alert is linked to; null when none."
+
+  - name: linked_behavioral_detections
+    type: DynamicArray
+    description: "Ids of related legacy behavioral (EPP) detections; null when none."

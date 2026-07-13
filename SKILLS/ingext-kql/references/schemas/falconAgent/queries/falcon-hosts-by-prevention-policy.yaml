@@ -1,0 +1,27 @@
+description: >-
+  CrowdStrike Falcon host inventory grouped by the assigned prevention policy,
+  reading the nested device_policies.prevention object. For each policy it counts
+  hosts, breaks them down by platform, and flags any host where the assigned
+  policy has not yet been applied (device_policies.prevention.applied == false) —
+  useful for confirming prevention coverage and catching hosts stuck on an old or
+  pending policy.
+datatype: falconAgent
+kql: |
+  falconAgent
+  | extend PreventionPolicyId = tostring(device_policies.prevention.policy_id),
+           PreventionApplied  = tobool(device_policies.prevention.applied)
+  | summarize
+      Hosts = dcount(device_id),
+      Windows = dcountif(device_id, platform_name == "Windows"),
+      Mac = dcountif(device_id, platform_name == "Mac"),
+      Linux = dcountif(device_id, platform_name == "Linux"),
+      NotApplied = dcountif(device_id, PreventionApplied != true),
+      ExampleHosts = make_set_if(hostname, PreventionApplied != true, 10)
+      by PreventionPolicyId
+  | order by Hosts desc
+tags: [crowdstrike, falcon, hosts, prevention, policy, coverage, security]
+expected_output: |
+  Host counts per prevention policy with un-applied hosts flagged (sanitized).
+
+  PreventionPolicyId                Hosts  Windows  Mac  Linux  NotApplied  ExampleHosts
+  a0000000000000000000000000000001  1      1        0    0      0           []

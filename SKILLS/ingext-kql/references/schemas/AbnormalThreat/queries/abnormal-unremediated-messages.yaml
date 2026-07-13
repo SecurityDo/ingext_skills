@@ -1,0 +1,30 @@
+description: >-
+  Abnormal Security messages from the last 3 days that were NOT auto-remediated —
+  the emails that reached (and may still sit in) a user's mailbox. Expands the
+  messages[] array to one row per message and lists sender, recipient, subject,
+  attack type/vector, and the remediation status, so an analyst can hunt for
+  threats still needing manual action. Sorted newest first. Filter further on a
+  specific recipient or attackType as needed.
+datatype: AbnormalThreat
+kql: |
+  AbnormalThreat
+  | where timestamp > ago(3d)
+  | mv-expand messages
+  | extend fromAddress = tostring(messages.fromAddress),
+           recipient = tostring(messages.recipientAddress),
+           subject = tostring(messages.subject),
+           attackType = tostring(messages.attackType),
+           attackVector = tostring(messages.attackVector),
+           remediationStatus = tostring(messages.remediationStatus),
+           autoRemediated = tobool(messages.autoRemediated),
+           receivedTime = todatetime(messages.receivedTime)
+  | where autoRemediated == false
+  | project receivedTime, recipient, fromAddress, subject, attackType, attackVector,
+            remediationStatus, threatId
+  | order by receivedTime desc
+tags: [abnormal, email-security, phishing, remediation, hunting, security]
+expected_output: |
+  Non-auto-remediated Abnormal messages needing review (sanitized).
+
+  receivedTime          recipient               fromAddress          subject                                          attackType  attackVector  remediationStatus  threatId
+  2026-07-09T13:42:33Z  adele.vance@contoso.com maggie@example.com   You have the openings, we have the candidates    Spam        Text          Remediated         00000000-...-000000000abc
