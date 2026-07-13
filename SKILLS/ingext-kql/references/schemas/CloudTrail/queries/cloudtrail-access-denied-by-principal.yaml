@@ -1,0 +1,31 @@
+description: >-
+  Denied and failed AWS API calls over the last 24 hours, grouped by the acting
+  principal and the operation they were denied. Resolves the real actor behind
+  temporary sessions by falling back to the assumed-role's session issuer, so an
+  AssumedRole is attributed to its underlying role name. High counts of AccessDenied
+  from one principal can indicate misconfiguration, credential misuse, or enumeration.
+datatype: CloudTrail
+kql: |
+  CloudTrail
+  | where timestamp > ago(24h)
+  | where isnotempty(errorCode)
+  | where errorCode in ("AccessDenied", "UnauthorizedOperation", "Client.UnauthorizedOperation")
+  | extend Principal = coalesce(
+        tostring(userIdentity.sessionContext.sessionIssuer.userName),
+        tostring(userIdentity.userName),
+        tostring(userIdentity.arn))
+  | summarize
+      Denials = count(),
+      Operations = dcount(strcat(eventSource, ":", eventName)),
+      SampleOps = make_set(strcat(eventSource, ":", eventName), 8),
+      SourceIPs = make_set(sourceIPAddress, 8)
+      by Principal, IdentityType = tostring(userIdentity.type)
+  | order by Denials desc
+  | take 25
+tags: [aws, cloudtrail, access-denied, iam, authorization, security]
+expected_output: |
+  Principals ranked by number of denied calls, with the operations they were denied.
+
+  Principal          IdentityType  Denials  Operations  SampleOps                                   SourceIPs
+  deploy-role         AssumedRole   142      6           ["ec2:RunInstances","iam:PassRole", ...]    ["192.0.2.44"]
+  alice               IAMUser       9        3           ["s3:PutBucketPolicy","kms:Decrypt", ...]   ["192.0.2.15"]

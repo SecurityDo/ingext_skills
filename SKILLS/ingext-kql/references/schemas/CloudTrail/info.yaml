@@ -1,0 +1,260 @@
+schema: CloudTrail
+description: >-
+  AWS CloudTrail audit events, imported by Ingext from a CloudTrail trail
+  (S3/CloudWatch Logs) or the CloudTrail Lake/event data store. Each record is one
+  API-level activity event in an AWS account: who did what (userIdentity), which
+  operation (eventName) on which service (eventSource), from where (sourceIPAddress,
+  userAgent), when (eventTime), and the outcome (responseElements / errorCode).
+
+  Events fall into four categories (eventCategory):
+
+    - Management — control-plane API calls (create/modify/delete/describe of AWS
+      resources, IAM, console sign-in). The bulk of a trail. managementEvent = true.
+    - Data — high-volume object-level operations on the resources themselves
+      (S3 GetObject/PutObject, Lambda Invoke, DynamoDB item ops). eventCategory =
+      "Data"; the resource is in resources[] / requestParameters.
+    - Network — VPC endpoint activity (traffic reaching a service through a VPC
+      endpoint), eventCategory = "NetworkActivity".
+    - Insights — CloudTrail Insights anomaly-detection events, emitted when the rate
+      of a management API call deviates from the learned baseline. eventCategory =
+      "Insight"; carries an insightDetails object instead of a normal actor call.
+
+  Events also carry an eventType: AwsApiCall (a normal SDK/CLI/API call),
+  AwsConsoleSignIn (console login, eventName ConsoleLogin), AwsServiceEvent (an
+  action AWS itself performed, no external caller — detail in serviceEventDetails),
+  AwsConsoleAction, AwsCloudTrailInsight, etc.
+
+  The event is stored as a dynamic JSON document, so nested fields use dot notation
+  (e.g. userIdentity.arn, userIdentity.sessionContext.sessionIssuer.userName) and
+  arrays (resources) require mv-expand to enumerate. requestParameters and
+  responseElements are SERVICE-SPECIFIC — their shape depends on eventSource and
+  eventName, so treat them as free-form dynamic objects and reach in with
+  tostring(requestParameters.<field>). Both are frequently null. timestamp is parsed
+  from eventTime.
+
+  userIdentity is a complex, polymorphic object whose shape depends on
+  userIdentity.type — IAMUser, Root, AssumedRole, AWSService, AWSAccount,
+  FederatedUser, IdentityCenterUser (SSO), WebIdentityUser, Directory, etc. See the
+  userIdentity field notes below for how to resolve the acting principal across
+  these variants (the sessionContext.sessionIssuer sub-object is the key to getting
+  the underlying role/user behind an AssumedRole).
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Primary time column for range filters (e.g. where timestamp > ago(1d)). Parsed from the event's eventTime (ISO-8601 UTC, when the activity occurred)."
+    sampleValues: ["2026-07-02T02:08:23Z"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: eventVersion
+    type: String
+    description: "Schema version of the CloudTrail event record (not the API). Higher versions add fields; write queries defensively against optional fields."
+    sampleValues: ["1.11"]
+
+  # ==========================================
+  # WHAT HAPPENED (operation)
+  # ==========================================
+  - name: eventName
+    type: String
+    description: "The requested API operation (action). For eventSource sts.amazonaws.com this is e.g. AssumeRole; for console login it is ConsoleLogin. Combine with eventSource to identify the exact call."
+    sampleValues: ["AssumeRole", "ConsoleLogin", "SharedSnapshotVolumeCreated", "GetObject", "RunInstances"]
+
+  - name: eventSource
+    type: String
+    description: "AWS service endpoint that served the request, in '<service>.amazonaws.com' form. Identifies the service (ec2, s3, iam, sts, signin, lambda, dynamodb, ...). Filter here to scope to a service."
+    sampleValues: ["sts.amazonaws.com", "signin.amazonaws.com", "ec2.amazonaws.com", "s3.amazonaws.com"]
+
+  - name: awsRegion
+    type: String
+    description: "AWS region the request was made in. Global services (IAM, STS, CloudFront, Route 53) often log to us-east-1 regardless of caller location."
+    sampleValues: ["us-east-1", "us-east-2"]
+
+  - name: readOnly
+    type: Boolean
+    description: "True if the operation only read state (Describe/Get/List), false if it modified state (Create/Delete/Put/Run). Use where readOnly == false to focus on mutating actions."
+    sampleValues: ["true", "false"]
+
+  - name: managementEvent
+    type: Boolean
+    description: "True when the event is a management (control-plane) event. Data/Network events have this false or absent. Redundant with eventCategory but sometimes easier to filter on."
+    sampleValues: ["true"]
+
+  - name: eventType
+    type: String
+    description: "Kind of event record. AwsApiCall = a normal SDK/CLI/API call; AwsConsoleSignIn = console login; AwsServiceEvent = an action AWS itself performed (no external caller — see serviceEventDetails); AwsConsoleAction; AwsCloudTrailInsight = an Insights event."
+    sampleValues: ["AwsApiCall", "AwsConsoleSignIn", "AwsServiceEvent"]
+
+  - name: eventCategory
+    type: String
+    description: "Event category. 'Management' (control-plane), 'Data' (object-level ops on S3/Lambda/DynamoDB/etc.), 'NetworkActivity' (VPC endpoint activity), or 'Insight' (CloudTrail Insights anomaly). Primary switch for the class of activity."
+    sampleValues: ["Management", "Data", "NetworkActivity", "Insight"]
+
+  # ==========================================
+  # IDENTITY (who) — see notes on the polymorphic shape
+  # ==========================================
+  - name: userIdentity
+    type: Dynamic
+    description: >-
+      Polymorphic object describing the actor. Shape depends on userIdentity.type:
+
+        - IAMUser: userIdentity.userName, userIdentity.arn, userIdentity.principalId
+          (AIDA...), userIdentity.accountId, userIdentity.accessKeyId.
+        - Root: the account root user — userIdentity.arn is the account ARN, no
+          userName; userIdentity.principalId is the account id.
+        - AssumedRole: a temporary session from AssumeRole. userIdentity.arn is the
+          assumed-role ARN (arn:aws:sts::<acct>:assumed-role/<Role>/<session>),
+          principalId is 'AROA...:<session>'. The UNDERLYING role/user is in
+          userIdentity.sessionContext.sessionIssuer (sessionIssuer.type,
+          sessionIssuer.userName = the role name, sessionIssuer.arn,
+          sessionIssuer.principalId). To attribute an action to a human/role,
+          coalesce sessionContext.sessionIssuer.userName with userName.
+        - AWSService: the caller is another AWS service (e.g. an EKS/Lambda service
+          role acting on your behalf). Only userIdentity.invokedBy (the service DNS
+          name) and type are set — no userName/arn. sourceIPAddress/userAgent are
+          the service name too.
+        - AWSAccount: a principal in a different AWS account (cross-account) —
+          userIdentity.accountId and principalId, no userName.
+        - FederatedUser: GetFederationToken session — userIdentity.arn is a
+          federated-user ARN; sessionContext.sessionIssuer holds the issuing IAM user.
+        - IdentityCenterUser: AWS IAM Identity Center (SSO) principal — look under
+          userIdentity.onBehalfOf (credentialId, userId) and
+          userIdentity.sessionContext for the SSO user.
+        - WebIdentityUser: OIDC/web-identity federation (e.g. Cognito, IRSA) —
+          userIdentity.userName is the external subject, with identityProvider set.
+
+      Also common across types: userIdentity.sessionContext.attributes.mfaAuthenticated
+      ("true"/"false") and .creationDate; userIdentity.invokedBy (set when an AWS
+      service made the call). Access every field with dot notation +
+      tostring()/tobool().
+    sampleValues: ["IAMUser", "AssumedRole", "AWSService", "Root"]
+
+  - name: sourceIPAddress
+    type: String
+    description: "IP address the request came from. For calls made by an AWS service on your behalf this is the service DNS name (e.g. 'ec2.amazonaws.com', 'eks.amazonaws.com') rather than an IP. For console actions it is the operator's client IP."
+    sampleValues: ["192.0.2.15", "ec2.amazonaws.com", "eks.amazonaws.com"]
+
+  - name: userAgent
+    type: String
+    description: "Client software that made the request — an SDK/CLI user-agent (e.g. 'aws-cli/2.x', 'aws-sdk-go/...'), a browser UA for console actions, or the service name for AWS-initiated calls."
+    sampleValues: ["Mozilla/5.0 (X11; Linux x86_64) ... Chrome/148.0.0.0 Safari/537.36", "eks.amazonaws.com"]
+
+  # ==========================================
+  # IDENTIFIERS / CORRELATION
+  # ==========================================
+  - name: eventID
+    type: String
+    description: "Globally unique UUID for this event record. Primary key for a single event; use to dedupe or reference an event."
+    sampleValues: ["e5880e5b-41c8-3c46-ab1e-d6f9de96443a"]
+
+  - name: requestID
+    type: String
+    description: "The service's request id for the operation. Correlates the CloudTrail event with the same request in service-specific logs / support cases. Null for some event types (e.g. console sign-in)."
+    sampleValues: ["1d39c420-f36d-4aa5-9e43-7fec5f33c1c4"]
+
+  - name: sharedEventID
+    type: String
+    description: "Present when a single logical action is recorded by multiple CloudTrail events (e.g. cross-account, or one action seen by several principals). Events sharing this value describe the same activity — group on it to collapse duplicates."
+    sampleValues: ["a0a349fd-6526-4d75-b848-0cc980a862d0"]
+
+  - name: recipientAccountId
+    type: String
+    description: "AWS account id that received the event (the account this trail belongs to / that the event was delivered to). For cross-account activity may differ from userIdentity.accountId. Primary field for per-account scoping in multi-account trails."
+    sampleValues: ["123456789012"]
+
+  # ==========================================
+  # REQUEST / RESPONSE (service-specific, dynamic)
+  # ==========================================
+  - name: requestParameters
+    type: Dynamic
+    description: >-
+      Service-specific parameters supplied to the API call. The set of keys depends
+      entirely on eventSource + eventName (e.g. sts AssumeRole has roleArn /
+      roleSessionName / durationSeconds; ec2 RunInstances has instanceType / imageId;
+      s3 has bucketName / key). Free-form dynamic object — reach in with
+      tostring(requestParameters.<field>). Frequently null (e.g. console sign-in)."
+    sampleValues: ["{\"roleArn\":\"arn:aws:iam::123456789012:role/...\",\"roleSessionName\":\"aws-go-sdk-...\",\"durationSeconds\":3600}"]
+
+  - name: responseElements
+    type: Dynamic
+    description: >-
+      Service-specific response returned by the API call (or null for read-only
+      calls that don't return notable state). Shape depends on eventSource +
+      eventName — e.g. sts AssumeRole returns assumedRoleUser + credentials; console
+      login returns {\"ConsoleLogin\":\"Success\"/\"Failure\"}. Reach in with dot
+      notation. Note credentials.sessionToken/accessKeyId may appear here for STS
+      calls."
+    sampleValues: ["{\"ConsoleLogin\":\"Success\"}", "{\"assumedRoleUser\":{...},\"credentials\":{...}}"]
+
+  - name: additionalEventData
+    type: Dynamic
+    description: >-
+      Extra service-specific data not part of request/response. Contents vary:
+      console sign-in carries LoginTo / MFAUsed (\"Yes\"/\"No\") / MobileVersion; S3
+      data events carry bytesTransferredIn/Out, x-amz-id-2, AuthenticationMethod,
+      SignatureVersion; STS carries an ExtendedRequestId. Free-form dynamic object.
+    sampleValues: ["{\"MFAUsed\":\"No\",\"MobileVersion\":\"No\",\"LoginTo\":\"https://console.aws.amazon.com/...\"}"]
+
+  - name: resources
+    type: DynamicArray
+    description: >-
+      Array of AWS resources the operation acted on (present on many management and
+      data events; null on others). Each element has ARN, accountId, and type (the
+      CloudFormation-style resource type, e.g. 'AWS::IAM::Role', 'AWS::S3::Object').
+      Enumerate with mv-expand (e.g. mv-expand resources | extend
+      rtype = tostring(resources.type), rarn = tostring(resources.ARN))."
+    sampleValues: ["AWS::IAM::Role", "AWS::S3::Object", "AWS::S3::Bucket"]
+
+  # ==========================================
+  # ERROR / OUTCOME
+  # ==========================================
+  - name: errorCode
+    type: String
+    description: "AWS error code when the call failed or was denied (e.g. AccessDenied, UnauthorizedOperation, Client.InvalidInstanceID.NotFound). Null on success. Filter where isnotempty(errorCode) to find failed/denied activity."
+    sampleValues: ["AccessDenied", "UnauthorizedOperation"]
+
+  - name: errorMessage
+    type: String
+    description: "Human-readable message accompanying errorCode explaining why the call failed. Null on success."
+    sampleValues: ["User: arn:aws:iam::123456789012:user/alice is not authorized to perform: ec2:RunInstances"]
+
+  # ==========================================
+  # TLS / TRANSPORT
+  # ==========================================
+  - name: tlsDetails
+    type: Dynamic
+    description: "TLS metadata of the connection the request came over: tlsDetails.tlsVersion (e.g. TLSv1.3), tlsDetails.cipherSuite, tlsDetails.clientProvidedHostHeader. Useful for spotting deprecated TLS versions."
+    sampleValues: ["{\"tlsVersion\":\"TLSv1.3\",\"cipherSuite\":\"TLS_AES_128_GCM_SHA256\",\"clientProvidedHostHeader\":\"us-east-2.signin.aws.amazon.com\"}"]
+
+  - name: vpcEndpointId
+    type: String
+    description: "VPC endpoint id the request traversed, when the call reached the service through an interface/gateway VPC endpoint. Central to Network (NetworkActivity) events; null otherwise."
+    sampleValues: ["vpce-0123456789abcdef0"]
+
+  # ==========================================
+  # SERVICE / INSIGHTS EVENTS
+  # ==========================================
+  - name: serviceEventDetails
+    type: Dynamic
+    description: >-
+      Present on AwsServiceEvent records (actions AWS itself performed, no external
+      caller). Free-form, service-specific detail of what the service did (e.g. an
+      EC2 SharedSnapshotVolumeCreated carries serviceEventDetails.snapshotId).
+      userIdentity on these typically has only invokedBy/accountId.
+    sampleValues: ["{\"snapshotId\":\"snap-0123456789abcdef0\"}"]
+
+  - name: insightDetails
+    type: Dynamic
+    description: >-
+      Present only on CloudTrail Insights events (eventCategory 'Insight',
+      eventType AwsCloudTrailInsight). Describes the detected anomaly: insightDetails.state
+      (Start/End), insightDetails.eventSource, insightDetails.eventName,
+      insightDetails.insightType (e.g. ApiCallRateInsight / ApiErrorRateInsight),
+      insightDetails.insightContext with baseline vs observed statistics. No
+      userIdentity actor on these records.
+    sampleValues: ["{\"state\":\"Start\",\"insightType\":\"ApiCallRateInsight\",\"eventName\":\"RunInstances\"}"]

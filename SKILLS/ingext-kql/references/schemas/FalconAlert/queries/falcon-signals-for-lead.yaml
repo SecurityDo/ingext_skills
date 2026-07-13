@@ -1,0 +1,32 @@
+description: >-
+  Expand a single CrowdStrike Falcon automated lead into its supporting signals
+  (the contextual detections). Signals are joined to their lead via
+  aggregate_id == lead_id, so this lists every underlying detection with its
+  triggering process, MITRE technique, adversary objective, whether Falcon
+  prevented it (pattern_disposition), and the acting user. Replace the lead_id
+  literal with the lead of interest. Useful for drilling from the AI summary down
+  to the raw process-level evidence.
+datatype: FalconAlert
+kql: |
+  FalconAlert
+  | where timestamp > ago(7d)
+  | where type == "signal"
+  | where aggregate_id == "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+  | project timestamp,
+            Host = tostring(device.hostname),
+            Detection = display_name,
+            Tactic = tactic,
+            Technique = strcat(technique_id, " - ", technique),
+            Objective = objective,
+            Process = filename,
+            CommandLine = cmdline,
+            Prevented = pattern_disposition != 0,
+            User = user_name,
+            sha256
+  | order by timestamp asc
+tags: [crowdstrike, falcon, edr, signals, lead, process, mitre, security]
+expected_output: |
+  Supporting signals for one Falcon lead, oldest first (sanitized).
+
+  timestamp             Host       Detection               Tactic       Technique                                     Objective    Process    CommandLine                                   Prevented  User    sha256
+  2026-07-02T11:37:18Z  CORP-WS01  ProductivityAppAsepWrite Persistence  T1547.001 - Registry Run Keys / Startup Folder  Keep Access  EXCEL.EXE  "...\EXCEL.EXE" "F:\Data\Workbook.xlsx"       false      avance  3bcf6222...0f2d

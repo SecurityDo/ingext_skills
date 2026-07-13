@@ -8,9 +8,9 @@ description: >-
   firewall verdict and matched rule, the network service/application, byte counts
   and durations, and security context (IP category, threat, destination country).
   Field semantics follow the Zscaler "NSS Feed Output Format: Firewall Logs"
-  specification. Most numeric fields arrive as JSON strings, so cast with
-  toint()/tolong()/todouble() before arithmetic. timestamp is parsed from the
-  'datetime' field.
+  specification. The NSS feed parser parses the numeric fields (csport, cdport,
+  ssport, sdport, tunsport, numsessions, inbytes, outbytes, duration, durationms,
+  avgduration) as numbers. timestamp is parsed from the 'datetime' field.
 fields:
 
   # ==========================================
@@ -85,7 +85,7 @@ fields:
 
   - name: csport
     type: Integer
-    description: "Client source port (stored as a string; cast with toint())."
+    description: "Client source port. Parsed as an integer by the NSS feed parser."
     sampleValues: ["60597"]
 
   - name: cdip
@@ -95,7 +95,7 @@ fields:
 
   - name: cdport
     type: Integer
-    description: "Client destination port (stored as a string; cast with toint())."
+    description: "Client destination port. Parsed as an integer by the NSS feed parser."
     sampleValues: ["443"]
 
   # ==========================================
@@ -108,7 +108,7 @@ fields:
 
   - name: ssport
     type: Integer
-    description: "Server source port used by Zscaler toward the server (stored as a string; cast with toint())."
+    description: "Server source port used by Zscaler toward the server. Parsed as an integer by the NSS feed parser."
     sampleValues: ["30768"]
 
   - name: sdip
@@ -118,7 +118,7 @@ fields:
 
   - name: sdport
     type: Integer
-    description: "Server destination port (stored as a string; cast with toint())."
+    description: "Server destination port. Parsed as an integer by the NSS feed parser."
     sampleValues: ["443"]
 
   # ==========================================
@@ -136,7 +136,7 @@ fields:
 
   - name: tunsport
     type: Integer
-    description: "Tunnel source port; '0' when not tunnel-forwarded (stored as a string; cast with toint())."
+    description: "Tunnel source port; 0 when not tunnel-forwarded. Parsed as an integer by the NSS feed parser."
     sampleValues: ["0"]
 
   # ==========================================
@@ -159,7 +159,7 @@ fields:
 
   - name: numsessions
     type: Integer
-    description: "Number of sessions represented by this record (>1 when aggregate='Yes'). Stored as a string; cast with toint()."
+    description: "Number of sessions represented by this record (>1 when aggregate='Yes'). Parsed as an integer by the NSS feed parser."
     sampleValues: ["1"]
 
   # ==========================================
@@ -194,28 +194,28 @@ fields:
   # VOLUME / DURATION
   # ==========================================
   - name: inbytes
-    type: Integer
-    description: "Bytes received from the server (inbound to the client) for the session (stored as a string; cast with tolong())."
+    type: Long
+    description: "Bytes received from the server (inbound to the client) for the session. Parsed as an integer by the NSS feed parser."
     sampleValues: ["157"]
 
   - name: outbytes
-    type: Integer
-    description: "Bytes sent by the client (outbound to the server) for the session (stored as a string; cast with tolong())."
+    type: Long
+    description: "Bytes sent by the client (outbound to the server) for the session. Parsed as an integer by the NSS feed parser."
     sampleValues: ["809"]
 
   - name: duration
     type: Integer
-    description: "Session duration in seconds (stored as a string; cast with toint()). Use durationms for sub-second resolution."
+    description: "Session duration in seconds. Parsed as an integer by the NSS feed parser. Use durationms for sub-second resolution."
     sampleValues: ["0"]
 
   - name: durationms
     type: Integer
-    description: "Session duration in milliseconds (stored as a string; cast with toint())."
+    description: "Session duration in milliseconds. Parsed as an integer by the NSS feed parser."
     sampleValues: ["68"]
 
   - name: avgduration
     type: Integer
-    description: "Average session duration in milliseconds across aggregated sessions (stored as a string; cast with toint())."
+    description: "Average session duration in milliseconds across aggregated sessions. Parsed as an integer by the NSS feed parser."
     sampleValues: ["68"]
 
   # ==========================================

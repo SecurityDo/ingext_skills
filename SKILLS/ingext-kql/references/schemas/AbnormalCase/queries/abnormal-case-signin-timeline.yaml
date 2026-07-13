@@ -1,0 +1,39 @@
+description: >-
+  Expand the sign-in / risk events behind Abnormal Security account-takeover
+  cases into one row per underlying event. The evidence lives in the
+  abx_body.event_timeline[] array, so this mv-expands it and surfaces each
+  event's IP, geolocation, ISP/IP organization, device (OS/browser), application,
+  and sign-in status alongside the parent case's entity and severity. Useful for
+  hunting risky sign-ins by source IP, geo, or anonymizing-VPN provider and for
+  reconstructing what happened on a compromised account.
+datatype: AbnormalCase
+kql: |
+  AbnormalCase
+  | where timestamp > ago(7d)
+  | extend case_id = toint(abx_body.case_id),
+           entity = tostring(abx_body.entity.identifier),
+           severity = tostring(abx_body.severity)
+  | mv-expand ev = abx_body.event_timeline
+  | extend evTime = todatetime(ev.timestamp),
+           evType = tostring(ev.event_type),
+           platform = tostring(ev.platform),
+           ip = tostring(ev.ip_address),
+           city = tostring(ev.location.city),
+           state = tostring(ev.location.state),
+           country = tostring(ev.location.country),
+           isp = tostring(ev.isp),
+           ipOrg = tostring(ev.ip_organization),
+           os = tostring(ev.operating_system),
+           browser = tostring(ev.browser),
+           application = tostring(ev.application),
+           status = tostring(ev.signin_event_status)
+  | project evTime, case_id, entity, severity, evType, platform, ip, city, state,
+            country, isp, ipOrg, os, browser, application, status
+  | order by evTime asc
+tags: [abnormal, account-takeover, ato, sign-in, timeline, hunting, security]
+expected_output: |
+  Underlying sign-in / risk events for recent Abnormal cases (sanitized).
+
+  evTime                           case_id   entity                  severity  evType      platform  ip            city         state     country        isp    ipOrg  os              browser        application                    status
+  2026-07-06T20:48:44Z             20240281  jared.doss@contoso.com  MEDIUM    SIGN_IN     ES_O365   192.0.2.250   Springfield  Illinois  United States  tzulo  tzulo  macos 10.15.7   safari 18.6.0  office 365 sharepoint online   SIGNIN_STATUS_SUCCESS
+  2026-07-06T20:48:45Z             20240281  jared.doss@contoso.com  MEDIUM    RISK_EVENT  ES_O365   192.0.2.250   Springfield  Illinois  United States

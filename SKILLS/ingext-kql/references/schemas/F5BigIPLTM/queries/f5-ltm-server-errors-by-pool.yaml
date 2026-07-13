@@ -1,0 +1,24 @@
+description: >-
+  HTTP 5xx server errors across F5 BIG-IP LTM over the last 24 hours, grouped by
+  virtual server, pool, and pool member. Surfaces which back-end members are
+  returning errors and how slow they are, helping isolate a failing node behind a
+  load-balanced pool from a broader application problem.
+datatype: F5BigIPLTM
+kql: |
+  F5BigIPLTM
+  | where timestamp > ago(24h)
+  | where httpStatus >= 500
+  | summarize
+      Errors = count(),
+      Clients = dcount(clientIp),
+      AvgRespMs = avg(responseTimeMs),
+      MaxRespMs = max(responseTimeMs)
+      by virtualServer, poolName, poolMemberIp, poolMemberPort
+  | order by Errors desc
+tags: [f5, big-ip, ltm, load-balancer, http, errors, availability]
+expected_output: |
+  5xx errors by virtual server / pool member with latency and affected clients.
+
+  virtualServer                              poolName                              poolMemberIp  poolMemberPort  Errors  Clients  AvgRespMs  MaxRespMs
+  /HTTP-HTTPS/cmicprod.app/cmicprod_https_vs  /HTTP-HTTPS/cmicprod.app/cmicprod_pool  10.48.11.32   8888            87      24       1241.5     8003
+  /HTTP-HTTPS/cmicprod.app/cmicprod_https_vs  /HTTP-HTTPS/cmicprod.app/cmicprod_pool  10.48.11.33   8888            5       4        402.0      910

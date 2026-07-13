@@ -1,0 +1,109 @@
+schema: AbnormalCase
+description: >-
+  Abnormal Security case event, imported by Ingext from the Abnormal Security
+  Cases API / event stream (the Account Takeover Protection / Email Security
+  case feed). A case is Abnormal's correlated account-compromise (ATO)
+  investigation: one potentially-compromised entity (usually a user account),
+  the trigger that opened the case, a severity/confidence verdict, the
+  human-readable insights and GenAI summary explaining why, and an
+  event_timeline of the underlying sign-in / risk events that fed the case.
+
+  The record is wrapped in an envelope with two top-level objects:
+
+    - abx_metadata — delivery metadata: event_type ("CASE"), the emit timestamp,
+      and a trace_id.
+    - abx_body — the case itself: identity (case_id, customer, tenant, entity),
+      the verdict (severity, confidence, case_status, remediation_status,
+      trigger_event), the explanation arrays (insights[], genai_summary[]), and
+      the event_timeline[] of underlying events.
+
+  The event is stored as a dynamic JSON document, so reach into the envelope with
+  dot notation (abx_body.case_id, abx_body.entity.identifier,
+  abx_metadata.trace_id) and cast with tostring()/toint()/todatetime(). The
+  arrays (abx_body.insights, abx_body.genai_summary, abx_body.event_timeline,
+  abx_body.platforms) require mv-expand to enumerate. timestamp is parsed from
+  abx_metadata.timestamp. Distinguish this stream from AbnormalThreat (email
+  threats) by abx_metadata.event_type == "CASE".
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Primary time column for range filters (e.g. where timestamp > ago(1d)). Parsed from abx_metadata.timestamp (ISO-8601 UTC, when Abnormal emitted the case event). For when the activity began use abx_body.first_observed; for when the case was created use abx_body.date_created."
+    sampleValues: ["2026-07-06T21:36:04.059186854Z"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  # ==========================================
+  # ENVELOPE METADATA
+  # ==========================================
+  - name: abx_metadata
+    type: Dynamic
+    description: >-
+      Delivery envelope metadata. Fields (dot notation):
+      abx_metadata.event_type — the stream/event kind, "CASE" for this schema;
+      abx_metadata.timestamp — emit time (source of the top-level timestamp);
+      abx_metadata.trace_id — GUID correlating this delivery for debugging/dedupe.
+    sampleValues: ["CASE", "46342d68-35d0-4529-92d3-27d5bd72c276"]
+
+  # ==========================================
+  # CASE BODY
+  # ==========================================
+  - name: abx_body
+    type: Dynamic
+    description: >-
+      The case payload. Reach in with dot notation + tostring()/toint()/
+      todatetime()/tobool(); mv-expand the arrays. Fields:
+
+        Identity / correlation:
+          - abx_body.case_id (number) — Abnormal's case identifier (primary key).
+          - abx_body.schema_version — payload schema version (e.g. "1.0.0").
+          - abx_body.customer (number) — Abnormal customer id.
+          - abx_body.tenant — customer tenant name.
+          - abx_body.event_type — "CASE" (mirrors abx_metadata.event_type).
+
+        Affected entity (who/what is at risk):
+          - abx_body.entity.entity_type — e.g. USER_ACCOUNT.
+          - abx_body.entity.identifier — the entity value (e.g. the user email).
+
+        Verdict / classification:
+          - abx_body.trigger_event — what opened the case (e.g. SIGN_IN).
+          - abx_body.severity — LOW / MEDIUM / HIGH / CRITICAL.
+          - abx_body.confidence — LOW / MEDIUM / HIGH.
+          - abx_body.case_status — workflow state (e.g. ACTION_REQUIRED,
+            ACKNOWLEDGED, REMEDIATION_COMPLETE, FALSE_POSITIVE).
+          - abx_body.remediation_status — e.g. NOT_REMEDIATED, REMEDIATED,
+            REMEDIATION_IN_PROGRESS.
+          - abx_body.description — short case title (e.g. "Account Compromised").
+          - abx_body.platforms (array) — platforms the case spans (e.g. ES_O365).
+            mv-expand to enumerate.
+
+        Timestamps (ISO-8601 UTC; use todatetime()):
+          - abx_body.first_observed — earliest observed activity for the case.
+          - abx_body.date_created — when Abnormal created the case.
+          - abx_body.first_customer_visible_time — when it surfaced to the customer.
+
+        Explanation arrays (mv-expand to enumerate):
+          - abx_body.insights[] — objects { signal, description } giving the
+            named detection signals (e.g. "Anonymizing IP Service Used",
+            "High-Risk Sign-In", "Sign-In Baseline Deviation") and their text.
+          - abx_body.genai_summary[] — array of GenAI-written natural-language
+            sentences summarizing the case for an analyst.
+
+        Underlying events (the evidence):
+          - abx_body.event_timeline[] — array of the individual events that fed
+            the case, chronological. Each element carries: timestamp, event_type
+            (SIGN_IN / RISK_EVENT / ...), platform (e.g. ES_O365), an insights[]
+            array (same { signal, description } shape), ip_address, description,
+            and a location object { city, state, country }. SIGN_IN elements add
+            isp, ip_organization, cidr_24, operating_system, browser, application,
+            and signin_event_status (e.g. SIGNIN_STATUS_SUCCESS). RISK_EVENT
+            elements add risk_event_source (number). mv-expand event_timeline,
+            then dot-notation into each element (e.g.
+            tostring(event_timeline.ip_address),
+            tostring(event_timeline.location.city)).
+    sampleValues: ["Account Compromised", "USER_ACCOUNT", "SIGN_IN", "MEDIUM", "ACTION_REQUIRED", "NOT_REMEDIATED"]

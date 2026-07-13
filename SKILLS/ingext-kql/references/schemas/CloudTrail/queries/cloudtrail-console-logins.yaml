@@ -1,0 +1,23 @@
+description: >-
+  AWS console sign-in activity over the last 24 hours, showing each ConsoleLogin
+  attempt with its outcome, whether MFA was used, and the acting IAM identity and
+  source IP. Surfaces successful and failed logins — in particular any successful
+  console login without MFA, which is worth reviewing.
+datatype: CloudTrail
+kql: |
+  CloudTrail
+  | where timestamp > ago(24h)
+  | where eventType == "AwsConsoleSignIn" and eventName == "ConsoleLogin"
+  | extend
+      Result = tostring(responseElements.ConsoleLogin),
+      MFA = tostring(additionalEventData.MFAUsed),
+      User = coalesce(tostring(userIdentity.userName), tostring(userIdentity.arn)),
+      IdentityType = tostring(userIdentity.type)
+  | project timestamp, User, IdentityType, Result, MFA, sourceIPAddress, awsRegion
+  | order by timestamp desc
+tags: [aws, cloudtrail, console, login, authentication, mfa, security]
+expected_output: |
+  Console sign-ins with outcome, MFA usage, actor, and source IP (sanitized).
+
+  timestamp             User   IdentityType  Result   MFA  sourceIPAddress  awsRegion
+  2026-07-01T14:35:23Z  alice  IAMUser       Success  No   192.0.2.15       us-east-2

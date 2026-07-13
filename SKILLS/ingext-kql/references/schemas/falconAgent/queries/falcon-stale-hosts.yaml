@@ -1,0 +1,23 @@
+description: >-
+  CrowdStrike Falcon hosts that have not checked in recently — a hygiene report
+  for finding offline, decommissioned, or unhealthy sensors. Ranks hosts by how
+  long since last_seen and surfaces the operational posture (RFM, provisioning,
+  containment status) and OS/agent version so stale endpoints can be triaged or
+  cleaned up. Adjust the ago() threshold to your tolerance.
+datatype: falconAgent
+kql: |
+  falconAgent
+  | extend LastSeen = todatetime(last_seen)
+  | where LastSeen < ago(7d)
+  | project hostname, device_id, LastSeen,
+            StaleDays = datetime_diff('day', now(), LastSeen),
+            platform_name, os_product_name, agent_version,
+            reduced_functionality_mode, provision_status, status,
+            machine_domain, last_login_user
+  | order by LastSeen asc
+tags: [crowdstrike, falcon, hosts, hygiene, stale, endpoint, security]
+expected_output: |
+  Falcon sensors not seen in the last 7 days, oldest first (sanitized).
+
+  hostname   device_id                         LastSeen              StaleDays  platform_name  os_product_name  agent_version   reduced_functionality_mode  provision_status  status   machine_domain  last_login_user
+  CORP-VM03  22222222222222222222222222222222  2026-07-03T19:16:24Z  9          Windows        Windows 11 Pro   7.38.21003.0    no                          Provisioned       normal   contoso.com     avance

@@ -1,0 +1,28 @@
+description: >-
+  CrowdStrike Falcon automated leads (the AI-generated summaries) over the last
+  7 days, ranked by risk score. For each lead it shows the affected host, the
+  lead score, how many supporting indicators were correlated, the distinct MITRE
+  tactics/techniques involved, and the activity window. Useful as a triage queue:
+  the highest-scoring leads with the most correlated signals warrant attention
+  first.
+datatype: FalconAlert
+kql: |
+  FalconAlert
+  | where timestamp > ago(7d)
+  | where type == "automated-lead"
+  | extend Host = tostring(display_name)
+  | mv-apply ind = threatgraph_indicators on (
+      summarize IndicatorCount = count(), Indicators = make_set(tostring(ind.display_name))
+    )
+  | mv-apply m = mitre_attack on (
+      summarize Tactics = make_set(tostring(m.tactic)), Techniques = make_set(tostring(m.technique_id))
+    )
+  | project timestamp, Host, score, status, IndicatorCount, Indicators, Tactics, Techniques,
+            ActivityStart = signal_start_timestamp, ActivityEnd = signal_end_timestamp, lead_id
+  | order by score desc, IndicatorCount desc
+tags: [crowdstrike, falcon, edr, leads, triage, mitre, security]
+expected_output: |
+  Triage queue of recent Falcon automated leads ranked by score (sanitized).
+
+  timestamp             Host                             score  status  IndicatorCount  Indicators                                                     Tactics                            Techniques                          ActivityStart          ActivityEnd            lead_id
+  2026-07-02T11:37:22Z  CORP-WS01 at 2026-07-01T21:17..  40     new     4               ["CommandLineStomping","RemotePivotHollowing",...]             ["Persistence","Defense Evasion"]  ["T1547.001","T1055",...]           2026-07-01T21:17:23Z   2026-07-02T11:37:18Z   1234567890abcdef...cdef

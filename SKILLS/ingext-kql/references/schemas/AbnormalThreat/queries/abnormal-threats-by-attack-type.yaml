@@ -1,0 +1,28 @@
+description: >-
+  Abnormal Security threats over the last 7 days, expanded to one row per
+  message and summarized by attack classification. Because the message detail
+  lives in the messages[] array, this mv-expands messages first, then rolls up
+  the volume, the top sender domains, and how many were auto-remediated for each
+  attackType / attackStrategy pair. Useful as a campaign-triage overview: which
+  kinds of attack are hitting the tenant and whether Abnormal is remediating them.
+datatype: AbnormalThreat
+kql: |
+  AbnormalThreat
+  | where timestamp > ago(7d)
+  | mv-expand messages
+  | extend attackType = tostring(messages.attackType),
+           attackStrategy = tostring(messages.attackStrategy),
+           senderDomain = tostring(messages.senderDomain),
+           autoRemediated = tobool(messages.autoRemediated)
+  | summarize Messages = count(),
+              AutoRemediated = countif(autoRemediated == true),
+              TopSenderDomains = make_set(senderDomain, 10)
+      by attackType, attackStrategy
+  | order by Messages desc
+tags: [abnormal, email-security, phishing, spam, triage, security]
+expected_output: |
+  Recent Abnormal threats grouped by attack classification (sanitized).
+
+  attackType  attackStrategy   Messages  AutoRemediated  TopSenderDomains
+  Spam        Unknown Sender   37        4               ["example.com","mail.example.net",...]
+  Phishing:   Name Impersona.  12        11              ["example.org",...]

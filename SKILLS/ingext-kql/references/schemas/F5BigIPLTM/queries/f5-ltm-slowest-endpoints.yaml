@@ -1,0 +1,25 @@
+description: >-
+  Slowest application endpoints behind F5 BIG-IP LTM over the last 24 hours, ranked
+  by 95th-percentile response time per request URI and virtual server. Highlights
+  the endpoints driving user-perceived latency, with request volume and response
+  size for context.
+datatype: F5BigIPLTM
+kql: |
+  F5BigIPLTM
+  | where timestamp > ago(24h)
+  | summarize
+      Requests = count(),
+      P95Ms = percentile(responseTimeMs, 95),
+      MedianMs = percentile(responseTimeMs, 50),
+      AvgBytes = avg(bytes)
+      by virtualServer, requestUri
+  | where Requests >= 50
+  | order by P95Ms desc
+  | take 25
+tags: [f5, big-ip, ltm, load-balancer, http, latency, performance]
+expected_output: |
+  Endpoints ranked by P95 response time, with volume and average response size.
+
+  virtualServer                              requestUri                                                              Requests  P95Ms  MedianMs  AvgBytes
+  /HTTP-HTTPS/cmicprod.app/cmicprod_https_vs  /cmicprod/UIConsole/faces/task-flow-definition-named-console/mainConsolePage  1842      2103   381       14820.4
+  /HTTP-HTTPS/cmicprod.app/cmicprod_https_vs  /cmicprod/UIConsole/faces/console.jspx                                  640       980    210       8201.7

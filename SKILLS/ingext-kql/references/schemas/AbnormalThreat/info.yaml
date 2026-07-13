@@ -1,0 +1,118 @@
+schema: AbnormalThreat
+description: >-
+  Abnormal Security threat event, imported by Ingext from the Abnormal Security
+  Threats API (the /threats and /threats/{threatId} endpoints of the Email
+  Security / Inbound Email Security product). Each record is one detected threat
+  campaign identified by threatId. A threat is a group of one or more related
+  malicious messages (the same attack delivered to one or more recipients across
+  the tenant), so the message-level detail lives in a 'messages' array — one
+  element per delivered/detected email in the campaign.
+
+  Top level carries only the campaign identity and time (threatId, timestamp)
+  plus the messages[] array; everything security-analysts care about (sender,
+  recipient, subject, attack classification, remediation status, links,
+  attachments, IPs) is per-message inside messages[]. The record is stored as a
+  dynamic JSON document, so the messages array must be enumerated with mv-expand
+  (or mv-apply) and its fields reached with dot notation on the expanded row
+  (e.g. mv-expand messages | extend fromAddr = tostring(messages.fromAddress)).
+  A single-message threat is the common case, but never assume length 1 — always
+  mv-expand rather than indexing messages[0].
+
+  timestamp is parsed from the top-level 'timestamp'. Note that threatId appears
+  both at the top level and on every message element (they match — the message's
+  parent campaign).
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Primary time column for range filters (e.g. where timestamp > ago(1d)). Parsed from the event's top-level 'timestamp' (ISO-8601 UTC — the time Abnormal recorded/emitted the threat). For the actual email delivery time use messages.receivedTime; for when Abnormal removed it use messages.remediationTimestamp."
+    sampleValues: ["2026-07-09T13:42:33Z"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: threatId
+    type: String
+    description: "Abnormal's unique identifier for the threat campaign (a GUID). Primary key for the threat and the join key for the /threats/{threatId} detail lookup and the portal deep link. Matches messages.threatId on every element. Group/dedupe on this to collapse the messages of one campaign."
+    sampleValues: ["ed288ad6-b930-f46f-dd69-ff4904ca929c"]
+
+  # ==========================================
+  # MESSAGES (per-email detail — the campaign's messages)
+  # ==========================================
+  - name: messages
+    type: DynamicArray
+    description: >-
+      Array of the individual email messages that make up this threat campaign —
+      one element per detected/delivered message (usually one, but can be many
+      when the same attack was sent to multiple recipients). Enumerate with
+      mv-expand messages (or mv-apply) and read each field with dot notation +
+      tostring()/toint()/tobool()/todatetime(), e.g.
+      mv-expand messages | extend fromAddr = tostring(messages.fromAddress),
+      recipient = tostring(messages.recipientAddress). Each element carries:
+
+        Identity / correlation:
+          - messages.abxMessageId (number) / messages.abxMessageIdStr (string) —
+            Abnormal's per-message id. Prefer the *Str form as the reliable key;
+            abxMessageId is a large integer that can lose precision if treated as
+            a double.
+          - messages.threatId — the parent campaign id (== top-level threatId).
+          - messages.internetMessageId — the RFC 5322 Message-ID header.
+          - messages.abxPortalUrl — deep link into the Abnormal portal
+            remediation-history view for the message.
+          - messages.tenantId (number) / messages.tenantName — the customer
+            tenant the message belongs to.
+
+        Sender / recipient:
+          - messages.fromAddress, messages.fromName — envelope/display From.
+          - messages.senderDomain — domain of the sender.
+          - messages.senderIpAddress — originating IP (may be IPv4 or IPv6).
+          - messages.returnPath — Return-Path address.
+          - messages.replyToEmails (array), messages.ccEmails (array) — Reply-To
+            and Cc addresses.
+          - messages.recipientAddress — the primary recipient this record is for.
+          - messages.toAddresses (array) — all To recipients.
+
+        Attack classification (Abnormal's verdict):
+          - messages.attackType — e.g. Spam, Phishing: Credential, Malware,
+            Extortion, Invoice/Payment Fraud, Business Email Compromise.
+          - messages.attackStrategy — e.g. Unknown Sender, Name Impersonation,
+            Compromised Account, Spoofed Email.
+          - messages.attackVector — e.g. Text, Link, Attachment.
+          - messages.attackedParty — who the attack targets (e.g.
+            'Employee (Other)', 'VIP', 'Finance').
+          - messages.impersonatedParty — who the sender impersonates
+            ('None / Others', a brand, an internal exec, etc.).
+          - messages.source — the detection source/queue (e.g. 'spam', 'abuse').
+          - messages.summaryInsights (array of strings) — Abnormal's
+            human-readable signals for the verdict (e.g. 'Unusual Sender',
+            'Potential Scam or Extortion', 'Unusual Sender Domain'). mv-expand
+            again to enumerate individual insights.
+
+        Content — links & attachments:
+          - messages.subject — email subject line.
+          - messages.urlCount (number), messages.urls (array) — count and list of
+            URLs found in the body.
+          - messages.links (array) — link objects extracted from the message.
+          - messages.attachmentCount (number), messages.attachmentNames (array) —
+            attachment count and file names.
+
+        Remediation / state:
+          - messages.remediationStatus — e.g. Remediated, Not Remediated,
+            Auto-Remediated.
+          - messages.autoRemediated (bool) — whether Abnormal auto-removed it.
+          - messages.postRemediated (bool) — remediated after initial delivery.
+          - messages.remediationTimestamp — when remediation happened.
+          - messages.customerOverride — analyst override of the verdict (null when
+            none).
+          - messages.isRead (bool) — whether the recipient had read the message.
+
+        Timestamps (all ISO-8601 UTC; use todatetime()):
+          - messages.sentTime — when the sender sent it.
+          - messages.receivedTime — when the mailbox received it (best field for
+            actual delivery time).
+          - messages.remediationTimestamp — when Abnormal remediated it.
+    sampleValues: ["Spam", "Phishing: Credential", "Unknown Sender", "maggie@contactsmarttech.com", "You have the openings, we have the candidates"]

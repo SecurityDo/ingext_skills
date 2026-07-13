@@ -1,0 +1,104 @@
+schema: F5BigIPLTM
+description: >-
+  F5 BIG-IP Local Traffic Manager (LTM) HTTP request access log, streamed by Ingext
+  from a BIG-IP request-logging profile / High-Speed Logging (HSL) feed. Each record
+  is one HTTP request that traversed an LTM virtual server: the front-end listener
+  the client hit (virtualServer, virtualIp), the back-end pool and the specific pool
+  member that served it (poolName, poolMemberIp, poolMemberPort), the client and the
+  request itself (clientIp, requestLine, requestUri, userAgent, referer), and the
+  response outcome (httpStatus, bytes, responseTimeMs). Numeric fields (bytes,
+  httpStatus, poolMemberPort, responseTimeMs) arrive as native JSON numbers — no
+  cast needed. timestamp is parsed from the 'timestamp' field.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Request time, parsed from the incoming 'timestamp' field (CLF-style string, e.g. '30/Jun/2026:09:41:43 -0500', with timezone offset). Primary time column for range filters (e.g. where timestamp > ago(1d))."
+    sampleValues: ["30/Jun/2026:09:41:43 -0500"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting. Distinct from 'bytes' (the HTTP response size)."
+
+  # ==========================================
+  # VIRTUAL SERVER (front-end listener)
+  # ==========================================
+  - name: virtualServer
+    type: String
+    description: "Name of the LTM virtual server (front-end listener) that received the request, including its partition/folder path."
+    sampleValues: ["/HTTP-HTTPS/cmicprod.app/cmicprod_https_vs"]
+
+  - name: virtualIp
+    type: String
+    description: "Virtual IP (VIP) — the destination IP the client connected to, i.e. the address the virtual server listens on."
+    sampleValues: ["172.16.19.150"]
+
+  # ==========================================
+  # POOL / MEMBER (back-end)
+  # ==========================================
+  - name: poolName
+    type: String
+    description: "Name of the back-end pool the virtual server load-balanced the request to, including its partition/folder path."
+    sampleValues: ["/HTTP-HTTPS/cmicprod.app/cmicprod_pool"]
+
+  - name: poolMemberIp
+    type: String
+    description: "IP address of the specific pool member (back-end server) that served the request."
+    sampleValues: ["10.48.11.32"]
+
+  - name: poolMemberPort
+    type: Integer
+    description: "TCP port of the pool member that served the request."
+    sampleValues: ["8888"]
+
+  # ==========================================
+  # CLIENT
+  # ==========================================
+  - name: clientIp
+    type: String
+    description: "Client (source) IP address that made the request. Note: this is the connecting peer; behind upstream proxies the true origin may be in an X-Forwarded-For header instead."
+    sampleValues: ["10.133.34.51"]
+
+  - name: userAgent
+    type: String
+    description: "Client User-Agent string from the request."
+    sampleValues: ["Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0"]
+
+  - name: referer
+    type: String
+    description: "HTTP Referer header of the request. Empty/absent when not sent."
+    sampleValues: ["https://cmicprod.jedunn.com/cmicprod/UIConsole/faces/console.jspx"]
+
+  # ==========================================
+  # REQUEST
+  # ==========================================
+  - name: requestLine
+    type: String
+    description: "Full HTTP request line: method, request target (with query string), and protocol version. Parse out the method with split()/extract() when needed."
+    sampleValues: ["POST /cmicprod/UIConsole/faces/task-flow-definition-named-console/mainConsolePage?Adf-Window-Id=w16ci3r0572&Adf-Page-Id=3 HTTP/1.1"]
+
+  - name: requestUri
+    type: String
+    description: "Request URI path only (no method, query string, or protocol). Primary field for per-endpoint analysis."
+    sampleValues: ["/cmicprod/UIConsole/faces/task-flow-definition-named-console/mainConsolePage"]
+
+  # ==========================================
+  # RESPONSE / TIMING
+  # ==========================================
+  - name: httpStatus
+    type: Integer
+    description: "HTTP response status code returned to the client. Arrives as a native number."
+    sampleValues: ["200"]
+
+  - name: bytes
+    type: Long
+    description: "Size of the HTTP response sent to the client, in bytes. Arrives as a native number."
+    sampleValues: ["1537"]
+
+  - name: responseTimeMs
+    type: Integer
+    description: "Time to serve the request, in milliseconds (request received to response sent, including pool-member response time). Arrives as a native number."
+    sampleValues: ["403"]

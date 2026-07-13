@@ -7,8 +7,8 @@ description: >-
   Zscaler server destination addresses, the DNS category, and the policy actions
   and matched rules applied separately to the request and the response. Field
   semantics follow the Zscaler "NSS Feed Output Format: DNS Logs" specification.
-  Numeric fields arrive as JSON strings; cast with toint() before arithmetic.
-  timestamp is parsed from the 'datetime' field.
+  The NSS feed parser parses srv_dport and durationms as numbers. timestamp is
+  parsed from the 'datetime' field.
 fields:
 
   # ==========================================
@@ -70,7 +70,7 @@ fields:
 
   - name: srv_dport
     type: Integer
-    description: "Server destination port for the DNS request (typically 53). Stored as a string; cast with toint()."
+    description: "Server destination port for the DNS request (typically 53). Parsed as an integer by the NSS feed parser."
     sampleValues: ["53"]
 
   # ==========================================
@@ -98,7 +98,7 @@ fields:
 
   - name: durationms
     type: Integer
-    description: "DNS transaction duration in milliseconds (stored as a string; cast with toint())."
+    description: "DNS transaction duration in milliseconds. Parsed as an integer by the NSS feed parser."
     sampleValues: ["0"]
 
   # ==========================================
