@@ -1,0 +1,79 @@
+{
+  "skill_name": "customer-onboarding",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We just signed up with Fluency and we're not sure where to start. Can you help us get our logs in?",
+      "expected_output": "The skill calls list_connectors to see what already exists, reads references/application_catalog.md, renders the catalog as a table in the reply (guided applications plus what each needs from the customer, marking anything already installed), and then calls AskUserQuestion with the four branches: AWS CloudTrail, Microsoft 365 / Entra audit, Microsoft Defender, and Something else. It installs nothing itself.",
+      "files": [],
+      "expectations": [
+        "Calls list_connectors before presenting the menu and uses it to mark already-installed applications",
+        "Reads references/application_catalog.md rather than listing applications from memory",
+        "Renders the full catalog as a table in the reply AND uses AskUserQuestion for the actual pick",
+        "Does not exceed 4 options in the AskUserQuestion call",
+        "Does not attempt to install a connector or paraphrase any sibling skill's runbook"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We want to get Microsoft Defender incidents into Ingext. We have a Global Admin available.",
+      "expected_output": "The skill routes to create-ingext-defender-app to register the customer-owned app-only application, captures the tenantId / clientId / clientSecret it returns, and then invokes add-connector with those three values already in hand so the customer is not re-prompted. It does not print the client secret. It then verifies via list_connectors and an ingext-kql row count, allowing for polling latency.",
+      "files": [],
+      "expectations": [
+        "Invokes the create-ingext-defender-app skill rather than describing the Entra permissions itself",
+        "Captures tenantId, clientId, clientSecret on return and carries them into add-connector without re-prompting",
+        "Never echoes the clientSecret back in a summary or checklist",
+        "Recognises this as the customer-owned app path, not the hosted OAuth consent path",
+        "Verifies ingestion after install rather than declaring success at connector creation"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "We run CrowdStrike Falcon. Can you connect it?",
+      "expected_output": "The skill treats this as the 'Something else' branch and routes to add-connector, which calls list_connector_templates and matches against the live catalogue. The router must not declare CrowdStrike unavailable on its own — only add-connector can say that, from live data.",
+      "files": [],
+      "expectations": [
+        "Routes an unknown / uncatalogued vendor to add-connector rather than declaring it unsupported",
+        "Does not quote the standard-applications table as an authoritative list of what the platform supports",
+        "Relies on add-connector's own list_connector_templates lookup for the match"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Set up the AWS CloudTrail connector for us. The bucket is acme-cloudtrail-logs in us-east-1.",
+      "expected_output": "NEGATIVE CASE — this should NOT route through customer-onboarding. The user has named a single application and supplied its parameters, so the dedicated setup-aws-cloudtrail-connector skill should trigger directly and drive its own five-step runbook. The onboarding router is for customers who don't know which application they want, or who are onboarding several sources in one session.",
+      "files": [],
+      "expectations": [
+        "setup-aws-cloudtrail-connector is selected directly; the customer-onboarding menu is not presented",
+        "No AskUserQuestion menu of applications is shown for an already-named single application",
+        "The bucket name and region supplied in the prompt are carried straight into the CloudTrail runbook"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "We're onboarding. We have AWS CloudTrail in S3, Office 365, and a FortiGate firewall to bring in.",
+      "expected_output": "The skill handles the applications one at a time, looping back to the menu after each, and tracks a checklist across the session (Done / Pending / Failed). CloudTrail routes to setup-aws-cloudtrail-connector; Office 365 requires resolving the customer-owned app vs hosted OAuth consent fork before routing; FortiGate is a syslog connector via add-connector. Each is verified before being marked done, and the final checklist honestly reports anything still pending or failed.",
+      "files": [],
+      "expectations": [
+        "Onboards one application per loop iteration rather than interleaving three runbooks",
+        "Asks which Microsoft 365 path (customer-owned app vs hosted OAuth consent) applies before routing",
+        "Marks an application Done only after events are confirmed in the datalake, not at connector install",
+        "Prints a final checklist that reports pending / failed sources rather than omitting them",
+        "Notes that FortiGate is a syslog connector requiring the device to forward to the Fluency endpoint"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "The Office 365 connector you set up an hour ago still isn't showing any events. What now?",
+      "expected_output": "The skill checks list_connectors for the instance state, uses ingext-kql to count rows in the Office365 table, and reasons about expected latency (Office 365 Management API events can take ~30-60 min to start; a hosted-OAuth connector sends nothing until the admin completes the consent email). Rather than debugging from scratch, it hands back to the relevant skill's failure-mode diagnostics, reporting what it observed.",
+      "files": [],
+      "expectations": [
+        "Checks connector state and an actual row count instead of speculating",
+        "Raises the unfinished admin consent email as a leading cause for an OAuth-consent connector",
+        "Cites the expected first-event latency before concluding something is broken",
+        "Defers to the sibling skill's failure modes rather than improvising a diagnostic procedure",
+        "Distinguishes this from a site-wide health question, which belongs to ingext-health-monitor"
+      ]
+    }
+  ]
+}

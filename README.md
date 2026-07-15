@@ -43,6 +43,7 @@ Alternatively, install a specific skill by name:
 
 | Skill | What it does |
 | --- | --- |
+| [customer-onboarding](#customer-onboarding) | Front door for a new customer: menu of applications → route to the right setup skill → verify ingestion |
 | [ingext-kql](#ingext-kql) | Generate a validated KQL query over the datalake |
 | [ingext-promql](#ingext-promql) | Generate / run PromQL for platform metrics |
 | [fortigate-bandwidth](#fortigate-bandwidth) | Correct FortiGate bandwidth aggregation rules |
@@ -56,6 +57,30 @@ Alternatively, install a specific skill by name:
 | [create-ingext-audit-app](#create-ingext-audit-app) | Guide an Entra admin to register the `ingext-audit` app (Graph + O365 audit import) |
 | [create-ingext-defender-app](#create-ingext-defender-app) | Guide an Entra admin to register the `ingext-defender` app (Graph Security incidents + alerts) |
 | [html-to-pdf](#html-to-pdf) | Convert an HTML file to a PDF |
+
+---
+
+## Getting started
+
+### customer-onboarding
+
+The front door for a new customer bringing data into the platform. Checks what's already
+connected, presents a menu of supported applications, and routes each choice to the skill that
+actually sets it up — **setup-aws-cloudtrail-connector** for CloudTrail, **create-ingext-audit-app**
+or **create-ingext-defender-app** (then **add-connector**) for the Entra customer-owned app paths,
+**add-connector** for everything else. It carries the `tenantId` / `clientId` / `clientSecret` from
+an app registration into the connector install, verifies events actually land in the datalake, then
+loops back for the next source. It installs nothing itself — it's a router and a verifier.
+
+Use it when the customer *doesn't* already know which application they want, or is onboarding
+several sources at once. If they've named a single application, the dedicated skill triggers
+directly.
+
+**Try:**
+- "we just signed up, help us get our logs into Fluency"
+- "onboard a new customer"
+- "what can we connect to Ingext?"
+- "we have CloudTrail, Office 365, and a FortiGate to bring in"
 
 ---
 
