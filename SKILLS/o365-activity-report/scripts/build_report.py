@@ -346,35 +346,63 @@ def build(a):
     win = f"{fmt_win(a.from_ms)} &rarr; {fmt_win(a.to_ms)} UTC"
     headline = data_derived_headline(focus, overview, tc_rows) or "No matching events in the selected window."
 
+    # A file that was never written (save step failed) is a DIFFERENT thing from a
+    # file that exists but returned zero rows (a truthful empty window). The first
+    # is a broken build that must not ship looking finished; the second is fine.
+    def fstatus(fname, nrows):
+        if not os.path.exists(os.path.join(wd, fname)):
+            return "missing"
+        return "ok" if nrows else "empty"
+
     # KPI strip
-    kpi_html = render_kpis(overview) or nodata("No overview counts for this window.")
+    kpi_html = render_kpis(overview) or (
+        nodata("overview.json was not saved — re-run the overview query and save it.")
+        if fstatus("overview.json", len(overview)) == "missing"
+        else nodata("No overview counts for this window."))
 
     # panels
-    manifest = [("overview.json", len(overview))]
+    manifest = [("overview.json", len(overview), fstatus("overview.json", len(overview)))]
     sections = []
     for fname, title, kind, barcol in PANELS[focus]:
-        if kind == "chart":
-            rows = tc_rows
-        else:
-            rows = load_rows(wd, fname)
-        manifest.append((fname, len(rows)))
-        if kind == "chart":
+        rows = tc_rows if kind == "chart" else load_rows(wd, fname)
+        st = fstatus(fname, len(rows))
+        manifest.append((fname, len(rows), st))
+        if st == "missing":
+            body = nodata(f"{fname} was not saved — this query's result never reached the "
+                          f"build step, so the panel is blank. Re-run the query and save it.")
+        elif kind == "chart":
             body = render_timechart(rows, a.bin) or nodata("No time-series events to chart.")
         else:
             body = render_table(rows, bar_col=barcol) or nodata()
         sections.append(panel(title, body))
 
+    missing = [f for f, _, s in manifest if s == "missing"]
+
     # data-source appendix (provenance)
+    STLAB = {"ok": "ok",
+             "empty": '<span class=nd>empty (no rows in window)</span>',
+             "missing": '<span class=nd>MISSING — not saved</span>'}
     src_rows = "".join(
-        f"<tr><td class=mono>{esc(f)}</td><td>{n:,}</td>"
-        f"<td>{'ok' if n else '<span class=nd>empty / missing</span>'}</td></tr>"
-        for f, n in manifest)
+        f"<tr><td class=mono>{esc(f)}</td><td>{n:,}</td><td>{STLAB[s]}</td></tr>"
+        for f, n, s in manifest)
     appendix = panel("Data sources",
                      f'<table><thead><tr><th>Query file</th><th>Rows</th><th>Status</th></tr></thead>'
                      f'<tbody>{src_rows}</tbody></table>'
                      f'<p class="note">Every figure above is rendered directly from these saved KQL '
-                     f'results. Empty panels mean the query returned no rows for the window — not that '
-                     f'data was omitted.</p>')
+                     f'results. <b>empty</b> = the query ran and returned no rows for the window. '
+                     f'<b>MISSING</b> = the result was never saved to file, so its panel is blank for a '
+                     f'build reason, not a data reason — re-run and save it.</p>')
+
+    # A loud, unmissable banner when required results never reached the renderer, so a
+    # half-empty report can never be mistaken for a real "quiet window".
+    banner = ""
+    if missing:
+        banner = (f'<div class="banner">&#9888; <b>INCOMPLETE REPORT</b> — {len(missing)} of '
+                  f'{len(manifest)} query result(s) were not saved and are missing from this build: '
+                  f'<span class=mono>{esc(", ".join(missing))}</span>. The blank panels below are blank '
+                  f'because that data never reached the renderer — <b>not</b> because the window was '
+                  f'empty. Re-run the missing queries, save each to its file in the workdir, and rebuild.'
+                  f'</div>')
 
     title = FOCUS_TITLES.get(focus, "Office 365 Activity")
     gen = dt.datetime.fromtimestamp(a.to_ms / 1000, dt.timezone.utc).strftime("%b %d %Y %H:%M")
@@ -395,6 +423,7 @@ h1{{font-size:21px;margin:4px 0 6px}}.sub{{color:var(--muted);font-size:13px;max
 .kpi{{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}}
 .kpi .n{{font-size:24px;font-weight:700}}.kpi .l{{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}}
 .kpi.warn .n{{color:var(--amber)}}
+.banner{{background:rgba(248,81,73,.12);border:1px solid var(--red);border-radius:8px;padding:12px 15px;margin:0 0 18px;color:#f7b0ad;font-size:13px;line-height:1.5}}
 section{{margin-bottom:28px}}h3{{font-size:15px;border-left:3px solid var(--blue);padding-left:10px;margin:0 0 13px}}h3.r{{border-color:var(--red)}}
 table{{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}}
 th,td{{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle;overflow-wrap:anywhere}}
@@ -424,6 +453,8 @@ footer{{border-top:1px solid var(--line);margin-top:36px;padding-top:14px;color:
 <div>Generated: <b>{gen} UTC</b></div><div>Source: <b>Office365 datalake (KQL)</b></div></div>
 </header>
 
+{banner}
+
 <div class="lead">{esc(headline)}</div>
 
 {kpi_html}
@@ -450,6 +481,8 @@ Timestamps are UTC.</footer>
         except Exception as e:
             print("PDF step skipped (", e, ")")
 
+    return missing
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--workdir", required=True)
@@ -460,7 +493,14 @@ def main():
     p.add_argument("--bin", default="")
     p.add_argument("--output", required=True)
     p.add_argument("--pdf", default="")
-    build(p.parse_args())
+    missing = build(p.parse_args())
+    if missing:
+        import sys
+        print("INCOMPLETE: query results never saved (panels blank for a build reason, "
+              "not a data reason): " + ", ".join(missing), file=sys.stderr)
+        print("Re-run each missing query, save its raw result to <workdir>/<name>.json, "
+              "then rebuild. Do not deliver this report as-is.", file=sys.stderr)
+        sys.exit(3)
 
 if __name__ == "__main__":
     main()
