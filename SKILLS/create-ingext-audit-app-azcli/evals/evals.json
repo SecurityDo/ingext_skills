@@ -1,0 +1,43 @@
+{
+  "skill_name": "create-ingext-audit-app-azcli",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I'm the Global Admin of our Azure tenant and I'm signed into az CLI on this machine. Can you just run the Ingext audit app setup for me?",
+      "expected_output": "The skill recognizes Mode A (the operator is the tenant's Global Admin), confirms the target tenant via `az account show`, runs the bundled az CLI script (assets/setup-ingext-audit.sh) with per-command permission approval, and captures the three fields tenantId/clientId/clientSecret from the JSON output.",
+      "files": [],
+      "expectations": [
+        "The skill selects Mode A and runs the bundled setup-ingext-audit.sh via az CLI",
+        "It confirms the target tenant with az account show before creating anything",
+        "It notes cowork can run it because the operator is signed in to their own tenant on this machine",
+        "It captures the three fields tenantId, clientId, clientSecret from the JSON output",
+        "It treats the client secret as a credential and does not echo it into long-lived logs"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We're onboarding a customer's tenant to Ingext. They run Linux and prefer the Azure CLI over PowerShell. How do they register the ingext-audit app?",
+      "expected_output": "The skill selects Mode B (third-party tenant), explains cowork cannot run against the customer's tenant, and hands the admin the az CLI script (Path B1) or the portal walkthrough (Path B2). It lists the 9 application permissions across Microsoft Graph (6) and Office 365 Management APIs (3), covers admin consent + client secret, and collects tenantId/clientId/clientSecret.",
+      "files": [],
+      "expectations": [
+        "The skill selects Mode B and explains cowork cannot authenticate to the customer's tenant",
+        "It hands the admin the az CLI script (setup-ingext-audit.sh) and/or the portal walkthrough",
+        "All 9 application permissions are named across Microsoft Graph (6) and Office 365 Management APIs (3)",
+        "It covers az login, granting admin consent, and appending a client secret",
+        "The final output is the three fields tenantId, clientId, clientSecret"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Register the ingext-audit Entra app using the Azure CLI. Not PowerShell.",
+      "expected_output": "The skill points to the az CLI script setup-ingext-audit.sh, notes the az login prerequisite and that role IDs are resolved at runtime (no hardcoded GUIDs), explains the script is idempotent and uses `az ad app permission admin-consent`, and describes the JSON output with the three fields for the downstream install-application stage.",
+      "files": [],
+      "expectations": [
+        "The skill references the bundled az CLI setup-ingext-audit.sh (not the PowerShell script)",
+        "It notes the az login prerequisite and Global Admin / consent rights",
+        "It explains role IDs are resolved dynamically and the script is idempotent",
+        "It describes the JSON output with tenantId, clientId, clientSecret for the install-application stage"
+      ]
+    }
+  ]
+}
