@@ -75,8 +75,10 @@ otherwise `1d`.
    └─ absent -> stop, tell the user this tenant has no Office365 datalake table
 2. Resolve focus + from/to (ms) + bin   (AskUserQuestion / default 24h if missing)
 3. Run the KQL set for the focus via kql_search (rangeFrom=from, rangeTo=to)
-   Save each raw tool result to <workdir>/<name>.json  (raw output is fine)
-4. Run scripts/build_report.py          -> self-contained HTML (+ optional PDF)
+   Save EACH raw result to <workdir>/<name>.json immediately after its query
+3.5 Verify every expected file exists + is non-empty (ls -la) before building
+4. Run scripts/build_report.py          -> HTML (+PDF); exits non-zero if a
+   result file is MISSING — fix + rebuild, never deliver an INCOMPLETE report
 5. Deliver the HTML/PDF (publish_artifact) + a one-line data-derived summary
 ```
 
@@ -98,17 +100,41 @@ audit data. All the useful fields (`timestamp`, `Operation`, `Workload`,
 
 Run **each** query with `kql_search`, passing `rangeFrom`=`<from_ms>` and
 `rangeTo`=`<to_ms>` (the connector applies the time window — do **not** also add
-an `ago()`/`timestamp between` filter). Save each raw tool result JSON to the
-exact filename shown; the build script parses the raw `data.Tables[0]` shape and
-tolerates the full tool envelope. Replace `{BIN}` with the bin you chose (e.g.
-`1h`). For `focus=exchange`, every query already includes `| where Workload ==
-"Exchange"`; for `focus=all`, **delete that line** from each query; for
+an `ago()`/`timestamp between` filter). Replace `{BIN}` with the bin you chose
+(e.g. `1h`). For `focus=exchange`, every query already includes `| where Workload
+== "Exchange"`; for `focus=all`, **delete that line** from each query; for
 `focus=mailitemsaccessed`, use the MailItemsAccessed set at the bottom.
 
+**Save-as-you-go — the single most important mechanic in this skill.** Reading a
+tool result into your context is **not** the same as saving it: the build script
+only sees files on disk, so a query you ran but didn't write to a file becomes a
+**blank panel**. Immediately after **each** `kql_search`, `Write` its raw result
+to `<workdir>/<name>.json` using the **exact** filename shown, **before** running
+the next query. Do not batch the saves to the end and do not rely on memory — one
+query, one file, right away. The build script parses the raw `data.Tables[0]`
+shape and tolerates the full tool envelope, so save the whole result verbatim.
+
 > If a result says "Output too large" and is saved to a path, read that path and
-> save its `data` object as `<name>.json` instead. Saving the whole raw result
-> is fine — the parser is tolerant. If a query legitimately returns nothing,
-> still save the (empty) result; the report will show a truthful "no data" panel.
+> save its `data` object as `<name>.json` instead — this large-result case is the
+> most common reason a table ends up blank, so handle it every time. If a query
+> legitimately returns **zero rows**, still save the (empty) result: the report
+> shows a truthful "no data" panel and the build stays green. A file that is
+> *never written* is different — the build flags it as MISSING (see Step 4).
+
+### Step 3.5 — Verify every result was saved (do this before building)
+
+List the workdir and confirm that **every** file the focus needs exists and is
+non-empty:
+
+```bash
+ls -la <workdir>/*.json
+```
+
+Expected files: `focus=exchange` → `overview, timechart, operations, top_users,
+top_ips`; `focus=all` → those plus `workload`; `focus=mailitemsaccessed` →
+`overview, timechart, top_mailboxes, top_ips, logontype`. If any is absent or
+0 bytes, **re-run that query and save it now** — don't proceed to the build with
+a hole. (The build script also enforces this, but catching it here is faster.)
 
 ### Exchange / all set
 
@@ -241,10 +267,25 @@ python3 <SKILL_DIR>/scripts/build_report.py \
   [--pdf    /tmp/o365_act/o365_activity.pdf]
 ```
 
-The script reads whatever `<name>.json` files are present in `--workdir`,
-renders each as its panel, and shows a truthful "no data" state for any that are
-missing or empty. It never fabricates. A "Data sources" appendix lists each file
-and its row count so every figure is traceable.
+The script reads the `<name>.json` files in `--workdir`, renders each as its
+panel, and shows a truthful "no data" state for a query that returned zero rows.
+It never fabricates. A "Data sources" appendix lists each file, its row count,
+and whether it was `ok` / `empty` / **MISSING**.
+
+**Exit code is a gate — do not ignore it.** If a required result file was never
+saved, the script prints `INCOMPLETE: …` to stderr, stamps a red **INCOMPLETE
+REPORT** banner at the top of the HTML, and **exits non-zero (3)**. That is not a
+report you may deliver. When it exits non-zero:
+
+1. Read the stderr list (and the "Data sources" appendix) to see which files are
+   MISSING.
+2. Re-run exactly those queries, saving each to its file (this is usually the
+   "Output too large → saved to a path" case from Step 3 — go read that path and
+   save its `data`).
+3. Rebuild. Only deliver once the script exits **0** with no INCOMPLETE banner.
+
+A blank panel whose appendix status is `empty` is fine (the window genuinely had
+no such events); a blank panel whose status is `MISSING` is a build you must fix.
 
 Notes:
 - HTML has **no external assets** (inline CSS, inline SVG chart) so it renders in
@@ -256,10 +297,14 @@ Notes:
 
 ## Step 5 — Deliver
 
-Deliver the HTML (and PDF) with `publish_artifact` (or `present_files`). Add a
-one-line chat summary **derived only from the data** — e.g. "Exchange: 48,210
-events in 24h across 63 mailboxes; MailItemsAccessed is the top operation (31%),
-busiest hour 14:00 UTC." If a window returned nothing, say exactly that.
+Deliver **only a report the build produced with exit 0 and no INCOMPLETE banner**
+(see Step 4) — never a half-empty one. Use `publish_artifact` (or `present_files`).
+Add a one-line chat summary **derived only from the data** — e.g. "Exchange:
+48,210 events in 24h across 63 mailboxes; MailItemsAccessed is the top operation
+(31%), busiest hour 14:00 UTC." Make sure the summary and the report agree: if
+the tables are blank, the summary must not claim rich detail — a blank report
+with a confident summary means results weren't saved, so go back to Step 3.5.
+If a window returned nothing, say exactly that.
 
 ## Layout
 
@@ -275,8 +320,9 @@ o365-activity-report/
 | Situation | Response |
 |---|---|
 | No `Office365` index on the tenant | Stop; tell the user this skill needs Office365 datalake data |
-| `overview.json` empty / missing | Report renders KPIs as "no data"; say the window had no matching events |
-| A single query errored | That panel shows "no data"; the rest of the report still builds |
+| **Tables blank but summary looks right** | You ran the queries but didn't SAVE them — the classic failure. Build exits 3 with an INCOMPLETE banner listing the MISSING files. Go to Step 3.5, save them, rebuild. |
+| Build exits non-zero / INCOMPLETE banner | One or more results were never saved. Re-run + save the MISSING files (often the "Output too large → path" case), then rebuild. Do not deliver. |
+| A query returned zero rows (saved) | Truthful "no data" panel, status `empty`, build stays green — this is fine |
 | WeasyPrint libs missing | Build HTML only; convert via the `html-to-pdf` skill |
 | User named ONE mailbox | Wrong skill — use `office-user-investigation` |
 | User asked for a saved/FPL report | Wrong skill — use `fluency-report` |
