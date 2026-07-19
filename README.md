@@ -43,6 +43,7 @@ Alternatively, install a specific skill by name:
 
 | Skill | What it does |
 | --- | --- |
+| [customer-onboarding](#customer-onboarding) | Front door for a new customer: menu of applications → route to the right setup skill → verify ingestion |
 | [ingext-kql](#ingext-kql) | Generate a validated KQL query over the datalake |
 | [ingext-promql](#ingext-promql) | Generate / run PromQL for platform metrics |
 | [fortigate-bandwidth](#fortigate-bandwidth) | Correct FortiGate bandwidth aggregation rules |
@@ -50,12 +51,38 @@ Alternatively, install a specific skill by name:
 | [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
 | [office-user-investigation](#office-user-investigation) | Investigate an M365 mailbox user (KQL + GeoIP) |
+| [o365-activity-report](#o365-activity-report) | Account-wide O365/Exchange activity report (KQL: timechart + tables) |
 | [ingext-health-monitor](#ingext-health-monitor) | Check whether a site is healthy and ingesting |
 | [add-connector](#add-connector) | Install a new application connector |
 | [setup-aws-cloudtrail-connector](#setup-aws-cloudtrail-connector) | Set up the AWS CloudTrail connector: S3 → SQS notification, cross-account role, real-time import |
 | [create-ingext-audit-app](#create-ingext-audit-app) | Guide an Entra admin to register the `ingext-audit` app (Graph + O365 audit import) |
+| [create-ingext-audit-app-azcli](#create-ingext-audit-app-azcli) | az CLI variant of `create-ingext-audit-app`: cowork can run it directly when the operator is the tenant's Global Admin |
 | [create-ingext-defender-app](#create-ingext-defender-app) | Guide an Entra admin to register the `ingext-defender` app (Graph Security incidents + alerts) |
 | [html-to-pdf](#html-to-pdf) | Convert an HTML file to a PDF |
+
+---
+
+## Getting started
+
+### customer-onboarding
+
+The front door for a new customer bringing data into the platform. Checks what's already
+connected, presents a menu of supported applications, and routes each choice to the skill that
+actually sets it up — **setup-aws-cloudtrail-connector** for CloudTrail, **create-ingext-audit-app**
+or **create-ingext-defender-app** (then **add-connector**) for the Entra customer-owned app paths,
+**add-connector** for everything else. It carries the `tenantId` / `clientId` / `clientSecret` from
+an app registration into the connector install, verifies events actually land in the datalake, then
+loops back for the next source. It installs nothing itself — it's a router and a verifier.
+
+Use it when the customer *doesn't* already know which application they want, or is onboarding
+several sources at once. If they've named a single application, the dedicated skill triggers
+directly.
+
+**Try:**
+- "we just signed up, help us get our logs into Fluency"
+- "onboard a new customer"
+- "what can we connect to Ingext?"
+- "we have CloudTrail, Office 365, and a FortiGate to bring in"
 
 ---
 
@@ -148,6 +175,23 @@ self-contained HTML report with a GeoIP map plus an optional PDF.
 - "check this account for BEC / suspicious inbox rules"
 - "geoip map of a user's logins"
 
+### o365-activity-report
+
+Produces an **account-wide** (whole-tenant, not a single user) Microsoft 365 activity
+report by querying the `Office365` datalake table directly with KQL and rendering the
+*real* results deterministically as a KPI strip, a **timechart**, and ranked breakdown
+**tables** in a self-contained HTML page (optional PDF). Three focuses: `all` (every
+workload), `exchange` (mailbox activity), and `mailitemsaccessed` (who accessed which
+mailboxes, external vs owner, from where). This is the KQL, account-wide counterpart of
+`fluency-report` (FPL) and `office-user-investigation` (single user). Every figure is
+rendered by the build script from the saved query output — a query that returns nothing
+shows an explicit "no data" panel; numbers are never synthesized.
+
+**Try:**
+- "report on Office365 Exchange activity in the last 24 hours"
+- "MailItemsAccessed activity report for the account"
+- "account-wide O365 activity timechart by workload today"
+
 ---
 
 ## Platform operations
@@ -208,6 +252,23 @@ customer-owned app path — for Fluency's hosted OAuth consent flow use **add-co
 - "register the Azure app for Ingext audit import"
 - "set up the Fluency Azure application, I'm a Global Admin"
 - "walk me through the portal steps to make the ingext-audit app"
+
+### create-ingext-audit-app-azcli
+
+The **Azure CLI (`az` / Bash)** counterpart of **create-ingext-audit-app** — same `ingext-audit`
+registration, same nine **Application** permissions across Microsoft Graph and the Office 365
+Management APIs, same three-field output (`tenantId`, `clientId`, `clientSecret`). It adds a
+**run-it-directly** capability via two modes: **Mode A** — when the cowork operator *is* the target
+tenant's Global Admin, cowork runs the bundled `setup-ingext-audit.sh` on this machine (after the
+operator's interactive `az login` and with per-command permission approval); **Mode B** — when
+onboarding a third-party tenant cowork can't authenticate to, it hands the admin the script or a
+portal walkthrough and collects the three fields. Prefer this over the PowerShell skill when the
+admin uses az CLI / Linux / macOS, or when the operator wants cowork to run the setup.
+
+**Try:**
+- "I'm the Global Admin — run the Ingext Entra app setup for me"
+- "register the ingext-audit app using the Azure CLI, not PowerShell"
+- "onboard our tenant to Ingext with az CLI, I'm signed in already"
 
 ### create-ingext-defender-app
 
