@@ -51,6 +51,7 @@ Alternatively, install a specific skill by name:
 | [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
 | [office-user-investigation](#office-user-investigation) | Investigate an M365 mailbox user (KQL + GeoIP) |
+| [o365-activity-report](#o365-activity-report) | Account-wide O365/Exchange activity report (KQL: timechart + tables) |
 | [ingext-health-monitor](#ingext-health-monitor) | Check whether a site is healthy and ingesting |
 | [add-connector](#add-connector) | Install a new application connector |
 | [setup-aws-cloudtrail-connector](#setup-aws-cloudtrail-connector) | Set up the AWS CloudTrail connector: S3 → SQS notification, cross-account role, real-time import |
@@ -173,6 +174,23 @@ self-contained HTML report with a GeoIP map plus an optional PDF.
 - "look into mailbox activity for X"
 - "check this account for BEC / suspicious inbox rules"
 - "geoip map of a user's logins"
+
+### o365-activity-report
+
+Produces an **account-wide** (whole-tenant, not a single user) Microsoft 365 activity
+report by querying the `Office365` datalake table directly with KQL and rendering the
+*real* results deterministically as a KPI strip, a **timechart**, and ranked breakdown
+**tables** in a self-contained HTML page (optional PDF). Three focuses: `all` (every
+workload), `exchange` (mailbox activity), and `mailitemsaccessed` (who accessed which
+mailboxes, external vs owner, from where). This is the KQL, account-wide counterpart of
+`fluency-report` (FPL) and `office-user-investigation` (single user). Every figure is
+rendered by the build script from the saved query output — a query that returns nothing
+shows an explicit "no data" panel; numbers are never synthesized.
+
+**Try:**
+- "report on Office365 Exchange activity in the last 24 hours"
+- "MailItemsAccessed activity report for the account"
+- "account-wide O365 activity timechart by workload today"
 
 ---
 
