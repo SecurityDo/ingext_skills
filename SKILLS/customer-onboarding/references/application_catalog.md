@@ -36,19 +36,26 @@ GuardDuty in S3. That skill documents how to swap the connector in its final ste
 | Field | Value |
 |---|---|
 | **Aliases** | Office 365, O365, Microsoft 365, Entra audit, Azure AD audit, AzureAudit |
-| **Route** | `create-ingext-audit-app` → **then** `add-connector` |
+| **Route** | `automatic-create-ingext-azureaudit-app` (preferred) → **then** `add-connector` |
 | **Auth path** | **Customer-owned app** (app-only client credentials) — *not* the hosted OAuth consent flow |
 | **Prerequisites** | An Entra **Global Administrator** (admin consent is required for the nine Application permissions) |
 | **Hands back** | `tenantId`, `clientId`, `clientSecret` → carry into `add-connector` |
 | **Datalake table** | `Office365`, `AzureAuditLogs` |
 | **First-event latency** | Up to ~30–60 min for the first Office 365 Management API events after subscription starts |
 
+> **Prefer the automatic variant.** `automatic-create-ingext-azureaudit-app` *performs* the app
+> registration (az CLI, with a PowerShell 7 fallback) — the operator only completes the interactive
+> sign-in — and it still covers the guide-a-third-party-admin case as its Mode B. Route to the
+> older guide-only `create-ingext-audit-app` only if the automatic variant isn't installed. Both
+> hand back the same three fields (note the automatic variant names the app `ingext-azureaudit`;
+> the guide-only one names it `ingext-audit`).
+
 > **Fork in the road — ask before routing.** Microsoft 365 has *two* onboarding paths and they are
 > not interchangeable:
 >
-> - **Customer-owned app** → `create-ingext-audit-app` → `add-connector`. The customer registers
->   and owns the app. Use when they want the app in their own tenant, or when policy forbids
->   third-party multi-tenant apps.
+> - **Customer-owned app** → `automatic-create-ingext-azureaudit-app` → `add-connector`. The
+>   customer registers and owns the app. Use when they want the app in their own tenant, or when
+>   policy forbids third-party multi-tenant apps.
 > - **Hosted OAuth consent** → `add-connector` **alone**. The Office365 / AzureAudit templates take
 >   only `adminConsentEmail`; a consent email goes to that address and the admin authorises
 >   Fluency's multi-tenant app. See `add-connector` Step 7.

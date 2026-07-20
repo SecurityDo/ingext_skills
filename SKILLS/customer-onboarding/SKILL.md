@@ -1,6 +1,6 @@
 ---
 name: customer-onboarding
-version: 1.1.0
+version: 1.2.0
 description: >-
   Guide a new Fluency / Ingext customer through getting their data in — present a menu of supported
   applications, route each choice to the right setup skill, verify events are actually landing, and
@@ -10,9 +10,11 @@ description: >-
   get our logs into Fluency", "what can we connect?", "walk me through data import", "set up our
   data sources". Do NOT use this skill when the user has already named a single application and
   wants it set up — route directly to the dedicated skill instead: AWS CloudTrail is
-  setup-aws-cloudtrail-connector; the Entra audit app is create-ingext-audit-app; the Defender app
-  is automatic-create-ingext-defender-app (preferred — it performs the setup; the older guide-only
-  create-ingext-defender-app is the fallback); any other single named connector is add-connector.
+  setup-aws-cloudtrail-connector; the Entra audit app is automatic-create-ingext-azureaudit-app
+  (preferred — it performs the setup; the older guide-only create-ingext-audit-app is the
+  fallback); the Defender app is automatic-create-ingext-defender-app (preferred — it performs the
+  setup; the older guide-only create-ingext-defender-app is the fallback); any other single named
+  connector is add-connector.
   This skill installs nothing itself — it is a router and a verifier.
 ---
 
@@ -82,7 +84,7 @@ re-present a narrowed menu.
 | Choice | Route |
 |---|---|
 | AWS CloudTrail | **`setup-aws-cloudtrail-connector`** — self-contained; it ends in `create_connector` itself, so no follow-on |
-| Microsoft 365 / Entra audit | **`create-ingext-audit-app`** → then **`add-connector`** (see [hand-off](#step-4--the-credential-hand-off)) |
+| Microsoft 365 / Entra audit | **`automatic-create-ingext-azureaudit-app`** (preferred — performs the setup) → then **`add-connector`** (see [hand-off](#step-4--the-credential-hand-off)); fall back to the guide-only `create-ingext-audit-app` only if the automatic variant isn't installed |
 | Microsoft Defender | **`automatic-create-ingext-defender-app`** (preferred — performs the setup) → then **`add-connector`**; fall back to the guide-only `create-ingext-defender-app` only if the automatic variant isn't installed |
 | Something else / named vendor | **`add-connector`** — its Step 1 calls `list_connector_templates` and matches live |
 | Not sure | Ask what tools they run, map onto the catalog, return to Step 2 |
@@ -106,7 +108,8 @@ is expensive.
 
 ## Step 4 — The credential hand-off
 
-`create-ingext-audit-app` and the Defender app skill (`automatic-create-ingext-defender-app`, or
+The audit app skill (`automatic-create-ingext-azureaudit-app`, or its guide-only fallback
+`create-ingext-audit-app`) and the Defender app skill (`automatic-create-ingext-defender-app`, or
 its guide-only fallback `create-ingext-defender-app`) each end by producing three values:
 
 ```
