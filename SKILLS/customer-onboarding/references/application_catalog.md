@@ -61,12 +61,18 @@ GuardDuty in S3. That skill documents how to swap the connector in its final ste
 | Field | Value |
 |---|---|
 | **Aliases** | Defender, MS Defender, Defender XDR, Graph Security incidents/alerts |
-| **Route** | `create-ingext-defender-app` → **then** `add-connector` |
+| **Route** | `automatic-create-ingext-defender-app` (preferred) → **then** `add-connector` |
 | **Auth path** | **Customer-owned app** (app-only client credentials) |
 | **Prerequisites** | An Entra **Global Administrator** (admin consent for `SecurityIncident.Read.All`, `SecurityAlert.Read.All`) |
 | **Hands back** | `tenantId`, `clientId`, `clientSecret` → carry into `add-connector` |
 | **Datalake table** | Confirm with `list_data_tables` — varies by platform version |
 | **First-event latency** | Polling-based; allow ~15–30 min, and note incidents only appear if Defender has generated any |
+
+> **Prefer the automatic variant.** `automatic-create-ingext-defender-app` *performs* the app
+> registration (az CLI, with a PowerShell 7 fallback) — the operator only completes the interactive
+> sign-in — and it still covers the guide-a-third-party-admin case as its Mode B. Route to the older
+> guide-only `create-ingext-defender-app` only if the automatic variant isn't installed. Both hand
+> back the same three fields.
 
 ---
 

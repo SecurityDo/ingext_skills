@@ -1,0 +1,46 @@
+{
+  "skill_name": "automatic-create-ingext-defender-app",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I'm the Global Admin of our Entra tenant and I want you to just set up the ingext-defender app for me so Fluency can export Microsoft Defender incidents and alerts. Use the Azure CLI and run it — I'll authenticate.",
+      "expected_output": "The skill selects Mode A: cowork runs the bundled az CLI script on the operator's behalf. It confirms the target tenant with az account show (having the operator complete az login / --use-device-code if needed), runs assets/setup-ingext-defender.sh, and captures the JSON with tenantId, clientId, clientSecret for the install-application stage. It does not merely hand over instructions.",
+      "files": [],
+      "expectations": [
+        "The skill runs the setup itself (Mode A) rather than only telling the admin what to do",
+        "It uses the Azure CLI (az) and the bundled setup-ingext-defender.sh script",
+        "It confirms the target tenant (az account show) and has the operator complete az login interactively",
+        "Both application permissions are named: SecurityIncident.Read.All and SecurityAlert.Read.All on Microsoft Graph",
+        "The workflow includes granting tenant-wide admin consent and creating a client secret",
+        "The final output is the three fields tenantId, clientId, clientSecret, presented as a JSON block",
+        "The skill does not attempt to configure the Fluency connector or start the export"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We're onboarding a different customer's tenant to Ingext Defender export. I don't have admin on that tenant — their IT person does. How do we get the ingext-defender app created there?",
+      "expected_output": "The skill recognizes this is Mode B: cowork cannot authenticate into the third-party tenant, so it guides the customer's admin. It offers the az CLI script (Path B1) or the manual Azure portal walkthrough (Path B2), covering single-tenant registration named ingext-defender, the two Microsoft Graph application permissions, admin consent, and the client secret, then collects the three fields the admin reports back.",
+      "files": [],
+      "expectations": [
+        "The skill selects Mode B and explains cowork cannot run against a tenant it has no credentials for",
+        "It offers both the az CLI script path and the manual Azure portal path for the third-party admin",
+        "Both application permissions are named: SecurityIncident.Read.All and SecurityAlert.Read.All on Microsoft Graph",
+        "It covers granting admin consent and copying the client secret Value once",
+        "It collects tenantId, clientId, clientSecret at the end as a JSON block"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Run the ingext-defender Azure app registration for our tenant using az. What exactly will you do before creating anything?",
+      "expected_output": "The skill describes the Mode A safety flow: preflight that az is installed and logged in, read and read back the tenantId + signed-in account from az account show so the operator can confirm the intended tenant, and surface the script's confirmation prompt before creating/updating the app. It notes the script is idempotent and resolves permission role IDs dynamically, then prints the three fields.",
+      "files": [],
+      "expectations": [
+        "The skill checks az is installed and the operator is logged in before creating anything",
+        "It reads back the tenantId and account (az account show) for the operator to confirm the target tenant",
+        "It surfaces the script's confirmation prompt and only uses --yes with explicit operator approval",
+        "It notes the script is idempotent and resolves permission role IDs at runtime",
+        "It describes the JSON output with the three fields for the downstream install-application stage"
+      ]
+    }
+  ]
+}

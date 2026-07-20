@@ -17,10 +17,10 @@
     {
       "id": 2,
       "prompt": "We want to get Microsoft Defender incidents into Ingext. We have a Global Admin available.",
-      "expected_output": "The skill routes to create-ingext-defender-app to register the customer-owned app-only application, captures the tenantId / clientId / clientSecret it returns, and then invokes add-connector with those three values already in hand so the customer is not re-prompted. It does not print the client secret. It then verifies via list_connectors and an ingext-kql row count, allowing for polling latency.",
+      "expected_output": "The skill routes to automatic-create-ingext-defender-app (preferred over the guide-only create-ingext-defender-app) to register the customer-owned app-only application, captures the tenantId / clientId / clientSecret it returns, and then invokes add-connector with those three values already in hand so the customer is not re-prompted. It does not print the client secret. It then verifies via list_connectors and an ingext-kql row count, allowing for polling latency.",
       "files": [],
       "expectations": [
-        "Invokes the create-ingext-defender-app skill rather than describing the Entra permissions itself",
+        "Invokes the automatic-create-ingext-defender-app skill (falling back to create-ingext-defender-app only if the automatic variant is absent) rather than describing the Entra permissions itself",
         "Captures tenantId, clientId, clientSecret on return and carries them into add-connector without re-prompting",
         "Never echoes the clientSecret back in a summary or checklist",
         "Recognises this as the customer-owned app path, not the hosted OAuth consent path",
