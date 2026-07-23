@@ -1,0 +1,47 @@
+{
+  "skill_name": "automatic-create-ingext-ms-eventhub",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want Ingext to pull events from Azure Event Hubs. I have Contributor on our Azure subscription — set up the event hub for me, I'll authenticate when prompted, and then hook up the Fluency connector.",
+      "expected_output": "The skill selects Mode A: cowork runs the bundled az CLI script on the operator's behalf. It confirms the target subscription with az account show (having the operator complete az login / --use-device-code if needed), warns that the Event Hubs namespace is billable, runs assets/setup-ingext-eventhub.sh and surfaces its confirmation prompt, and captures the JSON whose connectionString is the Connection string–primary key. It then creates the Ingext 'Azure Event Hubs' connector (template AzureEventHubs) via the Fluency MCP with endpoint = connectionString, or walks the operator through pasting it in the Fluency UI. It does not merely hand over instructions.",
+      "files": [],
+      "expectations": [
+        "The skill runs the setup itself (Mode A) rather than only telling the admin what to do",
+        "It uses the Azure CLI (az) and the bundled setup-ingext-eventhub.sh script",
+        "It confirms the target subscription (az account show / az account set) and notes the namespace is a billable resource before creating it",
+        "The Azure resources are namespace + event hub + Listen-only SAS policy on the event hub (so the connection string embeds EntityPath)",
+        "The captured deliverable is the Connection string–primary key, presented in a JSON block as connectionString",
+        "The Ingext side uses the AzureEventHubs connector template with endpoint = the connection string (via MCP create_connector or the Fluency UI)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We're onboarding a customer who wants to stream their Azure logs to Ingext through an event hub. I don't have access to their Azure subscription — their cloud admin does. How do we get this set up?",
+      "expected_output": "The skill recognizes this is Mode B: cowork cannot authenticate into the third-party subscription, so it guides the customer's admin. It offers the az CLI script (Path B1, with the PowerShell script as an alternative) or the manual Azure portal walkthrough (Path B2): create an Event Hubs namespace (globally unique name, Standard tier, billable), an event hub, and a Listen-only shared access policy on the event hub, then copy the policy's Connection string–primary key. It collects that single value back and finishes by creating the Ingext Azure Event Hubs connector with it (endpoint parameter), warning if the admin instead supplies a namespace-level RootManageSharedAccessKey string without EntityPath.",
+      "files": [],
+      "expectations": [
+        "The skill selects Mode B and explains cowork cannot run against a subscription it has no credentials for",
+        "It offers both the script path and the manual Azure portal path for the third-party admin",
+        "The portal walkthrough covers namespace (globally unique, pricing tier), event hub, and a Listen-only policy created on the event hub",
+        "It instructs copying the exact 'Connection string–primary key' value from the shared access policy",
+        "It flags the namespace-level RootManageSharedAccessKey string as over-granting and missing EntityPath",
+        "The only Microsoft-side value collected for Ingext is the connection string, which becomes the connector's endpoint"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Set up the Azure Event Hubs integration for Ingext using az. Before you create anything in Azure, what exactly will you do, and what will it cost?",
+      "expected_output": "The skill describes the Mode A safety flow: preflight that az is installed and logged in, read back the subscription name/id and tenant from az account show so the operator confirms the intended subscription, state that the Event Hubs namespace is a billable resource (per throughput unit per hour; Basic vs Standard trade-offs), and surface the script's confirmation prompt (only bypassed with --yes on explicit approval). It notes the script is idempotent (reuses existing resource group, namespace, hub, policy), registers the Microsoft.EventHub provider if needed, creates a Listen-only hub-level SAS policy for least privilege, and ends by printing the JSON whose connectionString feeds the Ingext connector's endpoint.",
+      "files": [],
+      "expectations": [
+        "The skill checks az is installed and the operator is logged in before creating anything",
+        "It reads back the subscription (name and id) for the operator to confirm, since Event Hubs are subscription-scoped and billable",
+        "It states the namespace is billable and mentions the Standard/Basic tier trade-off",
+        "It surfaces the script's confirmation prompt and only uses --yes with explicit operator approval",
+        "It notes the script is idempotent and creates a Listen-only policy on the event hub for least privilege",
+        "It describes the JSON output with connectionString (the Connection string–primary key) destined for the connector's endpoint parameter"
+      ]
+    }
+  ]
+}
