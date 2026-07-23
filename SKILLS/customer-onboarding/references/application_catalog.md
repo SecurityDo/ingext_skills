@@ -81,6 +81,24 @@ GuardDuty in S3. That skill documents how to swap the connector in its final ste
 > guide-only `create-ingext-defender-app` only if the automatic variant isn't installed. Both hand
 > back the same three fields.
 
+### Azure Event Hubs
+
+| Field | Value |
+|---|---|
+| **Aliases** | Event Hub, EventHub, MS Event Hub, Azure Monitor / Entra / Defender log streaming via event hub |
+| **Route** | `automatic-create-ingext-ms-eventhub` (self-contained — it ends in `create_connector` itself, so **no** `add-connector` follow-on) |
+| **Auth path** | SAS connection string (Listen-only, hub-level policy) — the portal's "Connection string–primary key" |
+| **Prerequisites** | **Contributor** (or Owner) on the target Azure subscription (Mode A: the skill provisions namespace + hub + policy; note the namespace is **billable**), or a third-party admin who runs it (Mode B). If the customer **already has** a hub and its connection string, the skill skips straight to its Ingext-side connector step |
+| **Hands back** | Nothing to carry — the skill installs the connector itself and reports the connector `instance` id, `consumerGroup`, and hub/namespace names. The `connectionString` is a credential — don't echo it |
+| **Datalake table** | `AzureEventHubs` (template default index) — confirm the live name with `list_data_tables` |
+| **First-event latency** | **None until a producer streams into the hub.** The skill creates an empty hub; events start only after the customer points a producer (Azure Monitor diagnostic settings, Entra ID diagnostic settings, Defender Streaming API, …) at it — then typically ~5–15 min. Mark ⏳ with the producer follow-up noted, not ❌ |
+
+> **Guided vs. standard fork:** route here when the Azure side still needs provisioning (no hub
+> yet, or no Listen-only connection string). If the customer already holds a working "Connection
+> string–primary key" and just wants the connector, plain `add-connector` also works — but this
+> skill's connector step does the same install and validates the string's `EntityPath`, so
+> preferring it is never wrong.
+
 ---
 
 ## Standard applications (route: `add-connector`)
