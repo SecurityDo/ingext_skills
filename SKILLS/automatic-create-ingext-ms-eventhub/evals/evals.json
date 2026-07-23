@@ -42,6 +42,19 @@
         "It notes the script is idempotent and creates a Listen-only policy on the event hub for least privilege",
         "It describes the JSON output with connectionString (the Connection string–primary key) destined for the connector's endpoint parameter"
       ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked 'Azure Event Hubs' from the onboarding menu. The Fluency MCP is connected and list_connectors shows no event hub connector yet. The operator says they have Contributor on the customer's Azure subscription. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained (like setup-aws-cloudtrail-connector), so it runs Mode A end-to-end — provision namespace, event hub, and Listen-only policy after subscription confirmation, then creates the AzureEventHubs connector itself via create_connector with endpoint = the connection string, WITHOUT routing to add-connector and without re-asking what the router already established. It hands back the connector instance id, namespace/hub names, consumer group, and the AzureEventHubs datalake index for verification, refers to the connection string without echoing it, and tells the router the hub is empty until a producer is configured, so the application should be marked pending (not failed) at zero rows.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already has (connected instance, installed connectors)",
+        "It hands back the connector instance id, namespace and event hub names, consumer group, and datalake index for the router's verification step",
+        "It does not echo the connectionString into the onboarding summary, treating it as a credential",
+        "It states that zero events is expected until a producer streams into the hub, so the router should mark the source pending with a producer follow-up rather than failed"
+      ]
     }
   ]
 }

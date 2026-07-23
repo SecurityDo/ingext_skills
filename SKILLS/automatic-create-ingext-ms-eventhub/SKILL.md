@@ -12,7 +12,11 @@ description: >-
   and the operator only completes the interactive sign-in when prompted; MODE B — a brief
   fallback that guides a third-party admin who runs it in their own subscription (cowork has no
   credentials there), via script or an Azure-portal walkthrough. Prefer this skill when the
-  operator wants cowork to perform the Event Hubs setup for them. Triggers: "connect Ingext to
+  operator wants cowork to perform the Event Hubs setup for them. Also the routed target for the
+  "Azure Event Hubs" row in customer-onboarding's guided catalog — and unlike the app-registration
+  siblings it is SELF-CONTAINED like setup-aws-cloudtrail-connector: it finishes by creating the
+  AzureEventHubs connector itself, so the router must not chain into add-connector afterward.
+  Triggers: "connect Ingext to
   Azure Event Hubs", "set up an event hub for Fluency", "stream Azure logs to Ingext via Event
   Hub", "create the ingext event hub for me". Do NOT use for the Entra audit-log importer app —
   that's automatic-create-ingext-azureaudit-app; nor the Defender incidents exporter app — that's
@@ -274,6 +278,33 @@ Fluency Ingext MCP is connected, do this for the operator too:**
 **Without the MCP**, walk the operator through the Fluency UI: **Connectors / Integrations → Add →
 Azure Event Hubs**, paste the **Connection string–primary key** into the **Event Hub endpoint**
 field, leave the optional fields blank, save.
+
+---
+
+## When called from `customer-onboarding`
+
+The onboarding router lists this skill in its guided catalog and invokes it when the customer
+picks Azure Event Hubs. In that context:
+
+- **This skill is the complete stage — connector included.** Unlike
+  `automatic-create-ingext-azureaudit-app` / `automatic-create-ingext-defender-app` (which hand
+  `tenantId`/`clientId`/`clientSecret` to `add-connector`), this skill ends in `create_connector`
+  itself, like `setup-aws-cloudtrail-connector`. **Do not hand off to `add-connector`** — run the
+  Ingext-side section above before returning.
+- **Don't re-collect what the router already established** (which Ingext instance is connected,
+  who the customer is, what's already installed from its `list_connectors` call). Go straight to
+  picking the mode.
+- **If the customer already has a hub and its "Connection string–primary key"** (producers already
+  streaming), skip the Azure-side provisioning and jump to the Ingext-side section — validate the
+  string has an `EntityPath` first.
+- **Hand back to the router**, for its checklist and Step 5 verification: the connector
+  `instance` id, the namespace + event hub names, the `consumerGroup`, and the datalake index
+  (default `AzureEventHubs`). Do **not** echo the `connectionString` into the summary — it's a
+  credential; refer to it as "the connection string from the Listen policy".
+- **Set verification expectations honestly:** this skill creates an *empty* hub. Zero rows in the
+  datalake is the **expected** state until the customer points a producer (diagnostic settings,
+  Defender streaming, …) at the hub — then events typically appear within ~5–15 minutes. The
+  router should mark the application ⏳ with the producer follow-up noted, not ❌.
 
 ---
 
