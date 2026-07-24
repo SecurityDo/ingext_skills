@@ -1,0 +1,58 @@
+{
+  "skill_name": "setup-bitwarden-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want our Bitwarden organization's event logs flowing into Ingext. I'm an owner of the org and I'm logged into the web vault now — walk me through it, then do the Fluency side yourself.",
+      "expected_output": "The skill takes the guided + agent-installs path: it confirms the org is Teams or Enterprise (event logs and the Public API require it) and which cloud it lives on (vault.bitwarden.com → US, vault.bitwarden.eu → EU), then walks the owner through Admin Console → Settings → Organization info → API key section to retrieve the organization API key, checking that the client_id starts with 'organization.' and treating the client_secret as a credential. It then installs the connector itself via the Fluency MCP: fetches the live Bitwarden template with list_connector_templates, checks list_connectors for an existing instance, and calls create_connector with region, clientId, and clientSecret, instance id 'bitwarden' (never 'default'). It verifies with list_connectors, confirms the datalake table via list_data_tables since the template has no index parameter, and sets the 15–30 minute first-event expectation.",
+      "files": [],
+      "expectations": [
+        "The skill guides the Bitwarden Admin Console steps but performs the Fluency-side install itself rather than handing over instructions",
+        "It confirms the Teams/Enterprise plan requirement and maps the org's cloud to the region parameter (US vs EU)",
+        "It verifies the client_id has the organization. prefix and warns a personal API key will not work",
+        "It fetches the live template schema and includes every template parameter in create_connector, with instance id derived from the template name and never 'default'",
+        "It confirms the live datalake table name with list_data_tables rather than assuming an index, since the template defines none",
+        "It never echoes the client secret back in summaries or output"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The customer's Bitwarden owner can't join today's call. Prepare what they need to do on their side so we can finish the Fluency hookup later.",
+      "expected_output": "The skill selects the runbook-only path: it prints the complete Bitwarden-side procedure for the absent owner — confirm the org is Teams or Enterprise, note which cloud the org is on (US vs EU web vault domain), open the Admin Console → Settings → Organization info, scroll to the API key section, and copy the client_id (must start with 'organization.') and client_secret — and lists exactly what to send back: region, client_id, and client_secret, with the secret passed over a secure channel such as Bitwarden Send rather than email or a ticket. It notes only an owner can retrieve the key, offers to run the Fluency-side connector install as soon as the values return, and does not attempt to create anything now.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes the owner is absent and produces a complete vendor-side runbook instead of trying to act",
+        "The runbook covers the plan check, region identification, the Admin Console path to the API key, and the organization. client_id format",
+        "It states only an organization Owner can retrieve the key and recommends a secure channel for handing it over",
+        "It defers the Fluency-side install until the values arrive and offers to perform it then"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add Bitwarden to Ingext. We're on the US cloud, client_id is organization.a1b2c3, and here's the client secret — go.",
+      "expected_output": "Since the values are already in hand, the skill skips the Bitwarden-side walkthrough and goes straight to the install: list_connector_templates for the live Bitwarden schema, list_connectors to check for an existing instance (asking before creating a second one if present), then create_connector with application Bitwarden, instance 'bitwarden', displayName 'Bitwarden', and the full parameter set (region US, clientId, clientSecret). It confirms the install, refers to the client secret only descriptively (never echoing it), confirms the live datalake table with list_data_tables because the template has no index parameter, and states the 15–30 minute first-event window before any row-count check.",
+      "files": [],
+      "expectations": [
+        "The skill does not re-run the vendor-side walkthrough when region and credentials are already provided",
+        "It checks for an existing Bitwarden connector before installing and asks before creating a duplicate",
+        "create_connector includes every template parameter, instance id 'bitwarden' rather than 'default'",
+        "The client secret is not repeated back in any confirmation or summary",
+        "It confirms the datalake table via list_data_tables instead of guessing an index name",
+        "It sets an honest first-event latency expectation before verifying row counts"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Bitwarden from the onboarding menu. The Fluency MCP is connected; the router's list_connectors call shows no Bitwarden connector. The operator has the org owner on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it guides the API key retrieval and performs create_connector itself WITHOUT chaining into add-connector and without re-collecting context the router already has. On return it hands the router the connector instance id and the datalake table name — confirmed live with list_data_tables, since the Bitwarden template defines no index parameter — keeps the client secret out of the summary, and tells the router to expect first events within roughly 15–30 minutes — mark the application pending inside that window rather than failed.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id and a live-confirmed datalake table name (via list_data_tables) for the router's verification step",
+        "The client secret does not appear in the hand-back summary",
+        "It tells the router to mark the source pending within the 15–30 minute first-event window rather than failed"
+      ]
+    }
+  ]
+}

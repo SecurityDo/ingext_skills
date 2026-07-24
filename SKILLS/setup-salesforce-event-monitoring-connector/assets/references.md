@@ -1,0 +1,33 @@
+# References — Salesforce vendor-side steps
+
+Verified 2026-07-24. Re-check at next skill revision; Salesforce is actively migrating Connected
+App documentation to External Client Apps, and help.salesforce.com article ids move.
+
+| Claim in SKILL.md | Source |
+|---|---|
+| Full Event Monitoring requires the Event Monitoring add-on / Salesforce Shield subscription; free subset (Login, Logout, API Total Usage, and a few others) with 1-day retention on Enterprise/Unlimited/Performance | [Understanding Event Monitoring — Salesforce Trailhead](https://trailhead.salesforce.com/content/learn/modules/event_monitoring/event_monitoring_intro) |
+| Event log files are available after 24 hours for all customers and hourly for Event Monitoring customers | [Understanding Event Monitoring — Salesforce Trailhead](https://trailhead.salesforce.com/content/learn/modules/event_monitoring/event_monitoring_intro) |
+| Hourly event log files: an event is "expected to take three to six hours from the time of the event to be available in the log file. However, it can take longer." | [Query or View Hourly Event Log Files — REST API Developer Guide](https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/event_log_file_hourly_overview.htm); see also [Differences Between Hourly and 24-Hour Event Logs](https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/event_log_file_hourly_diff.htm) |
+| `EventLogFile` requires the **View Event Log Files** and **API Enabled** user permissions; **View All Data** also grants access | [EventLogFile — Object Reference for the Salesforce Platform](https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_eventlogfile.htm) |
+| Client credentials flow requires a designated execution ("Run As") user; Salesforce returns tokens on behalf of that user | [OAuth 2.0 Client Credentials Flow for Server-to-Server Integration — Salesforce Help](https://help.salesforce.com/s/articleView?id=sf.remoteaccess_oauth_client_credentials_flow.htm&language=en_US); [Configure a Connected App for the OAuth 2.0 Client Credentials Flow — Salesforce Help](https://help.salesforce.com/s/articleView?id=xcloud.connected_app_client_credentials_setup.htm&language=en_US&type=5) |
+| External Client App UI path: External Client App Manager → New External Client App; API (Enable OAuth Settings) → Enable OAuth; Flow Enablement → Enable Client Credentials Flow; Policies → Edit → Enable Client Credentials Flow + Run As (Username) | [Configure a Client Credentials Flow (External Client Apps) — Salesforce Help](https://help.salesforce.com/s/articleView?language=en_US&id=xcloud.configure_client_credentials_flow_for_external_client_apps.htm&type=5); [Create an External Client App — Salesforce Help](https://help.salesforce.com/s/articleView?id=xcloud.create_a_local_external_client_app.htm&language=en_US&type=5) |
+| Connected App variant: API (Enable OAuth Settings) → Enable Client Credentials Flow; Manage → Edit Policies → Client Credentials Flow → Run As | [Configure a Connected App for the OAuth 2.0 Client Credentials Flow — Salesforce Help](https://help.salesforce.com/s/articleView?id=xcloud.connected_app_client_credentials_setup.htm&language=en_US&type=5) |
+| New Connected App creation restricted as of Spring '26; Salesforce recommends External Client Apps | [External Client vs. Connected Apps — Salesforce Ben](https://www.salesforceben.com/external-client-vs-connected-apps-comparing-salesforces-next-gen-integration/) *(secondary — corroborates the transition documented across the help.salesforce.com External Client Apps pages, e.g. [External Client Apps — Salesforce Help](https://help.salesforce.com/s/articleView?id=xcloud.external_client_apps.htm&language=en_US&type=5))* |
+| OAuth scope for this integration: the API scope only ("choose the API only scope"); dedicated integration user scoped "to the smallest possible subset of necessary features"; the API Only User requirement for the run-as user was removed in Summer '23 | [Using the Client Credentials Flow for Easier API Authentication — Salesforce Developers Blog](https://developer.salesforce.com/blogs/2023/03/using-the-client-credentials-flow-for-easier-api-authentication) |
+| Consumer key/secret location — Connected App: View → API (Enable OAuth Settings) → Manage Consumer Details; External Client App: OAuth settings in External Client App Manager, with staged rotation | [View and Rotate the Consumer Key and Consumer Secret of a Connected App — Salesforce Help](https://help.salesforce.com/s/articleView?id=xcloud.connected_app_rotate_consumer_details.htm&language=en_US&type=5); [Using the Client Credentials Flow — Salesforce Developers Blog](https://developer.salesforce.com/blogs/2023/03/using-the-client-credentials-flow-for-easier-api-authentication) |
+| Security warning: anyone with the app's consumer key and secret can get an access token | [Configure an External Client App for OAuth 2.0 Client Credentials Flow — Salesforce Help](https://help.salesforce.com/s/articleView?id=xcloud.meta_configure_client_credentials_flow_for_external_client_apps.htm&language=en_US&type=5) |
+| My Domain login URL format `https://<MyDomainName>.my.salesforce.com`; sandbox `https://<MyDomainName>--<SandboxName>.sandbox.my.salesforce.com`; distinct from the `.lightning.force.com` application URL | [My Domain Login and Application URL Formats — Salesforce Help](https://help.salesforce.com/s/articleView?id=xcloud.domain_name_url_formats.htm&language=en_US&type=5); [My Domain — Salesforce Help](https://help.salesforce.com/s/articleView?language=en_US&id=xcloud.domain_name_overview.htm&type=5) |
+| "The authenticated connection does not have access" error indicates the run-as user is missing event-access permissions | [Salesforce — Datadog integration docs](https://docs.datadoghq.com/integrations/salesforce/) *(secondary — SIEM/monitoring-vendor integration guide)* |
+
+Notes:
+
+- The skill's license gate deliberately says "confirm with your Salesforce account executive"
+  rather than naming a Setup menu path for license inspection — no public doc verified at build
+  time documents a reliable self-serve path, and inventing one would violate the research
+  protocol.
+- The 3–6 hour figure is Salesforce's own wording for hourly files and carries their "can take
+  longer" caveat; the skill quotes hours (not minutes) everywhere latency is stated.
+- The `SalesforceEM` template's parameter set (`baseURL` + `clientID` + `clientSecret` only — no
+  username/password/refresh token) is what implies the client credentials flow; that mapping is
+  a Fluency-side reading of the live template schema, backed vendor-side by the client
+  credentials flow docs cited above.

@@ -1,0 +1,58 @@
+{
+  "skill_name": "setup-proofpoint-tap-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want Proofpoint TAP threat events in Ingext. I'm an admin on the TAP dashboard and I'm logged in now — walk me through whatever you need, then hook it up on the Fluency side yourself.",
+      "expected_output": "The skill takes the guided + agent-installs path: it walks the admin through Settings → Connected Applications → Create New Credential, naming the credential ingext-tap and clicking Generate, and warns that the Service Principal and Secret shown in the dialog must be copied immediately because they are not available after it closes. It mentions the SIEM API operational facts (1800 requests/24h rate pools, 7-day retention). It then installs the connector itself via the Fluency MCP: fetches the live ProofpointTAP template with list_connector_templates (not ProofpointEssentials), checks list_connectors for an existing instance, and calls create_connector with principal and secret, instance id 'proofpointtap' (never 'default'). It verifies with list_connectors, notes the datalake table must be confirmed live because the template has no index parameter, and sets the 15–30 minute first-event expectation with the threat-driven caveat.",
+      "files": [],
+      "expectations": [
+        "The skill guides the TAP dashboard steps but performs the Fluency-side install itself rather than handing over instructions",
+        "It uses the verified path Settings → Connected Applications → Create New Credential → Generate",
+        "It warns the service principal and secret are shown once and must be copied before the dialog closes",
+        "It selects the ProofpointTAP template, not ProofpointEssentials, fetching the live schema and including every template parameter, instance id never 'default'",
+        "It says the datalake table must be confirmed with list_data_tables rather than asserting a table name",
+        "It never echoes the secret back in summaries or output"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our customer's Proofpoint TAP admin can't join today, but we want everything prepared for connecting TAP to Fluency. What exactly should they do?",
+      "expected_output": "The skill selects the runbook-only path: it prints the complete TAP-side procedure for the absent admin — sign in to the TAP Dashboard at threatinsight.proofpoint.com as an administrative user, open Settings → Connected Applications, click Create New Credential, name it ingext-tap, click Generate, copy the Service Principal and Secret immediately from the dialog because they will not be shown again, and confirm the credential shows Active. It lists exactly what to send back — the service principal and the secret, with the secret handled as a credential — and offers to run the Fluency-side connector install as soon as those values return, creating nothing now.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes the admin is absent and produces a complete vendor-side runbook instead of trying to act",
+        "The runbook covers the dashboard URL, the Settings → Connected Applications path, credential naming, the copy-once warning, and the Active status check",
+        "It clearly states the two values to report back (service principal, secret) and that the secret is a credential",
+        "It defers the Fluency-side install until the values arrive and offers to perform it then"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add Proofpoint TAP to Ingext. Principal is tap-svc-1234 and the secret is 9f8e7d...abc — go.",
+      "expected_output": "Since both values are already in hand, the skill skips the TAP-side walkthrough and goes straight to the install: list_connector_templates for the live ProofpointTAP schema (explicitly not ProofpointEssentials), list_connectors to check for an existing instance (asking before creating a second one if present), then create_connector with application ProofpointTAP, instance 'proofpointtap', displayName 'Proofpoint TAP', and every parameter the live schema shows. It confirms the install, refers to the secret only descriptively (never echoing it), notes that the datalake table name must be confirmed with list_data_tables once events land, and states the 15–30 minute first-event window plus the honest caveat that TAP is threat-driven so a quiet org legitimately shows zero events — compare with the TAP Dashboard before judging.",
+      "files": [],
+      "expectations": [
+        "The skill does not re-run the vendor-side walkthrough when principal and secret are already provided",
+        "It selects the ProofpointTAP template, not ProofpointEssentials",
+        "It checks for an existing Proofpoint connector before installing and asks before creating a duplicate",
+        "create_connector includes every live template parameter, instance id 'proofpointtap' rather than 'default'",
+        "The secret is not repeated back in any confirmation or summary",
+        "It sets an honest latency expectation including the threat-driven zero-events caveat and the confirm-live table name"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Proofpoint TAP from the onboarding menu. The Fluency MCP is connected; the router's list_connectors call shows no Proofpoint connector. The operator has a TAP dashboard admin on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it guides the service-credential creation and performs create_connector itself WITHOUT chaining into add-connector and without re-collecting context the router already has. On return it hands the router the connector instance id and tells it the datalake table must be confirmed live with list_data_tables (the template exposes no index parameter), keeps the secret out of the summary, and tells the router to expect first events within roughly 15–30 minutes when the org has TAP activity — mark the application pending inside that window, and note that a TAP-quiet org showing zero events is expected behavior, not a failure.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id and the confirm-live datalake table instruction for the router's verification step",
+        "The secret does not appear in the hand-back summary",
+        "It tells the router to mark the source pending within the first-event window and explains that zero events can be legitimate for a threat-driven source"
+      ]
+    }
+  ]
+}

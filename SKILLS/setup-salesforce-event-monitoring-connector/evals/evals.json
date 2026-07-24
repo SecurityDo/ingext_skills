@@ -1,0 +1,61 @@
+{
+  "skill_name": "setup-salesforce-event-monitoring-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want our Salesforce event monitoring data in Ingext. I'm a Salesforce admin with Setup open right now, and yes, we have Shield. Walk me through whatever you need, then hook it up on the Fluency side yourself.",
+      "expected_output": "The skill confirms the Event Monitoring license is in place (Shield covers it) and takes the guided + agent-installs path: it has the admin create a dedicated integration user with a permission set containing exactly API Enabled and View Event Log Files, then create an External Client App (noting new Connected App creation is restricted as of Spring '26) with OAuth enabled, the API scope only, Enable Client Credentials Flow under Flow Enablement, and the Policies-tab Run As set to the integration user. It collects the consumer key and secret plus the My Domain base URL (https://<MyDomainName>.my.salesforce.com, flagging the lightning.force.com gotcha). It then installs the connector itself via the Fluency MCP: fetches the live SalesforceEM template with list_connector_templates, checks list_connectors, and calls create_connector with baseURL, clientID, clientSecret, instance id 'salesforceem' (never 'default'). It verifies with list_connectors and sets the honest expectation that EventLogFile data is batched — first rows in roughly 3–6 hours, not minutes.",
+      "files": [],
+      "expectations": [
+        "The skill checks the Event Monitoring / Shield license before walking through setup",
+        "It guides the Salesforce Setup steps but performs the Fluency-side install itself rather than handing over instructions",
+        "It creates a dedicated run-as integration user with API Enabled and View Event Log Files rather than using an admin",
+        "It uses an External Client App with the client credentials flow and a Run As user, noting the Connected App restriction",
+        "It collects the My Domain base URL in the my.salesforce.com form and flags the lightning.force.com gotcha",
+        "It fetches the live template schema and includes every template parameter in create_connector, with instance id derived from the template name and never 'default'",
+        "It never echoes the consumer secret back in summaries or output",
+        "It states an hours-scale first-event latency reflecting batched EventLogFile generation"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our customer wants Salesforce logs in Fluency but their Salesforce admin can't join today. Put together exactly what the admin needs to do on their side so we can finish later.",
+      "expected_output": "The skill selects the runbook-only path: it prints the complete Salesforce-side procedure for the absent admin — first confirm the Event Monitoring add-on / Shield license (without it only the small free subset of log types exists), create a dedicated integration user with a permission set granting API Enabled and View Event Log Files, create an External Client App with OAuth enabled and the API scope, enable the client credentials flow, set the Run As user under the Policies tab, collect the consumer key and secret, and note the org's My Domain URL in the https://<MyDomainName>.my.salesforce.com form — and lists exactly what to send back: base URL, consumer key, and consumer secret, with the secret handled as a credential. It offers to run the Fluency-side connector install as soon as those values return, and does not attempt to create anything now.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes the admin is absent and produces a complete vendor-side runbook instead of trying to act",
+        "The runbook leads with the Event Monitoring license gate",
+        "It covers the integration user with API Enabled and View Event Log Files, the External Client App with client credentials flow and Run As user, the consumer key/secret, and the My Domain URL format",
+        "It clearly states the three values to report back and that the consumer secret is a credential",
+        "It defers the Fluency-side install until the values arrive and offers to perform it then"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add Salesforce Event Monitoring to Ingext. Base URL is https://acme.my.salesforce.com, consumer key is 3MVG9...abc, consumer secret is FE12...89 — go.",
+      "expected_output": "Since all three values are already in hand, the skill skips the Salesforce-side walkthrough and goes straight to the install: list_connector_templates for the live SalesforceEM schema, list_connectors to check for an existing instance (asking before creating a second one if present), then create_connector with application SalesforceEM, instance 'salesforceem', displayName 'Salesforce Event Monitoring', and every parameter the live schema lists (baseURL, clientID, clientSecret — the template has no datalake/index parameters). It confirms the install, refers to the secret only descriptively (never echoing it), notes the datalake table must be confirmed live with list_data_tables since the template defines no index, and states the batched EventLogFile latency — roughly 3–6 hours for hourly files, up to ~24 hours without the license — before any row-count check.",
+      "files": [],
+      "expectations": [
+        "The skill does not re-run the vendor-side walkthrough when the base URL, consumer key, and secret are already provided",
+        "It checks for an existing Salesforce connector before installing and asks before creating a duplicate",
+        "create_connector includes every parameter the live schema lists, instance id 'salesforceem' rather than 'default'",
+        "The consumer secret is not repeated back in any confirmation or summary",
+        "It confirms the live datalake table with list_data_tables rather than assuming an index name",
+        "It sets an hours-scale first-event latency expectation before verifying row counts"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Salesforce Event Monitoring from the onboarding menu. The Fluency MCP is connected; the router's list_connectors call shows no Salesforce connector. The operator has a Salesforce admin on the call who confirms they have the Event Monitoring add-on. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it guides the app and integration-user creation and performs create_connector itself WITHOUT chaining into add-connector and without re-collecting context the router already has (the license is confirmed, so it does not re-litigate the gate). On return it hands the router the connector instance id and the live datalake table name (confirmed with list_data_tables — the template defines no index parameter), keeps the consumer secret out of the summary, and tells the router that EventLogFile generation is batched: expect first rows in roughly 3–6 hours, so the application stays marked pending — not failed — inside that window, and zero rows right after install is normal.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established, including the confirmed license",
+        "It hands back the instance id and the live-confirmed datalake table for the router's verification step",
+        "The consumer secret does not appear in the hand-back summary",
+        "It tells the router to mark the source pending within the hours-scale batched first-event window rather than failed, and that zero rows immediately after install is expected"
+      ]
+    }
+  ]
+}

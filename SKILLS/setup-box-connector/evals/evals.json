@@ -1,0 +1,58 @@
+{
+  "skill_name": "setup-box-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want Box audit events in Ingext. I'm a Box co-admin with access to both the Developer Console and the Admin Console — walk me through the Box side, then do the Fluency side yourself.",
+      "expected_output": "The skill takes the guided + agent-installs path: it walks the co-admin through creating a Server-authentication Platform App (Client Credentials Grant is the default), setting App Access Level to App + Enterprise Access, checking only the Manage enterprise properties scope, collecting the Client ID and Client Secret from the Configuration tab's OAuth 2.0 Credentials section (noting 2FA must be enabled to fetch the secret) and the Enterprise ID from the app's General Settings or Admin Console → Account & Billing, then authorizing the app in the Admin Console's Platform Apps manager. It then installs the connector itself via the Fluency MCP: fetches the live BoxCom template with list_connector_templates, checks list_connectors for an existing instance, and calls create_connector with ClientID, ClientSecret, and EnterpriseID, instance id 'boxcom' (never 'default'). It verifies with list_connectors, confirms the datalake table via list_data_tables since the template has no index parameter, and sets the 15–30 minute first-event expectation while noting Box's admin_logs feed favors completeness over latency.",
+      "files": [],
+      "expectations": [
+        "The skill guides the Box Developer Console and Admin Console steps but performs the Fluency-side install itself rather than handing over instructions",
+        "It configures Client Credentials Grant with App + Enterprise Access and only the Manage enterprise properties scope",
+        "It requires admin authorization of the app in the Admin Console before expecting tokens to work, and mentions reauthorization after scope changes",
+        "It collects Client ID, Client Secret (2FA needed to fetch it), and Enterprise ID, treating the secret as a credential",
+        "It fetches the live template schema and includes every template parameter in create_connector, with instance id derived from the template name and never 'default'",
+        "It never echoes the client secret back in summaries or output"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our customer wants Box connected to Fluency but their Box admin is on leave. Write up exactly what the admin has to do in Box so we can finish when they're back.",
+      "expected_output": "The skill selects the runbook-only path: it prints the complete Box-side procedure for the absent admin — create a Server (Client Credentials Grant) Platform App in the Developer Console, set App Access Level to App + Enterprise Access, check only the Manage enterprise properties scope, save, collect the Client ID and (with 2FA enabled) the Client Secret from the OAuth 2.0 Credentials section, read the Enterprise ID from the app's General Settings tab or Admin Console → Account & Billing, and authorize the app in the Admin Console's Platform Apps manager (or approve the developer's submission), re-authorizing after any future scope change — and lists exactly what to send back: Client ID, Client Secret, and Enterprise ID, with the secret handled as a credential over a secure channel. It offers to run the Fluency-side connector install as soon as those values return, and does not attempt to create anything now.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes the admin is absent and produces a complete vendor-side runbook instead of trying to act",
+        "The runbook covers app creation, App + Enterprise Access, the Manage enterprise properties scope, credential collection including the 2FA gotcha, the Enterprise ID location, and Admin Console authorization",
+        "It clearly states the three values to report back and that the client secret is a credential",
+        "It defers the Fluency-side install until the values arrive and offers to perform it then"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add Box to Ingext. The app is already authorized in our Admin Console — Client ID abc123, Enterprise ID 987654, and I have the client secret ready. Go.",
+      "expected_output": "Since an authorized app's values are already in hand, the skill skips the Box-side walkthrough and goes straight to the install: it collects the client secret (treating it as a credential), runs list_connector_templates for the live BoxCom schema, list_connectors to check for an existing instance (asking before creating a second one if present), then create_connector with application BoxCom, instance 'boxcom', displayName 'box.com', and the full parameter set (ClientID, ClientSecret, EnterpriseID). It confirms the install, refers to the secret only descriptively (never echoing it), confirms the live datalake table with list_data_tables because the template has no index parameter, and states the 15–30 minute first-event window — noting Box's admin_logs feed can trail real time by design — before any row-count check.",
+      "files": [],
+      "expectations": [
+        "The skill does not re-run the vendor-side walkthrough when the app is already authorized and the values are provided",
+        "It checks for an existing Box connector before installing and asks before creating a duplicate",
+        "create_connector includes every template parameter, instance id 'boxcom' rather than 'default'",
+        "The client secret is not repeated back in any confirmation or summary",
+        "It confirms the datalake table via list_data_tables instead of guessing an index name",
+        "It sets an honest first-event latency expectation before verifying row counts"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Box from the onboarding menu. The Fluency MCP is connected; the router's list_connectors call shows no Box connector. The operator has a Box admin on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it guides the Platform App creation and Admin Console authorization and performs create_connector itself WITHOUT chaining into add-connector and without re-collecting context the router already has. On return it hands the router the connector instance id and the datalake table name — confirmed live with list_data_tables, since the BoxCom template defines no index parameter — keeps the client secret out of the summary, and tells the router to expect first events within roughly 15–30 minutes, with Box's admin_logs feed possibly trailing further because it favors completeness over latency — mark the application pending inside that window rather than failed.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id and a live-confirmed datalake table name (via list_data_tables) for the router's verification step",
+        "The client secret does not appear in the hand-back summary",
+        "It tells the router to mark the source pending within the first-event window rather than failed, accounting for the admin_logs feed's latency"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "skill_name": "setup-bitdefender-securitytelemetry-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want Bitdefender GravityZone security telemetry flowing into Ingext. I'm a GravityZone admin with Control Center open — do whatever you can yourself and walk me through the rest.",
+      "expected_output": "The skill first confirms the variant (Security Telemetry, not the Event Push API / BitdefenderEP), then follows the inverted flow: it installs the Fluency side FIRST — list_connector_templates for the live BitdefenderST schema, list_connectors for existing instances, create_connector with application BitdefenderST, instance 'bitdefenderst' (never 'default') and no input parameters — then captures the platform-generated HEC Server URL and HEC Token from the connector output and displays them exactly once, labeled as credentials. It then guides the admin through the GravityZone policy: General → Security Telemetry, enable the option, paste the HEC URL and token under SIEM Connection Settings, note the HTTPS/TLS 1.2+ requirement, save and assign the policy. It closes by stating that zero datalake rows are expected until endpoints sync the policy and start streaming, and that the EDR-capable license and BEST agents with the EDR sensor are prerequisites.",
+      "files": [],
+      "expectations": [
+        "The skill asks about or confirms the ST vs EP variant before proceeding",
+        "It installs the connector FIRST and captures the HEC URL and token from the template output — the inverted flow",
+        "The HEC URL and token are displayed exactly once for the policy configuration and never repeated in summaries",
+        "It guides the verified GravityZone path General → Security Telemetry with SIEM Connection Settings, including the TLS 1.2+ requirement",
+        "Instance id is derived from the template name and never 'default'",
+        "It states that zero rows are expected until the vendor side streams, marking the stage pending rather than failed"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our customer's GravityZone admin isn't available right now, but we want the Fluency side ready and a clear set of instructions for them to finish the Bitdefender telemetry hookup later.",
+      "expected_output": "The skill installs the connector now (the Fluency side is always the agent's job with the MCP connected): live template fetch, duplicate check, create_connector for BitdefenderST with instance 'bitdefenderst', then captures the HEC URL and token. It hands the operator a complete vendor-side runbook for the absent admin — Control Center → Policies → edit the policy applied to the target endpoints → General → Security Telemetry → enable → paste the HEC Server URL and Token under SIEM Connection Settings → HTTPS/TLS 1.2+ → save and assign — with the HEC values included once and clearly marked as secrets to handle carefully. It notes the prerequisites (EDR-capable license, BEST agent with EDR sensor, endpoint egress to the HEC URL) and offers to verify ingestion once the admin completes the policy change, stating zero rows are expected until then.",
+      "files": [],
+      "expectations": [
+        "The skill still performs the Fluency-side install immediately rather than deferring everything",
+        "The runbook covers the policy path, enabling the option, the SIEM Connection Settings fields, the TLS requirement, and policy assignment",
+        "The HEC values appear once in the handed-over runbook, explicitly marked as credentials, and nowhere else",
+        "It states the EDR license and BEST/EDR sensor prerequisites and the endpoint egress requirement",
+        "It sets the zero-rows-expected / pending expectation and offers to resume verification later"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "We already created the Bitdefender SecurityTelemetry connector in Fluency last week but never finished the GravityZone side, and we don't have the HEC values anymore. Get us over the line.",
+      "expected_output": "The skill recognizes the connector-installed-first situation and does NOT create a duplicate instance: it finds the existing instance via list_connectors, retrieves the HEC Server URL and HEC Token from the connector's output (get_connector, or the connector's page in the Fluency UI if the MCP response lacks them), and re-displays them once as credentials. It then guides the GravityZone policy configuration — General → Security Telemetry, SIEM Connection Settings with the HEC URL/token, TLS 1.2+, save and assign — and verifies afterwards: list_data_tables to confirm the live table name (the template has no index parameter), then a row count via ingext-kql, with the honest note that rows appear only after endpoints sync the policy and generate telemetry.",
+      "files": [],
+      "expectations": [
+        "The skill reuses the existing connector instance instead of creating a duplicate listener",
+        "It retrieves the HEC values from the existing instance's output rather than asking the user to find them unaided",
+        "The retrieved HEC values are treated as a fresh one-time display, not echoed into summaries",
+        "It completes the vendor-side guidance with the verified policy path and TLS requirement",
+        "Verification confirms the live table name with list_data_tables before any KQL row count, with pending semantics until endpoints stream"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Bitdefender from the onboarding menu and confirmed they mean GravityZone Security Telemetry, not Event Push. The Fluency MCP is connected; the router's list_connectors call shows no Bitdefender connector. The GravityZone admin will do the policy change after this call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it creates the BitdefenderST connector itself WITHOUT chaining into add-connector and without re-collecting context the router already has (including the variant question, already answered). It captures the HEC URL and token, hands them to the operator once for the admin's later policy change, and returns to the router: the instance id, the instruction to confirm the live datalake table with list_data_tables, and — critically — that this stage must be marked ⏳ pending with a vendor-side follow-up ('GravityZone policy → General → Security Telemetry must point at the connector's HEC endpoint'), NOT ❌ failed, because zero rows are expected until endpoints stream. The HEC values do not appear in the hand-back summary.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-ask the ST vs EP variant question the router already resolved",
+        "It hands back the instance id and the confirm-live datalake table instruction",
+        "It instructs the router to mark the stage pending (vendor-side follow-up) rather than failed, because zero rows are expected",
+        "The HEC URL and token do not appear in the hand-back summary"
+      ]
+    }
+  ]
+}

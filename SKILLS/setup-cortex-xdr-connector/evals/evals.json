@@ -1,0 +1,58 @@
+{
+  "skill_name": "setup-cortex-xdr-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want our Cortex XDR data in Ingext. I'm a Cortex XDR admin and I have the console open right now — walk me through whatever you need, then hook it up on the Fluency side yourself.",
+      "expected_output": "The skill takes the guided + agent-installs path: it has the admin pick a least-privilege read role for the key (recommending the predefined Viewer role and telling them to confirm its coverage in the console), walks them through Settings → Configurations → Integrations → API Keys → + New Key with the Advanced security level (explaining Advanced hashes the key with a nonce and timestamp to prevent replay, and that the connector's authMode must match the level chosen), warns the key value is shown once, and collects the Key ID from the ID column plus the https://api-{fqdn} API URL via Copy API URL — flagging that the console URL is not the API URL. It then installs the connector itself via the Fluency MCP: fetches the live CortexXDR template with list_connector_templates, checks list_connectors for an existing instance, and calls create_connector with apiUrl, apiKeyId, apiKey, authMode and the defaulted datalake/index parameters, instance id 'cortexxdr' (never 'default'). It verifies with list_connectors and sets the 15–30 minute first-event expectation.",
+      "files": [],
+      "expectations": [
+        "The skill guides the Cortex console steps but performs the Fluency-side install itself rather than handing over instructions",
+        "It recommends a least-privilege read role for the key (the predefined Viewer role) and explains the key is only as powerful as its role",
+        "It explains the Advanced vs Standard security levels and that the connector's authMode must match the key's security level",
+        "It warns the key value is shown once and collects the Key ID from the ID column and the https://api-{fqdn} URL, flagging the console-URL gotcha",
+        "It fetches the live template schema and includes every template parameter in create_connector, with instance id derived from the template name and never 'default'",
+        "It never echoes the API key back in summaries or output"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our customer's Cortex XDR admin is out this week, but we want everything ready for them to connect Cortex XDR to Fluency. What exactly do they need to do?",
+      "expected_output": "The skill selects the runbook-only path: it prints the complete Cortex-side procedure for the absent admin — choose a least-privilege read role (Viewer suggested, confirm coverage in the console), create the key under Settings → Configurations → Integrations → API Keys with the Advanced security level, copy the key value immediately because it is shown once, note the Key ID from the ID column, and copy the tenant API URL (https://api-{fqdn}) via Copy API URL rather than the console URL — and lists exactly what to send back: the API URL, the Key ID, the security level chosen, and the key itself handled as a secret. It offers to run the Fluency-side connector install as soon as those values return, and does not attempt to create anything now.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes the admin is absent and produces a complete vendor-side runbook instead of trying to act",
+        "The runbook covers role choice, security level, the copy-once warning, the Key ID location, and the api- URL gotcha",
+        "It clearly states the values to report back (API URL, Key ID, security level, API key) and that the key is a credential",
+        "It defers the Fluency-side install until the values arrive and offers to perform it then"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add Cortex XDR to Ingext. API URL is https://api-acme.xdr.us.paloaltonetworks.com, key ID is 14, and the API key is a1b2...z9 — it's an Advanced key. Go.",
+      "expected_output": "Since all values are already in hand, the skill skips the Cortex-side walkthrough and goes straight to the install: list_connector_templates for the live CortexXDR schema, list_connectors to check for an existing instance (asking before creating a second one if present), then create_connector with application CortexXDR, instance 'cortexxdr', displayName 'PaloAlto Cortex XDR', and the full parameter set — apiUrl, apiKeyId, apiKey, authMode 'advanced' matching the stated key level, plus the defaulted datalake/index. It confirms the install, refers to the key only descriptively (never echoing it), reports the datalake index Cortex for verification, and states the 15–30 minute first-event window before any row-count check.",
+      "files": [],
+      "expectations": [
+        "The skill does not re-run the vendor-side walkthrough when the API URL, Key ID, and key are already provided",
+        "It sets authMode to match the stated security level of the key",
+        "It checks for an existing Cortex XDR connector before installing and asks before creating a duplicate",
+        "create_connector includes every template parameter with defaults applied, instance id 'cortexxdr' rather than 'default'",
+        "The API key is not repeated back in any confirmation or summary",
+        "It sets an honest first-event latency expectation before verifying row counts"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Cortex XDR from the onboarding menu. The Fluency MCP is connected; the router's list_connectors call shows no Cortex XDR connector. The operator has a Cortex XDR admin on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it guides the API-key creation and performs create_connector itself WITHOUT chaining into add-connector and without re-collecting context the router already has. On return it hands the router the connector instance id and the Cortex datalake index (confirming the live table name with list_data_tables before any query), keeps the API key out of the summary, and tells the router to expect first events within roughly 15–30 minutes — mark the application pending inside that window rather than failed, noting that a tenant with no fresh detection activity may genuinely have nothing to pull.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id and datalake index for the router's verification step",
+        "The API key does not appear in the hand-back summary",
+        "It tells the router to mark the source pending within the 15–30 minute first-event window rather than failed"
+      ]
+    }
+  ]
+}

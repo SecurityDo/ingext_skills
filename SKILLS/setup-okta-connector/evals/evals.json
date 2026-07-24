@@ -1,0 +1,57 @@
+{
+  "skill_name": "setup-okta-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want our Okta logs in Ingext. I'm an Okta super admin and I'm at the console now — walk me through whatever you need, then hook it up on the Fluency side yourself.",
+      "expected_output": "The skill takes the guided + agent-installs path: it recommends a dedicated service account with the Read-Only Administrator role as the token owner (explaining that Okta API tokens inherit the creator's permissions and die with the account), walks the admin through Security → API → Tokens → Create token, warns the value is shown once, and collects the org domain while flagging the '-admin' console-domain gotcha. It then installs the connector itself via the Fluency MCP: fetches the live Okta template with list_connector_templates, checks list_connectors for an existing instance, and calls create_connector with domain and token plus the defaulted datalake/index parameters, instance id 'okta' (never 'default'). It verifies with list_connectors and sets the 15–30 minute first-event expectation.",
+      "files": [],
+      "expectations": [
+        "The skill guides the Okta portal steps but performs the Fluency-side install itself rather than handing over instructions",
+        "It recommends a least-privilege token owner (dedicated service account, Read-Only Administrator) and explains that the token inherits the owner's permissions",
+        "It warns the token value is shown once and that tokens expire after 30 days of non-use",
+        "It collects the bare org domain and flags that the -admin console domain must not be used",
+        "It fetches the live template schema and includes every template parameter in create_connector, with instance id derived from the template name and never 'default'",
+        "It never echoes the API token back in summaries or output"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our customer's Okta admin isn't available today, but we want to get everything ready for them to connect Okta to Fluency. What do they need to do?",
+      "expected_output": "The skill selects the runbook-only path: it prints the complete Okta-side procedure for the absent admin — create/choose a least-privilege token owner (service account with Read-Only Administrator suggested), confirm that account can view Reports → System Log, create a token named ingext-okta under Security → API → Tokens, copy the value immediately, and note the org domain without the -admin part — and lists exactly what to send back: the domain and the token, with the token handled as a secret. It offers to run the Fluency-side connector install as soon as those two values return, and does not attempt to create anything now.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes the admin is absent and produces a complete vendor-side runbook instead of trying to act",
+        "The runbook covers token-owner choice, System Log visibility check, token creation path, the copy-once warning, and the org domain",
+        "It clearly states the two values to report back (domain, token) and that the token is a credential",
+        "It defers the Fluency-side install until the values arrive and offers to perform it then"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add Okta to Ingext. Domain is acme.okta.com and the API token is 00abc...xyz — go.",
+      "expected_output": "Since both values are already in hand, the skill skips the Okta-side walkthrough and goes straight to the install: list_connector_templates for the live Okta schema, list_connectors to check for an existing instance (asking before creating a second one if present), then create_connector with application Okta, instance 'okta', displayName 'Okta Events', and the full parameter set including the defaulted datalake/index. It confirms the install, refers to the token only descriptively (never echoing it), reports the datalake index Okta for verification, and states the 15–30 minute first-event window before any row-count check.",
+      "files": [],
+      "expectations": [
+        "The skill does not re-run the vendor-side walkthrough when domain and token are already provided",
+        "It checks for an existing Okta connector before installing and asks before creating a duplicate",
+        "create_connector includes every template parameter with defaults applied, instance id 'okta' rather than 'default'",
+        "The token is not repeated back in any confirmation or summary",
+        "It sets an honest first-event latency expectation before verifying row counts"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Okta from the onboarding menu. The Fluency MCP is connected; the router's list_connectors call shows no Okta connector. The operator has an Okta admin on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it guides the token creation and performs create_connector itself WITHOUT chaining into add-connector and without re-collecting context the router already has. On return it hands the router the connector instance id and the Okta datalake index (confirming the live table name with list_data_tables before any query), keeps the API token out of the summary, and tells the router to expect first events within roughly 15–30 minutes — mark the application pending inside that window rather than failed.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id and datalake index for the router's verification step",
+        "The API token does not appear in the hand-back summary",
+        "It tells the router to mark the source pending within the 15–30 minute first-event window rather than failed"
+      ]
+    }
+  ]
+}

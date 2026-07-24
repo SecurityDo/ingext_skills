@@ -57,6 +57,23 @@ Alternatively, install a specific skill by name:
 | [create-ingext-audit-app](#create-ingext-audit-app) | Guide an Entra admin to register the `ingext-audit` app (Graph + O365 audit import) |
 | [create-ingext-audit-app-azcli](#create-ingext-audit-app-azcli) | az CLI variant of `create-ingext-audit-app`: cowork can run it directly when the operator is the tenant's Global Admin |
 | [create-ingext-defender-app](#create-ingext-defender-app) | Guide an Entra admin to register the `ingext-defender` app (Graph Security incidents + alerts) |
+| [automatic-create-ingext-azureaudit-app](#automatic-create-ingext-azureaudit-app) | Automatic variant: registers the `ingext-azureaudit` Entra app for the operator (az CLI, pwsh fallback) |
+| [automatic-create-ingext-defender-app](#automatic-create-ingext-defender-app) | Automatic variant: registers the `ingext-defender` Entra app for the operator (az CLI, pwsh fallback) |
+| [automatic-create-ingext-ms-eventhub](#automatic-create-ingext-ms-eventhub) | Provision Azure Event Hubs (namespace, hub, Listen policy) and install the connector — self-contained |
+| [automatic-amazon-guardduty](#automatic-amazon-guardduty) | GuardDuty findings: creates the least-privilege IAM user + key (aws CLI script) and installs the connector |
+| [setup-okta-connector](#setup-okta-connector) | Okta System Log import: guided API-token creation + connector install |
+| [setup-duo-connector](#setup-duo-connector) | Cisco Duo Admin API: guided Admin API application + connector install |
+| [setup-bitwarden-connector](#setup-bitwarden-connector) | Bitwarden organization event logs: guided org API key + connector install |
+| [setup-box-connector](#setup-box-connector) | Box enterprise events: guided client-credentials platform app + connector install |
+| [setup-sophos-central-connector](#setup-sophos-central-connector) | Sophos Central (EDR): guided API credential + connector install |
+| [setup-sentinelone-connector](#setup-sentinelone-connector) | SentinelOne: guided service-user API token + connector install |
+| [setup-trendmicro-visionone-connector](#setup-trendmicro-visionone-connector) | Trend Vision One: guided API key (regional base URL) + connector install |
+| [setup-mimecast-connector](#setup-mimecast-connector) | Mimecast Cloud Gateway (API 2.0): guided app registration + connector install |
+| [setup-proofpoint-tap-connector](#setup-proofpoint-tap-connector) | Proofpoint TAP: guided service credential + connector install |
+| [setup-cortex-xdr-connector](#setup-cortex-xdr-connector) | Palo Alto Cortex XDR: guided API key (Advanced auth) + connector install |
+| [setup-salesforce-event-monitoring-connector](#setup-salesforce-event-monitoring-connector) | Salesforce Event Monitoring (Shield): guided client-credentials app + connector install |
+| [setup-bitdefender-securitytelemetry-connector](#setup-bitdefender-securitytelemetry-connector) | Bitdefender GravityZone Security Telemetry → platform-generated HEC intake |
+| [setup-hec-passthrough](#setup-hec-passthrough) | Generic Splunk-HEC intake for products with no dedicated template |
 | [html-to-pdf](#html-to-pdf) | Convert an HTML file to a PDF |
 
 ---
@@ -269,6 +286,204 @@ Fluency's hosted OAuth consent flow use **add-connector**.
 - "register the Entra app for Microsoft Defender event export"
 - "set up the Azure app so Ingext can pull Defender incidents and alerts"
 - "walk me through the portal steps to make the ingext-defender app"
+
+### automatic-create-ingext-azureaudit-app
+
+The **automatic** variant of `create-ingext-audit-app`: instead of only guiding an admin, cowork
+**runs the setup itself** (Azure CLI script preferred, PowerShell 7 fallback) when the operator is
+the target tenant's Global Admin (Mode A), with a guide-a-third-party-admin fallback (Mode B).
+Registers the `ingext-azureaudit` app, grants the nine Application permissions with admin consent,
+and hands back `tenantId` / `clientId` / `clientSecret` for the install stage.
+
+**Try:**
+- "create the ingext-azureaudit app for me — I'm the Global Admin"
+- "run the audit-log app setup automatically"
+
+### automatic-create-ingext-defender-app
+
+The **automatic** variant of `create-ingext-defender-app`: cowork runs the app registration
+(az CLI, pwsh fallback) for the operator — two Graph Security permissions, admin consent, client
+secret — and hands back the three fields for the install stage. Mode A (operator is Global Admin)
+and Mode B (guide a third-party admin).
+
+**Try:**
+- "create the ingext-defender app for me"
+- "I'm the Global Admin, run the Defender export app setup"
+
+### automatic-create-ingext-ms-eventhub
+
+Integrates Ingext with **Azure Event Hubs**, self-contained: provisions the namespace, event hub,
+and Listen-only SAS policy (az CLI or pwsh, run for the operator — the namespace is billable and
+the scripts stop for confirmation), then creates the `AzureEventHubs` connector itself with the
+resulting connection string. No `add-connector` follow-on.
+
+**Try:**
+- "connect Ingext to Azure Event Hubs"
+- "set up an event hub for Fluency and hook up the connector"
+
+---
+
+## Connector setup (per-application)
+
+Dedicated setup skills, one per application, that pair **cited vendor-side guidance** (create the
+API credential, configure the export) with an **automatic Fluency-side install** — each ends in
+`create_connector` itself, so `customer-onboarding` routes to them directly with no
+`add-connector` follow-on. Where the vendor side is CLI-drivable, the skill runs it for the
+operator (`automatic-*`); where it is portal-only, the skill guides the clicks and installs the
+rest. All keep credentials out of summaries and verify ingestion honestly (row counts, real
+first-event latency).
+
+### automatic-amazon-guardduty
+
+Imports **Amazon GuardDuty** findings. Mode A: the operator signs the aws CLI in and cowork runs
+the bundled idempotent script — least-privilege IAM user (`ingext-guardduty`) with the AWS managed
+`AmazonGuardDutyReadOnlyAccess` policy, plus an access key — then installs the `AmazonGuardDuty`
+connector with the key pair and region list. Mode B guides a third-party admin. GuardDuty must
+already be enabled (the skill never enables it — that starts billing); quiet accounts can use
+GuardDuty **sample findings** as the smoke test.
+
+**Try:**
+- "import GuardDuty findings into Ingext"
+- "create the ingext guardduty IAM user and hook up the connector"
+
+### setup-okta-connector
+
+**Okta System Log** import. Guides creating an API token (Security → API → Tokens) owned by a
+least-privilege service account (Read-Only Administrator), flags the 30-day inactivity expiry and
+the `-admin`-domain gotcha, then installs the `Okta` connector.
+
+**Try:**
+- "add Okta to Ingext"
+- "import our Okta system log into Fluency"
+
+### setup-duo-connector
+
+**Cisco Duo** logs via the Admin API. Guides a Duo Owner through protecting the Admin API
+application with the "Grant read log" permission, collects the integration key / secret key / API
+hostname, then installs the `Duo` connector.
+
+**Try:**
+- "connect Cisco Duo to Ingext"
+- "import Duo authentication logs"
+
+### setup-bitwarden-connector
+
+**Bitwarden organization event logs**. Guides an organization Owner (Teams/Enterprise) to the
+org API key, handles the US/EU region choice, then installs the `Bitwarden` connector.
+Self-hosted deployments are referred to support rather than improvised.
+
+**Try:**
+- "get Bitwarden event logs into Ingext"
+- "connect our Bitwarden organization"
+
+### setup-box-connector
+
+**Box enterprise events** (`admin_logs`). Guides creating a Box platform app with the Client
+Credentials Grant and the verified event-stream scope, the Admin-Console authorization, and the
+Enterprise ID, then installs the `BoxCom` connector.
+
+**Try:**
+- "import Box admin logs into Fluency"
+- "connect box.com enterprise events"
+
+### setup-sophos-central-connector
+
+**Sophos Central** (EDR / Intercept X). Guides a Sophos Central Super Admin through creating a
+Service Principal Read-Only API credential, then installs the `SophosEDR` connector. Firewall/UTM
+syslog are different connectors — route those to `add-connector`.
+
+**Try:**
+- "connect Sophos Central to Ingext"
+- "import Sophos EDR events"
+
+### setup-sentinelone-connector
+
+**SentinelOne** activity and threats. Guides creating a least-privilege service user + API token
+in the S1 console (with honest handling of the login-gated docs and token-expiry variance —
+calendar the expiry the console shows), then installs the `SentinelOneAPI` connector.
+
+**Try:**
+- "add SentinelOne to Ingext"
+- "import S1 threats into the datalake"
+
+### setup-trendmicro-visionone-connector
+
+**Trend Vision One**. Guides a Master Administrator through Administration → API Keys (start at
+the read-only Auditor role, escalate only on 403s), picks the correct regional base URL from the
+verified table, then installs the `TrendMicroVisionOne` connector.
+
+**Try:**
+- "connect Trend Vision One"
+- "import Trend Micro Vision One events into Fluency"
+
+### setup-mimecast-connector
+
+**Mimecast Cloud Gateway** SIEM events via **API 2.0**. Guides registering an API 2.0 application
+(Integrations → API and Platform Integrations) for the client ID/secret, then installs the
+`MimecastCG` connector. Legacy API 1.0 credentials go through `add-connector` instead.
+
+**Try:**
+- "connect Mimecast to Ingext"
+- "import Mimecast email security events"
+
+### setup-proofpoint-tap-connector
+
+**Proofpoint TAP**. Guides creating a service credential in the TAP Dashboard
+(Settings → Connected Applications), then installs the `ProofpointTAP` connector. TAP events are
+threat-driven — a quiet org legitimately shows little. Proofpoint Essentials is a different
+product; route it to `add-connector`.
+
+**Try:**
+- "connect Proofpoint TAP"
+- "import TAP threat events into Ingext"
+
+### setup-cortex-xdr-connector
+
+**Palo Alto Cortex XDR** incidents/alerts. Guides creating an API key
+(Settings → Configurations → Integrations → API Keys) — the key's security level must match the
+connector's `authMode` (default **Advanced**, the nonce+timestamp anti-replay scheme) — collects
+the Key ID and the `https://api-{fqdn}` API URL, then installs the `CortexXDR` connector.
+Firewall syslog is a different connector; route it to `add-connector`.
+
+**Try:**
+- "connect Cortex XDR to Ingext"
+- "import Palo Alto Cortex incidents"
+
+### setup-salesforce-event-monitoring-connector
+
+**Salesforce Event Monitoring** (EventLogFile). Hard prerequisite stated up front: the Event
+Monitoring add-on license (standalone or Salesforce Shield). Guides setting up an External
+Client App / Connected App with the OAuth client-credentials flow (run-as user needs
+"API Enabled" + "View Event Log Files"), collects the My Domain base URL + consumer key/secret,
+then installs the `SalesforceEM` connector. Honest latency: hourly EventLogFiles lag ~3–6 hours —
+zero rows right after install is expected.
+
+**Try:**
+- "import Salesforce event monitoring logs into Ingext"
+- "connect our Salesforce Shield event logs"
+
+### setup-bitdefender-securitytelemetry-connector
+
+**Bitdefender GravityZone Security Telemetry**. Inverted flow: installs the `BitdefenderST`
+connector first (the platform generates a Splunk-compatible HEC url + token), then guides the
+GravityZone admin to point policy → Security Telemetry at those values. Requires an EDR-capable
+license; zero rows are expected until the policy applies and endpoints stream. The Event Push
+(EP) variant routes to `add-connector`.
+
+**Try:**
+- "stream GravityZone security telemetry to Ingext"
+- "set up Bitdefender Security Telemetry"
+
+### setup-hec-passthrough
+
+Generic **Splunk-HEC-compatible intake** for any product with a Splunk/HEC output but no
+dedicated template (checked against the live template list first). Installs `HecPassthrough`
+under a source-derived datalake index, hands the generated HEC url + token to the operator, and
+guides the source-side pointing plus a smoke-test curl.
+
+**Try:**
+- "our appliance only speaks Splunk HEC — get its logs into Ingext"
+- "generic HEC endpoint for Fluency"
 
 ---
 

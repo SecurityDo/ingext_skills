@@ -1,0 +1,57 @@
+{
+  "skill_name": "setup-sophos-central-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want our Sophos Central EDR events in Ingext. I'm a Sophos Central Super Admin and I'm in the console now — walk me through whatever you need, then hook it up on the Fluency side yourself.",
+      "expected_output": "The skill takes the guided + agent-installs path: it confirms the admin is in the customer's own Sophos Central Admin console (not Partner/Enterprise), walks them through Global Settings → Access Control → API Credentials → Add Credential, has them pick the Service Principal Read-Only role for least privilege, and warns that the Client Secret is shown only once. It then installs the connector itself via the Fluency MCP: fetches the live SophosEDR template with list_connector_templates, checks list_connectors for an existing instance, and calls create_connector with clientID and clientSecret, instance id 'sophosedr' (never 'default'). It verifies with list_connectors, notes the datalake table must be confirmed with list_data_tables since the template has no index parameter, and sets the 15–30 minute first-event expectation.",
+      "files": [],
+      "expectations": [
+        "The skill guides the Sophos portal steps but performs the Fluency-side install itself rather than handing over instructions",
+        "It directs the credential to the customer's own Sophos Central Admin console and flags that Partner/Enterprise console credentials are differently scoped",
+        "It recommends the Service Principal Read-Only role as the least-privilege choice from the Add Credential dialog",
+        "It warns the Client Secret is shown once and that expired credentials disappear silently with no alert",
+        "It fetches the live template schema and includes every template parameter in create_connector, with instance id derived from the template name and never 'default'",
+        "It never echoes the Client Secret back in summaries or output"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our customer's Sophos admin is out this week, but we want everything ready for them to connect Sophos Central to Fluency. What do they need to do?",
+      "expected_output": "The skill selects the runbook-only path: it prints the complete Sophos-side procedure for the absent admin — sign in to the customer's own Sophos Central Admin console as a Super Admin (only Super Admins can manage API credentials), go to Global Settings → Access Control → API Credentials, Add Credential named ingext-sophos with the Service Principal Read-Only role, and copy the Client ID and the once-shown Client Secret — and lists exactly what to send back: the Client ID and Client Secret, with the secret handled as a credential. It offers to run the Fluency-side connector install as soon as those two values return, and does not attempt to create anything now.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes the admin is absent and produces a complete vendor-side runbook instead of trying to act",
+        "The runbook covers the Super Admin requirement, the correct (customer Admin) console, the credential path, the Read-Only role choice, and the copy-once warning",
+        "It clearly states the two values to report back (Client ID, Client Secret) and that the secret is a credential",
+        "It defers the Fluency-side install until the values arrive and offers to perform it then"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add Sophos Central to Ingext. Client ID is 1f2e3d... and the client secret is 9a8b7c... — go.",
+      "expected_output": "Since both values are already in hand, the skill skips the Sophos-side walkthrough and goes straight to the install: list_connector_templates for the live SophosEDR schema, list_connectors to check for an existing instance (asking before creating a second one if present), then create_connector with application SophosEDR, instance 'sophosedr', displayName 'Sophos EDR', and the full live parameter set. It confirms the install, refers to the secret only descriptively (never echoing it), notes the datalake table must be confirmed with list_data_tables because the template carries no index default, and states the 15–30 minute first-event window before any row-count check.",
+      "files": [],
+      "expectations": [
+        "The skill does not re-run the vendor-side walkthrough when both credential values are already provided",
+        "It checks for an existing Sophos EDR connector before installing and asks before creating a duplicate",
+        "create_connector includes every live template parameter, instance id 'sophosedr' rather than 'default'",
+        "The Client Secret is not repeated back in any confirmation or summary",
+        "It sets an honest first-event latency expectation and confirms the live datalake table name before verifying row counts"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Sophos Central from the onboarding menu. The Fluency MCP is connected; the router's list_connectors call shows no Sophos connector. The operator has a Sophos Central Super Admin on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it guides the API-credential creation and performs create_connector itself WITHOUT chaining into add-connector and without re-collecting context the router already has. On return it hands the router the connector instance id and the datalake table name (confirmed live with list_data_tables, since the SophosEDR template has no index parameter), keeps the Client Secret out of the summary, and tells the router to expect first events within roughly 15–30 minutes — noting that a quiet endpoint fleet may genuinely produce few EDR events, so mark the application pending inside that window rather than failed.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id and the live-confirmed datalake table for the router's verification step",
+        "The Client Secret does not appear in the hand-back summary",
+        "It tells the router to mark the source pending within the 15–30 minute first-event window rather than failed, with the quiet-fleet caveat"
+      ]
+    }
+  ]
+}

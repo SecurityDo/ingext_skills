@@ -1,0 +1,58 @@
+{
+  "skill_name": "setup-mimecast-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want our Mimecast email security events in Ingext. I'm a Mimecast admin and I'm in the Administration Console now — walk me through whatever you need, then hook it up on the Fluency side yourself.",
+      "expected_output": "The skill takes the guided + agent-installs path: it walks the admin to Integrations → API and Platform Integrations (or the Integrations Hub API 2.0 tile on newer consoles), has them create an API 2.0 application named ingext-mimecast with the product selection covering Cloud Gateway threat/SIEM events, and warns that the client ID and client secret are shown once in a popup and the secret cannot be retrieved later. It notes the several-minute activation delay for a fresh application. It then installs the connector itself via the Fluency MCP: fetches the live MimecastCG template with list_connector_templates (not the legacy Mimecast template), checks list_connectors for an existing instance, and calls create_connector with clientId and clientSecret plus the defaulted datalake/index parameters, instance id 'mimecastcg' (never 'default'). It verifies with list_connectors and sets the 15–30 minute first-event expectation.",
+      "files": [],
+      "expectations": [
+        "The skill guides the Mimecast portal steps but performs the Fluency-side install itself rather than handing over instructions",
+        "It directs the admin to Integrations → API and Platform Integrations or the Integrations Hub, not an invented menu path",
+        "It warns the client secret is shown once and cannot be retrieved later, with Reset Keys → Regenerate as the recovery",
+        "It mentions the several-minute activation delay before a new API 2.0 application works",
+        "It installs the MimecastCG template (not the legacy Mimecast API 1.0 template), fetching the live schema and including every template parameter, instance id derived from the template name and never 'default'",
+        "It never echoes the client secret back in summaries or output"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our customer's Mimecast admin is out this week, but we want everything ready for them to connect Mimecast to Fluency. What exactly do they need to do?",
+      "expected_output": "The skill selects the runbook-only path: it prints the complete Mimecast-side procedure for the absent admin — sign in to the Administration Console, open Integrations → API and Platform Integrations (or Integrations Hub → API 2.0), create an API 2.0 application named ingext-mimecast with the Cloud Gateway threat/SIEM events product selected, copy the client ID and client secret immediately from the popup because the secret is never shown again, and expect a few minutes of activation delay. It lists exactly what to send back — the client ID and the client secret, with the secret handled as a credential — and offers to run the Fluency-side connector install as soon as those values return, creating nothing now.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes the admin is absent and produces a complete vendor-side runbook instead of trying to act",
+        "The runbook covers the console path, application creation, product selection, the copy-once warning, and the activation delay",
+        "It clearly states the two values to report back (client ID, client secret) and that the secret is a credential",
+        "It defers the Fluency-side install until the values arrive and offers to perform it then"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add Mimecast to Ingext. We already registered an API 2.0 app — client ID is a1b2c3 and the client secret is s3cr3t...xyz — go.",
+      "expected_output": "Since both values are already in hand, the skill skips the Mimecast-side walkthrough and goes straight to the install: list_connector_templates for the live MimecastCG schema (explicitly not the legacy Mimecast template), list_connectors to check for an existing instance (asking before creating a second one if present), then create_connector with application MimecastCG, instance 'mimecastcg', displayName 'Mimecast CG Events', and the full parameter set including the defaulted datalake/index. It confirms the install, refers to the secret only descriptively (never echoing it), reports the datalake index Mimecast for verification, and states the 15–30 minute first-event window — noting a brand-new API application may need a few minutes to activate — before any row-count check.",
+      "files": [],
+      "expectations": [
+        "The skill does not re-run the vendor-side walkthrough when client ID and secret are already provided",
+        "It selects the MimecastCG template, not the legacy API 1.0 Mimecast template",
+        "It checks for an existing Mimecast connector before installing and asks before creating a duplicate",
+        "create_connector includes every template parameter with defaults applied, instance id 'mimecastcg' rather than 'default'",
+        "The client secret is not repeated back in any confirmation or summary",
+        "It sets an honest first-event latency expectation before verifying row counts"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Mimecast from the onboarding menu. The Fluency MCP is connected; the router's list_connectors call shows no Mimecast connector. The operator has a Mimecast admin on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it guides the API 2.0 application registration and performs create_connector itself WITHOUT chaining into add-connector and without re-collecting context the router already has. On return it hands the router the connector instance id and the Mimecast datalake index (confirming the live table name with list_data_tables before any query), keeps the client secret out of the summary, and tells the router to expect first events within roughly 15–30 minutes — mark the application pending inside that window rather than failed.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id and datalake index for the router's verification step",
+        "The client secret does not appear in the hand-back summary",
+        "It tells the router to mark the source pending within the 15–30 minute first-event window rather than failed"
+      ]
+    }
+  ]
+}

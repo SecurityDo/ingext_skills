@@ -1,0 +1,57 @@
+{
+  "skill_name": "setup-hec-passthrough",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Our pfSense box has a Splunk HTTP Event Collector output option but I don't see a pfSense connector in Fluency. Get its logs into Ingext — do as much as you can yourself.",
+      "expected_output": "The skill first confirms via a live list_connector_templates call that no dedicated pfSense template exists (Step 0), then takes the agent-installs path: it asks what will be sending and recommends overriding the 'default' index with a source-derived name like PfSense (explaining table hygiene and later querying), installs the HecPassthrough connector via create_connector with instance 'hecpassthrough' (never 'default') and a displayName naming the source, retrieves the generated HEC url and token from the connector output, hands both to the operator once, and guides pointing pfSense's Splunk output at the returned url verbatim with the token, offering the documented smoke-test curl. It notes zero rows is expected until pfSense actually sends.",
+      "files": [],
+      "expectations": [
+        "The skill checks the live template list first and only proceeds because no dedicated template exists for the product",
+        "It recommends a source-derived datalake index instead of the 'default' default, with the table-hygiene rationale",
+        "It installs the connector itself (create_connector) and captures the generated HEC url and token from the template's output block",
+        "It instructs using the returned url exactly as returned, without inventing path segments",
+        "The token is handed over once and never repeated in summaries or output JSON",
+        "It states zero rows is the expected state until the source pushes"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We have an appliance that can only export to a Splunk HEC endpoint. The person who administers it is out this week — prepare everything they'll need to finish the hookup later.",
+      "expected_output": "The skill installs the Fluency side now (connector with a meaningful source-derived index) since that half needs no vendor admin, captures the HEC url and token, and produces a runbook for the absent appliance admin: paste the returned url verbatim into the appliance's Splunk/HEC output settings (splitting host/port/path only if the product's form requires it, adding nothing), paste the token where the product asks for the HEC/Splunk token, and optionally run the smoke-test curl with the Authorization: Splunk header to prove the endpoint independently. It treats the token as a credential to be delivered to that admin through an appropriate channel, keeps it out of the summary, and notes the datalake will show zero rows until the appliance starts sending — expected, not a failure.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes the Fluency-side install can happen now and the source-side config is a runbook for the absent admin",
+        "The runbook uses the returned url verbatim and the documented Authorization: Splunk token header",
+        "It includes the smoke-test curl as an independent endpoint check",
+        "The token is delivered for the admin's use but never echoed into the summary",
+        "Zero rows before the source is configured is described as expected"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Set up a generic HEC passthrough so we can send our Bitdefender GravityZone telemetry into Ingext.",
+      "expected_output": "The skill's Step 0 catches that this product is NOT a passthrough case: the platform has a dedicated BitdefenderST template ('Bitdefender SecurityTelemetry HEC') and a dedicated skill (setup-bitdefender-securitytelemetry-connector). It explains why the dedicated template wins — correct parser and properly named datalake table — and routes there instead of installing a generic HecPassthrough instance. It does not create the passthrough connector.",
+      "files": [],
+      "expectations": [
+        "The skill checks the live template list before installing anything",
+        "It recognizes Bitdefender Security Telemetry has a dedicated template/skill and routes there",
+        "It explains the parser/table-naming reason for preferring the dedicated template",
+        "No HecPassthrough connector is created for a product that has its own template"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer wants logs from an in-house application that can emit Splunk-HEC JSON; list_connector_templates has nothing for it. The Fluency MCP is connected. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it picks a source-derived index with the operator, creates the HecPassthrough connector itself WITHOUT chaining into add-connector and without re-collecting router context, retrieves the HEC url and token, and delivers them to the operator for the application team. It hands the router the connector instance id and the chosen index (confirming the live table name with list_data_tables), keeps the token out of the hand-back, and tells the router zero rows is the expected state until the application starts pushing — mark the source pending with the source-side follow-up noted, not failed; once events are sent they should appear within a couple of minutes.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id and chosen datalake index for the router's verification step",
+        "The HEC token does not appear in the hand-back summary",
+        "It instructs the router to mark the source pending until the source pushes, with rows expected within minutes of the first send"
+      ]
+    }
+  ]
+}

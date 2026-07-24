@@ -1,0 +1,59 @@
+{
+  "skill_name": "automatic-amazon-guardduty",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want our GuardDuty findings in Fluency. I'm an admin with IAM rights in the account and the aws CLI on this machine is already signed in — do the whole thing for me. We run GuardDuty in us-east-1 and us-west-2.",
+      "expected_output": "The skill takes Mode A: it preflights with aws sts get-caller-identity and reads back the account id and caller ARN for confirmation, verifies GuardDuty detectors exist in us-east-1 and us-west-2 via aws guardduty list-detectors (offering to drop a region rather than enable GuardDuty, which is billable and the customer's decision), then runs assets/setup-ingext-guardduty.sh with --check-regions, surfacing the script's confirmation prompt instead of passing --yes unapproved. It captures the script's JSON (accessKeyId, secretAccessKey, userName, accountId) and, without re-echoing the secret, installs the connector itself: live list_connector_templates for the AmazonGuardDuty schema, list_connectors for duplicates, create_connector with the Regions list and both key parameters, instance id 'amazonguardduty' (never 'default'). It verifies with list_connectors, confirms the live table name with list_data_tables, states the minutes-to-~30-minute polling latency, and notes a quiet account may honestly show zero rows — offering sample findings as the deterministic smoke test.",
+      "files": [],
+      "expectations": [
+        "The skill runs the bundled script for the operator rather than handing over instructions, after confirming account id and caller ARN",
+        "It checks GuardDuty is already enabled per region and never offers to enable it, naming the billing consequence",
+        "The script's confirmation prompt is surfaced; --yes is only used with explicit operator approval",
+        "It performs the Fluency-side install itself with the live template schema, region list, and instance id 'amazonguardduty'",
+        "The secretAccessKey is never re-echoed into chat, summaries, or the output JSON",
+        "It sets honest latency expectations and suggests aws guardduty create-sample-findings for a quiet account"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The AWS account is our customer's — their cloud admin handles all IAM changes and isn't on this call. Get everything ready so they can create what Fluency needs for GuardDuty ingestion.",
+      "expected_output": "The skill selects Mode B: it prepares the hand-off for the absent admin — either the setup-ingext-guardduty.sh script (noting the confirmation prompt, the idempotent re-run behavior, and WSL/Git Bash for Windows) or the documented IAM console walkthrough: Users → Create user 'ingext-guardduty' with no console access, Set permissions → Attach policies directly → AmazonGuardDutyReadOnlyAccess, then Security credentials → Create access key (use case Other), warning the secret is shown only once and that the two-keys-per-user limit may require deleting an old key. It also asks the admin to confirm GuardDuty is enabled in each region to be polled without enabling it themselves. It lists exactly what to send back — accessKeyId, secretAccessKey (via a secure channel, treated as a credential), userName, accountId, and the enabled-region list — and defers the Fluency-side install, offering to run create_connector as soon as the values return.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes cowork has no credentials for the customer's account and does not attempt AWS-side actions",
+        "It offers both the script and the verified console walkthrough, including the no-console-access user, the exact managed policy name, and the copy-once secret warning",
+        "It covers the two-access-keys-per-user limit and rotation rather than ignoring it",
+        "It instructs confirming GuardDuty is enabled per region without enabling it (billing is the customer's decision)",
+        "The secret is to be returned over a secure channel and handled as a credential",
+        "The Fluency-side install is deferred and offered for when the values arrive"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Before you touch our AWS account for this GuardDuty hookup — what exactly are you going to create, and what is the very first command you'll run?",
+      "expected_output": "The skill answers precisely from its What-this-creates table: on AWS it creates (or reuses) one IAM user, default name ingext-guardduty with no console access, attaches the AWS managed AmazonGuardDutyReadOnlyAccess policy (GuardDuty Get/List/Describe only), and issues one access key pair — nothing billable, and it explicitly does NOT enable GuardDuty or modify any existing resources; on Fluency it creates one AmazonGuardDuty connector. The first command is the read-only preflight aws sts get-caller-identity, which creates nothing and simply shows the account id and caller ARN for the operator to approve; the script then stops at a confirmation prompt listing everything before any create call, and is idempotent on re-runs. It waits for the operator's go-ahead rather than starting immediately.",
+      "files": [],
+      "expectations": [
+        "The answer enumerates exactly the IAM user, the AmazonGuardDutyReadOnlyAccess attachment, one access key, and the Fluency connector — nothing more",
+        "It states the first command is the read-only aws sts get-caller-identity preflight",
+        "It states nothing billable is created and GuardDuty itself is never enabled by the skill",
+        "It mentions the script's confirmation prompt before any resource creation and its idempotent re-run behavior",
+        "It does not begin executing before the operator confirms"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Amazon GuardDuty from the onboarding menu. The Fluency MCP is connected; the router's list_connectors call shows no AmazonGuardDuty connector. The operator says they have IAM admin rights and the aws CLI signed in here. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it runs the Mode A script and performs create_connector itself WITHOUT chaining into add-connector and without re-collecting context the router already has. On return it hands the router the connector instance id, the region list, the IAM user and account id, and the datalake table name confirmed live with list_data_tables (the template exposes no index parameter), keeping the access key and secret out of the summary. It tells the router the connector polls: with findings present expect rows within minutes to ~30 minutes, and a quiet account may legitimately show zero rows — mark the application pending (not failed) and offer GuardDuty sample findings as the smoke test.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id, regions, and a list_data_tables-confirmed table name rather than a guessed index",
+        "Neither the access key id nor the secret appears in the hand-back summary",
+        "It tells the router to mark the source pending within the polling window and that zero rows can be legitimate, with sample findings as the deterministic check"
+      ]
+    }
+  ]
+}

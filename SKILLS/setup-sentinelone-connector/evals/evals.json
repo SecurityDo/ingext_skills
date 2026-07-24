@@ -1,0 +1,58 @@
+{
+  "skill_name": "setup-sentinelone-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want our SentinelOne EDR data in Ingext. I'm an S1 console admin and I'm signed in now — walk me through whatever you need, then hook it up on the Fluency side yourself.",
+      "expected_output": "The skill takes the guided + agent-installs path: it recommends a dedicated service user as the least-privilege token owner (explaining that S1 API tokens inherit the owning user's role permissions, and that the role needs Activity/Endpoints/Threats view rights), walks the admin through generating the token (My User → Actions → API Token Operations for a console user, or Settings → Users → Service Users for a service user), warns the value is shown once, tells them to record the expiry date the console displays, and collects the console base URL in the https://<tenant>.sentinelone.net form. It then installs the connector itself via the Fluency MCP: fetches the live SentinelOneAPI template with list_connector_templates (distinguishing it from the sibling SentinelOne template), checks list_connectors for an existing instance, and calls create_connector with URL and APIToken plus the defaulted datalake/index parameters, instance id 'sentineloneapi' (never 'default'). It verifies with list_connectors and sets the 15–30 minute first-event expectation.",
+      "files": [],
+      "expectations": [
+        "The skill guides the SentinelOne portal steps but performs the Fluency-side install itself rather than handing over instructions",
+        "It recommends a least-privilege token owner (service user preferred) and explains that the token inherits the owner's role permissions, without inventing a built-in role name",
+        "It warns the token value is shown once and has the operator record the expiry date shown at generation rather than asserting a single expiry period",
+        "It collects the console base URL in the https://<tenant>.sentinelone.net form with no trailing path",
+        "It fetches the live template schema, targets SentinelOneAPI rather than the sibling SentinelOne template, and includes every template parameter in create_connector with instance id never 'default'",
+        "It never echoes the API token back in summaries or output"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our customer's SentinelOne admin can't join today, but we want everything ready for them to connect S1 to Fluency. What do they need to do?",
+      "expected_output": "The skill selects the runbook-only path: it prints the complete SentinelOne-side procedure for the absent admin — create a least-privilege token owner (a service user with view permissions on Activity, Endpoints, and Threats; the exact built-in role name must be checked in their console since S1 docs are login-gated), generate the API token via the documented console path, copy the once-shown value, record the expiry date the console displays, and note the console base URL — and lists exactly what to send back: the console URL and the token, with the token handled as a secret. It offers to run the Fluency-side connector install as soon as those two values return, and does not attempt to create anything now.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes the admin is absent and produces a complete vendor-side runbook instead of trying to act",
+        "The runbook covers token-owner choice with the needed view permissions, the token-generation path, the copy-once warning, the expiry-date recording, and the console base URL",
+        "It is honest that the exact built-in role name must be confirmed in the customer's console rather than guessed",
+        "It clearly states the two values to report back (console URL, API token) and that the token is a credential",
+        "It defers the Fluency-side install until the values arrive and offers to perform it then"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add SentinelOne to Ingext. Console is https://usea1.sentinelone.net and the API token is eyJraWQ... — go.",
+      "expected_output": "Since both values are already in hand, the skill skips the SentinelOne-side walkthrough and goes straight to the install: list_connector_templates for the live SentinelOneAPI schema, list_connectors to check for an existing instance (asking before creating a second one if present), then create_connector with application SentinelOneAPI, instance 'sentineloneapi', displayName 'SentinelOne API', and the full parameter set including the defaulted datalake/index. It confirms the install, refers to the token only descriptively (never echoing it), reports the datalake index SentinelOne for verification, and states the 15–30 minute first-event window before any row-count check.",
+      "files": [],
+      "expectations": [
+        "The skill does not re-run the vendor-side walkthrough when console URL and token are already provided",
+        "It checks for an existing SentinelOne connector before installing and asks before creating a duplicate",
+        "create_connector includes every template parameter with defaults applied, instance id 'sentineloneapi' rather than 'default'",
+        "The token is not repeated back in any confirmation or summary",
+        "It sets an honest first-event latency expectation before verifying row counts"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked SentinelOne from the onboarding menu. The Fluency MCP is connected; the router's list_connectors call shows no SentinelOne connector. The operator has an S1 console admin on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it guides the token creation and performs create_connector itself WITHOUT chaining into add-connector and without re-collecting context the router already has. On return it hands the router the connector instance id and the SentinelOne datalake index (confirming the live table name with list_data_tables before any query), keeps the API token out of the summary, and tells the router to expect first events within roughly 15–30 minutes — noting that activity events flow steadily but threat events are sparse in a healthy fleet, so mark the application pending inside that window rather than failed.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id and datalake index for the router's verification step",
+        "The API token does not appear in the hand-back summary",
+        "It tells the router to mark the source pending within the 15–30 minute first-event window rather than failed, with the sparse-threats caveat"
+      ]
+    }
+  ]
+}

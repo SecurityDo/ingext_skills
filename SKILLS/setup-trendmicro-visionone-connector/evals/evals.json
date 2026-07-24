@@ -1,0 +1,57 @@
+{
+  "skill_name": "setup-trendmicro-visionone-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want our Trend Vision One events in Ingext. I'm a Vision One Master Administrator and I'm in the console now — walk me through whatever you need, then hook it up on the Fluency side yourself.",
+      "expected_output": "The skill takes the guided + agent-installs path: it first pins the tenant's regional API base URL from Trend's published regional-domain table (US api.xdr.trendmicro.com, EU api.eu.xdr.trendmicro.com, etc. — never guessed), then walks the admin through Administration → API Keys → Add API Key with the Auditor role as the least-privilege starting point (noting honestly that the connector's exact permission needs are unverified and the role may need escalating if 403s appear), a deliberate expiration setting (default one year), and the copy-once warning for the token. It then installs the connector itself via the Fluency MCP: fetches the live TrendMicroVisionOne template with list_connector_templates, checks list_connectors for an existing instance, and calls create_connector with baseURL and apiToken, instance id 'trendmicrovisionone' (never 'default'). It verifies with list_connectors, notes the datalake table must be confirmed with list_data_tables since the template has no index parameter, and sets the 15–30 minute first-event expectation.",
+      "files": [],
+      "expectations": [
+        "The skill guides the Vision One portal steps but performs the Fluency-side install itself rather than handing over instructions",
+        "It selects the regional API base URL from Trend's published regional-domain list rather than guessing",
+        "It recommends the Auditor role as the least-privilege starting point while being honest that the connector's exact permission needs are unverified",
+        "It warns the token value is shown once and that tokens expire one year after creation by default",
+        "It fetches the live template schema and includes every template parameter in create_connector, with instance id derived from the template name and never 'default'",
+        "It never echoes the API key token back in summaries or output"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our customer's Trend Micro admin isn't available today, but we want everything ready for them to connect Vision One to Fluency. What do they need to do?",
+      "expected_output": "The skill selects the runbook-only path: it prints the complete Trend-side procedure for the absent admin — identify the tenant's region and its API base URL from the published regional-domain table, go to Administration → API Keys → Add API Key named ingext-visionone, pick a role (Auditor as the read-only starting point, with the honest caveat that escalation may be needed), set the expiration deliberately (default one year), enable it, and copy the token before clicking Close since it cannot be viewed again — and lists exactly what to send back: the regional base URL and the API key token, with the token handled as a secret. It offers to run the Fluency-side connector install as soon as those two values return, and does not attempt to create anything now.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes the admin is absent and produces a complete vendor-side runbook instead of trying to act",
+        "The runbook covers the regional base URL choice, the API-key creation path, the role choice with its unverified-permissions caveat, the expiration setting, and the copy-once warning",
+        "It clearly states the two values to report back (regional base URL, API key token) and that the token is a credential",
+        "It defers the Fluency-side install until the values arrive and offers to perform it then"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add Trend Vision One to Ingext. Base URL is https://api.xdr.trendmicro.com and the API token is eyJ0eXAi... — go.",
+      "expected_output": "Since both values are already in hand, the skill skips the Trend-side walkthrough and goes straight to the install: list_connector_templates for the live TrendMicroVisionOne schema, list_connectors to check for an existing instance (asking before creating a second one if present), then create_connector with application TrendMicroVisionOne, instance 'trendmicrovisionone', displayName 'TrendMicro VisionOne', and the full live parameter set. It confirms the install, refers to the token only descriptively (never echoing it), notes the datalake table must be confirmed with list_data_tables because the template carries no index default, and states the 15–30 minute first-event window before any row-count check.",
+      "files": [],
+      "expectations": [
+        "The skill does not re-run the vendor-side walkthrough when base URL and token are already provided",
+        "It checks for an existing Vision One connector before installing and asks before creating a duplicate",
+        "create_connector includes every live template parameter, instance id 'trendmicrovisionone' rather than 'default'",
+        "The API key token is not repeated back in any confirmation or summary",
+        "It sets an honest first-event latency expectation and confirms the live datalake table name before verifying row counts"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Trend Micro Vision One from the onboarding menu. The Fluency MCP is connected; the router's list_connectors call shows no Vision One connector. The operator has a Vision One Master Administrator on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it guides the API-key creation (regional base URL from the published table, Administration → API Keys, Auditor role starting point, copy-once token) and performs create_connector itself WITHOUT chaining into add-connector and without re-collecting context the router already has. On return it hands the router the connector instance id and the datalake table name (confirmed live with list_data_tables, since the TrendMicroVisionOne template has no index parameter), keeps the API key token out of the summary, and tells the router to expect first events within roughly 15–30 minutes — noting that a quiet tenant may genuinely produce few alerts, so mark the application pending inside that window rather than failed.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id and the live-confirmed datalake table for the router's verification step",
+        "The API key token does not appear in the hand-back summary",
+        "It tells the router to mark the source pending within the 15–30 minute first-event window rather than failed, with the quiet-tenant caveat"
+      ]
+    }
+  ]
+}

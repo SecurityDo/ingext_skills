@@ -99,6 +99,32 @@ GuardDuty in S3. That skill documents how to swap the connector in its final ste
 > skill's connector step does the same install and validates the string's `EntityPath`, so
 > preferring it is never wrong.
 
+### SaaS API & push integrations (guided, compact)
+
+Each row below has a dedicated skill. **All are self-contained** — the skill guides the
+vendor-side credential/config work (cited against vendor documentation), then ends in
+`create_connector` itself, so there is **no `add-connector` follow-on**. Hands back: the
+connector instance id + datalake table for Step 5 verification; credentials never appear in
+summaries. Datalake tables marked *confirm live* have no index parameter on the template —
+confirm with `list_data_tables` before querying (true for every row, but mandatory for those).
+
+| Application | Aliases | Route | Vendor-side prerequisite | Datalake table | First-event latency |
+|---|---|---|---|---|---|
+| Okta | Okta | `setup-okta-connector` | Okta admin creates an API token (read-only service-account owner recommended; 30-day inactivity expiry) | `Okta` | ~15–30 min |
+| Cisco Duo | Duo, Duo Security, Duo MFA | `setup-duo-connector` | Duo **Owner**-role admin protects the Admin API application ("Grant read log") | `Duo` | ~15–30 min |
+| Bitwarden | Bitwarden event logs | `setup-bitwarden-connector` | Organization **Owner** (Teams/Enterprise plan) retrieves the org API key; self-hosted → contact support | *confirm live* | ~15–30 min |
+| Box | box.com, Box enterprise events | `setup-box-connector` | Box Admin authorizes a Client-Credentials platform app; Enterprise ID needed | *confirm live* | ~15–30 min (Box's admin_logs can trail real time) |
+| Sophos Central | Sophos EDR, Intercept X | `setup-sophos-central-connector` | Sophos Central **Super Admin** creates a Service Principal Read-Only API credential | *confirm live* | ~15–30 min |
+| SentinelOne | S1, Singularity | `setup-sentinelone-connector` | Console admin creates a service user + API token (note token expiry; calendar it) | `SentinelOne` | ~15–30 min |
+| Trend Vision One | Trend Micro, Vision One | `setup-trendmicro-visionone-connector` | Vision One **Master Administrator** creates an API key (start at Auditor role); regional base URL | *confirm live* | ~15–30 min |
+| Cortex XDR | Cortex, PaloAlto Cortex XDR | `setup-cortex-xdr-connector` | Cortex XDR admin creates an API key (Settings → Configurations → Integrations → API Keys); key security level must match the connector's `authMode` (default **Advanced**) | `Cortex` | ~15–30 min |
+| Salesforce Event Monitoring | Salesforce, EventLogFile, Shield logs | `setup-salesforce-event-monitoring-connector` | **Hard prerequisite: Event Monitoring add-on license** (standalone or Shield). Admin sets up an External Client App / Connected App with the client-credentials flow (run-as user needs "API Enabled" + "View Event Log Files") | *confirm live* | **Hours, not minutes** — hourly EventLogFiles lag ~3–6 h; license-less orgs see only a daily free subset. Zero rows right after install is expected — mark ⏳ |
+| Mimecast | Mimecast CG, Cloud Gateway | `setup-mimecast-connector` | Mimecast admin registers an API 2.0 application (Integrations → API and Platform Integrations). Legacy 1.0 creds → `add-connector` | `Mimecast` | ~15–30 min |
+| Proofpoint TAP | TAP, Targeted Attack Protection | `setup-proofpoint-tap-connector` | TAP Dashboard admin creates a service credential (Settings → Connected Applications) | *confirm live* | ~15–30 min; threat-driven — a quiet org shows little |
+| Bitdefender Security Telemetry | GravityZone ST, BEST telemetry | `setup-bitdefender-securitytelemetry-connector` | GravityZone admin with policy rights + EDR-capable license; the connector's generated HEC url/token go into policy → Security Telemetry | *confirm live* | **None until the policy applies and endpoints stream** — mark ⏳, not ❌ |
+| Amazon GuardDuty | GuardDuty | `automatic-amazon-guardduty` | GuardDuty **already enabled** (skill never enables it — billable); IAM-admin signs in for Mode A (agent runs the bundled aws CLI script) or a third-party admin runs it (Mode B). If findings already land in S3, prefer the CloudTrail skill's S3→SQS plumbing and swap the connector | *confirm live* | Findings-driven — honestly zero on quiet accounts; use GuardDuty sample findings as the smoke test |
+| Anything with a Splunk-HEC output (no template of its own) | HEC, Splunk HEC, generic intake | `setup-hec-passthrough` | Source-product admin pastes the generated HEC url + token into its Splunk/HEC output | operator-chosen index | **None until the source pushes** — mark ⏳; rows within minutes of the first send |
+
 ---
 
 ## Standard applications (route: `add-connector`)
@@ -110,10 +136,8 @@ Aliases mirror `add-connector`'s own matching list, which is authoritative for t
 | Office 365 (consent path) | O365, Microsoft 365 | Hosted OAuth consent | Admin email; admin completes consent | `Office365` |
 | Google Workspace | GSuite, G Suite | Hosted OAuth consent | Admin email; admin completes consent | `gsuiteUser`, `gsuiteGroup` |
 | FortiGate | Fortinet, FortiGate firewall | Syslog | Device configured to forward syslog to the Fluency endpoint | `NetworkFortigateTraffic`, `NetworkFortigateEvent` |
-| SentinelOne | S1 | API key | Console URL + API token | `sentinelOneAgent` |
-| Bitdefender | GravityZone | API key | Ask which variant: GravityZone (ST) vs Endpoint (EP) | — |
-| Proofpoint | — | API key | Ask which variant: TAP vs Essentials | — |
-| Amazon GuardDuty | GuardDuty | AWS role / user / access key | If findings land in S3, prefer the CloudTrail skill's plumbing and swap the connector | — |
+| Bitdefender Event Push (EP) | GravityZone | API key | Ask which variant first: **Security Telemetry (ST) is guided** — `setup-bitdefender-securitytelemetry-connector`; only EP routes here | — |
+| Proofpoint Essentials | — | API key | Ask which product first: **TAP is guided** — `setup-proofpoint-tap-connector`; only Essentials routes here | — |
 
 **Anything not listed here is still supported.** `add-connector` calls `list_connector_templates`
 and matches against the live catalogue. Route unknown vendors there rather than declaring them

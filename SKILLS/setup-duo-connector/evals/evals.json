@@ -1,0 +1,57 @@
+{
+  "skill_name": "setup-duo-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want our Cisco Duo logs in Ingext. I'm a Duo Owner and I have the Admin Panel open right now — tell me what to click, then hook it up on the Fluency side yourself.",
+      "expected_output": "The skill takes the guided + agent-installs path: it confirms the admin holds the Owner role (only Owners can create Admin API applications), walks them through Applications → Application Catalog → Admin API → Add, has them restrict permissions to Grant read log only (unchecking every resource/application/settings/administrators grant), and collects the integration key, secret key, and API hostname while treating the secret key as a credential. It then installs the connector itself via the Fluency MCP: fetches the live Duo template with list_connector_templates, checks list_connectors for an existing instance, and calls create_connector with integrationKey, secretKey, and apiHostname plus the defaulted datalake/index parameters, instance id 'duo' (never 'default'). It verifies with list_connectors and sets the 15–30 minute first-event expectation.",
+      "files": [],
+      "expectations": [
+        "The skill guides the Duo Admin Panel steps but performs the Fluency-side install itself rather than handing over instructions",
+        "It states that only an Owner-role Duo admin can create or modify the Admin API application",
+        "It restricts the application to the Grant read log permission and says to leave all other permission checkboxes unchecked",
+        "It collects the integration key, secret key, and API hostname, flagging the bare api-XXXXXXXX.duosecurity.com hostname format",
+        "It fetches the live template schema and includes every template parameter in create_connector, with instance id derived from the template name and never 'default'",
+        "It never echoes the secret key back in summaries or output"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our customer's Duo administrator is out this week, but we want everything ready for them to connect Duo to Fluency. What exactly do they need to do on their side?",
+      "expected_output": "The skill selects the runbook-only path: it prints the complete Duo-side procedure for the absent admin — sign in as an Owner (lesser roles cannot create Admin API applications), confirm the Duo edition includes the Admin API (Essentials/Advantage/Premier), add the Admin API application from Applications → Application Catalog, check only Grant read log and uncheck every other permission, and copy the integration key, secret key, and API hostname from the application page — and lists exactly what to send back: the three values, with the secret key handled as a secret over a secure channel. It offers to run the Fluency-side connector install as soon as those values return, and does not attempt to create anything now.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes the admin is absent and produces a complete vendor-side runbook instead of trying to act",
+        "The runbook covers the Owner-role requirement, the Application Catalog path, the Grant-read-log-only permission setup, and the three credential values",
+        "It clearly states the three values to report back and that the secret key is a credential",
+        "It defers the Fluency-side install until the values arrive and offers to perform it then"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add Duo to Ingext. Integration key DIABC123, API hostname api-fc4422aa.duosecurity.com, and I'll paste the secret key when you ask — go.",
+      "expected_output": "Since the credentials are already in hand, the skill skips the Duo-side walkthrough and goes straight to the install: it collects the secret key (treating it as a credential), runs list_connector_templates for the live Duo schema, list_connectors to check for an existing instance (asking before creating a second one if present), then create_connector with application Duo, instance 'duo', displayName 'Cisco Duo Admin API', and the full parameter set including the defaulted datalake/index. It confirms the install, refers to the secret key only descriptively (never echoing it), reports the datalake index Duo for verification, and states the 15–30 minute first-event window before any row-count check.",
+      "files": [],
+      "expectations": [
+        "The skill does not re-run the vendor-side walkthrough when the credentials are already provided",
+        "It checks for an existing Duo connector before installing and asks before creating a duplicate",
+        "create_connector includes every template parameter with defaults applied, instance id 'duo' rather than 'default'",
+        "The secret key is not repeated back in any confirmation or summary",
+        "It sets an honest first-event latency expectation before verifying row counts"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Cisco Duo from the onboarding menu. The Fluency MCP is connected; the router's list_connectors call shows no Duo connector. The operator has a Duo Owner on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it guides the Admin API application creation and performs create_connector itself WITHOUT chaining into add-connector and without re-collecting context the router already has. On return it hands the router the connector instance id and the Duo datalake index (confirming the live table name with list_data_tables before any query), keeps the secret key out of the summary, and tells the router to expect first events within roughly 15–30 minutes — mark the application pending inside that window rather than failed.",
+      "files": [],
+      "expectations": [
+        "The skill completes the connector creation itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id and datalake index for the router's verification step",
+        "The secret key does not appear in the hand-back summary",
+        "It tells the router to mark the source pending within the 15–30 minute first-event window rather than failed"
+      ]
+    }
+  ]
+}
