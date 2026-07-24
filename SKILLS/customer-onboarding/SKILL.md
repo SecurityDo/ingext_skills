@@ -1,6 +1,6 @@
 ---
 name: customer-onboarding
-version: 1.2.0
+version: 1.3.0
 description: >-
   Guide a new Fluency / Ingext customer through getting their data in — present a menu of supported
   applications, route each choice to the right setup skill, verify events are actually landing, and
@@ -13,8 +13,9 @@ description: >-
   setup-aws-cloudtrail-connector; the Entra audit app is automatic-create-ingext-azureaudit-app
   (preferred — it performs the setup; the older guide-only create-ingext-audit-app is the
   fallback); the Defender app is automatic-create-ingext-defender-app (preferred — it performs the
-  setup; the older guide-only create-ingext-defender-app is the fallback); any other single named
-  connector is add-connector.
+  setup; the older guide-only create-ingext-defender-app is the fallback); for any other single
+  named connector, check references/application_catalog.md for a dedicated setup skill first, and
+  fall back to add-connector only when no dedicated skill exists.
   This skill installs nothing itself — it is a router and a verifier.
 ---
 
@@ -86,7 +87,7 @@ re-present a narrowed menu.
 | AWS CloudTrail | **`setup-aws-cloudtrail-connector`** — self-contained; it ends in `create_connector` itself, so no follow-on |
 | Microsoft 365 / Entra audit | **`automatic-create-ingext-azureaudit-app`** (preferred — performs the setup) → then **`add-connector`** (see [hand-off](#step-4--the-credential-hand-off)); fall back to the guide-only `create-ingext-audit-app` only if the automatic variant isn't installed |
 | Microsoft Defender | **`automatic-create-ingext-defender-app`** (preferred — performs the setup) → then **`add-connector`**; fall back to the guide-only `create-ingext-defender-app` only if the automatic variant isn't installed |
-| Something else / named vendor | **`add-connector`** — its Step 1 calls `list_connector_templates` and matches live |
+| Something else / named vendor | **Check the catalog first** — if `references/application_catalog.md` has a Guided row for the vendor, route to its dedicated skill. Only an unlisted vendor goes to **`add-connector`**, whose Step 1 calls `list_connector_templates` and matches live |
 | Not sure | Ask what tools they run, map onto the catalog, return to Step 2 |
 
 Before routing to a Microsoft 365 choice, resolve the **customer-owned app vs. hosted OAuth

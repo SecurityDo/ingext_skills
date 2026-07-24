@@ -1,12 +1,18 @@
 # Execution spec — per-connector onboarding skills rollout
 
-**Status:** draft for review
-**Date:** 2026-07-23
+**Status:** in execution — build-now pass under way; all R-items deferred (see review decision below)
+**Date:** 2026-07-23 (reviewed 2026-07-24)
 **Audience:** the coding agent implementing the skills (and the human reviewing this plan)
 **Input data:** live `list_connector_templates` snapshot taken 2026-07-23 against the connected
 Fluency tenant (54 templates). Parameter names quoted below are from that snapshot — **the
 implementing agent must re-fetch the live list at build time and treat this document's copies as
 hints, not truth** (same rule the skills themselves must follow at runtime).
+
+> **Review decision (2026-07-24):** all open research items (**R1–R11**, §5) are **deferred** —
+> they will be revisited in a separate project, pending documentation updates. Every skill gated
+> on an R-item, and every Unknown-tier vendor procedure, is **skipped in this pass** rather than
+> guessed or stubbed. The build-now set is listed in §9a; the rest of this plan is unchanged and
+> remains the spec for the deferred skills once the documentation project unblocks them.
 
 ---
 
@@ -198,6 +204,10 @@ Confidence tiers used in §7:
 
 These block whole families or change skill shape. Resolve with the Fluency team or the live
 platform; do not guess any of them.
+
+> **Deferred (2026-07-24 review):** every R-item below is parked — to be revisited in a separate
+> project pending documentation updates. Do not attempt to resolve them inline; the skills they
+> gate are skipped in the current pass (§9a).
 
 | ID | Question | Blocks |
 |---|---|---|
@@ -392,7 +402,50 @@ snapshot's required inputs (sensitive ones marked •).
 
 ## 9. Phasing & acceptance
 
+### 9a. Build-now pass (2026-07-24) — what ships with the R-items deferred
+
+Created in this pass (**14 skills**):
+
+| Skill | Family | Tier |
+|---|---|---|
+| `setup-okta-connector` (pilot / exemplar) | SaaS API | Confident |
+| `setup-duo-connector` | SaaS API | Confident |
+| `setup-bitwarden-connector` | SaaS API | Confident |
+| `setup-box-connector` | SaaS API | Confident |
+| `setup-sophos-central-connector` | SaaS API | Confident |
+| `setup-sentinelone-connector` | SaaS API | Verify |
+| `setup-trendmicro-visionone-connector` | SaaS API | Verify |
+| `setup-mimecast-connector` | SaaS API | Verify |
+| `setup-proofpoint-tap-connector` | SaaS API | Verify |
+| `setup-cortex-xdr-connector` | SaaS API | Verify |
+| `setup-salesforce-event-monitoring-connector` | SaaS API | Verify |
+| `setup-bitdefender-securitytelemetry-connector` | HEC push | Verify |
+| `automatic-amazon-guardduty` | AWS | Confident |
+| `setup-hec-passthrough` | Generic HEC | Confident |
+
+Verify-tier skills ship only after their vendor steps were checked against live documentation at
+build time (§4); anything that could not be verified is an explicit UNVERIFIED stub, never a
+guess.
+
+Skipped in this pass — revisited with the documentation project:
+
+- **Syslog family, all 12** — gated on R1 (syslog destination), plus R6 (NXLog reference config)
+  and R9 (ManageEngine product) for two of them.
+- `automatic-aws-cloudwatch-logs` (R3); `automatic-aws-eks-fluentbit` — judgment call: its
+  parser-format question is R3-adjacent, so it travels with R3 rather than shipping
+  half-verified.
+- `automatic-google-workspace` (R4), `setup-crowdstrike-falcon-connector` (R5),
+  `automatic-bitdefender-eventpush` (R7), `setup-zscaler-nss-connector` (R8).
+- **Unknown-tier vendor procedures** — `setup-proofpoint-essentials-connector`,
+  `setup-abnormal-security-connector`, `setup-blackkite-connector`, `setup-workday-connector`,
+  `setup-coro-connector` — the research protocol (§4) would reduce these to stubs; deferred
+  instead.
+- Already deferred: `FluencyCollector`, `LDAP` (R2).
+
 ### Phasing
+
+> Superseded for the current pass by §9a; retained as the sequencing spec for the deferred
+> skills once the documentation project lands.
 
 - **Phase 0 — unblock & scaffold.** Resolve **R1** (blocks 12 skills) and R10/R11; land the
   catalog restructure (§8.1) and the shared blueprint checked against one pilot skill

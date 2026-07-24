@@ -1,6 +1,6 @@
 ---
 name: add-connector
-version: 1.0.0
+version: 1.1.0
 description: >
   Add (install) a new application connector on Ingext / Fluency. Use this skill whenever
   the user asks to "add an application", "install a connector", "connect [app name]",
@@ -76,8 +76,8 @@ Match against `displayName`, `name`, and `description` using case-insensitive fu
 Common aliases to handle:
 
 - "Office 365" / "O365" / "Microsoft 365" → Office365
-- "Google Workspace" / "GSuite" / "G Suite" → GSuite
-- "FortiGate" / "Fortinet" → FortiGateFWLog or FortiGateFWLogV2
+- "Google Workspace" / "GSuite" / "G Suite" → GSuite (hosted OAuth) or GoogleWorkspace (service account)
+- "FortiGate" / "Fortinet" → FortiGateFWLogV2 (older platforms may also list FortiGateFWLog)
 - "Azure AD" / "Entra" → AzureAudit
 - "Defender" → MSDefender
 - "SentinelOne" / "S1" → SentinelOneAPI
@@ -86,6 +86,18 @@ Common aliases to handle:
 - "Proofpoint" → ProofpointTAP or ProofpointEssentials
 - "AWS" / "CloudTrail" → AWSCloudTrail
 - "GuardDuty" → AmazonGuardDuty
+- "CrowdStrike" / "Falcon" → Falcon
+- "Cortex" / "Cortex XDR" → CortexXDR
+- "Duo" / "Cisco Duo" → Duo
+- "Okta" → Okta
+- "Box" / "box.com" → BoxCom
+- "Mimecast" → MimecastCG (current, API 2.0) or Mimecast (legacy 1.0 — existing credentials only)
+
+**Dedicated setup skills:** several templates have a dedicated `setup-*` / `automatic-*` skill
+that guides the vendor-side work (token creation, IAM plumbing) before installing. If the user
+still needs that vendor-side setup done, offer to route to the dedicated skill instead of
+installing here — `customer-onboarding`'s `references/application_catalog.md` is the map. If the
+user already holds working credentials, installing here is fine.
 
 **No match:** Tell the user the application isn't available, then list all templates grouped by
 category. Stop — do not attempt to install anything.
@@ -257,5 +269,5 @@ duplicate instance ID, permission issue, etc.).
 > → BitdefenderST vs BitdefenderEP: present both, ask which. Then proceed.
 
 **No match:**
-> "Add CrowdStrike."
-> → Not available. List all templates by category. Stop.
+> "Add Jamf."
+> → No matching template in the live list. List all templates by category. Stop.
