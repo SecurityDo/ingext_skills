@@ -74,6 +74,16 @@ Alternatively, install a specific skill by name:
 | [setup-salesforce-event-monitoring-connector](#setup-salesforce-event-monitoring-connector) | Salesforce Event Monitoring (Shield): guided client-credentials app + connector install |
 | [setup-bitdefender-securitytelemetry-connector](#setup-bitdefender-securitytelemetry-connector) | Bitdefender GravityZone Security Telemetry → platform-generated HEC intake |
 | [setup-hec-passthrough](#setup-hec-passthrough) | Generic Splunk-HEC intake for products with no dedicated template |
+| [setup-fortigate-syslog](#the-syslog-family) | FortiGate NGFW syslog — transport, connector, and the FortiOS runbook |
+| [setup-paloalto-syslog](#the-syslog-family) | Palo Alto PAN-OS syslog — server profile, log forwarding, and Commit |
+| [setup-cisco-meraki-syslog](#the-syslog-family) | Cisco Meraki dashboard syslog — per-network roles, TLS on MX 26.1+ |
+| [setup-cisco-asa-syslog](#the-syslog-family) | Cisco ASA syslog — CLI/ASDM, with the TCP fail-closed warning |
+| [setup-sonicwall-syslog](#the-syslog-family) | SonicWall syslog — version-gated transport (TLS only on SonicOS 8) |
+| [setup-checkpoint-syslog](#the-syslog-family) | Check Point Log Exporter from the Management/Log Server |
+| [setup-sophos-firewall-syslog](#the-syslog-family) | Sophos Firewall (SFOS) syslog with its log-category matrix |
+| [setup-sophos-utm-syslog](#the-syslog-family) | Sophos UTM 9 syslog — includes the end-of-life warning |
+| [setup-peplink-syslog](#the-syslog-family) | Peplink / Pepwave syslog (UDP-only device) |
+| [automatic-linux-rhel-syslog](#the-syslog-family) | RHEL-family rsyslog forwarding — the agent can configure the host itself |
 | [html-to-pdf](#html-to-pdf) | Convert an HTML file to a PDF |
 
 ---
@@ -484,6 +494,54 @@ guides the source-side pointing plus a smoke-test curl.
 **Try:**
 - "our appliance only speaks Splunk HEC — get its logs into Ingext"
 - "generic HEC endpoint for Fluency"
+
+---
+
+## The syslog family
+
+Ten skills covering devices and hosts that ship logs by **syslog**. They share one shape:
+
+1. **Resolve the site's syslog transport** — `syslog_get_config` first; `syslog_register_config`
+   only if the site has none (**once per site, ever**); `syslog_update_config` to add the listener
+   a given device needs, leaving existing listeners alone. Yields the endpoint domain, port, and
+   protocol.
+2. **Install the connector** via `create_connector` — self-contained, so `customer-onboarding`
+   never chains into `add-connector`.
+3. **Guide the device side** from cited vendor documentation — the substantial part, since that is
+   where onboarding actually goes wrong.
+
+**Transport differs per device and decides the listener**, so each skill verified it rather than
+assuming: FortiGate, Palo Alto, Cisco ASA, Sophos Firewall and Linux do TLS; Meraki does TLS only
+on MX 26.1+; SonicWall only on SonicOS 8; Peplink and Sophos UTM 9 are UDP-only; Check Point's Log
+Exporter does TLS but *only* mutual TLS, so it ships with TCP until that's resolved.
+
+The platform CA bundle
+(`https://fluency-public.s3.us-east-1.amazonaws.com/certs/ca.crt`) is five **public** roots —
+Amazon Root CA 1–4 and Starfield Services Root CA G2. The endpoint certificate is publicly
+trusted, so importing that bundle is usually **pinning** rather than a prerequisite, and it can
+never act as a client certificate.
+
+| Skill | Device | Notable |
+|---|---|---|
+| `setup-fortigate-syslog` | FortiGate / FortiOS | CLI-driven; FortiOS 6.0+ uses RFC 6587 octet framing on TCP/TLS |
+| `setup-paloalto-syslog` | PAN-OS | Two attachment points — Log Forwarding profiles *and* Device → Log Settings — plus Commit |
+| `setup-cisco-meraki-syslog` | Meraki dashboard | Configured **per network**; roles decide what is sent |
+| `setup-cisco-asa-syslog` | Cisco ASA | ⚠️ TCP/TLS syslog **fails closed** — a dead collector blocks new connections unless `logging permit-hostdown` |
+| `setup-sonicwall-syslog` | SonicOS | Transport is firmware-gated; pin the version before promising TLS |
+| `setup-checkpoint-syslog` | Check Point | Exports from the **Management/Log Server**, not the gateway |
+| `setup-sophos-firewall-syslog` | Sophos Firewall (SFOS) | 13-category log-selection matrix |
+| `setup-sophos-utm-syslog` | Sophos UTM 9 | ⚠️ End of life 30 Jun 2026 — migrate to Sophos Firewall |
+| `setup-peplink-syslog` | Peplink / Pepwave | UDP-only; one screen (System → Event Log) |
+| `automatic-linux-rhel-syslog` | RHEL / Rocky / Alma | `automatic-*`: with sudo the agent writes the rsyslog drop-in itself, validating before restart |
+
+**Try:**
+- "forward our FortiGate logs to Ingext"
+- "get the Meraki dashboard sending syslog to Fluency"
+- "set up rsyslog forwarding on these RHEL boxes"
+
+> **Not yet built:** Windows Server via NXLog and ManageEngine — both blocked on documentation
+> (which `nxlog.conf` format the parser expects; which ManageEngine product it targets). Route
+> those to `add-connector` rather than improvising.
 
 ---
 

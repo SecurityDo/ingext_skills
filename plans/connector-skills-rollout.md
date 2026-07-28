@@ -215,6 +215,10 @@ platform; do not guess any of them.
 | ID | Question | Blocks |
 |---|---|---|
 | **R1** | **RESOLVED 2026-07-28.** The site syslog transport is managed via MCP calls: `syslog_get_config` reads the existing configuration; `syslog_register_config` creates it when the site has none (**once per site, not per integration**); `syslog_update_config` enables an additional listener on an existing config (e.g. the site has `syslog_tls` but the device only speaks `syslog_tcp`/`syslog_udp`). Deliverables: endpoint domain + port + protocol (TCP/UDP/TLS). TLS sources get the platform CA cert: https://fluency-public.s3.us-east-1.amazonaws.com/certs/ca.crt — exemplar implementation: `setup-peplink-syslog` | ~~The entire syslog family (§7.2)~~ — unblocked |
+| **R1a** | **R1 addendum, observed 2026-07-28 — not a blocker, but corrects how skills present TLS.** The file at `https://fluency-public.s3.us-east-1.amazonaws.com/certs/ca.crt` was downloaded and inspected: it is a 5888-byte PEM bundle of **five public roots** — Amazon Root CA 1–4 and Starfield Services Root CA G2 (the Amazon Trust Services roots behind AWS/ACM certificates). So (a) the syslog TLS endpoint presents a **publicly trusted** certificate — devices with a current trust store need no import at all, and the file is a *fallback* for stale/sparse trust stores plus a way to **pin** trust to the Amazon roots only; (b) it is **server-trust only and cannot serve as a client certificate** — see R13. Skills must not describe it as a private CA that must be imported. | Presentation of TLS in every syslog skill |
+| **R12** | **Which syslog format / framing does each Fluency parser expect?** Every firewall skill hit this and had to stub it: FortiGate (`default` vs `csv`/`cef`), PAN-OS (**BSD** vs **IETF**), SonicWall (**Default** vs **Enhanced** — SonicWall's own KB says Enhanced, but that KB targets SonicWall GMS/Analytics, not Fluency), Check Point Log Exporter (`syslog` vs `cef`/`leef`/`json`, plus `read-mode raw` vs `semi-unified`). A wrong choice yields rows that land but do not parse — the exact silent-breakage the DO-NOT-GUESS rule exists to prevent. Each skill currently recommends the vendor default and gives a diagnostic. **Needs a per-connector answer from the Fluency parser team.** | Field-level parsing quality on `FortiGateFWLogV2`, `PaloAlto_FWLog`, `SonicWallFWLog`, `CheckPointFWLog` (and likely the rest of §7.2) |
+| **R13** | **Does the Fluency syslog TLS listener request or accept a client certificate (mutual TLS)?** Check Point **Log Exporter always presents a client certificate** and cannot be configured for one-way TLS, so its TLS path is blocked until this is answered — the skill ships TCP as the honest default and gates TLS behind "confirm with Fluency". PAN-OS has the related constraint that under client auth both certs must share a CA, unsatisfiable against a hosted endpoint. The public CA bundle (R1a) cannot supply a client identity. | TLS on `CheckPointFWLog`; TLS caveats on `PaloAlto_FWLog` |
+| **R14** | **Does the `syslog_tls` / `syslog_tcp` listener accept RFC 6587 octet-counted framing?** FortiOS 6.0+ frames TCP/TLS syslog with octet counting; a receiver expecting newline framing concatenates events into unusable rows. | TCP/TLS transport on `FortiGateFWLogV2`, and any other octet-counting sender |
 | **R2** | Fluency Collector install procedure on Rocky Linux 9 (internal docs needed) | `FluencyCollector`, `LDAP` (§6.3) |
 | **R3** | `AWSCloudWatchLogGroupS3`: which S3 delivery mechanism/format does the parser expect (Firehose subscription-filter delivery vs. CloudWatch export tasks; gzip/JSON layout)? | `automatic-aws-cloudwatch-logs` |
 | **R4** | `GoogleWorkspace`: the exact OAuth scope list to authorize in domain-wide delegation | `automatic-google-workspace` |
@@ -436,9 +440,16 @@ Verify-tier skills ship only after their vendor steps were checked against live 
 build time (§4); anything that could not be verified is an explicit UNVERIFIED stub, never a
 guess.
 
-> **2026-07-28 addendum:** R1 resolved → the syslog family is unblocked, and
-> **`setup-peplink-syslog`** shipped as its exemplar (15th skill of the rollout). The remaining
-> 11 syslog skills follow it (NXLog and ManageEngine still additionally gated on R6/R9).
+> **2026-07-28 addendum:** R1 resolved → the syslog family shipped. **10 of 12** syslog skills are
+> built: `setup-peplink-syslog` (the exemplar), `setup-fortigate-syslog`, `setup-paloalto-syslog`,
+> `setup-cisco-meraki-syslog`, `setup-cisco-asa-syslog`, `setup-sonicwall-syslog`,
+> `setup-checkpoint-syslog`, `setup-sophos-firewall-syslog`, `setup-sophos-utm-syslog`, and
+> `automatic-linux-rhel-syslog`. That brings the rollout to **24 skills**. Still not built:
+> `setup-windows-nxlog` (R6) and `setup-manageengine-syslog` (R9).
+>
+> The build surfaced **three new open items — R12, R13, R14 (§5)** — plus **R1a**, an observed
+> correction to how the platform CA file must be described. None were guessed around: each is an
+> explicit stub in the affected skills and a row in §5.
 
 Skipped in this pass — revisited with the documentation project:
 
