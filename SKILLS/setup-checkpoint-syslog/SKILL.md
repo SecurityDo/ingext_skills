@@ -10,8 +10,9 @@ description: >-
   Firewall Syslog" connector (CheckPointFWLog). The Check Point side is NOT the gateway's own
   syslog: logs are exported from the Management Server / Log Server that holds them, with the
   cp_log_export CLI in expert mode or the SmartConsole Log Exporter/SIEM object. Log Exporter
-  speaks syslog over TCP or UDP, and TLS only with mutual authentication — prefer TCP unless the
-  mutual-TLS prerequisites are confirmed. SELF-CONTAINED: it ends by creating the connector itself
+  speaks syslog over TCP or UDP, and TLS only with mutual authentication — which the Fluency
+  listener does not support, so TCP is the correct transport here (confirmed 2026-07-28), with the
+  unencrypted tradeoff stated to the customer. SELF-CONTAINED: it ends by creating the connector itself
   — when routed from customer-onboarding, do NOT chain into add-connector afterward. Triggers:
   "connect Check Point to Ingext", "forward Check Point firewall logs to Fluency", "set up Log
   Exporter to the datalake", "Check Point syslog connector", "get our Quantum gateway logs in". Do
@@ -51,10 +52,10 @@ SK); citations live in `assets/references.md`.
 
 | Side | Item | Detail |
 |---|---|---|
-| Ingext | Site syslog endpoint | Via `syslog_register_config` — **only if the site has none yet**; otherwise reused. The listener Log Exporter will use must be enabled (`syslog_update_config` if missing): **`syslog_tcp`** by default, `syslog_tls` only if the mutual-TLS prerequisites check out, `syslog_udp` as a last resort |
+| Ingext | Site syslog endpoint | Via `syslog_register_config` — **only if the site has none yet**; otherwise reused. The listener Log Exporter will use must be enabled (`syslog_update_config` if missing): **`syslog_tcp`** — the correct choice, since the platform accepts no client certificate and Log Exporter's TLS is mutual-auth only — or `syslog_udp` as a last resort |
 | Ingext | Connector | Template **`CheckPointFWLog`** ("Check Point Firewall Syslog"), instance e.g. `checkpointfwlog`, no parameters |
 | Check Point | Log Exporter target | One target per log-holding server: `cp_log_export add name … target-server … target-port … protocol tcp format syslog`, or the equivalent **Log Exporter/SIEM** object in SmartConsole |
-| Check Point | (TLS only) certificate material | A CA PEM plus a client P12 under `$EXPORTERDIR/targets/<Name>/certs/` — Log Exporter's TLS is **mutual authentication only** |
+| Check Point | (TLS — **not applicable today**) certificate material | Log Exporter's TLS is **mutual authentication only** (a CA PEM plus a client P12 under `$EXPORTERDIR/targets/<Name>/certs/`). The platform accepts no client certificate, so nothing is created here; Step 3.4 is retained for the day that changes |
 
 Nothing here is billable on either side.
 
@@ -108,7 +109,7 @@ runtime — the shapes below describe intent, not exact parameters.
 | Choice | When | Listener |
 |---|---|---|
 | **TCP** — the default recommendation | Always workable; connection-oriented, so a dead target is visible rather than silent, and Log Exporter remembers its last exported position and resumes after a disconnect | **`syslog_tcp`** |
-| **TLS** | Only after the mutual-TLS prerequisites are confirmed (Step 3.4) — Check Point requires a **client certificate**, not just trust in the server | `syslog_tls` |
+| **TLS** | **Not usable.** Log Exporter does mutual-auth TLS only (it always presents a **client certificate**), and the Fluency listener accepts no client certificate — confirmed 2026-07-28. Do not attempt it | — |
 | **UDP** | Last resort, e.g. a site whose only listener is UDP and cannot be changed | `syslog_udp` |
 
 Then:
@@ -123,13 +124,18 @@ Then:
 4. **Capture the deliverables:** the endpoint **domain**, the **port** for the chosen listener, and
    the **protocol**. These go into the `cp_log_export` command in Step 3.
 
-> **TLS note.** The platform CA certificate is
-> https://fluency-public.s3.us-east-1.amazonaws.com/certs/ca.crt — a PEM bundle, which is exactly
-> the format Log Exporter's `ca-cert` argument wants. But Log Exporter also insists on presenting a
-> **client** certificate, and Check Point documents the CA as the one that signed *both* the client
-> and the server certificates. Whether the Fluency TLS listener requests a client certificate — and
-> whether it would accept one the customer generates — is **UNVERIFIED** (Step 3.4). Do not promise
-> TLS before that is answered; start on TCP, move to TLS once Fluency confirms.
+> **TLS is not available for Check Point today — use TCP. (Answered 2026-07-28.)** Log Exporter's
+> encrypted export is **mutual-authentication TLS only**: it insists on presenting a **client**
+> certificate, and Check Point documents the CA as the one that signed *both* the client and the
+> server certificates. The Fluency syslog TLS listener **does not accept client certificates** —
+> confirmed by the Fluency team, not inferred — so Log Exporter's mutual handshake has nothing to
+> authenticate against, and Check Point offers no one-way TLS mode to fall back on.
+>
+> **`syslog_tcp` is therefore the correct choice here, not a compromise.** Say so plainly, and
+> state the tradeoff honestly: the stream is connection-oriented and lossless-on-reconnect, but
+> unencrypted. If the customer's policy requires encryption in transit, the answer is a private
+> path (site-to-site VPN or private link), not a Log Exporter setting. Revisit only if Fluency
+> later adds client-certificate support (plan §5, R13).
 
 ---
 
@@ -247,7 +253,12 @@ out expert-mode access. TLS is **not** exposed here; that stays a CLI job (§3.4
    objects → **Install**. The configuration does not take effect until this runs.
 6. Re-run **Install database** after upgrading the servers.
 
-### 3.4 — TLS (only when the prerequisite is confirmed)
+### 3.4 — TLS (blocked today — retained for when the platform supports client certificates)
+
+> **Do not run this section as things stand.** The Fluency syslog TLS listener does not accept
+> client certificates (confirmed 2026-07-28), and Log Exporter cannot do one-way TLS — so this
+> configuration cannot complete a handshake. Use TCP (Step 3.2/3.3). The procedure below is kept
+> so the skill is ready the day client-certificate support lands (plan §5, R13).
 
 Log Exporter's encrypted export is **mutual-authentication TLS 1.2 only**. It needs, on the
 Management/Log Server:

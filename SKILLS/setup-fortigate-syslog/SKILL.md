@@ -42,7 +42,7 @@ Every device-side claim below is cited in `assets/references.md`.
 
 | Side | Item | Detail |
 |---|---|---|
-| Ingext | Site syslog endpoint | Via `syslog_register_config` — **only if the site has none yet**; otherwise reused. The listener the FortiGate will use (`syslog_tls` preferred, else `syslog_tcp` / `syslog_udp`) is enabled with `syslog_update_config` if missing |
+| Ingext | Site syslog endpoint | Via `syslog_register_config` — **only if the site has none yet**; otherwise reused. The listener the FortiGate will use (**`tls_rfc6587`** preferred — FortiOS uses octet-counted framing, so plain `syslog_tls` is the wrong target; else `syslog_udp`) is enabled with `syslog_update_config` if missing |
 | Ingext | Connector | Template **`FortiGateFWLogV2`** ("FortiGate NGFW Syslog V2"), instance e.g. `fortigatefwlogv2`, no parameters |
 | FortiGate | Syslog server entry | `config log syslogd setting` (or `syslogd2`–`syslogd4`), or GUI **Log & Report → Log Settings** |
 | FortiGate | Syslog filter | `config log syslogd filter` — severity floor and per-category toggles |
@@ -92,18 +92,33 @@ runtime — the descriptions below are intent, not exact parameter names.
 3. **Configuration exists but lacks the listener this FortiGate will use** →
    **`syslog_update_config`** to enable it. Leave the existing listeners untouched; other devices
    at the site depend on them.
-4. **Which listener?** FortiOS supports all three, so pick in this order:
-   - **`syslog_tls` — the default choice.** Firewall logs carry internal IPs, usernames, URLs and
-     policy names; they should not cross a network in cleartext. FortiOS does TLS with
-     `set mode reliable` + `set enc-algorithm`.
-   - `syslog_tcp` — if the customer rules out TLS (e.g. no appetite for certificate work) but
-     wants connection-oriented delivery.
-   - `syslog_udp` — last resort, or when the path is already private. **Say the tradeoff out
-     loud:** UDP is unencrypted, unauthenticated and drops silently.
-5. **Capture the deliverables:** endpoint **domain**, **port**, **protocol**. These go into the
-   FortiGate in Step 3.
+4. **Which listener? For FortiGate on TLS the answer is `tls_rfc6587` — not plain `syslog_tls`.**
+   This is the single most important decision in this skill, because getting it wrong produces
+   rows that arrive and are unusable rather than an obvious failure.
 
-> **TLS certificate:** when you take the `syslog_tls` path, the firewall must trust the platform's
+   FortiOS 6.0+ frames TCP/TLS syslog per **RFC 6587 octet counting** (each message prefixed by
+   its byte length). The platform has a **dedicated listener for exactly this**, exposed in the
+   site config as **`tls_rfc6587`** with its own port field **`tls_rfc6587_port`**. Pick in this
+   order:
+
+   - **`tls_rfc6587` — the default choice for FortiGate.** Encrypted *and* framed the way FortiOS
+     actually sends. `syslog_get_config` reports whether it exists and on which port; if the site
+     has no syslog config at all, `syslog_register_config` can create this listener directly, and
+     if the config exists without it, `syslog_update_config` adds it. Use
+     **`tls_rfc6587_port`** as the port you give the FortiGate.
+   - **Plain `syslog_tls` is the wrong listener for a FortiGate on `set mode reliable`** — it
+     expects newline-delimited framing, so octet-counted messages concatenate into merged
+     records. Don't reach for it just because it already exists at the site.
+   - `syslog_tcp` — only if the customer rules out TLS entirely but wants connection-oriented
+     delivery; the same framing caveat applies, so confirm with Fluency before relying on it.
+   - `syslog_udp` — last resort, or when the path is already private. UDP is datagram-framed, so
+     the octet-counting problem does not arise — but **say the tradeoff out loud:** it is
+     unencrypted, unauthenticated, and drops silently.
+5. **Capture the deliverables:** endpoint **domain**, the **`tls_rfc6587_port`** (or the port of
+   whichever listener you settled on), and the **protocol**. These go into the FortiGate in
+   Step 3.
+
+> **TLS certificate:** when you take the `tls_rfc6587` path, the firewall must trust the platform's
 > certificate. Give the admin the platform CA certificate —
 > https://fluency-public.s3.us-east-1.amazonaws.com/certs/ca.crt — and follow the import
 > procedure in Step 3b. The CA certificate is public; it is not a credential.
@@ -151,10 +166,13 @@ This is the part that actually decides whether data flows. Work through it in or
 takes `high-medium | high | low | disable`. **`high` is the right choice** unless the receiving
 side rejects the handshake.
 
-> **Framing caveat, worth knowing before you choose TCP/TLS:** FortiOS v6.0+ frames TCP syslog with
-> RFC 6587 **octet counting** (each message prefixed by its byte length). Receivers that expect
-> newline-delimited (non-transparent) framing can glue many events into one giant record. If
-> TLS/TCP events land merged or truncated in the datalake, that is the cause — see Failure modes.
+> **Framing — this is why Step 1 selects `tls_rfc6587`.** FortiOS v6.0+ frames TCP syslog with
+> RFC 6587 **octet counting** (each message prefixed by its byte length). A receiver expecting
+> newline-delimited (non-transparent) framing glues many events into one giant record. The
+> platform has a **dedicated `tls_rfc6587` listener** for octet-counted senders, so the fix is to
+> point the FortiGate at **`tls_rfc6587_port`** rather than the plain `syslog_tls` port. If
+> TLS/TCP events land merged or truncated, the near-certain cause is that the firewall is aimed
+> at the wrong listener — see Failure modes.
 
 ### 3b. TLS only — import the platform CA certificate first
 
@@ -395,11 +413,11 @@ Report human-readably plus a JSON block a calling task can parse (nothing here i
 | Situation | Response |
 |---|---|
 | Zero rows on **UDP**, but Log & Report shows events | UDP drops silently — the firewall never learns. Re-check `server` (typo/wrong domain), `port` (the endpoint's port, not the 514 default), and that outbound UDP to the endpoint is permitted. Prefer moving this source to TLS. |
-| Site syslog config exists, but not the listener the FortiGate needs | `syslog_update_config` to enable `syslog_tls` (or `_tcp`/`_udp`). **Do not re-register** the site config, and leave the other listeners alone — other devices use them. |
+| Site syslog config exists, but not the listener the FortiGate needs | `syslog_update_config` to enable **`tls_rfc6587`** (or `_tcp`/`_udp`). **Do not re-register** the site config, and leave the other listeners alone — other devices use them. |
 | No site syslog config at all | `syslog_register_config` — once per site, ever. When unsure, `syslog_get_config` first, always. |
 | TLS handshake fails; FortiGate reports **Unknown CA** | The platform CA is not imported (or an intermediate is missing). Re-do Step 3b — **System → Certificates → Import → CA Certificate → File** — and confirm the CA is listed. Import intermediates too if the chain has them. |
 | TLS fails but the CA is present | Check `ssl-min-proto-version` against what the endpoint accepts, and `enc-algorithm` (try `high`). A `set certificate` value left over from another integration will offer a client cert that the endpoint may reject — clear it unless client auth is required. |
-| Events arrive **merged into one huge record** on TCP/TLS | FortiOS uses RFC 6587 octet-counting framing; a receiver expecting newline framing concatenates messages. Raise it with Fluency support with a sample; the interim workaround is `set mode udp`, which trades encryption for correct message boundaries. |
+| Events arrive **merged into one huge record** on TCP/TLS | The FortiGate is pointed at the wrong listener. FortiOS frames with RFC 6587 octet counting, so it must target the **`tls_rfc6587`** listener (port = `tls_rfc6587_port`), not plain `syslog_tls`. Re-read the site config with `syslog_get_config`; add the listener with `syslog_update_config` if it is missing, then correct `set port` on the firewall. |
 | Only system events land, no traffic | Traffic logging is per policy. Set **Log Allowed Traffic** (`set logtraffic utm` or `all`) on the policies that matter — Step 3d, gate 2. |
 | Nothing at all lands, `diagnose log test` included | Check `set status enable`, then reachability: `execute ping <endpoint>`, `execute telnet <endpoint> <port>`. Then the egress path — an upstream firewall or ISP blocking the port is common. |
 | The syslog slot was already taken by another collector | Do not overwrite it. Use `config log syslogd2 setting` (or 3/4) — up to four servers are supported, each with its own filter block. |

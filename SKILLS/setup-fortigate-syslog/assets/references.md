@@ -39,10 +39,13 @@ labelled **secondary** below per the research protocol (`plans/connector-skills-
   the correct configuration object (cited above), but none of the sources checked document the
   exact CLI incantation for loading the PEM body. The skill directs the admin to the documented
   GUI import and explicitly says not to hand-craft the CLI form.
-- **UNVERIFIED — whether the Fluency `syslog_tls` listener accepts RFC 6587 octet-counted
-  framing.** FortiOS's TCP/TLS framing is documented (cited above); the platform's parsing of it is
-  not. The skill ships this as a named failure mode with a sample-and-escalate response, not as a
-  claim in either direction.
+- **RESOLVED 2026-07-28 (was UNVERIFIED) — the platform handles RFC 6587 octet-counted framing
+  on a dedicated listener.** Per the Fluency team: `syslog_get_config` reports the fields
+  **`tls_rfc6587`** and **`tls_rfc6587_port`** for exactly this case, and
+  `syslog_register_config` can create that listener when the site has none. The skill therefore
+  targets `tls_rfc6587` for FortiGate's TLS path rather than plain `syslog_tls`, and the
+  merged-records failure mode now points at "wrong listener" instead of "escalate to support".
+  This is platform guidance, not vendor documentation (plan §5, R14).
 
 ## Fluency platform side (not vendor documentation)
 

@@ -36,11 +36,14 @@ the research protocol (`plans/connector-skills-rollout.md` §4).
   Fluency documentation states which the parser consumes. The skill starts at the PAN-OS default
   (BSD), names IETF as the first thing to try if events land unparsed, and tells the operator to
   leave Custom Log Format alone.
-- **UNVERIFIED — whether the Fluency `syslog_tls` listener requires a client certificate.** This
-  matters because PAN-OS documents that, when the server uses client authentication, the firewall's
-  and the server's certificates must be signed by the *same* CA — a constraint a customer cannot
-  satisfy alone against a hosted endpoint. The skill instructs the operator to confirm with Fluency
-  support before committing to the SSL path, rather than asserting either way.
+- **RESOLVED 2026-07-28 (was UNVERIFIED) — the Fluency syslog TLS listener does not request or
+  accept a client certificate.** Per the Fluency team. PAN-OS documents that, when the server uses
+  client authentication, the firewall's and the server's certificates must be signed by the *same*
+  CA — a constraint a customer could not satisfy against a hosted endpoint. Because no client
+  certificate is requested, that case never arises: the handshake is plain one-way TLS. The skill
+  now tells the operator to skip the "Certificate for Secure Syslog" step entirely, and its
+  failure-mode row redirects client-auth suspicions to the trusted-root import and the
+  certificate-name match instead. Platform guidance, not vendor documentation (plan §5, R13).
 - **PARTIALLY VERIFIED — Panorama push mechanics.** Panorama's *own* syslog forwarding is cited
   above. The split whereby the syslog server profile and Device → Log Settings are pushed from a
   **Template** while the Log Forwarding profile is pushed from a **Device Group** is stated in the

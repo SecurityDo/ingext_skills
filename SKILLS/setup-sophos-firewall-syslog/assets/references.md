@@ -40,11 +40,14 @@ help versions and have been stable across them.
    protocol" and "Device standard format (legacy)". No Fluency documentation for this connector
    was found. The skill tells the operator to start with Device standard format (secondary-source
    convention) and settle it empirically or with Fluency support.
-2. **Whether Fluency's `syslog_tls` listener requires a client certificate from the sending
-   device (mutual TLS).** Sophos's only documented TLS-syslog procedure assumes the syslog server
-   trusts the firewall's default CA, i.e. client authentication. The skill covers server-side
-   trust (importing the platform CA) and CN/SAN matching, flags the mutual-TLS question, and falls
-   back to UDP rather than guessing.
+2. ~~Whether Fluency's `syslog_tls` listener requires a client certificate.~~ **RESOLVED
+   2026-07-28 — it does not** (Fluency team; plan §5, R13). Sophos's only documented TLS-syslog
+   procedure assumes the receiving syslog-ng trusts the firewall's default CA
+   (`peer_verify(required-trusted)`), i.e. client authentication — that arrangement simply does
+   not apply here, since the listener never requests a client certificate. The handshake is
+   one-way, so success depends entirely on the two things the skill now emphasises: the platform
+   CA being trusted (or already public) and the configured address matching the server
+   certificate's CN/SAN. The skill explicitly tells the operator not to export `Default.pem`.
 3. **The datalake table name** — the `SophosFWLog` template carries no index parameter, so the
    platform assigns it. Confirm live with `list_data_tables`; no live MCP session was available at
    build time.

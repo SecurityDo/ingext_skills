@@ -105,9 +105,11 @@ runtime — the shapes below describe intent, not exact parameters.
 > **TLS decision — read this before promising encryption.** SFOS's *own* documented TLS-syslog
 > procedure targets a customer-run `syslog-ng` server and is built around the firewall's **default
 > CA**: the server is configured with `peer_verify(required-trusted)` and must hold the firewall's
-> `Default.pem`. Whether Fluency's `syslog_tls` listener asks the firewall for a client
-> certificate is **UNVERIFIED** here — confirm with the Fluency team or test before declaring TLS
-> working. What *is* documented and reliable: the firewall verifies the syslog server
+> `Default.pem`. **That mutual arrangement does not apply here** — the Fluency syslog TLS listener
+> neither requests nor accepts client certificates (confirmed by the Fluency team, 2026-07-28), so
+> the handshake is one-way: the firewall verifies the server and presents nothing itself. Do not
+> try to give Fluency the firewall's `Default.pem`; it has no use for it. What *is* documented and
+> reliable, and is what actually decides success here: the firewall verifies the syslog server
 > certificate's **Common Name** (and the SAN as well, in LINCE mode) against the address you
 > configure, so always enter the endpoint **domain**, never an IP; and an external CA can be
 > trusted via **Certificates → Certificate authorities → Add**. Platform CA certificate:
@@ -328,7 +330,7 @@ Report human-readably plus a JSON block a calling task can parse (nothing here i
 | Firewall category ticked, still almost no traffic logs | Rule-level logging is off. Select **Log firewall traffic** in the firewall rules (and **Log connections** in SSL/TLS inspection rules) that should be logged (§3.4). |
 | Site syslog config exists but not the listener this firewall needs | `syslog_update_config` to enable it (`syslog_tls`, else `syslog_udp`) — do **not** re-register the site config. Leave existing listeners untouched. |
 | No site syslog config at all | `syslog_register_config` — once per site, ever. If unsure whether one exists, `syslog_get_config` first, always. |
-| TLS won't establish / certificate errors | Three documented causes: (a) the **IP address/domain** field holds an IP or a name that doesn't match the server certificate's CN — SFOS matches the CN, and the SAN too in LINCE mode; (b) the platform CA was never imported under **Certificates → Certificate authorities → Add**; (c) the listener expects a client certificate — Sophos's documented TLS flow assumes the syslog server trusts the firewall's **default CA** (`Certificates → Certificate authorities → Default`, downloadable as `Default.pem`). Confirm the listener's requirement with Fluency; fall back to UDP rather than guessing. |
+| TLS won't establish / certificate errors | Three documented causes: (a) the **IP address/domain** field holds an IP or a name that doesn't match the server certificate's CN — SFOS matches the CN, and the SAN too in LINCE mode; (b) the platform CA was never imported under **Certificates → Certificate authorities → Add**; (c) **not** a client-certificate problem — the Fluency listener neither requests nor accepts one (confirmed 2026-07-28), so exporting the firewall's `Default.pem` will not help; recheck (a) and (b) instead, and fall back to UDP only once both are ruled out. |
 | Egress blocked upstream | The firewall's own outbound path to the endpoint may be blocked by an ISP/upstream ACL even though the firewall is happy. Packet capture shows the send; absence of rows plus a clean capture means the drop is off-box. |
 | `syslog_*` tools not visible on the MCP | The MCP session may need re-authentication, or an older server may not expose them — re-connect, or read the endpoint from the platform UI's Connectors page instead. |
 | Firewall already has five syslog servers | SFOS supports **up to five**. Retire an unused entry or ask the customer which destination to replace — there is no sixth slot. |

@@ -115,12 +115,13 @@ runtime — the descriptions below are intent, not exact parameter names.
 > https://fluency-public.s3.us-east-1.amazonaws.com/certs/ca.crt — and follow Step 3b. The CA
 > certificate is public; it is not a credential.
 >
-> **Check this before promising SSL:** PAN-OS documents that, *when the syslog server uses client
-> authentication*, "the syslog server and the sending firewall must have certificates that the
-> same trusted certificate authority (CA) signed". If the Fluency `syslog_tls` listener requires a
-> client certificate, that constraint is not satisfiable by the customer alone — confirm with
-> Fluency support, and fall back to `syslog_tcp` rather than burning an hour on a handshake that
-> cannot succeed.
+> **SSL is clear to use here. (Answered 2026-07-28.)** PAN-OS documents that, *when the syslog
+> server uses client authentication*, "the syslog server and the sending firewall must have
+> certificates that the same trusted certificate authority (CA) signed" — a constraint a customer
+> could not satisfy against a hosted endpoint. That case does not arise: the Fluency syslog TLS
+> listener **does not request or accept client certificates** (confirmed by the Fluency team), so
+> the handshake is plain one-way TLS with the firewall verifying the server. **Skip the client
+> certificate entirely** — Step 3b.2 exists only for other receivers.
 
 ---
 
@@ -346,7 +347,7 @@ debug log-receiver statistics
 | No site syslog config at all | `syslog_register_config` — once per site, ever. When unsure, `syslog_get_config` first, always. |
 | **SSL handshake fails** | Confirm the platform CA was imported and marked **Trusted Root CA** (Step 3b.1), and that the chain is complete. Remember PAN-OS supports **TLSv1.2 only** for this transport. |
 | SSL fails with a revocation error | PAN-OS validates via OCSP/CRL where the chain carries those extensions and **cannot bypass a failure**. The chain must be valid and checkable — take it to Fluency support with the exact error. |
-| The endpoint demands a **client certificate** | PAN-OS requires the firewall's and the server's certificates to be signed by the same CA in that scenario, which the customer cannot arrange unilaterally. Confirm the requirement with Fluency support; fall back to `syslog_tcp` rather than guessing. |
+| Handshake fails and client authentication is suspected | It shouldn't be the cause — the Fluency listener neither requests nor accepts client certificates (confirmed 2026-07-28), so PAN-OS's same-CA constraint never applies. Look instead at the trusted-root import and at whether the server profile's address matches the certificate name. Do not generate a "Certificate for Secure Syslog"; it cannot help. |
 | Events arrive but look unparsed / header mangled | Try switching **Format** between **BSD** and **IETF** in the server profile (Step 3a), and make sure nothing was entered on the **Custom Log Format** tab. Confirm the installed connector is `PaloAlto_FWLog`. |
 | Firewall is Panorama-managed and local edits keep reverting | Expected — the config is pushed. Author the change in the Template (server profile, Log Settings) and Device Group (Log Forwarding), then Commit and Push. |
 | Someone asks about Cortex XDR alongside this | Different product, different connector. Route to **`setup-cortex-xdr-connector`**; do not try to cover it here. |

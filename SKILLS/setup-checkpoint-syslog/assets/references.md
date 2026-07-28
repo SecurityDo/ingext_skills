@@ -33,17 +33,22 @@ guides) and Check Point's support centre (`support.checkpoint.com`). Anything el
   it and no source was found at build time. The skill keeps Log Exporter's default **`syslog`** and
   tells the operator to ask Fluency support before switching, rather than cycling through
   cef/leef/json. Do not assert a format the platform has not confirmed.
-- **Whether the Fluency syslog TLS listener works with Log Exporter — UNVERIFIED.** Log Exporter
+- **Whether the Fluency syslog TLS listener works with Log Exporter — RESOLVED 2026-07-28: it does
+  not.** Log Exporter
   supports encrypted export with **mutual authentication only**: it always presents a client
   certificate, and Check Point documents the CA as the one that signed both the client and the
   server certificates. The platform CA file
   (https://fluency-public.s3.us-east-1.amazonaws.com/certs/ca.crt) was inspected at build time
   (`openssl storeutl -noout -text`, 2026-07-28) and is a **PEM bundle of five public roots — Amazon
   Root CA 1, 2, 3, 4 and Starfield Services Root Certificate Authority G2** — so the endpoint uses a
-  publicly-trusted server certificate and that file serves as `ca-cert`. What is *not* answerable
-  from published material is whether the listener requests a client certificate and whether it would
-  accept a customer-generated one. The skill therefore defaults to **TCP** and gates TLS on a
-  Fluency-side confirmation. Re-check the bundle before relying on it — it can change.
+  publicly-trusted server certificate and that file serves as `ca-cert`. The remaining question —
+  whether the listener requests a client certificate and would accept a customer-generated one —
+  was **answered by the Fluency team on 2026-07-28: no client certificate is accepted** (plan §5,
+  R13). Since Log Exporter's encrypted export is mutual-authentication-only and Check Point
+  provides no one-way TLS mode, **TLS cannot be used for this connector at all**. The skill states
+  **TCP** as the correct transport rather than a fallback, keeps its TLS section explicitly gated
+  off for the day that changes, and points customers who require encryption in transit at a
+  private network path. Re-check the CA bundle before relying on it — it can change.
 - **Exporting directly from a Security Gateway that stores logs locally — UNVERIFIED.** The current
   Log Exporter and Logging & Monitoring guides scope Log Exporter to Management Servers / Log
   Servers. The skill says so and offers the supported alternative (point the gateway at the

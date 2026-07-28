@@ -113,14 +113,26 @@ devices are handed the platform CA bundle at
 `https://fluency-public.s3.us-east-1.amazonaws.com/certs/ca.crt`; see the note below on what that
 file actually is.
 
+**Two transport facts that apply to every row** (confirmed by the Fluency team 2026-07-28):
+
+- **There is a dedicated `tls_rfc6587` listener** — with its own `tls_rfc6587_port` — for senders
+  that use **RFC 6587 octet-counted framing**. `syslog_get_config` reports both fields, and
+  `syslog_register_config` / `syslog_update_config` can create the listener. **FortiGate needs
+  this one**, because plain `syslog_tls` expects newline framing and would concatenate FortiOS
+  messages into unusable records. Check any other octet-counting sender the same way.
+- **TLS is one-way — no client certificates are accepted.** Devices verify the platform and
+  present nothing. This *unblocks* Palo Alto and Sophos Firewall (their client-auth caveats never
+  arise — don't generate a client certificate for either) and *rules out* TLS for Check Point,
+  whose Log Exporter does mutual-auth TLS only.
+
 | Device | Aliases | Route | Verified transports → listener | Device-side prerequisite |
 |---|---|---|---|---|
-| FortiGate | Fortinet, FortiOS, FGT | `setup-fortigate-syslog` | UDP / TCP / **TLS** → `syslog_tls` | Admin with **CLI** access (transport mode, TLS and log filters are CLI-only) |
+| FortiGate | Fortinet, FortiOS, FGT | `setup-fortigate-syslog` | UDP / TCP / **TLS** → **`tls_rfc6587`** (FortiOS uses octet-counted framing — *not* plain `syslog_tls`) | Admin with **CLI** access (transport mode, TLS and log filters are CLI-only) |
 | Palo Alto | PAN-OS, PA-series, Panorama | `setup-paloalto-syslog` | UDP / TCP / **SSL (TLS 1.2)** → `syslog_tls` | Admin who can edit server profiles, log forwarding **and Commit** |
 | Cisco Meraki | Meraki MX/MS/MR, dashboard | `setup-cisco-meraki-syslog` | UDP / TCP / **TLS (MX 26.1+ only)** → `syslog_tls` on qualifying MX, else `syslog_udp` | Dashboard admin **per network**; Organization → Certificates for TLS |
 | Cisco ASA | ASA, ASDM, Secure Firewall ASA | `setup-cisco-asa-syslog` | UDP / TCP / **TLS (`secure`)** → `syslog_tls` | Privileged CLI or ASDM, **plus a change window** if TCP/TLS (see the fail-closed warning) |
 | SonicWall | SonicOS, TZ, NSa, NSsp | `setup-sonicwall-syslog` | **Version-gated:** SonicOS 8 = UDP/TCP/TLS; **7.x and 6.5 = UDP only** → `syslog_tls` on 8, else `syslog_udp` | Web-UI admin; pin the firmware version first — it decides the listener |
-| Check Point | Quantum, Log Exporter, `cp_log_export` | `setup-checkpoint-syslog` | TCP / UDP / **TLS 1.2 mutual-auth only** → `syslog_tcp` (TLS blocked, see R13) | Expert-mode CLI on the **Management/Log Server** (not the gateway), or a SmartConsole admin |
+| Check Point | Quantum, Log Exporter, `cp_log_export` | `setup-checkpoint-syslog` | TCP / UDP / TLS-mutual-auth-only → **`syslog_tcp`** — TLS is unusable because the platform accepts no client certificate (R13, answered) | Expert-mode CLI on the **Management/Log Server** (not the gateway), or a SmartConsole admin |
 | Sophos Firewall | Sophos XG/XGS, SFOS | `setup-sophos-firewall-syslog` | UDP / **TLS** (no plain TCP) → `syslog_tls` | SFOS admin over System services → Log settings (+ Certificates for TLS) |
 | Sophos UTM 9 | Sophos SG, Astaro | `setup-sophos-utm-syslog` | **UDP only** → `syslog_udp` | UTM 9 WebAdmin admin. ⚠️ **UTM 9 reached end of life 30 Jun 2026** — see the row note |
 | Peplink / Pepwave | Peplink Balance, Pepwave MAX | `setup-peplink-syslog` | **UDP only** → `syslog_udp` | Device web-admin access (System → Event Log) |
