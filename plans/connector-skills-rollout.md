@@ -208,10 +208,13 @@ platform; do not guess any of them.
 > **Deferred (2026-07-24 review):** every R-item below is parked — to be revisited in a separate
 > project pending documentation updates. Do not attempt to resolve them inline; the skills they
 > gate are skipped in the current pass (§9a).
+>
+> **Update 2026-07-28:** **R1 is resolved** (see its row) — the syslog family is unblocked and
+> `setup-peplink-syslog` shipped as its exemplar. R2–R11 remain deferred.
 
 | ID | Question | Blocks |
 |---|---|---|
-| **R1** | **Syslog transport:** where exactly does a customer point a syslog device — a per-tenant cloud syslog endpoint (host/port/protocol/TLS?), or is an on-site Fluency Collector required for on-prem sources? How does the agent retrieve the endpoint (platform UI "Connectors" page per `add-connector` Step 7.3 — is there an MCP call)? | The entire syslog family (§7.2) |
+| **R1** | **RESOLVED 2026-07-28.** The site syslog transport is managed via MCP calls: `syslog_get_config` reads the existing configuration; `syslog_register_config` creates it when the site has none (**once per site, not per integration**); `syslog_update_config` enables an additional listener on an existing config (e.g. the site has `syslog_tls` but the device only speaks `syslog_tcp`/`syslog_udp`). Deliverables: endpoint domain + port + protocol (TCP/UDP/TLS). TLS sources get the platform CA cert: https://fluency-public.s3.us-east-1.amazonaws.com/certs/ca.crt — exemplar implementation: `setup-peplink-syslog` | ~~The entire syslog family (§7.2)~~ — unblocked |
 | **R2** | Fluency Collector install procedure on Rocky Linux 9 (internal docs needed) | `FluencyCollector`, `LDAP` (§6.3) |
 | **R3** | `AWSCloudWatchLogGroupS3`: which S3 delivery mechanism/format does the parser expect (Firehose subscription-filter delivery vs. CloudWatch export tasks; gzip/JSON layout)? | `automatic-aws-cloudwatch-logs` |
 | **R4** | `GoogleWorkspace`: the exact OAuth scope list to authorize in domain-wide delegation | `automatic-google-workspace` |
@@ -288,7 +291,13 @@ start from; verify every deep link at build time).
 
 ### 7.2 Syslog family (12 skills)
 
-Shared precondition: **R1 resolved.** All are guide-only on the device side. Datalake index:
+Shared precondition: **R1 — resolved 2026-07-28** (see §5): resolve the site transport with
+`syslog_get_config`, create it once per site with `syslog_register_config` if absent, or enable
+the listener the device speaks (`syslog_udp` / `syslog_tcp` / `syslog_tls`) with
+`syslog_update_config`; hand TLS-capable devices the platform CA cert
+(https://fluency-public.s3.us-east-1.amazonaws.com/certs/ca.crt). **`setup-peplink-syslog` is
+the shipped exemplar** — clone its transport step (Step 1), self-contained shape, and
+quiet-device verification semantics. All are guide-only on the device side. Datalake index:
 per-template default where present, else confirm live (R10).
 
 | Skill | Template | Vendor-side outline (to verify) | Confidence | Doc anchors |
@@ -427,10 +436,15 @@ Verify-tier skills ship only after their vendor steps were checked against live 
 build time (§4); anything that could not be verified is an explicit UNVERIFIED stub, never a
 guess.
 
+> **2026-07-28 addendum:** R1 resolved → the syslog family is unblocked, and
+> **`setup-peplink-syslog`** shipped as its exemplar (15th skill of the rollout). The remaining
+> 11 syslog skills follow it (NXLog and ManageEngine still additionally gated on R6/R9).
+
 Skipped in this pass — revisited with the documentation project:
 
-- **Syslog family, all 12** — gated on R1 (syslog destination), plus R6 (NXLog reference config)
-  and R9 (ManageEngine product) for two of them.
+- **Syslog family** — was gated on R1 (syslog destination; **resolved 2026-07-28** — see §5/§7.2;
+  Peplink shipped), plus R6 (NXLog reference config) and R9 (ManageEngine product), which still
+  gate those two.
 - `automatic-aws-cloudwatch-logs` (R3); `automatic-aws-eks-fluentbit` — judgment call: its
   parser-format question is R3-adjacent, so it travels with R3 rather than shipping
   half-verified.
