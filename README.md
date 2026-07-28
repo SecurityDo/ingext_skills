@@ -511,9 +511,16 @@ Ten skills covering devices and hosts that ship logs by **syslog**. They share o
    where onboarding actually goes wrong.
 
 **Transport differs per device and decides the listener**, so each skill verified it rather than
-assuming: FortiGate, Palo Alto, Cisco ASA, Sophos Firewall and Linux do TLS; Meraki does TLS only
-on MX 26.1+; SonicWall only on SonicOS 8; Peplink and Sophos UTM 9 are UDP-only; Check Point's Log
-Exporter does TLS but *only* mutual TLS, so it ships with TCP until that's resolved.
+assuming: Palo Alto, Cisco ASA, Sophos Firewall and Linux do TLS; Meraki does TLS only on MX
+26.1+; SonicWall only on SonicOS 8; Peplink and Sophos UTM 9 are UDP-only. Two platform-side
+facts shape the rest:
+
+- **FortiGate targets the dedicated `tls_rfc6587` listener**, not plain `syslog_tls` — FortiOS
+  frames TCP/TLS syslog with RFC 6587 octet counting, which a newline-framing listener would glue
+  into unusable records. `syslog_get_config` reports `tls_rfc6587` / `tls_rfc6587_port`.
+- **TLS is one-way; no client certificates are accepted.** So Check Point — whose Log Exporter
+  does mutual-auth TLS only — correctly uses TCP, while Palo Alto and Sophos Firewall need no
+  client certificate at all.
 
 The platform CA bundle
 (`https://fluency-public.s3.us-east-1.amazonaws.com/certs/ca.crt`) is five **public** roots —
@@ -523,12 +530,12 @@ never act as a client certificate.
 
 | Skill | Device | Notable |
 |---|---|---|
-| `setup-fortigate-syslog` | FortiGate / FortiOS | CLI-driven; FortiOS 6.0+ uses RFC 6587 octet framing on TCP/TLS |
+| `setup-fortigate-syslog` | FortiGate / FortiOS | CLI-driven; targets the `tls_rfc6587` listener because FortiOS 6.0+ uses octet-counted framing |
 | `setup-paloalto-syslog` | PAN-OS | Two attachment points — Log Forwarding profiles *and* Device → Log Settings — plus Commit |
 | `setup-cisco-meraki-syslog` | Meraki dashboard | Configured **per network**; roles decide what is sent |
 | `setup-cisco-asa-syslog` | Cisco ASA | ⚠️ TCP/TLS syslog **fails closed** — a dead collector blocks new connections unless `logging permit-hostdown` |
 | `setup-sonicwall-syslog` | SonicOS | Transport is firmware-gated; pin the version before promising TLS |
-| `setup-checkpoint-syslog` | Check Point | Exports from the **Management/Log Server**, not the gateway |
+| `setup-checkpoint-syslog` | Check Point | Exports from the **Management/Log Server**, not the gateway; TCP by design (its TLS is mutual-auth only) |
 | `setup-sophos-firewall-syslog` | Sophos Firewall (SFOS) | 13-category log-selection matrix |
 | `setup-sophos-utm-syslog` | Sophos UTM 9 | ⚠️ End of life 30 Jun 2026 — migrate to Sophos Firewall |
 | `setup-peplink-syslog` | Peplink / Pepwave | UDP-only; one screen (System → Event Log) |
