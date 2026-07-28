@@ -1,0 +1,57 @@
+{
+  "skill_name": "setup-peplink-syslog",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We have a Pepwave MAX at our branch office — get its logs into Ingext. I'm looking at its admin UI right now; do whatever you can on the Fluency side yourself.",
+      "expected_output": "The skill takes the agent-does-Fluency path: it calls syslog_get_config to read the site's syslog transport, registers one with syslog_register_config only if none exists (or enables the UDP listener via syslog_update_config if the existing config lacks it — never re-registering), captures the endpoint domain and UDP port, installs the PeplinkFWLog connector via create_connector (live template fetch first, instance 'peplinkfwlog', never 'default'), and then guides the operator through the one device screen: System → Event Log → Remote Syslog, server = the endpoint domain, port = the UDP port, Apply. It verifies by comparing the device's own Event Log page against a row count in the datalake (table confirmed via list_data_tables), noting UDP gives no delivery errors so the row count is the only confirmation.",
+      "files": [],
+      "expectations": [
+        "The skill reads the existing site syslog config before creating anything, and registers only when none exists",
+        "If the config exists without a UDP listener it uses syslog_update_config to enable UDP rather than re-registering, leaving other listeners untouched",
+        "It installs the PeplinkFWLog connector itself with a live template fetch and instance id 'peplinkfwlog'",
+        "The device guidance is System → Event Log → Remote Syslog with the endpoint host and UDP port",
+        "Verification compares the device's own Event Log against the datalake row count, with the table name confirmed via list_data_tables",
+        "It explains that Peplink sends UDP only and that delivery failures are silent"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our MSP manages the customer's Peplink Balance and their network admin isn't available until next week. Prepare everything so the hookup is a five-minute job for them.",
+      "expected_output": "The skill does the Fluency side now — resolves or creates the site syslog transport (get → register once per site or update to enable UDP) and installs the PeplinkFWLog connector — then produces a short runbook for the absent admin: System → Event Log → Remote Syslog, enable, server = the resolved endpoint domain, port = the resolved UDP port, Apply; plus the note that the device sends UDP with no delivery errors, so they should tell us when it's applied and we'll confirm rows landed. It offers to run verification when the admin reports back, and marks the source pending until then.",
+      "files": [],
+      "expectations": [
+        "The Fluency side (transport + connector) is completed now; only the device screen is deferred to the runbook",
+        "The runbook contains the concrete endpoint domain and UDP port, not placeholders",
+        "It notes UDP delivery is silent, so verification happens on the Fluency side after the admin applies the change",
+        "The source is tracked as pending until rows are confirmed"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add our Peplink router's logs to Fluency. Heads up: our site's syslog was set up TLS-only a while back for our firewalls, and security wants to know why the router can't use TLS too.",
+      "expected_output": "The skill reads the existing config with syslog_get_config, finds only the TLS listener, and uses syslog_update_config to additionally enable the UDP listener — it does NOT re-register the site config and does not touch the TLS listener the firewalls use. It answers the security question honestly: Peplink's remote syslog has no TLS or TCP option (host + port over UDP only, per the manuals and Peplink's own forum), so the choices are accepting UDP for this source or carrying it over a private path — and the platform CA certificate link only applies to TLS-capable sources. It then proceeds with the connector install and the System → Event Log device guidance.",
+      "files": [],
+      "expectations": [
+        "It inspects the existing config first and adds a UDP listener via syslog_update_config rather than re-registering",
+        "The existing TLS listener is left untouched for the devices already using it",
+        "It states plainly that the Peplink device offers no TLS syslog, citing its references rather than improvising a workaround",
+        "The CA-certificate link is described as applying to TLS-capable sources, not Peplink",
+        "The unencrypted-transport tradeoff is surfaced as a customer decision, not silently accepted"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Peplink from the onboarding menu. The Fluency MCP is connected; the router's admin is on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it resolves the site syslog transport (register only if the site has none), installs the PeplinkFWLog connector itself WITHOUT chaining into add-connector and without re-collecting router context, and guides the admin through the Remote Syslog screen. It hands back the connector instance id, the datalake table name (confirmed via list_data_tables since the template has no index parameter), and the endpoint domain/port/protocol for the summary — none of which are credentials. It tells the router rows should appear within minutes of Apply when the device logs events, that a quiet router legitimately shows little (compare the device's own Event Log; generate a benign event if needed), and to mark the source pending rather than failed until the device-side log demonstrably shows events that never arrived.",
+      "files": [],
+      "expectations": [
+        "The skill completes transport plus connector itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id, the confirmed table name, and the endpoint details",
+        "It distinguishes a quiet router (pending) from confirmed loss (device log shows events that never arrived — failed)",
+        "It suggests generating a benign device event as the smoke test instead of waiting"
+      ]
+    }
+  ]
+}
