@@ -1,0 +1,60 @@
+{
+  "skill_name": "setup-cisco-meraki-syslog",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We run a Cisco Meraki MX at HQ and I'm in the dashboard now. Get its firewall logs into Ingext — do whatever you can on the Fluency side yourself.",
+      "expected_output": "The skill takes the agent-does-Fluency path: it calls syslog_get_config to read the site's syslog transport, asks for (or has the admin check) the MX firmware version at Organization → Monitor → Firmware upgrades, and picks the listener accordingly — syslog_tls when the MX is on MX26.1 or higher, otherwise syslog_udp. It registers a site config with syslog_register_config only if none exists, or enables the missing listener with syslog_update_config (never re-registering, never touching existing listeners). It installs the CiscoMerakiFWLog connector via create_connector after a live list_connector_templates fetch, instance 'ciscomerakifwlog', never 'default', passing datalake=managed and index=Meraki. Then it guides the dashboard work: Network-wide → Configure → General → Add a syslog server, server address = the endpoint domain (noting FQDN needs MX26.1+), the port and protocol from Step 1, roles = Appliance event log plus Security events to start, and Update syslog servers. If TLS was chosen it walks through selecting TCP, checking Encrypted (TLS) syslog, uploading the platform CA certificate at Organization → Certificates and selecting it on that entry. It verifies by comparing Network-wide → Monitor → Event log against a row count in the datalake table confirmed with list_data_tables.",
+      "files": [],
+      "expectations": [
+        "The skill reads the existing site syslog config before creating anything, and registers only when none exists",
+        "It determines MX firmware version before choosing the transport, and prefers TLS on MX26.1+ rather than defaulting to UDP",
+        "It installs the CiscoMerakiFWLog connector itself with a live template fetch, instance id 'ciscomerakifwlog', and every template parameter including datalake and index",
+        "The dashboard guidance is Network-wide → Configure → General → Add a syslog server with address, port, protocol and roles, ending in Update syslog servers",
+        "Role selection is explained as the control over what is forwarded, with Appliance event log / Security events as the firewall starting point and a volume warning on Flows and URLs",
+        "Verification compares the dashboard's own Network-wide → Monitor → Event log against the datalake row count, with the table name confirmed via list_data_tables"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our MSP manages this customer's Meraki org but their network admin only has dashboard access and won't be free until Thursday. Write up exactly what they need to click.",
+      "expected_output": "The skill does the Fluency side now — resolves or creates the site syslog transport (get → register once per site, or update to enable the needed listener) and installs the CiscoMerakiFWLog connector — then produces a complete dashboard runbook for the absent admin with concrete values, not placeholders: the resolved endpoint address, port and protocol; Network-wide → Configure → General → Add a syslog server; the exact roles to tick; Update syslog servers; and, if TLS applies, select TCP, tick Encrypted (TLS) syslog, upload the platform CA certificate (the fluency-public ca.crt URL) at Organization → Certificates and select it on that entry. It states up front that syslog is per network and asks how many networks are in scope, offering configuration templates or the Dashboard API (PUT /networks/{networkId}/syslogServers) if there are many. It notes there is no test-syslog button in the dashboard, so the admin should tell us when it is applied and we will confirm rows against Network-wide → Monitor → Event log. It marks the source pending until then.",
+      "files": [],
+      "expectations": [
+        "The Fluency side (transport + connector) is completed now; only the dashboard clicks are deferred to the runbook",
+        "The runbook contains the concrete endpoint address, port, protocol and role list, not placeholders",
+        "It raises the per-network scoping up front and offers configuration templates or the Dashboard API for a multi-network estate",
+        "It notes there is no documented test-syslog facility in the dashboard and that verification happens on the Fluency side after the admin applies the change",
+        "The source is tracked as pending until rows are confirmed"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add our Meraki logs to Fluency. Two things: security says everything must be encrypted in transit, and our site's syslog was set up UDP-only years ago for some old switches. We have MX68s on the latest firmware plus a bunch of MS switches.",
+      "expected_output": "The skill reads the existing config with syslog_get_config, finds only the UDP listener, and uses syslog_update_config to additionally enable syslog_tls — it does NOT re-register the site config and does not disturb the UDP listener the old switches use. It then splits the estate honestly: the MX68s, if running MX26.1 or higher, can do encrypted (TLS) syslog over TCP per RFC 5425, so they get a TCP + Encrypted (TLS) syslog server entry carrying only the appliance roles, with the platform CA certificate uploaded at Organization → Certificates and selected on that entry (because the MX otherwise validates against CCADB, which will not contain a private CA). The MS switches cannot do encrypted syslog today — Meraki documents it as MX-only with MS/MR support in a future release — so they need a separate syslog server entry on UDP, and the skill says that plainly rather than implying the switch stream is protected. It confirms the MX firmware version before promising TLS, then installs the connector and verifies.",
+      "files": [],
+      "expectations": [
+        "It inspects the existing config first and adds the TLS listener via syslog_update_config rather than re-registering",
+        "The existing UDP listener is left untouched for the devices already using it",
+        "It confirms MX26.1+ firmware before committing to TLS instead of assuming it",
+        "It walks through uploading the platform CA certificate at Organization → Certificates and selecting it on the encrypted entry, explaining the CCADB default that makes this mandatory",
+        "It states plainly that MS switches cannot use encrypted syslog today and require a separate UDP server entry, and surfaces the unencrypted-transport tradeoff as a customer decision",
+        "It knows an encrypted entry may carry only Appliance roles, so switch/wireless roles need their own entry"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Cisco Meraki from the onboarding menu. The Fluency MCP is connected; their dashboard admin is on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it resolves the site syslog transport (register only if the site has none, update to add a listener otherwise), installs the CiscoMerakiFWLog connector itself WITHOUT chaining into add-connector and without re-collecting router context, and guides the admin through Network-wide → Configure → General for each network in scope. It hands back the connector instance id, the datalake table name (template index default 'Meraki', confirmed via list_data_tables), the endpoint domain/port/protocol, and how many Meraki networks were configured out of how many exist — none of which are credentials. It tells the router rows should appear within minutes of Update syslog servers when the network logs events, that a quiet network with only the Event log role legitimately shows little (compare Network-wide → Monitor → Event log; generate a benign event if needed), and to mark the source pending rather than failed until the dashboard event log demonstrably shows events that never arrived. It flags a partially configured multi-network estate explicitly rather than reporting the stage as done.",
+      "files": [],
+      "expectations": [
+        "The skill completes transport plus connector itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id, the confirmed table name, the endpoint details, and the networks-configured count",
+        "It distinguishes a quiet network (pending) from confirmed loss (dashboard event log shows events that never arrived — failed)",
+        "It reports partial multi-network coverage explicitly instead of marking the stage complete",
+        "It suggests generating a benign dashboard event as the smoke test, noting there is no built-in test-syslog action"
+      ]
+    }
+  ]
+}

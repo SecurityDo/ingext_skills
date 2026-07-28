@@ -1,6 +1,6 @@
 ---
 name: add-connector
-version: 1.1.0
+version: 1.2.0
 description: >
   Add (install) a new application connector on Ingext / Fluency. Use this skill whenever
   the user asks to "add an application", "install a connector", "connect [app name]",
@@ -92,6 +92,13 @@ Common aliases to handle:
 - "Okta" → Okta
 - "Box" / "box.com" → BoxCom
 - "Mimecast" → MimecastCG (current, API 2.0) or Mimecast (legacy 1.0 — existing credentials only)
+- "Meraki" / "Cisco Meraki" → CiscoMerakiFWLog
+- "ASA" / "Cisco ASA" → CiscoASAFWLog
+- "SonicWall" / "SonicOS" → SonicWallFWLog
+- "Check Point" / "Checkpoint" / "Quantum" → CheckPointFWLog
+- "Sophos Firewall" / "XG" / "XGS" → SophosFWLog; "Sophos UTM" / "SG" / "Astaro" → SophosUTMSyslog
+- "Peplink" / "Pepwave" → PeplinkFWLog
+- "Linux" / "RHEL" / "Rocky" / "rsyslog" → LinuxRHELSyslog
 
 **Dedicated setup skills:** several templates have a dedicated `setup-*` / `automatic-*` skill
 that guides the vendor-side work (token creation, IAM plumbing) before installing. If the user

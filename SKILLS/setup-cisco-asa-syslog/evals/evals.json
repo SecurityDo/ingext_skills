@@ -1,0 +1,59 @@
+{
+  "skill_name": "setup-cisco-asa-syslog",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We have a Cisco ASA 5516 at the edge. Get its logs into Ingext — I have console access to the firewall, and please do whatever you can on the Fluency side yourself.",
+      "expected_output": "The skill takes the agent-does-Fluency path: it calls syslog_get_config to read the site's syslog transport, puts the transport decision to the operator first — encrypted (TLS) syslog on the ASA carries a fail-closed behaviour that UDP does not — and then registers a site config with syslog_register_config only if none exists, or enables the needed listener with syslog_update_config (never re-registering, never touching existing listeners). It installs the CiscoASAFWLog connector via create_connector after a live list_connector_templates fetch, instance 'ciscoasafwlog', never 'default', passing datalake=managed and index=CiscoASA. It then gives a real device runbook: logging enable, logging timestamp, logging host <interface> <ip> <proto>/<port>, logging trap informational, logging device-id hostname, write memory — noting that logging host takes an IP address, that the default UDP port is 514 and TCP 1470, and that nothing survives a reload without write memory. It offers the ASDM equivalents (Configuration → Device Management → Logging → Logging Setup / Syslog Servers / Logging Filters). It verifies with show logging on the device plus a datalake row count against the table confirmed via list_data_tables.",
+      "files": [],
+      "expectations": [
+        "The skill reads the existing site syslog config before creating anything, and registers only when none exists",
+        "It raises the TCP/TLS fail-closed behaviour as a decision for the customer before configuring a transport",
+        "It installs the CiscoASAFWLog connector itself with a live template fetch, instance id 'ciscoasafwlog', and every template parameter including datalake and index",
+        "The device runbook gives real CLI in fenced blocks — logging enable, logging host with interface/IP/protocol/port, logging trap, logging timestamp — and ends in write memory",
+        "It states that logging host takes an IP address, not an FQDN, so the endpoint domain must be resolved",
+        "Verification uses show logging on the ASA as ground truth alongside the datalake row count, with the table name confirmed via list_data_tables"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our firewall team owns the ASAs and they only accept changes as a reviewed config block in a change ticket. Prepare what they need; I'll handle the Fluency side conversation with you now.",
+      "expected_output": "The skill does the Fluency side now — resolves or creates the site syslog transport (get → register once per site, or update to enable the needed listener) and installs the CiscoASAFWLog connector — then produces a paste-ready ASA configuration block with the resolved endpoint address, port and protocol filled in, not placeholders. The block is ordered correctly: if TCP or TLS, logging permit-hostdown and the CA trustpoint import come before the logging host ... secure line, and write memory closes it. It includes a plain-language change-risk note for the ticket: with TCP or TLS syslog the ASA by default blocks all new connections through the firewall when the collector is unreachable (%ASA-3-201008), which is why permit-hostdown is in the block, and what to run to back the change out (no logging host <if> <ip>). It gives the firewall team the verification commands (show logging, show logging queue, show running-config logging, show crypto ca certificate) and the 111008 test event, and marks the source pending until rows are confirmed.",
+      "files": [],
+      "expectations": [
+        "The Fluency side (transport + connector) is completed now; only the ASA change is deferred to the runbook",
+        "The config block contains concrete endpoint address, port and protocol, not placeholders",
+        "Command order is correct: permit-hostdown and the CA trustpoint import precede the secure logging host line",
+        "It supplies a back-out command and an explicit change-risk note about the fail-closed behaviour",
+        "It supplies device-side verification commands and a documented test event, and tracks the source as pending until rows are confirmed"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add the ASA to Fluency and use encrypted syslog — everything has to be TLS here. FYI our site's syslog config already exists, it was set up UDP-only for some other kit.",
+      "expected_output": "The skill reads the existing config with syslog_get_config, finds only the UDP listener, and uses syslog_update_config to additionally enable syslog_tls — it does NOT re-register the site config and does not disturb the UDP listener other devices use. Before writing any ASA config it surfaces the outage risk prominently: on the ASA, if the SSL/TLS connection cannot be established, all new connections through the firewall are denied, so logging permit-hostdown must be decided deliberately — and it presents the tradeoff (traffic keeps flowing but syslog can gap, versus fail-closed logging some compliance regimes require) rather than choosing silently. It then walks the CA import in the right order: download the platform CA certificate, crypto ca trustpoint FLUENCY-SYSLOG-CA with enrollment terminal and revocation-check none, crypto ca authenticate with the PEM pasted and terminated by quit plus the fingerprint confirmation, optionally a crypto ca reference-identity with dns-id for the RFC 6125 check, then logging host <if> <ip> tcp/<port> secure, and write memory. It notes secure is TCP-only (an error occurs with UDP), that IPv6 cannot be used for secure logging, and that the server certificate needs ServAuth in Extended Key Usage.",
+      "files": [],
+      "expectations": [
+        "It inspects the existing config first and adds the TLS listener via syslog_update_config rather than re-registering",
+        "The existing UDP listener is left untouched for the devices already using it",
+        "The fail-closed risk of secure/TCP syslog is raised prominently and framed as a customer decision, with logging permit-hostdown as the mitigation",
+        "The CA import procedure is concrete and correctly ordered: crypto ca trustpoint with enrollment terminal, then crypto ca authenticate with the pasted PEM and fingerprint confirmation",
+        "It states that secure works only over TCP and not UDP, and that IPv6 is unsupported for secure logging",
+        "It ends with write memory and gives show crypto ca certificate / show logging as the TLS verification"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Cisco ASA from the onboarding menu. The Fluency MCP is connected; their firewall admin is on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it resolves the site syslog transport (register only if the site has none, update to add a listener otherwise), installs the CiscoASAFWLog connector itself WITHOUT chaining into add-connector and without re-collecting router context, and guides the admin through the ASA runbook live. It hands back the connector instance id, the datalake table name (template index default 'CiscoASA', confirmed via list_data_tables), the endpoint domain/port/protocol, the logging trap severity actually configured, and whether logging permit-hostdown was set — the last being an availability fact the ops team needs recorded. None of these are credentials. It tells the router rows should appear within minutes of write memory when the ASA logs events, that show logging's message counter and the device's own log buffer are the ground truth, and to mark the source pending rather than failed until the device-side log demonstrably shows events that never arrived. It suggests re-entering a harmless configuration command as the test event, since that generates %ASA-5-111008 which is sent at trap level notifications or lower.",
+      "files": [],
+      "expectations": [
+        "The skill completes transport plus connector itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id, the confirmed table name, the endpoint details, the configured logging trap severity, and the permit-hostdown state",
+        "It distinguishes a quiet ASA (pending) from confirmed loss (show logging counts messages that never arrived — failed)",
+        "It suggests the documented %ASA-5-111008 command-execution event as the benign smoke test rather than waiting"
+      ]
+    }
+  ]
+}

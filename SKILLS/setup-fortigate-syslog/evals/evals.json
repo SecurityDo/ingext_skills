@@ -1,0 +1,59 @@
+{
+  "skill_name": "setup-fortigate-syslog",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We run a FortiGate 100F at HQ and want its logs in Ingext. I've got the firewall CLI open in another window — do whatever you can on the Fluency side yourself.",
+      "expected_output": "The skill takes the agent-does-Fluency path: it calls syslog_get_config to read the site's syslog transport, registers one with syslog_register_config only if none exists (or enables the needed listener with syslog_update_config if the existing config lacks it — never re-registering), and prefers the syslog_tls listener because FortiOS supports TLS and firewall logs should not cross the network in cleartext. It captures the endpoint domain, port and protocol, installs the FortiGateFWLogV2 connector via create_connector (live list_connector_templates fetch first, instance 'fortigatefwlogv2', never 'default'), then walks the operator through the FortiGate: import the platform CA at System → Certificates → Import → CA Certificate → File, then the `config log syslogd setting` block with set mode reliable, set enc-algorithm high, the endpoint server/port, and `end` to save; then `config log syslogd filter` for the severity floor, and the reminder that traffic logs only appear if the firewall policies have Log Allowed Traffic set. It verifies with `diagnose log test` plus a row count against the table confirmed via list_data_tables.",
+      "files": [],
+      "expectations": [
+        "The skill reads the existing site syslog config before creating anything, and registers only when none exists",
+        "It prefers the TLS listener because FortiOS supports TLS, and says why (firewall logs in cleartext otherwise)",
+        "It walks through importing the platform CA certificate on the FortiGate before enabling syslog",
+        "The CLI it gives is real FortiOS syntax — config log syslogd setting with set mode reliable and set enc-algorithm, closed with end",
+        "It explains that traffic logs are gated per firewall policy (set logtraffic / Log Allowed Traffic) separately from the syslog filter",
+        "It installs the FortiGateFWLogV2 connector itself with a live template fetch and instance id 'fortigatefwlogv2'",
+        "Verification uses diagnose log test plus a row count with the table name confirmed via list_data_tables"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our network team owns the FortiGate and they only take change tickets. Get the Fluency side ready and write me something I can paste into the ticket.",
+      "expected_output": "The skill does the Fluency side now — resolves or creates the site syslog transport (get → register once per site, or update to enable the listener) and installs the FortiGateFWLogV2 connector — then produces a complete, paste-ready runbook for the network team: the CA import path (System → Certificates → Import → CA Certificate → File) with the platform CA URL, the exact `config log syslogd setting` block with the real endpoint domain and port filled in, the matching `config log syslogd filter` block with a sensible severity floor, a note that a free slot (syslogd2/3/4) must be used if the primary is already pointed at another collector, the per-policy Log Allowed Traffic requirement, and the on-device checks (`show full-configuration log syslogd setting`, `execute telnet <endpoint> <port>`, `diagnose log test`). It marks the source pending until the change lands and offers to verify when the team confirms.",
+      "files": [],
+      "expectations": [
+        "The Fluency side (transport + connector) is completed now; only the firewall change is deferred to the ticket",
+        "The runbook carries the concrete endpoint domain, port and protocol, not placeholders",
+        "It warns not to overwrite an existing syslogd entry and names syslogd2/3/4 as the alternative",
+        "It includes the device-side confirmation commands so the network team can prove the change took",
+        "The source is tracked as pending until rows are confirmed"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add our Fortinet firewall to Fluency. Our site's syslog endpoint was set up UDP-only for some old appliances, and our security lead won't sign off on plaintext firewall logs leaving the building.",
+      "expected_output": "The skill reads the existing config with syslog_get_config, finds only the UDP listener, and uses syslog_update_config to additionally enable the TLS listener — it does NOT re-register the site config and does not disturb the UDP listener the old appliances depend on. It agrees with the security lead on the merits: FortiGate logs carry internal IPs, usernames and URLs, and FortiOS genuinely supports TLS syslog via set mode reliable with set enc-algorithm high, so the CA-import path applies here (unlike a UDP-only device). It walks through importing https://fluency-public.s3.us-east-1.amazonaws.com/certs/ca.crt at System → Certificates → Import → CA Certificate → File, notes that no client certificate is needed unless the receiving server requires client auth, and flags the RFC 6587 octet-counting framing caveat that comes with FortiOS TCP/TLS syslog so nobody is surprised if events land merged. It then installs the connector and verifies.",
+      "files": [],
+      "expectations": [
+        "It inspects the existing config first and adds the TLS listener via syslog_update_config rather than re-registering",
+        "The existing UDP listener is left untouched for the devices already using it",
+        "It confirms FortiOS supports TLS syslog and gives the exact mode/enc-algorithm settings rather than declining",
+        "It covers importing the platform CA on the FortiGate and says a client certificate is not required unless the server demands it",
+        "It surfaces the RFC 6587 octet-counting framing caveat as a known risk of the TCP/TLS path"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked FortiGate from the onboarding menu. The Fluency MCP is connected and their firewall admin is on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it resolves the site syslog transport (register only if the site has none), installs the FortiGateFWLogV2 connector itself WITHOUT chaining into add-connector and without re-collecting context the router already established, and guides the admin through the FortiGate runbook live. It hands back the connector instance id, the datalake table name (confirmed via list_data_tables, since the template has no index parameter), and the endpoint domain/port/protocol — none of which are credentials. It notes that a production FortiGate is rarely quiet, so rows should appear within minutes and a persistently empty table with events visible under Log & Report is a failure, not a wait. It also passes on the downstream caveat that FortiGate byte fields are cumulative session counters, so bandwidth analysis must go through the fortigate-bandwidth skill, while the plain row count used for verification is safe.",
+      "files": [],
+      "expectations": [
+        "The skill completes transport plus connector itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id, the confirmed table name, and the endpoint details",
+        "It treats a busy firewall differently from a quiet appliance when deciding pending vs failed",
+        "It flags the cumulative-byte-counter caveat and points at the fortigate-bandwidth skill, while noting a row count is a valid smoke test"
+      ]
+    }
+  ]
+}

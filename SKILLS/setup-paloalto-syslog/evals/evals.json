@@ -1,0 +1,60 @@
+{
+  "skill_name": "setup-paloalto-syslog",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We have a PA-3220 pair at the datacenter and want their logs in Ingext. I'm logged into the firewall's web UI now — please do everything you can on the Fluency side yourself.",
+      "expected_output": "The skill takes the agent-does-Fluency path: it calls syslog_get_config to read the site's syslog transport, registers one with syslog_register_config only if none exists (or enables the needed listener with syslog_update_config if the existing config lacks it — never re-registering), and prefers the syslog_tls listener because PAN-OS supports SSL transport (TLSv1.2 only). It captures the endpoint domain, port and protocol, installs the PaloAlto_FWLog connector via create_connector (live list_connector_templates fetch first, instance 'paloalto-fwlog', never 'default'), then walks the admin through PAN-OS in order: import the platform CA at Device → Certificate Management → Certificates as a Trusted Root CA; create the server profile at Device → Server Profiles → Syslog with Transport SSL, the endpoint address and port, BSD format and LOG_USER facility; create an Objects → Log Forwarding profile with match lists for Traffic/Threat/URL Filtering and attach it to security rules under Policies → Security → Actions with Log at Session End; separately configure Device → Log Settings for System, Configuration, User-ID and HIP Match; then Commit. It verifies against Monitor → Logs and a row count with the table confirmed via list_data_tables.",
+      "files": [],
+      "expectations": [
+        "The skill reads the existing site syslog config before creating anything, and registers only when none exists",
+        "It prefers the TLS/SSL listener because PAN-OS supports it, and notes TLSv1.2 only",
+        "It covers importing the platform CA as a Trusted Root CA before the SSL profile is used",
+        "It presents BOTH attachment points — Objects → Log Forwarding attached to security rules, AND Device → Log Settings — as separate required steps",
+        "It ends the device runbook with Commit and says nothing takes effect until the commit completes",
+        "It installs the PaloAlto_FWLog connector itself with a live template fetch and instance id 'paloalto-fwlog'",
+        "Verification uses the firewall's Monitor → Logs views plus a row count with the table name confirmed via list_data_tables"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Palo Alto is managed by our MSSP and they need a written change request. Set up whatever you can now and give me the exact steps for them.",
+      "expected_output": "The skill does the Fluency side now — resolves or creates the site syslog transport (get → register once per site, or update to enable the listener) and installs the PaloAlto_FWLog connector — then produces a complete change request for the MSSP: the CA import path and the platform CA URL, the Device → Server Profiles → Syslog fields with the real endpoint domain, port, transport and format filled in, the Objects → Log Forwarding match lists and which security rules to attach them to with Log at Session End, the separate Device → Log Settings entries for System/Configuration/User-ID/HIP, and the Commit. It flags that a server profile alone forwards nothing, asks whether the estate is Panorama-managed (in which case the objects go into a Template and Device Group and are pushed), and marks the source pending until the change lands, offering to verify afterwards.",
+      "files": [],
+      "expectations": [
+        "The Fluency side (transport + connector) is completed now; only the firewall change is deferred to the change request",
+        "The runbook carries the concrete endpoint domain, port and transport, not placeholders",
+        "It states explicitly that a syslog server profile on its own forwards nothing without the attachment steps",
+        "It asks about or accounts for Panorama-managed deployments (Template + Device Group, Commit and Push)",
+        "The source is tracked as pending until rows are confirmed"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Our Palo Alto is already sending to Fluency but we only see system and config events — no traffic or threat logs at all. The syslog profile is definitely there and committed.",
+      "expected_output": "The skill recognizes the classic PAN-OS half-configuration: Device → Log Settings was filled in (hence System and Configuration logs) but the policy-driven log types were not attached. It directs the admin to Objects → Log Forwarding to create or edit a profile with match lists for Traffic, Threat and URL Filtering pointing at the existing syslog server profile, then to Policies → Security to set that Log Forwarding profile on the Actions tab of every rule that should log, enabling Log at Session End — noting that naming a profile 'default' only auto-applies to newly created rules, so existing rules still need sweeping — and then to Commit. It also checks the Fluency side is sane (connector installed, correct listener enabled on the site config via syslog_get_config, using syslog_update_config rather than re-registering if a listener is missing) and re-verifies with a row count against the table confirmed via list_data_tables.",
+      "files": [],
+      "expectations": [
+        "It diagnoses the missing Objects → Log Forwarding attachment rather than suspecting the connector or the transport first",
+        "It names the exact path Policies → Security → rule → Actions → Log Forwarding, with Log at Session End",
+        "It notes that a profile named 'default' only auto-applies to new rules, so existing rules must be updated",
+        "It requires a Commit after the change",
+        "If the site syslog config needs a listener it uses syslog_update_config and does not re-register"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Palo Alto from the onboarding menu. The Fluency MCP is connected and their firewall admin is on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it resolves the site syslog transport (register only if the site has none), installs the PaloAlto_FWLog connector itself WITHOUT chaining into add-connector and without re-collecting context the router already established, and guides the admin through the PAN-OS runbook live — server profile, certificates for SSL, both attachment points, Commit. It hands back the connector instance id, the datalake table name (confirmed via list_data_tables, since the template has no index parameter), and the endpoint domain/port/protocol — none of which are credentials. It tells the router that zero rows before the Commit is expected, that rows should appear within a couple of minutes after it, and that partial arrival (traffic but no system logs, or the reverse) means one of the two attachment points is missing and the source is not done. It also notes PAN-OS has no test-message button, so a benign config change plus Commit is the way to generate a known event.",
+      "files": [],
+      "expectations": [
+        "The skill completes transport plus connector itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id, the confirmed table name, and the endpoint details",
+        "It ties the latency expectation to the Commit, not to the connector install",
+        "It calls out partial arrival as a half-success traceable to the two separate attachment points, not as done",
+        "It states there is no built-in test log message and suggests generating a Config/System log instead"
+      ]
+    }
+  ]
+}

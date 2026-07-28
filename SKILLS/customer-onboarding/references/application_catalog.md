@@ -99,6 +99,58 @@ GuardDuty in S3. That skill documents how to swap the connector in its final ste
 > skill's connector step does the same install and validates the string's `EntityPath`, so
 > preferring it is never wrong.
 
+### Syslog sources (guided, compact)
+
+Each row has a dedicated skill. **All are self-contained** — the skill resolves the site's syslog
+transport itself (`syslog_get_config`; `syslog_register_config` **once per site, ever** if none
+exists; `syslog_update_config` to add the listener a device needs, leaving existing listeners
+alone), installs the connector, then guides the device-side configuration from cited vendor
+documentation. **No `add-connector` follow-on.** None of these templates define an index, so
+**confirm every table with `list_data_tables`**.
+
+Transport is per-device and was verified per skill — it decides which listener to enable. TLS
+devices are handed the platform CA bundle at
+`https://fluency-public.s3.us-east-1.amazonaws.com/certs/ca.crt`; see the note below on what that
+file actually is.
+
+| Device | Aliases | Route | Verified transports → listener | Device-side prerequisite |
+|---|---|---|---|---|
+| FortiGate | Fortinet, FortiOS, FGT | `setup-fortigate-syslog` | UDP / TCP / **TLS** → `syslog_tls` | Admin with **CLI** access (transport mode, TLS and log filters are CLI-only) |
+| Palo Alto | PAN-OS, PA-series, Panorama | `setup-paloalto-syslog` | UDP / TCP / **SSL (TLS 1.2)** → `syslog_tls` | Admin who can edit server profiles, log forwarding **and Commit** |
+| Cisco Meraki | Meraki MX/MS/MR, dashboard | `setup-cisco-meraki-syslog` | UDP / TCP / **TLS (MX 26.1+ only)** → `syslog_tls` on qualifying MX, else `syslog_udp` | Dashboard admin **per network**; Organization → Certificates for TLS |
+| Cisco ASA | ASA, ASDM, Secure Firewall ASA | `setup-cisco-asa-syslog` | UDP / TCP / **TLS (`secure`)** → `syslog_tls` | Privileged CLI or ASDM, **plus a change window** if TCP/TLS (see the fail-closed warning) |
+| SonicWall | SonicOS, TZ, NSa, NSsp | `setup-sonicwall-syslog` | **Version-gated:** SonicOS 8 = UDP/TCP/TLS; **7.x and 6.5 = UDP only** → `syslog_tls` on 8, else `syslog_udp` | Web-UI admin; pin the firmware version first — it decides the listener |
+| Check Point | Quantum, Log Exporter, `cp_log_export` | `setup-checkpoint-syslog` | TCP / UDP / **TLS 1.2 mutual-auth only** → `syslog_tcp` (TLS blocked, see R13) | Expert-mode CLI on the **Management/Log Server** (not the gateway), or a SmartConsole admin |
+| Sophos Firewall | Sophos XG/XGS, SFOS | `setup-sophos-firewall-syslog` | UDP / **TLS** (no plain TCP) → `syslog_tls` | SFOS admin over System services → Log settings (+ Certificates for TLS) |
+| Sophos UTM 9 | Sophos SG, Astaro | `setup-sophos-utm-syslog` | **UDP only** → `syslog_udp` | UTM 9 WebAdmin admin. ⚠️ **UTM 9 reached end of life 30 Jun 2026** — see the row note |
+| Peplink / Pepwave | Peplink Balance, Pepwave MAX | `setup-peplink-syslog` | **UDP only** → `syslog_udp` | Device web-admin access (System → Event Log) |
+| Linux (RHEL family) | RHEL, Rocky, Alma, CentOS, rsyslog | `automatic-linux-rhel-syslog` | UDP / TCP / **TLS** → `syslog_tls` | **root/sudo** on the host (Mode A: the agent configures rsyslog itself), or a Linux admin (Mode B) |
+
+**First-event latency for every syslog row:** near-real-time once the device forwards — seconds
+to a couple of minutes. A quiet device legitimately produces little, so compare against the
+device's own log view before judging; most skills document a way to generate a test event
+(`logger` on Linux, a config change on PAN-OS, an admin command on ASA). Mark ⏳ only while a
+device remains unconfigured; ❌ once a configured device's own log shows events that never landed.
+
+> **⚠️ Sophos UTM 9 is end-of-life (30 June 2026).** No further OS, AV/IPS signature, or
+> vulnerability updates, and Sophos support ends 31 December 2026. The skill still helps a
+> customer today but says so up front and points at Sophos Firewall as the migration path.
+
+> **What the platform CA file is** (inspected 2026-07-28): a PEM bundle of **five public roots** —
+> Amazon Root CA 1–4 and Starfield Services Root CA G2. The syslog TLS endpoint therefore presents
+> a **publicly trusted** certificate: many devices validate it with no import at all, and
+> importing the bundle is best understood as **pinning** trust to those roots. It is server-trust
+> only and **cannot** serve as a client certificate — which is why Check Point's mutual-TLS-only
+> Log Exporter has no TLS path yet (plan §5, R13).
+
+> **Open parser question affecting these rows (plan §5, R12):** which syslog *format* each Fluency
+> parser expects is undocumented — FortiGate `default` vs others, PAN-OS **BSD vs IETF**, SonicWall
+> **Default vs Enhanced**, Check Point `syslog` vs CEF/LEEF. Each skill recommends the vendor
+> default and gives a diagnostic (rows landing but fields unparsed → try the alternate → ask
+> Fluency). Worth settling centrally rather than per-customer.
+
+---
+
 ### SaaS API & push integrations (guided, compact)
 
 Each row below has a dedicated skill. **All are self-contained** — the skill guides the
@@ -135,7 +187,6 @@ Aliases mirror `add-connector`'s own matching list, which is authoritative for t
 |---|---|---|---|---|
 | Office 365 (consent path) | O365, Microsoft 365 | Hosted OAuth consent | Admin email; admin completes consent | `Office365` |
 | Google Workspace | GSuite, G Suite | Hosted OAuth consent | Admin email; admin completes consent | `gsuiteUser`, `gsuiteGroup` |
-| FortiGate | Fortinet, FortiGate firewall | Syslog | Device configured to forward syslog to the Fluency endpoint | `NetworkFortigateTraffic`, `NetworkFortigateEvent` |
 | Bitdefender Event Push (EP) | GravityZone | API key | Ask which variant first: **Security Telemetry (ST) is guided** — `setup-bitdefender-securitytelemetry-connector`; only EP routes here | — |
 | Proofpoint Essentials | — | API key | Ask which product first: **TAP is guided** — `setup-proofpoint-tap-connector`; only Essentials routes here | — |
 
@@ -152,3 +203,18 @@ the `fortigate-bandwidth` skill fires automatically — FortiGate byte fields ar
 counters and a naive `sum()` over-counts badly. Nothing to do at onboarding time; noted here so the
 router doesn't hand-roll a verification query that trips over it. For the Step 5 event-count check,
 a plain row count is safe.
+
+---
+
+## Syslog sources still without a skill
+
+Two members of the syslog family are **deliberately not built yet**, both blocked on
+documentation (plan §5):
+
+| Application | Template | Blocked on | Interim route |
+|---|---|---|---|
+| Windows Server via NXLog | `WindowsSrvNxLog` | **R6** — the reference `nxlog.conf` (route + format) Fluency's parser expects. A wrong format means events land but never parse | `add-connector` |
+| ManageEngine | `ManageEngine` | **R9** — which ManageEngine product the parser targets (ADAudit Plus? EventLog Analyzer?). Without that there is no menu path to document | `add-connector` |
+
+Do **not** improvise either procedure — that is exactly the silent-breakage the guided skills
+exist to prevent.

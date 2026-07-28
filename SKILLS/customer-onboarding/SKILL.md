@@ -1,6 +1,6 @@
 ---
 name: customer-onboarding
-version: 1.3.0
+version: 1.4.0
 description: >-
   Guide a new Fluency / Ingext customer through getting their data in — present a menu of supported
   applications, route each choice to the right setup skill, verify events are actually landing, and

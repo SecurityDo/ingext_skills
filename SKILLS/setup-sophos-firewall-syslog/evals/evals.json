@@ -1,0 +1,60 @@
+{
+  "skill_name": "setup-sophos-firewall-syslog",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We run a Sophos XGS 3300 on SFOS 21.5 at HQ — get its logs into Ingext. I'm in the firewall's web console now; do whatever you can on the Fluency side yourself.",
+      "expected_output": "The skill confirms this is Sophos Firewall (SFOS), not UTM 9 or Sophos Central, then takes the agent-does-Fluency path: syslog_get_config to read the site's syslog transport, syslog_register_config only if none exists, or syslog_update_config to enable the listener it needs — preferring syslog_tls because SFOS supports Secure log transmission — and captures the endpoint domain, port and protocol. It installs the SophosFWLog connector via create_connector after a live list_connector_templates fetch (instance 'sophosfwlog', never 'default'). It then guides the admin through System services → Log settings → Add (name, endpoint domain, Secure log transmission, port, facility, severity, format), the certificate import under Certificates → Certificate authorities → Add when TLS is used, the Log settings matrix where log categories are ticked in the new server's column, and the reminder that firewall rules need 'Log firewall traffic' selected. It verifies with the firewall's own Log viewer plus an ingext-kql row count against the table confirmed via list_data_tables.",
+      "files": [],
+      "expectations": [
+        "It disambiguates Sophos Firewall from Sophos UTM 9 and Sophos Central before acting",
+        "It reads the existing site syslog config first and registers only when none exists",
+        "It prefers the TLS listener because SFOS supports Secure log transmission, and covers importing the platform CA under Certificates → Certificate authorities → Add",
+        "It installs the SophosFWLog connector itself with a live template fetch and instance id 'sophosfwlog'",
+        "The device runbook includes both the syslog server entry AND ticking log categories in the Log settings matrix",
+        "It mentions that firewall rules need 'Log firewall traffic' (and SSL/TLS inspection rules 'Log connections') or almost nothing is produced",
+        "Verification compares the firewall's Log viewer against the datalake row count, with the table confirmed via list_data_tables"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our customer's network team owns the Sophos firewall and won't touch it until Thursday's change window. Give me something they can execute in ten minutes without asking us questions.",
+      "expected_output": "The skill does the Fluency side now — resolves or creates the site syslog transport (get → register once per site, or update to enable the listener) and installs the SophosFWLog connector — then writes a self-contained runbook for the network team: System services → Log settings → Add with the concrete endpoint domain, port, whether Secure log transmission is on, a facility (DAEMON or a per-firewall LOCALn), severity Information, and the chosen Format; the CA import step if TLS; then the Log settings matrix with a named baseline of categories to tick (Firewall, IPS, Antivirus, Content filtering, Events, Active threat response, Heartbeat, Zero-day protection) in the new server's column; then Apply; then the reminder about per-rule 'Log firewall traffic'. It notes the two documented defaults that bite (Active threat response inbound source match off by default; Wireless off under Local reporting), asks them to report back when applied, and marks the source pending until rows are confirmed.",
+      "files": [],
+      "expectations": [
+        "The Fluency side (transport + connector) is completed now; only the console work is deferred to the runbook",
+        "The runbook carries concrete values — endpoint domain, port, protocol — not placeholders",
+        "It enumerates which log categories to tick rather than saying 'select the logs you want'",
+        "It includes the Apply step and the per-rule logging requirement",
+        "The source is tracked as pending until rows are confirmed"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add the Sophos firewall to Fluency. Two things: our site's syslog listener was set up UDP-only for some old switches, and our security lead insists firewall logs must be encrypted in transit.",
+      "expected_output": "The skill reads the existing config with syslog_get_config, finds only the UDP listener, and uses syslog_update_config to additionally enable syslog_tls — it does NOT re-register the site config and leaves the UDP listener the switches use untouched. It explains that Sophos Firewall genuinely supports encrypted syslog via the 'Secure log transmission' option, walks through importing the platform CA certificate at Certificates → Certificate authorities → Add (Validation only purpose, .pem accepted), and insists the IP address/domain field holds the endpoint domain because SFOS matches the certificate's Common Name — and the SAN as well in LINCE mode. It is honest that Sophos's own documented TLS procedure assumes the syslog server trusts the firewall's default CA, so whether the platform listener requires a client certificate is unverified and should be confirmed or tested, with UDP as the documented fallback if TLS cannot be established.",
+      "files": [],
+      "expectations": [
+        "It inspects the existing config first and adds the TLS listener via syslog_update_config rather than re-registering",
+        "The existing UDP listener is left untouched for the devices already using it",
+        "It confirms SFOS supports TLS syslog and walks through the CA import path with the correct purpose",
+        "It requires the endpoint domain (not an IP) because of CN/SAN matching, citing the LINCE behavior",
+        "It flags the mutual-TLS/client-certificate question as unverified instead of asserting it works",
+        "It names UDP as the fallback and states the unencrypted-transport tradeoff plainly"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Sophos Firewall from the onboarding menu. The Fluency MCP is connected and their firewall admin is on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it resolves the site syslog transport (register only if the site has none), installs the SophosFWLog connector itself WITHOUT chaining into add-connector and without re-collecting router context, and guides the admin through the syslog server entry, the category matrix and Apply. It hands back the connector instance id, the datalake table name (confirmed via list_data_tables since the template has no index parameter), the endpoint domain/port/protocol, and the format chosen — none of which are credentials. It states that syslog is near-real-time so rows should appear within minutes of Apply, that a firewall is rarely quiet so prolonged zero rows is a real signal rather than a quiet-device excuse, and that the first things to check are unticked categories, per-rule logging, and silent UDP loss — comparing the firewall's own Log viewer before marking anything failed.",
+      "files": [],
+      "expectations": [
+        "The skill completes transport plus connector itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id, the confirmed table name, and the endpoint details",
+        "It gives an honest near-real-time latency and says a busy firewall producing zero rows is a real failure signal, not a quiet source",
+        "It names unticked categories, missing per-rule logging, and silent UDP drops as the first diagnostics, using the device's Log viewer as ground truth"
+      ]
+    }
+  ]
+}

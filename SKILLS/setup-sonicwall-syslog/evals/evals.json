@@ -1,0 +1,59 @@
+{
+  "skill_name": "setup-sonicwall-syslog",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We have a SonicWall NSa 2700 on SonicOS 8 — get its firewall logs into Ingext. I'm in the SonicWall admin UI now; do whatever you can on the Fluency side yourself.",
+      "expected_output": "The skill takes the agent-does-Fluency path: it calls syslog_get_config to read the site's syslog transport, registers one with syslog_register_config only if none exists (or enables the missing listener via syslog_update_config — never re-registering), and because the firewall runs SonicOS 8 it drives the syslog_tls listener, capturing the endpoint domain, TLS port and protocol. It installs the SonicWallFWLog connector via create_connector (live list_connector_templates fetch first, instance 'sonicwallfwlog', never 'default'), then guides the admin through the firewall: create an FQDN address object for the endpoint under Object > Match Objects > Addresses; add the server at Device > Log > Syslog > Syslog Servers > Add with Protocol TLS, the port from Step 1 (not the auto-filled 6514 if they differ), Server Type 'Syslog Server', Syslog Format 'Default', facility and Syslog ID left at defaults; confirm the Syslog checkboxes and Logging Level under Device > Log > Settings; and, if the TLS handshake fails certificate validation, import the platform CA bundle under Device > Settings > Certificates (converted to PKCS#7/DER first, since SonicOS does not import PEM) rather than enabling Ignore TLS Certificate Error. It verifies with the firewall's own Monitor > Logs > System Logs, a Packet Monitor capture, and a row count against the table confirmed via list_data_tables — and inspects a row to confirm fields parsed, not just that rows arrived.",
+      "files": [],
+      "expectations": [
+        "The skill reads the existing site syslog config before creating anything, and registers only when none exists",
+        "It establishes the SonicOS version first and, for SonicOS 8, prefers the TLS listener rather than defaulting to UDP",
+        "It installs the SonicWallFWLog connector itself with a live template fetch and instance id 'sonicwallfwlog'",
+        "Device guidance covers the address object, Device > Log > Syslog > Syslog Servers > Add with every field, and the Device > Log > Settings category/Syslog-checkbox step",
+        "The CA-certificate step notes SonicOS imports PKCS#7 or DER (not PEM) and gives the conversion, and does not recommend Ignore TLS Certificate Error as the fix",
+        "Verification uses the firewall's own System Logs plus a datalake row count with the table confirmed via list_data_tables, and checks that fields are parsed"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our customer's SonicWall is managed by their network team and they won't touch it until Thursday. Prepare everything now so it's a ten-minute job for them.",
+      "expected_output": "The skill does the Fluency side now — resolves or creates the site syslog transport and installs the SonicWallFWLog connector — then produces a concrete runbook for the absent admin containing the real endpoint domain, port and protocol rather than placeholders: create the address object, Device > Log > Syslog > Syslog Servers > Add with the exact field values (including Syslog Format 'Default' and the port from Step 1), check the Syslog column for the categories they want under Device > Log > Settings, Accept. Because it does not know the firmware, it gives the version fork explicitly — SonicOS 8 has a Protocol field and should use TLS with the CA-import fallback; SonicOS 7.x/6.5 has no protocol selector and sends cleartext UDP, with the 6.5 path being Manage | Log Settings | SYSLOG — and asks the admin to report which they have so the right listener is enabled before Thursday. It notes UDP gives no delivery errors, offers the Packet Monitor check for the admin to run, and marks the source pending until rows are confirmed.",
+      "files": [],
+      "expectations": [
+        "The Fluency side (transport + connector) is completed now; only the firewall screens are deferred to the runbook",
+        "The runbook carries the concrete endpoint domain, port and protocol, not placeholders",
+        "It presents the SonicOS 8 vs 7.x/6.5 transport fork instead of assuming TLS, including the 6.5 menu path",
+        "It includes the Device > Log > Settings step so the admin knows which events actually get forwarded",
+        "It notes UDP delivery is silent and hands the admin the documented Packet Monitor verification",
+        "The source is tracked as pending until rows are confirmed"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add our SonicWall to Fluency. Two things: the site's syslog was set up TLS-only for our other firewalls, and this SonicWall is a TZ370 running SonicOS 7.1. Security will ask why it isn't encrypted.",
+      "expected_output": "The skill reads the existing config with syslog_get_config, sees only the TLS listener, and uses syslog_update_config to additionally enable the UDP listener — it does NOT re-register the site config and does not touch the TLS listener the other firewalls use. It answers the security question honestly and with citations: SonicOS 7.1's Add Syslog Server dialog has no protocol selector, so the firewall can only send cleartext UDP/514; encrypted syslog (TLS 1.2/1.3, RFC 5425) arrived in SonicOS 8, so the real options are accepting UDP for this source, carrying it over a private path such as an existing site-to-site tunnel, or upgrading the firmware — a customer decision, not a workaround the skill invents. It notes the platform CA certificate applies only to TLS-capable senders, then proceeds with the connector install and the Device > Log > Syslog / Device > Log > Settings runbook.",
+      "files": [],
+      "expectations": [
+        "It inspects the existing config first and adds a UDP listener via syslog_update_config rather than re-registering",
+        "The existing TLS listener is left untouched for the devices already using it",
+        "It states plainly that SonicOS 7.x has no TLS syslog and that TLS is a SonicOS 8 feature, citing its references rather than improvising",
+        "The CA-certificate link is described as applying to TLS-capable senders, not this firewall",
+        "The unencrypted-transport tradeoff is surfaced as a customer decision (accept, private path, or upgrade)"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked SonicWall from the onboarding menu. The Fluency MCP is connected; their firewall admin is on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it resolves the site syslog transport (register only if the site has none, update to add the listener the firmware speaks), installs the SonicWallFWLog connector itself WITHOUT chaining into add-connector and without re-collecting router context, and walks the admin through the firewall screens. It hands back the connector instance id, the datalake table name (confirmed via list_data_tables since the template has no index parameter), the endpoint domain/port/protocol, and the SonicOS version plus the Syslog Format chosen so a later parsing question is answerable. It explains that rows should appear within minutes when the firewall is logging, that a quiet firewall legitimately shows little — compare Monitor > Logs > System Logs — and that the source stays pending rather than failed until the firewall's own log demonstrably shows events that never arrived. It also flags that rows arriving unparsed is not success: Fluency's expected format for SonicWallFWLog is unverified, so the fix is Default first, then Enhanced Syslog, then Fluency support.",
+      "files": [],
+      "expectations": [
+        "The skill completes transport plus connector itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id, the confirmed table name, the endpoint details, the SonicOS version and the syslog format chosen",
+        "It distinguishes a quiet firewall (pending) from confirmed loss (device log shows events that never arrived — failed)",
+        "It treats rows-but-unparsed as not-done and names the format diagnostic, stating that the parser's expected format is unverified rather than inventing one"
+      ]
+    }
+  ]
+}

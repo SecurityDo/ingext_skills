@@ -1,0 +1,60 @@
+{
+  "skill_name": "setup-sophos-utm-syslog",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We still run a Sophos SG 210 on UTM 9.7 at the warehouse — get its logs into Ingext. I have WebAdmin open; do whatever you can on the Fluency side yourself.",
+      "expected_output": "The skill opens with the end-of-life fact — Sophos UTM reached end of life on 30 June 2026, no OS/software updates or vulnerability patches, AV/IPS/anti-spam signature updates and SXL URL lookups stopped, no Sophos support beyond 31 December 2026, and Sophos Firewall (SFOS/XGS) is the vendor's path forward — while making clear it will still get the logs flowing today. It then takes the agent-does-Fluency path: syslog_get_config first, syslog_register_config only if the site has none, or syslog_update_config to enable the UDP listener (UTM cannot do TLS), and captures the endpoint domain and UDP port. It installs the SophosUTMSyslog connector via create_connector after a live list_connector_templates fetch (instance 'sophosutmsyslog', never 'default'), not SophosFWLog or SophosEDR. It then guides WebAdmin: a DNS host network definition and a UDP service definition, Logging & Reporting → Log Settings → Remote Syslog Server → toggle on → Plus → Name/Server/Port → Save → Apply, then ticking subsystems under Remote Syslog Log Selection and Apply again. Verification compares Today's Log Files → Live Log against an ingext-kql row count on the table confirmed via list_data_tables.",
+      "files": [],
+      "expectations": [
+        "The end-of-life status (30 June 2026, support ends 31 December 2026) is stated prominently before the configuration work",
+        "It still helps today and points to setup-sophos-firewall-syslog as the post-migration follow-on",
+        "It reads the existing site syslog config first and enables/creates the UDP listener without re-registering an existing config",
+        "It installs the SophosUTMSyslog connector itself with a live template fetch and instance id 'sophosutmsyslog'",
+        "The runbook covers the network definition, the UDP service definition, the Remote Syslog Server tab, AND the Remote Syslog Log Selection with Apply",
+        "Verification uses the appliance's own Today's Log Files / Live Log as ground truth plus a datalake row count with the table confirmed via list_data_tables"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The customer's UTM is managed by an outside contractor who bills by the hour. Write me the exact steps to email them so they don't come back with questions.",
+      "expected_output": "The skill completes the Fluency side now — resolves or creates the site syslog transport (get → register once per site, or update to enable syslog_udp) and installs the SophosUTMSyslog connector — then produces a standalone runbook containing the concrete endpoint hostname and UDP port: create a DNS host network definition for that hostname (Definitions & Users → Network Definitions), create a UDP service definition with that destination port (Definitions & Users → Service Definitions), then Logging & Reporting → Log Settings → Remote Syslog Server, toggle on (amber), Plus icon → Name/Server/Port → Save → Apply (green), then tick the subsystems under Remote Syslog Log Selection (Select All is one click) and Apply. It warns not to point the syslog host at one of the UTM's own interfaces, notes the checkbox labels must be read off the screen because Sophos does not publish them, notes UDP delivery is silent so we confirm on the Fluency side after they apply it, and keeps the source pending until rows are confirmed. It also includes the end-of-life note for the customer's record.",
+      "files": [],
+      "expectations": [
+        "The Fluency side is completed now; only the WebAdmin work is deferred to the runbook",
+        "The runbook carries the concrete endpoint hostname and UDP port, not placeholders",
+        "It includes the object-definition prerequisites (network definition and UDP service definition), not just the syslog tab",
+        "It includes the log-selection step and both Apply clicks",
+        "It repeats the logging-loop caution and notes UDP failures are silent",
+        "The source is tracked as pending until rows are confirmed"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Our site already has TLS syslog set up for the Sophos firewall we onboarded last month. Point the UTM at the same thing, and confirm it'll be encrypted too — that's a compliance requirement for us.",
+      "expected_output": "The skill reads the existing config with syslog_get_config, finds the TLS listener, and uses syslog_update_config to additionally enable the UDP listener — it does NOT re-register the site config and does not disturb the TLS listener the Sophos Firewall uses. It then answers the compliance question honestly rather than accommodating it: UTM 9's Add Syslog Server dialog exposes Name, Server and Port only, Sophos documents no encryption option for remote syslog, so this appliance cannot send TLS syslog and the platform CA certificate has nothing to consume it here. The realistic options are carrying the stream over a private path (existing site-to-site tunnel or a local relay that re-forwards over TLS), or migrating to Sophos Firewall — which does support Secure log transmission — via setup-sophos-firewall-syslog, reinforced by UTM's end-of-life status. It does not suggest selecting a TCP service definition as a workaround, since Sophos documents no TCP behaviour for UTM remote syslog.",
+      "files": [],
+      "expectations": [
+        "It inspects the existing config first and adds the UDP listener via syslog_update_config rather than re-registering",
+        "The existing TLS listener used by the Sophos Firewall is left untouched",
+        "It states plainly that UTM 9 offers no TLS syslog, citing the three-field dialog, instead of improvising",
+        "It does not propose a TCP service definition as an encryption or reliability workaround",
+        "It offers private-path transport or migration to Sophos Firewall as the real options, and ties this to the EoL situation",
+        "The unencrypted-transport tradeoff is surfaced as a customer decision, not silently accepted"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Sophos UTM from the onboarding menu. The Fluency MCP is connected; their network admin is on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it resolves the site syslog transport (register only if the site has none, otherwise enable the UDP listener), installs the SophosUTMSyslog connector itself WITHOUT chaining into add-connector and without re-collecting router context, and guides the admin through the network/service definitions, the Remote Syslog Server tab and the log selection. It hands back the connector instance id, the datalake table name (confirmed via list_data_tables since the template has no index parameter), the endpoint domain/port/protocol, and the end-of-life note so it lands in the onboarding summary where a decision-maker sees it — none of which are credentials. It explains that rows should appear within minutes of Apply when a ticked subsystem logs something, that a small-site UTM with a narrow selection can be legitimately quiet, and to mark the source pending rather than failed until the appliance's own Live Log shows entries that never arrived.",
+      "files": [],
+      "expectations": [
+        "The skill completes transport plus connector itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id, the confirmed table name, and the endpoint details",
+        "The end-of-life status is carried into the hand-off summary, not dropped once configuration succeeds",
+        "It distinguishes a quiet appliance or narrow log selection (pending) from confirmed loss (Live Log shows entries that never arrived — failed)"
+      ]
+    }
+  ]
+}

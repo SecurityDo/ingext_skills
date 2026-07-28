@@ -1,0 +1,60 @@
+{
+  "skill_name": "setup-checkpoint-syslog",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We run Check Point R81.20 with a dedicated log server. Get our firewall logs into Ingext — I have expert access to the management estate, and you should do whatever you can on the Fluency side yourself.",
+      "expected_output": "The skill takes the agent-does-Fluency path: it calls syslog_get_config to read the site's syslog transport, registers one with syslog_register_config only if none exists (or enables the missing listener via syslog_update_config — never re-registering), choosing the TCP listener because Log Exporter's TLS is mutual-authentication only and the Fluency listener's client-certificate behaviour is unverified. It captures the endpoint domain, port and protocol, installs the CheckPointFWLog connector via create_connector (live list_connector_templates fetch first, instance 'checkpointfwlog', never 'default'), then gives the Check Point admin the concrete runbook: this is configured on the Management Server / Log Server, not the gateway; expert mode; cp_log_export add name fluency-ingext target-server <endpoint> target-port <port> protocol tcp format syslog --apply-now; a target on every server that holds logs; then cp_log_export show and cp_log_export status. It keeps format at syslog and says Fluency's expected format is unverified. Verification compares SmartConsole's Logs & Monitor view against a datalake row count with the table confirmed via list_data_tables, and inspects a row to confirm fields parsed.",
+      "files": [],
+      "expectations": [
+        "The skill reads the existing site syslog config before creating anything, and registers only when none exists",
+        "It states that Log Exporter runs on the Management Server / Log Server, not on the gateway",
+        "It gives the exact cp_log_export add command with the resolved endpoint values, run in expert mode, plus --apply-now or the restart alternative",
+        "It installs the CheckPointFWLog connector itself with a live template fetch and instance id 'checkpointfwlog'",
+        "It prefers TCP over UDP and explains that Log Exporter TLS requires mutual authentication",
+        "Verification uses SmartConsole's Logs view as ground truth plus a row count with the table confirmed via list_data_tables"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The customer's Check Point admin is on leave for two weeks and nobody else touches the management server. Set up what you can and leave them a runbook.",
+      "expected_output": "The skill does the Fluency side now — resolves or creates the site syslog transport (get → register once per site, or update to add the TCP listener) and installs the CheckPointFWLog connector — then produces a runbook for the absent admin with the real endpoint domain, port and protocol filled in, not placeholders. The runbook covers both supported paths: the CLI (expert mode on the Management/Log Server, the full cp_log_export add … protocol tcp format syslog --apply-now command, cp_log_export show/status, and one target per log-holding server, with domain-server all for Multi-Domain) and the SmartConsole alternative for an admin who will not share expert access (Objects > More object types > Server > Log Exporter/SIEM, Protocol changed from the UDP default to TCP, attach under the server object's Logs > Export, Publish, then Install database). It flags the common mistake of configuring syslog on the gateway instead, notes that a gateway set to save logs locally needs its Logs page changed plus Install Policy, and marks the source pending until rows are confirmed.",
+      "files": [],
+      "expectations": [
+        "The Fluency side (transport + connector) is completed now; only the Check Point work is deferred to the runbook",
+        "The runbook carries the concrete endpoint domain, port and protocol, not placeholders",
+        "Both the cp_log_export CLI path and the SmartConsole path are given, including Install database for the GUI path",
+        "It warns against configuring syslog on the gateway and covers the gateway-saves-logs-locally case",
+        "The source is tracked as pending until rows are confirmed"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add Check Point to Fluency. Our security team mandates encrypted log transport — the site's syslog endpoint is already set up TLS-only for our other firewalls, so use that.",
+      "expected_output": "The skill reads the existing config with syslog_get_config and finds only the TLS listener, but does not simply accept it: Check Point's Log Exporter supports TLS with MUTUAL authentication only — it always presents a client certificate, and Check Point documents the CA as the one that signed both the client and the server certificates. It explains that the platform CA file is a PEM bundle of public roots (Amazon Trust Services / Starfield), which works as ca-cert for validating the endpoint, but that whether the Fluency listener requests a client certificate and would accept a customer-generated one is UNVERIFIED — so it asks Fluency support (or whoever owns the listener) before promising TLS. It shows the full encrypted-export command and the certs directory ($EXPORTERDIR/targets/<Name>/certs/, chmod +r) so the admin is ready if the answer is yes, and offers the honest interim: enable the TCP listener with syslog_update_config — leaving the existing TLS listener untouched for the firewalls using it — and say plainly that TCP is unencrypted. It never invents a one-way-TLS option Check Point does not have.",
+      "files": [],
+      "expectations": [
+        "It inspects the existing config first and, if adding a listener, uses syslog_update_config rather than re-registering",
+        "The existing TLS listener is left untouched for the devices already using it",
+        "It states that Log Exporter TLS is mutual-authentication only and identifies the client certificate as the open question",
+        "It marks the Fluency listener's client-certificate behaviour as unverified and routes it to Fluency support instead of guessing",
+        "It documents the encrypted cp_log_export command and certificate placement accurately, and treats the client-secret challenge phrase as a credential",
+        "The unencrypted-TCP fallback is offered as an explicit customer decision, not silently accepted"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Check Point from the onboarding menu. The Fluency MCP is connected; their Check Point admin is on the call. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it resolves the site syslog transport (register only if the site has none, update to add the listener Log Exporter will use), installs the CheckPointFWLog connector itself WITHOUT chaining into add-connector and without re-collecting router context, and walks the admin through Log Exporter on the Management/Log Server. It hands back the connector instance id, the datalake table name (confirmed via list_data_tables since the template has no index parameter), the endpoint domain/port/protocol, and the Log Exporter target name, format and which servers carry a target — while withholding the TLS challenge phrase if one was used, since that is a credential. It explains that export is near-real-time and that Log Exporter resumes from its last position after a disconnect, so rows should appear within minutes; that SmartConsole's Logs & Monitor view is the comparison point; and that the source stays pending rather than failed until that view demonstrably shows events the datalake never received. It also flags that rows arriving unparsed is not success — the parser's expected format is unverified, so the next step is Fluency support, not cycling through formats.",
+      "files": [],
+      "expectations": [
+        "The skill completes transport plus connector itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id, the confirmed table name, the endpoint details, and the Log Exporter target name/format/servers",
+        "The TLS client-secret challenge phrase is never echoed into the hand-off",
+        "It distinguishes a quiet estate (pending) from confirmed loss (SmartConsole shows events that never arrived — failed)",
+        "It treats rows-but-unparsed as not-done and routes the format question to Fluency support rather than inventing an answer"
+      ]
+    }
+  ]
+}

@@ -13,8 +13,10 @@ description: >-
   when routed from customer-onboarding, do NOT chain into add-connector afterward. Triggers:
   "connect our Peplink router to Ingext", "forward Pepwave MAX logs to Fluency", "Peplink syslog
   into the datalake", "set up the Peplink connector". Do NOT use for other syslog vendors
-  (FortiGate, Palo Alto, Meraki, SonicWall, Cisco ASA, Check Point, Sophos — no dedicated skills
-  yet; route those to add-connector), and not for Peplink devices' own health monitoring — this
+  (each has its own skill: setup-fortigate-syslog, setup-paloalto-syslog,
+  setup-cisco-meraki-syslog, setup-cisco-asa-syslog, setup-sonicwall-syslog,
+  setup-checkpoint-syslog, setup-sophos-firewall-syslog, setup-sophos-utm-syslog; Linux hosts are
+  automatic-linux-rhel-syslog), and not for Peplink devices' own health monitoring — this
   imports the router's event log, nothing more.
 ---
 
