@@ -1,0 +1,205 @@
+schema: SentinelOneActivity
+description: >-
+  SentinelOne activity/audit event collected by Ingext from the SentinelOne
+  management API (activities feed). Unlike the agent/application/threat resource
+  snapshots, this is an append-only event stream: each record is one thing that
+  happened in the console or on an endpoint — a login, a policy or config change,
+  an agent action, a threat lifecycle transition, a Deep Visibility / STAR event,
+  or a maintenance action such as merging Live Updates. The event kind is a
+  numeric code in activityType, with human-readable text in primaryDescription /
+  secondaryDescription and a per-type 'data' object holding the templated
+  details. Site/group/account scope is denormalized onto each record. The object
+  is stored as a dynamic JSON document, so nested fields use dot notation (e.g.
+  data.computerName) and any arrays require mv-expand.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Event time, derived from the createdAt field (when SentinelOne recorded the activity). Primary time column for range filters (e.g. where timestamp > ago(1d)). Equivalent to createdAt."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Record key used to identify/deduplicate the activity; mapped to the 'id' field. Each activity is a distinct immutable event, so _key is unique per event."
+
+  # ==========================================
+  # IDENTITY & TIME
+  # ==========================================
+  - name: id
+    type: String
+    description: "SentinelOne activity ID (a numeric string), unique per event within the console; source of _key."
+    sampleValues: ["2000000000000000001"]
+
+  - name: activityUuid
+    type: String
+    description: "Globally unique UUID for the activity event."
+    sampleValues: ["00000000-0000-0000-0000-000000000001"]
+
+  - name: activityType
+    type: Integer
+    description: "Numeric code identifying the kind of activity (SentinelOne 'activity type'). Each code maps to a fixed primaryDescription template and a specific set of keys in the 'data' object — e.g. 3631 is a Live Update package merge on an endpoint. Group/filter on activityType to select an event category; see the SentinelOne activity-types reference for the full code list."
+    sampleValues: ["3631", "90", "27"]
+
+  - name: createdAt
+    type: DateTime
+    description: "When SentinelOne recorded the activity (UTC); source of the 'timestamp' column."
+    sampleValues: ["2026-07-23T12:25:49.818557Z"]
+
+  - name: updatedAt
+    type: DateTime
+    description: "When the activity record was last updated (UTC); usually equal to createdAt for immutable events."
+    sampleValues: ["2026-07-23T12:25:49.818562Z"]
+
+  # ==========================================
+  # DESCRIPTIONS
+  # ==========================================
+  - name: primaryDescription
+    type: String
+    description: "Human-readable rendering of the activity, produced from the activityType template with values from 'data' substituted in. Primary field to display or full-text search an activity."
+    sampleValues: ["Live Updates for Static AI, StaticSigMac262-9.23, were merged by endpoint MacBook Pro"]
+
+  - name: secondaryDescription
+    type: String
+    description: "Additional human-readable detail for the activity (often a supporting attribute such as an IP address, hash, or reason); may be null."
+    sampleValues: ["IP address: 192.0.2.10"]
+
+  - name: description
+    type: String
+    description: "Free-text description attached to the activity; usually null (most detail lives in primaryDescription/secondaryDescription)."
+
+  - name: comments
+    type: String
+    description: "Analyst/console comments associated with the activity; usually null."
+
+  # ==========================================
+  # ACTOR (console user)
+  # ==========================================
+  - name: userId
+    type: String
+    description: "ID of the console user who performed the activity (numeric string); null for system- or agent-generated events. Use to attribute administrative changes to an operator."
+    sampleValues: ["1000000000000000009"]
+
+  # ==========================================
+  # AGENT / ENDPOINT CONTEXT
+  # ==========================================
+  - name: agentId
+    type: String
+    description: "ID of the agent/endpoint the activity relates to (numeric string); null for console-only events. Relates to sentinelOneAgent.id."
+    sampleValues: ["2000000000000000002"]
+
+  - name: agentUpdatedVersion
+    type: String
+    description: "Agent version after the activity, for agent-update events; null otherwise."
+    sampleValues: ["25.3.4.8365"]
+
+  - name: osFamily
+    type: String
+    description: "OS family of the related endpoint (e.g. windows, osx, linux); may be null."
+    sampleValues: ["windows", "osx", "linux"]
+
+  - name: hash
+    type: String
+    description: "File hash (SHA-1) associated with the activity, for file/threat-related events; null otherwise."
+
+  - name: threatId
+    type: String
+    description: "ID of the threat the activity relates to (numeric string), for threat-lifecycle events; null otherwise. Relates to SentinelOneThreat.id / threatInfo.threatId."
+    sampleValues: ["2000000000000000003"]
+
+  # ==========================================
+  # SITE / GROUP / TENANT SCOPE
+  # ==========================================
+  - name: accountId
+    type: String
+    description: "ID of the SentinelOne account (top-level tenant) the activity occurred in (numeric string)."
+    sampleValues: ["1000000000000000001"]
+
+  - name: accountName
+    type: String
+    description: "Name of the SentinelOne account the activity occurred in."
+    sampleValues: ["Contoso - Production"]
+
+  - name: siteId
+    type: String
+    description: "ID of the SentinelOne site the activity is scoped to (numeric string); may be null for account-level events."
+    sampleValues: ["1000000000000000002"]
+
+  - name: siteName
+    type: String
+    description: "Name of the SentinelOne site the activity is scoped to."
+    sampleValues: ["Contoso"]
+
+  - name: groupId
+    type: String
+    description: "ID of the policy group the activity is scoped to (numeric string); may be null."
+    sampleValues: ["1000000000000000004"]
+
+  - name: groupName
+    type: String
+    description: "Name of the policy group the activity is scoped to."
+    sampleValues: ["Workstations"]
+
+  # ==========================================
+  # TEMPLATED DETAIL (data.*)
+  # Keys present depend on activityType; the fields below are the common ones.
+  # ==========================================
+  - name: data
+    type: Dynamic
+    description: >-
+      Per-activityType object holding the templated values substituted into
+      primaryDescription. Its keys vary by activityType — reach in with dot
+      notation (e.g. tostring(data.computerName)) and treat a missing key as
+      null. Common keys include computerName, ipAddress, accountName, siteName,
+      groupName, scopeLevel/scopeName, fullScopeDetails, fullScopeDetailsPath,
+      sourceType, realUser, reasons, and (for Live Update merges) assetType /
+      assetVersionsList.
+
+  - name: data.computerName
+    type: String
+    description: "Endpoint hostname involved in the activity (from data)."
+    sampleValues: ["alex-macbookpro", "adele-pc"]
+
+  - name: data.ipAddress
+    type: String
+    description: "IP address associated with the activity (from data); often the endpoint or actor IP."
+    sampleValues: ["192.0.2.10"]
+
+  - name: data.scopeLevel
+    type: String
+    description: "Scope level at which the activity applies (from data)."
+    sampleValues: ["Group", "Site", "Account", "Global"]
+
+  - name: data.scopeName
+    type: String
+    description: "Name of the scope the activity applies to (from data)."
+    sampleValues: ["Default Group"]
+
+  - name: data.fullScopeDetailsPath
+    type: String
+    description: "Human-readable scope path for the activity, from Global down to the group (from data)."
+    sampleValues: ["Global / Contoso - Production / Contoso / Workstations"]
+
+  - name: data.sourceType
+    type: String
+    description: "How the activity was initiated (from data), e.g. API, Console, Agent."
+    sampleValues: ["API", "Console", "Agent"]
+
+  - name: data.realUser
+    type: String
+    description: "Real (interactive) user associated with the activity when different from the console actor (from data); often null."
+
+  - name: data.assetType
+    type: String
+    description: "For Live Update / package activities, the type of asset that was updated (from data)."
+    sampleValues: ["Static AI", "Memory Scanner"]
+
+  - name: data.assetVersionsList
+    type: String
+    description: "For Live Update / package activities, the asset package version(s) that were merged (from data)."
+    sampleValues: ["StaticSigMac262-9.23", "MemoryScannerRulesWin261-1.1"]

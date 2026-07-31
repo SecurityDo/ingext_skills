@@ -1,0 +1,44 @@
+description: >-
+  Surface suspicious process executions from 4688 (process creation). Scores
+  each execution on three independent signals: the binary running from a
+  user-writable directory (\Users\, \Temp\, \AppData\, \ProgramData\,
+  \PerfLogs\), a living-off-the-land binary being invoked, and a command line
+  containing an encoding/download/credential-access pattern. Note that
+  CommandLine is empty unless the "Include command line in process creation
+  events" policy is enabled — run wa-eventid-overview first and check whether
+  4688 is collected at all, then confirm CommandLine is populated, otherwise the
+  third signal silently contributes nothing. CreatorProcessName carries the
+  parent and is present from 4688 version 2 (Windows 10 / Server 2016+); pair a
+  hit with the SubjectLogonId to pull the originating 4624 and learn which
+  session, and therefore which source IP, launched it.
+datatype: WindowsAudit
+kql: |
+  WindowsAudit
+  | where timestamp > ago(1d)
+  | where EventID == 4688
+  | extend Image = tolower(NewProcessName), Parent = tolower(coalesce(CreatorProcessName, ParentProcessName)), Cmd = tolower(CommandLine)
+  | extend UserWritablePath = Image has_any ("\\users\\", "\\temp\\", "\\appdata\\", "\\programdata\\", "\\perflogs\\", "\\$recycle.bin\\")
+  | extend LolBin = Image has_any ("powershell.exe", "pwsh.exe", "wscript.exe", "cscript.exe",
+                                   "mshta.exe", "rundll32.exe", "regsvr32.exe", "certutil.exe",
+                                   "bitsadmin.exe", "wmic.exe", "installutil.exe", "msbuild.exe",
+                                   "cmstp.exe", "odbcconf.exe", "psexesvc.exe")
+  | extend CmdSuspicious = isnotempty(Cmd) and Cmd has_any ("-enc", "-encodedcommand", "frombase64string",
+                                                            "downloadstring", "downloadfile", "invoke-webrequest",
+                                                            "invoke-expression", "iex ", "-nop", "-w hidden",
+                                                            "bypass", "lsass", "comsvcs.dll", "minidump",
+                                                            "vssadmin delete", "wbadmin delete", "bcdedit")
+  | extend Score = toint(UserWritablePath) + toint(LolBin) + toint(CmdSuspicious)
+  | where Score >= 2
+  | project timestamp, Hostname,
+            User = strcat(SubjectDomainName, "\\", SubjectUserName), SubjectLogonId,
+            Process = NewProcessName, ParentProcess = coalesce(CreatorProcessName, ParentProcessName),
+            CommandLine, TokenElevationType, MandatoryLabel,
+            Score, UserWritablePath, LolBin, CmdSuspicious
+  | order by Score desc, timestamp desc
+tags: [windows, audit, 4688, process-creation, lolbin, execution, detection]
+expected_output: |
+  Process executions matching two or more suspicion signals (sanitized).
+
+  timestamp             Hostname                User                  SubjectLogonId  Process                                                       ParentProcess                              CommandLine                                             TokenElevationType  MandatoryLabel  Score  UserWritablePath  LolBin  CmdSuspicious
+  2026-07-27T09:31:07Z  wkstn-0142.contoso.com  CONTOSO\adele.vance   0x1a4b2c9       C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe     C:\Windows\System32\wbem\WmiPrvSE.exe      powershell.exe -nop -w hidden -enc SQBFAFgAIAAoAE4A...  %%1937              S-1-16-12288    2      false             true    true
+  2026-07-27T09:34:58Z  wkstn-0142.contoso.com  CONTOSO\adele.vance   0x1a4b2c9       C:\Users\adele.vance\AppData\Local\Temp\update.exe            C:\Windows\explorer.exe                                                                            %%1938              S-1-16-8192     2      true              false   false

@@ -1,0 +1,200 @@
+schema: DuoAuthentication
+description: >-
+  Cisco Duo authentication log event, imported by Ingext from the Duo Admin API
+  v2 authentication logs (/admin/v2/logs/authentication). One record per
+  multi-factor authentication attempt: who authenticated (user), to what
+  (application), from where (access_device — the endpoint originating the
+  login), with which second factor (auth_device — the phone/token that approved
+  it), and the outcome (result / reason / factor).
+
+  This is the primary MFA telemetry stream for detecting push fatigue / MFA
+  bombardment (repeated result == "denied" with reason == "user_mistake" or
+  "user_marked_fraud"), impossible-travel logins (access_device.location vs
+  auth_device.location), policy bypass (factor == "bypass_code" or
+  "remembered_device"), and out-of-date/untrusted endpoints
+  (ood_software, trusted_endpoint_status).
+
+  Nested objects (user, application, access_device, auth_device,
+  adaptive_trust_assessments) are stored as dynamic JSON — reach in with dot
+  notation and cast with tostring()/toint()/tobool(); mv-expand
+  user.groups to enumerate group membership. timestamp is parsed from
+  isotimestamp (the epoch-second timestamp field carries the same instant).
+  Administrative changes in Duo are a separate stream — see DuoAdmin.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Primary time column for range filters (e.g. where timestamp > ago(1d)). Parsed from isotimestamp — the moment Duo recorded the authentication attempt (UTC)."
+    sampleValues: ["2026-07-21T12:35:39.000000+00:00"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: isotimestamp
+    type: String
+    description: "Event time as reported by Duo, ISO-8601 with microseconds and UTC offset. Source of the top-level timestamp. The raw Duo record also carries the same instant as a Unix epoch second in its own `timestamp` field, which the top-level DateTime timestamp supersedes — use timestamp for all time filtering."
+    sampleValues: ["2026-07-21T12:35:39.000000+00:00"]
+
+  - name: txid
+    type: String
+    description: "Transaction GUID uniquely identifying this authentication attempt. Primary key of the record; also the join key back to the Duo Admin console and to related Duo telemetry (trust-monitor events, Duo Device Health)."
+    sampleValues: ["1a2b3c4d-0000-4000-8000-000000000001"]
+
+  - name: event_type
+    type: String
+    description: "The kind of log event. \"authentication\" is a login attempt; \"enrollment\" is a user enrolling a new device/factor. Filter on this to keep enrollments out of login analytics."
+    sampleValues: ["authentication", "enrollment"]
+
+  # ==========================================
+  # OUTCOME
+  # ==========================================
+  - name: result
+    type: String
+    description: "Outcome of the attempt. \"success\" — the factor was satisfied; \"denied\" — the attempt was rejected (see reason); \"fraud\" — the user explicitly reported it as fraudulent. Count denials per user over a short window to detect MFA push-bombardment."
+    sampleValues: ["success", "denied", "fraud"]
+
+  - name: reason
+    type: String
+    description: >-
+      Why Duo produced this result. Common values — success side:
+      "user_approved", "allowed_by_policy", "remembered_device",
+      "trusted_network", "bypass_user". Denial side: "user_mistake" (user tapped
+      Deny), "user_marked_fraud" (user reported the push as fraud — a strong
+      compromise signal), "denied_by_policy", "locked_out", "no_response",
+      "invalid_passcode", "out_of_date" (endpoint software), "anonymous_ip",
+      "location_restricted", "no_keys_pressed". Pair with result and factor
+      when triaging.
+    sampleValues: ["remembered_device", "user_approved", "user_marked_fraud", "user_mistake", "denied_by_policy", "no_response"]
+
+  - name: factor
+    type: String
+    description: >-
+      The second factor used (or attempted). "duo_push" is the normal
+      interactive approval; "duo_otp"/"passcode"/"hardware_token"/"sms_passcode"
+      are one-time codes; "webauthn_credential"/"u2f_token" are phishing-resistant
+      FIDO factors; "remembered_device" and "trusted_network" mean no live factor
+      was presented (the session was satisfied by a prior trust decision);
+      "bypass_code" is an administratively issued single-use code — worth
+      alerting on. Not present on all denial paths.
+    sampleValues: ["duo_push", "remembered_device", "duo_otp", "webauthn_credential", "bypass_code", "phone_call"]
+
+  - name: alias
+    type: String
+    description: "The username alias the user authenticated with, if the login came in under an alias rather than the canonical Duo username. \"unknown\" when not applicable."
+    sampleValues: ["unknown", "avance@contoso.com"]
+
+  - name: email
+    type: String
+    description: "Email address of the authenticating user as known to Duo. Frequently null when Duo's directory sync does not populate it — prefer user.name as the identity key and enrich from a directory schema (office365User, gsuiteUser) when an email is required."
+    sampleValues: [null, "adele.vance@contoso.com"]
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: user
+    type: Dynamic
+    description: >-
+      The authenticating user. Fields (dot notation):
+      user.name — Duo username (typically the AD sAMAccountName or UPN); the
+      main identity key for joins and aggregation;
+      user.key — Duo's stable 20-character user identifier (survives renames —
+      prefer it for long-horizon correlation);
+      user.groups (array) — Duo group memberships, including the source of the
+      sync (e.g. "DUO_Users (from AD sync \"AD Sync\")"). mv-expand to enumerate
+      or use mv-apply/make_set to roll up.
+    sampleValues: ["avance", "DUUSER00000000000001", "DUO_Users (from AD sync \"AD Sync\")"]
+
+  - name: application
+    type: Dynamic
+    description: >-
+      The protected application the user was authenticating to. Fields:
+      application.name — display name of the Duo application integration
+      (e.g. "Microsoft RDP", "Cisco AnyConnect VPN", "Duo Windows Logon",
+      "Microsoft 365"); application.key — the integration key (20 characters),
+      stable across renames. Group by application.name to see which surfaces are
+      being attacked or which are bypassing MFA.
+    sampleValues: ["Microsoft RDP", "DIAPP0000000000000001"]
+
+  # ==========================================
+  # ACCESS DEVICE (the endpoint being logged into / from)
+  # ==========================================
+  - name: access_device
+    type: Dynamic
+    description: >-
+      The endpoint that originated the login — the machine/browser the user is
+      authenticating from. Fields:
+
+        - access_device.ip — source IP of the login. "0.0.0.0" or null appears
+          for on-host integrations (e.g. Duo for Windows Logon on an RDP
+          console session) where no network client address is available; filter
+          those out before doing geo/IP analytics.
+        - access_device.hostname — endpoint hostname, when the Duo client can
+          report it (Windows Logon / RDP integrations).
+        - access_device.browser / access_device.browser_version — browser, or
+          the Duo client name for non-browser integrations (e.g.
+          "DuoWinLogon", "Duo Authentication for Windows Logon").
+        - access_device.os / access_device.os_version — endpoint operating
+          system and build.
+        - access_device.location.{city,state,country} — geolocation of
+          access_device.ip. Compare against auth_device.location for
+          impossible-travel / factor-separation checks.
+        - access_device.epkey — Duo Device Health / Endpoint key, present when
+          the endpoint is registered with Duo Device Health or Trusted Endpoints.
+        - access_device.is_encryption_enabled / is_firewall_enabled /
+          is_password_set — Device Health posture booleans, reported as
+          "true"/"false"/"unknown" strings (unknown when the Device Health app
+          is not installed).
+        - access_device.java_version / flash_version — legacy plugin versions,
+          usually null.
+    sampleValues: ["192.0.2.45", "WKSTN-0142", "DuoWinLogon", "Windows", "10.0.19045.6456", "unknown"]
+
+  # ==========================================
+  # AUTH DEVICE (the second factor that approved it)
+  # ==========================================
+  - name: auth_device
+    type: Dynamic
+    description: >-
+      The device that satisfied the second factor — usually the enrolled phone
+      that received the push. Fields: auth_device.name (phone number or device
+      label), auth_device.key (Duo device identifier), auth_device.type
+      (e.g. "phone", "token"), auth_device.serial (hardware-token serial),
+      auth_device.ip (IP the approval came from), and
+      auth_device.location.{city,state,country}. All null when no live factor
+      was used (factor == "remembered_device" / "trusted_network") or when the
+      attempt was denied before a factor was presented. A large geographic gap
+      between auth_device.location and access_device.location is a classic
+      compromise indicator.
+    sampleValues: ["555-555-0142", "phone", "Seattle", "Washington", "United States"]
+
+  # ==========================================
+  # RISK / POSTURE
+  # ==========================================
+  - name: adaptive_trust_assessments
+    type: Dynamic
+    description: >-
+      Duo Risk-Based Authentication trust assessment for the attempt, keyed by
+      assessment name (e.g. adaptive_trust_assessments.trusted_endpoint,
+      .known_networks, .risk_profile). Each value carries the assessment's
+      trust_level / reason. Empty object ({}) when Risk-Based Authentication is
+      not licensed or no assessment applied — expect it to be empty in most
+      deployments.
+    sampleValues: ["{}"]
+
+  - name: rbfs_triggered_attacks
+    type: Dynamic
+    description: "Risk-Based Factor Selection: the attack pattern(s) Duo detected for this attempt, which caused it to step up the required factor (e.g. push-harassment detection). Null when nothing was triggered — a non-null value is a high-value alert condition."
+    sampleValues: [null]
+
+  - name: trusted_endpoint_status
+    type: String
+    description: "Whether the access device is a managed/trusted endpoint per Duo Trusted Endpoints. \"trusted\"/\"not trusted\" when the policy is enforced, \"unknown\" when Trusted Endpoints is not configured for the application. Unmanaged endpoints reaching sensitive applications are worth reporting."
+    sampleValues: ["unknown", "trusted", "not trusted"]
+
+  - name: ood_software
+    type: String
+    description: "Out-of-date software detected on the access device by Duo's endpoint checks (e.g. \"browser\", \"flash\", \"java\", \"os\"). Null when everything checked was current. Typically paired with reason == \"out_of_date\" on a denial."
+    sampleValues: [null, "browser", "os"]

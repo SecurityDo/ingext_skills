@@ -1,0 +1,240 @@
+schema: MSDefenderIncident
+description: >-
+  Microsoft Defender XDR incident, imported by Ingext from the Microsoft Graph
+  security API (GET /security/incidents). An incident is Defender's correlation
+  container: the set of alerts — across Defender for Endpoint, Office 365, Cloud
+  Apps, Identity, Entra ID Protection, Sentinel analytic rules, Insider Risk and
+  Defender for Cloud — that Defender believes belong to one attack story, plus the
+  workflow state for that story (severity, status, priority score, classification,
+  determination, owner, comments, tags).
+
+  This is a small, flat record — there are no nested objects and no evidence. It
+  answers "what is open, how bad is it, who owns it"; everything about *what
+  happened* lives in MSDefenderAlert. Join them on
+  MSDefenderIncident.id == MSDefenderAlert.incidentId. Note the incident document
+  as ingested does NOT carry an alerts[] array (the connector does not request
+  $expand=alerts), so the join is always required — see the query samples.
+
+  Three things about this stream will produce wrong answers if ignored:
+
+    1. It is append-only snapshots, not current state. Every change to an
+       incident emits another record with the same id: incident 101195 in the
+       samples appears twice, first at creation (displayName "'TurtlePerlsh'
+       high-severity malware was prevented", status active, priorityScore 24) and
+       again after auto-resolution (displayName "Malware incident on one
+       endpoint", status resolved, priorityScore 33). Always reduce to the latest
+       snapshot before counting, filtering on status, or reporting. Both snapshots
+       share the same createdDateTime — and therefore the same 'timestamp' — so
+       ordering or de-duplicating by timestamp does not work; lastUpdateDateTime is
+       the only field that distinguishes them.
+
+       This engine does not support arg_max(<column>, *), because '*' cannot be
+       expanded against a dynamic schema. Take the max per id and join it back:
+
+         let LatestIncident =
+             MSDefenderIncident
+             | where timestamp > ago(30d)
+             | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by IncId = id;
+         MSDefenderIncident
+         | where timestamp > ago(30d)
+         | join kind=inner LatestIncident on $left.id == $right.IncId
+         | where todatetime(lastUpdateDateTime) == LastUpdate
+         | project-away IncId, LastUpdate
+
+       Naming the right-hand key (IncId) avoids depending on how the engine renames
+       a duplicated join key, and the two time windows must match. Every query
+       sample in queries/ opens with this block — except msd-incident-history.yaml,
+       which keeps the snapshots on purpose.
+
+    2. displayName is not stable. Defender seeds it from the first alert's title
+       and renames the incident as alerts are correlated in ("Malware incident on
+       one endpoint", "Persistence incident involving multiple users"). Group by
+       id, never by displayName. Titles also contain characters that break naive
+       matching — one sample title carries a zero-width space (U+200B) inside
+       "delivery&#8203; involving" — so prefer 'contains'/'matches regex' on a
+       leading substring over equality.
+
+    3. classification and determination are the literal string "unknown" when
+       untriaged, not null (unlike MSDefenderAlert, where they are null). A filter
+       like 'where isnotempty(classification)' therefore matches every record;
+       use 'where classification !in ("unknown", "")' instead.
+
+  Stored as a dynamic JSON document; the arrays (comments, customTags, systemTags)
+  are dynamic and need mv-expand / array_length. timestamp is parsed from
+  createdDateTime. This stream is selected by the label
+  eventType == "MSDefenderIncident".
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Primary time column, parsed from createdDateTime (when Defender opened the incident) — so it does NOT advance when the incident is updated, and every snapshot of one incident shares it. Consequence: a narrow window like 'where timestamp > ago(1h)' will miss updates to incidents opened earlier. Widen the range and filter on lastUpdateDateTime when you care about recent activity. The incident carries no activity times at all; for when the attack actually happened, join to MSDefenderAlert and use its firstActivityDateTime / lastActivityDateTime."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: id
+    type: String
+    description: "Defender incident ID — a tenant-scoped sequence number as a string, not a GUID. The join key to MSDefenderAlert.incidentId, the number shown in the portal, and the only stable identity for the incident across its snapshots. Because it increments, 'toint(id)' sorts chronologically and can be used for range filters."
+    sampleValues: ["101198", "101196", "101195", "101188"]
+
+  - name: displayName
+    type: String
+    description: "Incident title. Seeded from the triggering alert's title, then rewritten by Defender as the story grows into a summarizing title ('Malware incident on one endpoint', 'Persistence incident involving multiple users'), or renamed by an analyst. Changes between snapshots of the same id — group by id, not by this. May contain invisible characters (a U+200B zero-width space appears mid-title in one sample), so avoid '==' matching."
+    sampleValues: ["Malware incident on one endpoint", "Persistence incident involving multiple users", "New high upload volume app", "Office365 Sharepoint File transfer Folders above threshold involving one user"]
+
+  - name: alertKey
+    type: String
+    description: "Composite key of the form '<displayName> (<id>)' — in every observed record it is exactly strcat(displayName, ' (', id, ')'), and it changes with displayName. Despite the name it is NOT an alert id and cannot be joined to MSDefenderAlert.id; treat it as the connector's per-snapshot key and prefer id + lastUpdateDateTime for identity. Useful only as a compact label for a snapshot."
+    sampleValues: ["Malware incident on one endpoint (101195)", "'TurtlePerlsh' high-severity malware was prevented (101195)", "New high upload volume app (101196)"]
+
+  - name: incidentWebUrl
+    type: String
+    description: "Deep link to the incident in the Defender portal (https://security.microsoft.com/incident2/<id>/overview?tid=<tenantId>). Matches MSDefenderAlert.incidentWebUrl on the member alerts; include it in any triage output."
+
+  - name: tenantId
+    type: String
+    description: "Entra ID (Azure AD) tenant GUID the incident belongs to; the field that separates customers in a multi-tenant / MSSP feed, and the ?tid= parameter of incidentWebUrl."
+    sampleValues: ["00000000-0000-0000-0000-000000000002"]
+
+  - name: redirectIncidentId
+    type: String
+    description: "When this incident was merged into another, the id of the surviving incident; null in all observed records. Merged incidents remain in the stream as stubs (status 'redirected'), so exclude them from queues and counts with 'where isempty(tostring(redirectIncidentId))' — a merge would otherwise double-count the same attack under two ids. Join back to id to follow a merge chain."
+
+  # ==========================================
+  # SEVERITY & PRIORITY
+  # ==========================================
+  - name: severity
+    type: String
+    description: "Incident severity, lowercase, derived by Defender from the member alerts (approximately the maximum) — so it can exceed any alert you happen to look at: sample incident 101195 is 'high' while its ingested member alert ('PSWStealer' malware prevented) is 'informational', because a second, high-severity alert is also correlated into it. Ordered informational < low < medium < high; sort with a case() expression, not alphabetically. Can change between snapshots as alerts are added."
+    sampleValues: ["high", "medium", "low", "informational"]
+
+  - name: priorityScore
+    type: Integer
+    description: "Defender's numeric prioritization score for the incident (a JSON number). Observed values 2–33, and it rises as the incident develops (101195 goes 24 → 33 between snapshots). It does NOT track severity — a 'high' incident scored 2 sits below an 'informational' one scored 14 in the samples — so do not substitute it for severity. Use severity as the primary rank and priorityScore as a tiebreaker within a severity band; the underlying scale is not documented by Microsoft, so avoid absolute thresholds."
+    sampleValues: ["2", "4", "10", "14", "24", "33"]
+
+  # ==========================================
+  # WORKFLOW STATE
+  # ==========================================
+  - name: status
+    type: String
+    description: "Incident workflow state. Open queue = status in ('active','inProgress') — note the enum differs from the alert's, which uses 'new' where the incident uses 'active'. 'redirected' marks an incident merged into another (see redirectIncidentId). Resolution is frequently automatic rather than analyst-driven: see resolvingComment."
+    sampleValues: ["active", "inProgress", "resolved", "redirected", "unknownFutureValue"]
+
+  - name: classification
+    type: String
+    description: "Analyst verdict for the incident. The literal string 'unknown' — not null — while untriaged, which is the value in every observed record; filter with 'where classification !in (\"unknown\", \"\")' to find genuinely triaged incidents. Set independently of the member alerts' classification, so an incident and its alerts can disagree."
+    sampleValues: ["unknown", "truePositive", "falsePositive", "informationalExpectedActivity", "unknownFutureValue"]
+
+  - name: determination
+    type: String
+    description: "Finer-grained reason behind classification; the literal 'unknown' while untriaged. Same value set as the alert's determination (malware, phishing, apt, compromisedAccount, maliciousUserActivity, unwantedSoftware, multiStagedAttack, notMalicious, securityTesting, lineOfBusinessApplication, confirmedActivity, notEnoughDataToValidate, other)."
+    sampleValues: ["unknown", "multiStagedAttack", "malware", "phishing", "notMalicious"]
+
+  - name: assignedTo
+    type: String
+    description: "Owner of the incident — an analyst UPN, or a service identity when automation owns it; null when unassigned, as in every observed record. 'where isempty(tostring(assignedTo)) and status == \"active\"' is the unowned open queue."
+
+  - name: lastModifiedBy
+    type: String
+    description: "Who or what made the last change — the field that tells you whether an incident is being worked or is just churning on its own. Observed values are all machine identities: 'Microsoft 365 Defender-IncidentCreation' (the snapshot is the initial creation), 'Microsoft 365 Defender-AlertCorrelation' (another alert was folded in), and 'System' (automated resolution). An analyst UPN here means a human touched it."
+    sampleValues: ["Microsoft 365 Defender-IncidentCreation", "Microsoft 365 Defender-AlertCorrelation", "System"]
+
+  - name: resolvingComment
+    type: String
+    description: >-
+      Free-text comment recorded when the incident was resolved; null while open.
+      Defender's automated closure writes a fixed pattern that embeds the id of
+      the last alert it resolved:
+
+        "Incident automatically resolved as all alerts in the incident were
+         resolved. Last resolved alert ID: <alertId>"
+
+      That id is a real MSDefenderAlert.id (same prefixed format — 'da..._1' for
+      endpoint, 'fa...' for Office 365), so it can be extracted and joined:
+      extract(@"Last resolved alert ID: (\S+)", 1, tostring(resolvingComment)).
+      A resolvingComment starting with "Incident automatically resolved" means no
+      human made the call — combined with lastModifiedBy == "System" that
+      identifies auto-closed incidents worth sampling for missed detections.
+      Analyst-written text appears here instead when a person resolves it.
+    sampleValues: ["Incident automatically resolved as all alerts in the incident were resolved. Last resolved alert ID: da00000000-0000-0000-0000-0000000000c7_1"]
+
+  - name: comments
+    type: DynamicArray
+    description: "Analyst comments on the incident, newest last; empty in every observed record. Each element is an object { comment, createdByDisplayName, createdDateTime } — the same shape as MSDefenderAlert.comments, where 'comment' is often null and the element serves mainly as an audit record of who acted and when. mv-expand to enumerate; array_length(comments) > 0 shows the incident was worked. Note that automated resolution does NOT write a comment here — it writes resolvingComment."
+
+  - name: description
+    type: String
+    description: "Long description, copied verbatim from a member alert's description rather than written for the incident — so it describes the *detection class* (product boilerplate, the Sentinel rule's documentation, the matched Cloud Apps policy), not this incident's specifics, and it changes when the driving alert changes. Multi-line. Useful for context in a report; do not treat it as a summary of the attack."
+
+  - name: summary
+    type: String
+    description: "Defender-generated (Copilot / XDR) narrative summary of the incident. Null in every observed record — expect it to be absent unless the tenant has the relevant Copilot licensing and Defender chose to summarize the incident."
+
+  # ==========================================
+  # TIMES
+  # ==========================================
+  - name: createdDateTime
+    type: DateTime
+    description: "When Defender created the incident (UTC, ISO-8601 with fractional seconds). Source of the 'timestamp' column, and identical across all snapshots of one incident. Equals or slightly precedes the createdDateTime of its first alert (101195: incident 22:30:47, member alert 22:32:54)."
+    sampleValues: ["2026-07-29T22:30:47.5533333Z"]
+
+  - name: lastUpdateDateTime
+    type: DateTime
+    description: "When this snapshot was written — the only field that distinguishes repeated records for one id, and therefore the key to the latest-snapshot join described in the schema description above (arg_max(lastUpdateDateTime, *) is not available on this engine). Equals createdDateTime on the creation snapshot. There is no resolvedDateTime field on incidents (unlike alerts), so the close time of a resolved incident is its final lastUpdateDateTime, and time-to-resolve is 'datetime_diff(\"minute\", lastUpdateDateTime, createdDateTime)' on the snapshot where status == 'resolved'."
+    sampleValues: ["2026-07-29T22:41:13.01Z"]
+
+  # ==========================================
+  # TAGS
+  # ==========================================
+  - name: customTags
+    type: DynamicArray
+    description: "Tags applied by analysts or by automation rules (array of strings); empty in every observed record. Tenant-specific vocabulary — typically triage queues, campaign names, or suppression bookkeeping. Filter with 'customTags has \"...\"'."
+
+  - name: systemTags
+    type: DynamicArray
+    description: "Tags applied by Defender itself, inherited from the involved assets — most importantly 'Critical asset'. Empty in every observed incident record even where the member alerts carry it, so asset criticality is more reliably read from MSDefenderAlert.systemTags / evidence[].tags after joining."
+
+
+# ==========================================
+# FIELD-SET NOTES
+# ==========================================
+# Compared with the Microsoft Graph 'security.incident' resource, this stream:
+#   - adds  alertKey     (not in the public Graph schema; '<displayName> (<id>)')
+#   - adds  priorityScore (not in the public Graph schema; integer)
+#   - omits an alerts[] relationship (no $expand=alerts) — join MSDefenderAlert
+#     on incidentId instead
+#   - has no resolvedDateTime (the alert schema does) — use the final
+#     lastUpdateDateTime of the resolved snapshot
+#
+# Never observed populated in the samples collected so far, so verify before
+# relying on them: summary, assignedTo, comments, customTags, systemTags,
+# redirectIncidentId, and any classification/determination other than "unknown".
+#
+#
+# ==========================================
+# ALERT / INCIDENT FIELD DIFFERENCES
+# ==========================================
+# Fields with the same meaning but different values or nullability across the two
+# schemas — the source of most cross-schema query bugs:
+#
+#   concept              MSDefenderAlert                  MSDefenderIncident
+#   -------------------- -------------------------------- ---------------------------
+#   open state           status "new" / "inProgress"       status "active" / "inProgress"
+#   untriaged verdict    classification / determination    the literal string "unknown"
+#                        are null
+#   join key             incidentId (string)               id (string)
+#   close time           resolvedDateTime                  final lastUpdateDateTime
+#                                                          (no resolvedDateTime field)
+#   activity window      firstActivityDateTime /           none — join to the alerts
+#                        lastActivityDateTime
+#   entities             evidence[] (polymorphic)          none — join to the alerts
+#   'Critical asset'     systemTags, evidence[].tags       systemTags (empty so far)
+#   priority             severity only                     severity + priorityScore

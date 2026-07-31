@@ -1,0 +1,82 @@
+description: >-
+  Audits incidents that Defender closed by itself rather than an analyst — the
+  population most likely to hide a missed detection. Defender's automated closure
+  writes a fixed resolvingComment ("Incident automatically resolved as all alerts
+  in the incident were resolved. Last resolved alert ID: <alertId>"), so the query
+  keys on that pattern and on lastModifiedBy == "System", extracts the embedded
+  alert id, and joins it back to MSDefenderAlert to show what the closing alert
+  actually was — its product, severity, threat family and AIR investigation state.
+  Because incidents have no resolvedDateTime, time-to-resolve is computed from the
+  resolved snapshot's lastUpdateDateTime minus createdDateTime. High-severity
+  incidents auto-closed in minutes, or ones whose closing alert was never
+  remediated, are the rows to review.
+datatype: MSDefenderIncident
+kql: |
+  // latest snapshot per record: this engine's dynamic schema does not support
+  // arg_max(<col>, *), so take the max timestamp per id and join it back
+  let LatestAlert =
+      MSDefenderAlert
+      | where timestamp > ago(30d)
+      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
+  let LatestIncident =
+      MSDefenderIncident
+      | where timestamp > ago(30d)
+      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by IncId = id;
+  MSDefenderIncident
+  | where timestamp > ago(30d)
+  | join kind=inner LatestIncident on $left.id == $right.IncId
+  | where todatetime(lastUpdateDateTime) == LastUpdate
+  | project-away IncId, LastUpdate
+  | where status == "resolved"
+  | extend Resolution = tostring(resolvingComment)
+  | extend AutoResolved = Resolution startswith "Incident automatically resolved"
+  | extend ClosingAlertId = extract(@"Last resolved alert ID: (\S+)", 1, Resolution)
+  | extend ResolveMinutes = datetime_diff('minute', todatetime(lastUpdateDateTime), todatetime(createdDateTime))
+  | join kind=leftouter (
+      MSDefenderAlert
+      | where timestamp > ago(30d)
+      | join kind=inner LatestAlert on $left.id == $right.AlertId
+      | where todatetime(lastUpdateDateTime) == LastUpdate
+      | project
+          ClosingAlertId = id,
+          AlertTitle = title,
+          AlertProduct = productName,
+          AlertSeverity = severity,
+          AlertStatus = status,
+          AlertClassification = classification,
+          ThreatFamily = threatFamilyName,
+          Investigation = investigationState
+    ) on ClosingAlertId
+  | project
+      IncidentId = id,
+      Severity = severity,
+      Priority = priorityScore,
+      Incident = displayName,
+      AutoResolved,
+      ClosedBy = lastModifiedBy,
+      ResolveMinutes,
+      Opened = todatetime(createdDateTime),
+      Closed = todatetime(lastUpdateDateTime),
+      ClosingAlertId,
+      AlertTitle,
+      AlertProduct,
+      AlertSeverity,
+      AlertClassification,
+      ThreatFamily,
+      Investigation,
+      Triaged = iff(classification !in ("unknown", ""), classification, "none"),
+      IncidentUrl = incidentWebUrl
+  | order by Severity asc, ResolveMinutes asc
+tags: [msdefender, defender-xdr, incidents, auto-remediation, air, quality-assurance, security]
+expected_output: |
+  Auto-closed incidents with the alert that closed them (sanitized). 101195 was a
+  high-severity malware incident closed by the system 10 minutes after it opened,
+  with no analyst verdict recorded — exactly the row this query exists to surface.
+
+  IncidentId  Severity       Priority  Incident                                                AutoResolved  ClosedBy                                 ResolveMinutes  Opened                    Closed                    ClosingAlertId                            AlertTitle                           AlertProduct                     AlertSeverity  AlertClassification  ThreatFamily  Investigation            Triaged
+  101195      high           33        Malware incident on one endpoint                        true          System                                   10              2026-07-29T22:30:47.553Z  2026-07-29T22:41:13.010Z  da00000000-0000-0000-0000-0000000000c7_1  'PSWStealer' malware was prevented   Microsoft Defender for Endpoint  informational                       PSWStealer    successfullyRemediated   none
+  101192      informational  14        Email messages removed after delivery involving one user  true          Microsoft 365 Defender-IncidentCreation  25              2026-07-29T20:04:44.860Z  2026-07-29T20:29:25.880Z  fa00000000-0000-0000-0000-0000000000c9                                                                                                                                                none
+  101197      low            10        Email reported by user as not junk                       true          Microsoft 365 Defender-IncidentCreation  0               2026-07-30T00:24:21.816Z  2026-07-30T00:24:22.370Z  fa00000000-0000-0000-0000-0000000000c8                                                                                                                                                none
+
+  (Blank alert columns: the Office 365 alerts referenced by those incidents are not
+  in this repository's alert samples; the leftouter join keeps the incident row.)

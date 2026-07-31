@@ -1,0 +1,51 @@
+description: >-
+  Detection-tuning report over 30 days: for every alert title, which product and
+  which customer-configured policy/rule produced it (alertPolicyId is the Sentinel
+  analytic-rule GUID, the Defender for Cloud Apps policy id, or the Insider Risk
+  policy GUID — null for built-in Microsoft detections), how many fired, how many
+  an analyst actually triaged, and what verdicts they got. The false-positive rate
+  is computed against triaged alerts only, so untriaged backlog does not flatter
+  the number. Time-to-close comes from resolvedDateTime, which AIR also sets when
+  it auto-resolves, so a near-zero median close time usually means automation
+  rather than fast analysts.
+datatype: MSDefenderAlert
+kql: |
+  // latest snapshot per record: this engine's dynamic schema does not support
+  // arg_max(<col>, *), so take the max timestamp per id and join it back
+  let LatestAlert =
+      MSDefenderAlert
+      | where timestamp > ago(30d)
+      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
+  MSDefenderAlert
+  | where timestamp > ago(30d)
+  | join kind=inner LatestAlert on $left.id == $right.AlertId
+  | where todatetime(lastUpdateDateTime) == LastUpdate
+  | project-away AlertId, LastUpdate
+  | extend Resolved = todatetime(resolvedDateTime), Created = todatetime(createdDateTime)
+  | extend HoursToClose = iff(isnotnull(Resolved), datetime_diff('minute', Resolved, Created) / 60.0, real(null))
+  | summarize
+      Alerts = count(),
+      Triaged = countif(isnotempty(classification)),
+      TruePositive = countif(classification == "truePositive"),
+      FalsePositive = countif(classification == "falsePositive"),
+      ExpectedActivity = countif(classification == "informationalExpectedActivity"),
+      StillOpen = countif(status in ("new", "inProgress")),
+      Determinations = make_set_if(determination, isnotempty(determination), 10),
+      Severities = make_set(severity, 5),
+      Incidents = dcount(incidentId),
+      MedianHoursToClose = round(percentile(HoursToClose, 50), 2),
+      LastFired = max(timestamp)
+    by Title = title, Product = productName, PolicyId = alertPolicyId
+  | extend FalsePositiveRate = iff(Triaged == 0, real(null), round(100.0 * FalsePositive / Triaged, 1))
+  | extend TriagedPct = round(100.0 * Triaged / Alerts, 1)
+  | order by Alerts desc, FalsePositiveRate desc
+tags: [msdefender, defender-xdr, tuning, false-positives, reporting, soc-metrics, security]
+expected_output: |
+  Per-detection volume and verdict quality, with close times (sanitized).
+
+  Title                                               Product                            PolicyId                              Alerts  Triaged  TruePositive  FalsePositive  ExpectedActivity  StillOpen  Determinations     Severities         Incidents  MedianHoursToClose  LastFired                 FalsePositiveRate  TriagedPct
+  Privileged Account Permissions Changed              Microsoft Sentinel                 00000000-0000-0000-0000-0000000000d3  1       1        0             1              0                 0          ["notMalicious"]   ["medium"]         1          219.45              2026-07-18T15:58:04.050Z  100.0              100.0
+  'PSWStealer' malware was prevented                  Microsoft Defender for Endpoint                                          1       0        0             0              0                 0          []                 ["informational"]  1          0.14                2026-07-29T22:32:54.560Z                     0.0
+  Anomalous Token                                     AAD Identity Protection                                                  1       0        0             0              0                 1          []                 ["high"]           1                             2026-07-15T12:59:08.630Z                     0.0
+  Delegate Access Granted to User's Mailbox           Microsoft Defender for Cloud Apps  0000000000000000000000d2              1       0        0             0              0                 1          []                 ["medium"]         1                             2026-07-27T16:21:29.623Z                     0.0
+  Purview IRM ('00000000') Data Exfil to Unsanctioned Cloud  Microsoft Insider Risk Management  00000000-0000-0000-0000-0000000000d1  1  0  0  0  0  1  []  ["medium"]  1                    2026-07-12T03:21:37.760Z                     0.0

@@ -1,0 +1,89 @@
+description: >-
+  Phishing and malicious-mail triage from Defender for Office 365 alerts: expands
+  evidence[] down to the analyzedMessageEvidence element, which is where the actual
+  email lives, and reports the envelope sender (p1Sender, MAIL FROM) against the
+  header sender (p2Sender, what the user saw) — a domain mismatch between them is
+  itself a spoofing signal — plus the recipient, subject, sender IP, Defender's
+  threat labels and detection methods, attachment/URL counts, and the delivery
+  outcome. deliveryAction and deliveryLocation must be read together: 'delivered'
+  to 'quarantine' means the mail reached the mailbox and was pulled afterwards by
+  ZAP, which is a user who was exposed, not a block. threats[] repeats values
+  (HighConfPhish four times in the sample), so it is deduplicated with a set. URLs
+  are exploded separately below the main projection, since gateway rewriting makes
+  one click appear two or three times at different unwrap stages.
+datatype: MSDefenderAlert
+kql: |
+  // latest snapshot per record: this engine's dynamic schema does not support
+  // arg_max(<col>, *), so take the max timestamp per id and join it back
+  let LatestAlert =
+      MSDefenderAlert
+      | where timestamp > ago(7d)
+      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
+  MSDefenderAlert
+  | where timestamp > ago(7d)
+  | join kind=inner LatestAlert on $left.id == $right.AlertId
+  | where todatetime(lastUpdateDateTime) == LastUpdate
+  | project-away AlertId, LastUpdate
+  | where serviceSource == "microsoftDefenderForOffice365"
+  | mv-expand ev = evidence
+  | where tostring(ev["@odata.type"]) == "#microsoft.graph.security.analyzedMessageEvidence"
+  | extend
+      EnvelopeSender = tostring(ev.p1Sender.emailAddress),
+      EnvelopeDomain = tostring(ev.p1Sender.domainName),
+      HeaderSender = tostring(ev.p2Sender.emailAddress),
+      HeaderDomain = tostring(ev.p2Sender.domainName),
+      HeaderDisplayName = tostring(ev.p2Sender.displayName),
+      Recipient = tostring(ev.recipientEmailAddress),
+      Subject = tostring(ev.subject),
+      SenderIp = tostring(ev.senderIp),
+      Received = todatetime(ev.receivedDateTime),
+      DeliveryAction = tostring(ev.deliveryAction),
+      DeliveryLocation = tostring(ev.deliveryLocation),
+      Attachments = toint(ev.attachmentsCount),
+      UrlCount = toint(ev.urlCount),
+      NetworkMessageId = tostring(ev.networkMessageId),
+      InternetMessageId = tostring(ev.internetMessageId),
+      MessageRemediation = tostring(ev.remediationStatus),
+      MessageVerdict = tostring(ev.verdict)
+  | mv-apply t = ev.threats on ( summarize Threats = make_set(tostring(t)) )
+  | mv-apply m = ev.threatDetectionMethods on ( summarize DetectionMethods = make_set(tostring(m)) )
+  | mv-apply u = ev.urls on ( summarize Urls = make_set(tostring(u), 20) )
+  | extend SenderMismatch = EnvelopeDomain != HeaderDomain
+  | extend ExposureMinutes = datetime_diff('minute', todatetime(createdDateTime), Received)
+  | project
+      timestamp,
+      Severity = severity,
+      Title = replace_regex(title, @"[^\x20-\x7E]", ""),
+      Recipient,
+      Subject,
+      HeaderSender,
+      HeaderDisplayName,
+      EnvelopeSender,
+      SenderMismatch,
+      SenderIp,
+      Threats,
+      DetectionMethods,
+      DeliveryAction,
+      DeliveryLocation,
+      MessageRemediation,
+      MessageVerdict,
+      Attachments,
+      UrlCount,
+      Urls,
+      Received,
+      ExposureMinutes,
+      NetworkMessageId,
+      InternetMessageId,
+      Suppressed = iff(assignedTo == "Suppression rule", "yes", ""),
+      IncidentId = incidentId,
+      AlertUrl = alertWebUrl
+  | order by timestamp desc
+tags: [msdefender, defender-xdr, defender-for-office365, email, phishing, zap, triage, security]
+expected_output: |
+  Malicious mail from analyzedMessageEvidence (sanitized). Note the title is
+  normalized to strip the trailing U+200B that MDO puts in it, the four repeated
+  HighConfPhish labels collapse to one, and ExposureMinutes shows the mail sat in
+  the mailbox over 9 hours before the alert was raised.
+
+  timestamp                 Severity       Title                                                  Recipient                  Subject           HeaderSender      HeaderDisplayName        EnvelopeSender    SenderMismatch  SenderIp      Threats                        DetectionMethods      DeliveryAction  DeliveryLocation  MessageRemediation  MessageVerdict  Attachments  UrlCount  Urls                                                        Received                  ExposureMinutes  NetworkMessageId                      Suppressed  IncidentId
+  2026-07-30T04:00:07.013Z  informational  Email messages containing malicious URL removed after delivery  isaiah.langer@contoso.com  Update available  info@example.com  Correspondence Services  info@example.com  false           192.0.2.133   ["ZapPhish","HighConfPhish"]   ["FingerPrintMatch"]  delivered       quarantine        remediated          malicious       7            3         ["https://atpscan...","https://url-shield...","https://phish.example/sale"]  2026-07-29T18:39:28.000Z  561              00000000-0000-0000-0000-0000000000b3  yes         42733

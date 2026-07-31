@@ -1,0 +1,31 @@
+description: >-
+  Health of Duo's Active Directory user sync, from the ad_sync_finish admin
+  events. Pulls the per-run delta out of descriptionFields (note the
+  human-readable keys with spaces, which require bracket indexing) and flags
+  runs that reported errors or removed users. Errors mean some accounts were not
+  synced — they may be missing MFA coverage entirely — and a nonzero
+  "Users removed" means accounts were dropped from Duo, which silently removes
+  their MFA enrollment. Sorted so problem runs surface first.
+datatype: DuoAdmin
+kql: |
+  DuoAdmin
+  | where timestamp > ago(7d)
+  | where action == "ad_sync_finish"
+  | extend Directory = object,
+           Duration = tostring(descriptionFields["Duration"]),
+           UsersSeen = toint(descriptionFields["Users seen"]),
+           UsersAdded = toint(descriptionFields["Users added"]),
+           UsersModified = toint(descriptionFields["Users modified"]),
+           UsersRemoved = toint(descriptionFields["Users removed"]),
+           Errors = tostring(descriptionFields["Errors"]),
+           SyncRef = tostring(descriptionFields["Sync Ref. Code"])
+  | extend HasError = isnotempty(Errors)
+  | project timestamp, Directory, Duration, UsersSeen, UsersAdded, UsersModified,
+            UsersRemoved, HasError, Errors, SyncRef
+  | order by HasError desc, UsersRemoved desc, timestamp desc
+tags: [duo, cisco, admin, directory-sync, active-directory, health, coverage]
+expected_output: |
+  Duo AD sync runs with their deltas and any per-user errors (sanitized).
+
+  timestamp             Directory  Duration  UsersSeen  UsersAdded  UsersModified  UsersRemoved  HasError  Errors                                                          SyncRef
+  2026-07-21T12:08:32Z  AD Sync    0:00:01   6          0           0              0             true      User jsmith-admin (...dc=contoso,dc=local): "jsmith-admin" ...  a1b2c3d4e5f60718293a4b5c6d7e8f90

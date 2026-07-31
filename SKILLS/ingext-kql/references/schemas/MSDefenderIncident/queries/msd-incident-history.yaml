@@ -1,0 +1,45 @@
+description: >-
+  Reconstructs how one incident evolved, by listing every snapshot the append-only
+  MSDefenderIncident stream emitted for it in order of lastUpdateDateTime, showing
+  the fields that mutate — title, severity, priority score, status, owner, verdict,
+  resolution — and who made each change (lastModifiedBy distinguishes initial
+  creation from alert correlation from automated resolution). This is the query to
+  run when a report and the portal disagree, or to explain how a single alert became
+  a named multi-stage incident. Unlike every other query here it deliberately does
+  NOT reduce to the latest snapshot: the duplicate rows per id are the point. Note
+  the ordering must use lastUpdateDateTime — 'timestamp' comes from createdDateTime
+  and is identical on every snapshot of an incident. Diffing between consecutive
+  rows is left to the reader rather than computed with prev(), which would require a
+  serialized row set.
+datatype: MSDefenderIncident
+kql: |
+  MSDefenderIncident
+  | where timestamp > ago(30d)
+  | where id == "101195"          // set the incident id, or use 'in ("101195", "101188")'
+  | extend Snapshot = todatetime(lastUpdateDateTime)
+  | project
+      Snapshot,
+      IncidentId = id,
+      MinutesSinceOpen = datetime_diff('minute', Snapshot, todatetime(createdDateTime)),
+      Title = displayName,
+      Severity = severity,
+      Priority = priorityScore,
+      Status = status,
+      ChangedBy = lastModifiedBy,
+      Owner = assignedTo,
+      Classification = classification,
+      Determination = determination,
+      Resolution = resolvingComment,
+      Comments = array_length(comments),
+      IncidentUrl = incidentWebUrl
+  | order by IncidentId asc, Snapshot asc
+tags: [msdefender, defender-xdr, incidents, timeline, audit, investigation, security]
+expected_output: |
+  Every snapshot of incident 101195 (sanitized). Defender opened it under the
+  triggering alert's own title at priority 24, then renamed it to the correlated
+  title, raised the score to 33, and auto-resolved it 10 minutes later — none of
+  which is visible if the stream is collapsed to its latest snapshot.
+
+  Snapshot                  IncidentId  MinutesSinceOpen  Title                                               Severity  Priority  Status    ChangedBy                                Owner  Classification  Determination  Resolution                                                                                                                              Comments
+  2026-07-29T22:30:47.553Z  101195      0                 'TurtlePerlsh' high-severity malware was prevented  high      24        active    Microsoft 365 Defender-IncidentCreation         unknown         unknown                                                                                                                                                0
+  2026-07-29T22:41:13.010Z  101195      10                Malware incident on one endpoint                    high      33        resolved  System                                          unknown         unknown        Incident automatically resolved as all alerts in the incident were resolved. Last resolved alert ID: da00000000-0000-0000-0000-0000000000c7_1  0

@@ -1,0 +1,196 @@
+schema: msDefenderRecommendation
+description: >-
+  Microsoft Defender Vulnerability Management security recommendations, collected
+  by Ingext from the Defender for Endpoint API (GET /api/recommendations). Each
+  record is one tenant-wide recommendation — "update this product to version X"
+  or "turn on this hardening control" — with the fleet-wide counts behind it
+  (how many devices are exposed, how many are covered), its weight on the secure
+  score and on exposure, and the threat context that makes it urgent (public
+  exploit, active alert, associated threat campaigns).
+
+  This is the *rollup* table of the Defender for Endpoint resource family, and
+  the one to start from for "what should we fix first". The per-device evidence
+  behind each recommendation lives in the other two:
+
+    - id starting 'va-_-' — a software-update recommendation. Its device-level
+      findings are msDefenderVulnerability rows whose RecommendationReference
+      equals this id.
+    - id starting 'sca-_-scid-' — a secure-configuration recommendation. Its
+      device-level findings are msDefenderSecureConfig rows whose
+      recommendationReference equals this id.
+
+  There is no device information in this record at all — only counts — so any
+  question of the form "which devices" requires the join.
+
+  It is a resource stream: _key is the recommendation id, the resource watch
+  upserts on it, and each _key holds the latest snapshot, so no arg_max/dedup
+  pattern is needed. The whole set is re-dumped every 8 hours.
+
+  ONE TRAP: this endpoint returns no per-record time of any kind, so timestamp is
+  the collection (dump) time, identical across every record in a snapshot. It
+  says when Ingext fetched the recommendation, not when the recommendation
+  appeared or last changed, and it cannot be used to find new or newly-worsened
+  recommendations — compare snapshots for that. It is still the right column for
+  range filters; just keep the window wide enough (>= 1d) to include a dump.
+
+  Note also that both scoring fields are populated per record but only one is
+  meaningful per kind: 'va-_-' records carry exposureImpact with
+  configScoreImpact 0, and 'sca-_-scid-' records carry configScoreImpact. Rank
+  within a kind, not across the two.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Collection (dump) time — the API returns no per-record timestamp, so this is stamped by the connector and is identical for every record in a snapshot. Use it for range filters (>= 1d window), never as evidence of when a recommendation was raised or changed."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key; mapped to the 'id' field. Unique per recommendation — each _key holds the latest snapshot, so no arg_max/dedup is needed."
+    sampleValues: ["sca-_-scid-2513", "va-_-microsoft-_-windows_10"]
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: id
+    type: String
+    description: "Recommendation identifier, and the join key to the per-device findings. Two forms, and the prefix tells you which table to join to: 'va-_-vendor-_-product' → msDefenderVulnerability.RecommendationReference (software updates); 'sca-_-scid-NNN' → msDefenderSecureConfig.recommendationReference (configuration controls). Filter with startswith(id, \"sca-\") / startswith(id, \"va-\") to split the two populations, which behave differently in almost every field below."
+    sampleValues: ["sca-_-scid-2513", "va-_-microsoft-_-edge_chromium-based"]
+
+  - name: recommendationName
+    type: String
+    description: "Display text of the recommendation, e.g. 'Block Adobe Reader from creating child processes' or 'Update Microsoft Edge Chromium-based to version 127.0.2651.74'. For update recommendations the target version is embedded in the text and changes every time the vendor ships a release, so group by id and carry the name with any() rather than grouping by name."
+    sampleValues: ["Block Adobe Reader from creating child processes", "Update Microsoft Edge Chromium-based to version 127.0.2651.74"]
+
+  - name: recommendationCategory
+    type: String
+    description: "Top-level category, matching the secure-configuration categories for 'sca-' records ('Security controls', 'OS', 'Network', 'Accounts', 'Application'); update recommendations are 'Application'."
+    sampleValues: ["Security controls", "Application", "OS", "Network", "Accounts"]
+
+  - name: subCategory
+    type: String
+    description: "Finer grouping within the category — 'Attack Surface Reduction', 'Antivirus', 'Firewall'. Empty string (not null) on most update recommendations, so use isnotempty() rather than isnotnull()."
+    sampleValues: ["Attack Surface Reduction", "Antivirus", ""]
+
+  - name: status
+    type: String
+    description: "Whether the recommendation is currently outstanding. 'Active' means still applicable; other values ('Exception', and states set when work is accepted or the recommendation no longer applies) mean it has been dispositioned. Filter status == \"Active\" for a work queue."
+    sampleValues: ["Active", "Exception"]
+
+  - name: remediationType
+    type: String
+    description: "What kind of action fixes it: 'Update' (deploy a newer version), 'ConfigurationChange' (set a policy/control), 'Uninstall' (remove unsupported or unwanted software), 'AttentionRequired'. The split that decides which team owns the item — patching versus policy."
+    sampleValues: ["Update", "ConfigurationChange", "Uninstall", "AttentionRequired"]
+
+  # ==========================================
+  # PRODUCT / COMPONENT
+  # ==========================================
+  - name: productName
+    type: String
+    description: "Product the recommendation applies to, in MDE's normalized lowercase-with-underscores form ('windows_server_2022', 'edge_chromium-based'). Matches msDefenderVulnerability.SoftwareName, so the two can be joined on (vendor, product) as well as through the recommendation id."
+    sampleValues: ["windows_server_2022", "edge_chromium-based"]
+
+  - name: vendor
+    type: String
+    description: "Vendor of the product, normalized lowercase ('microsoft', 'google'). Matches msDefenderVulnerability.SoftwareVendor."
+    sampleValues: ["microsoft", "google"]
+
+  - name: relatedComponent
+    type: String
+    description: "Human-readable name of the product/component ('Windows Server 2022', 'Edge Chromium-based') — the display counterpart of productName, and the right column for report output."
+    sampleValues: ["Windows Server 2022", "Edge Chromium-based"]
+
+  - name: recommendedVersion
+    type: String
+    description: "Version to upgrade to. Populated on 'Update' recommendations; empty string on configuration recommendations."
+    sampleValues: ["127.0.2651.74", ""]
+
+  - name: recommendedVendor
+    type: String
+    description: "Vendor of the recommended replacement product, when the recommendation is to switch products rather than upgrade. Usually an empty string."
+    sampleValues: [""]
+
+  - name: recommendedProgram
+    type: String
+    description: "Name of the recommended replacement program, when applicable. Usually an empty string."
+    sampleValues: [""]
+
+  # ==========================================
+  # RISK / PRIORITIZATION
+  # ==========================================
+  - name: severityScore
+    type: Float
+    description: "Severity weight of the recommendation, 0-10 (JSON number). Non-zero mainly on configuration recommendations; update recommendations often report 0 and are prioritized by weaknesses/exposureImpact instead, so do not rank the two kinds against each other on this field."
+    sampleValues: [9, 0]
+
+  - name: publicExploit
+    type: Boolean
+    description: "Whether a public exploit exists for one of the vulnerabilities this recommendation covers. Combined with exposedMachinesCount this is the strongest single prioritization signal in the table — known-exploitable and widely exposed outranks a higher severity score with no exploit."
+    sampleValues: [false, true]
+
+  - name: activeAlert
+    type: Boolean
+    description: "Whether there is an active Defender alert associated with this recommendation — i.e. the weakness is not merely present but implicated in current detected activity. true is an escalation signal: cross-check MSDefenderAlert for the affected devices."
+    sampleValues: [false, true]
+
+  - name: associatedThreats
+    type: DynamicArray
+    description: "Threat-analytics report ids (GUIDs) linked to this recommendation — the campaigns and threat families whose techniques it mitigates. An array; array_length() gives the count and mv-expand enumerates. Non-empty means the recommendation maps to tracked adversary activity, which is the argument for prioritizing it over an equally-scored item with none."
+    sampleValues: ["00000000-0000-0000-0000-0000000000a1"]
+
+  - name: weaknesses
+    type: Long
+    description: "Number of discovered weaknesses (CVEs) this recommendation would resolve. Meaningful on 'va-_-' update recommendations, where it can reach the hundreds; typically 1 on configuration recommendations. The multiplier that makes a single update worth more than its severity suggests."
+    sampleValues: [1, 762]
+
+  - name: hasUnpatchableCve
+    type: Boolean
+    description: "Whether the recommendation covers at least one CVE with no available fix. true means applying it will not fully close the exposure — a compensating control or a product replacement is needed, so these items should not sit in a patch queue waiting to be 'completed'."
+    sampleValues: [false, true]
+
+  - name: tags
+    type: DynamicArray
+    description: "Qualifier tags on the recommendation, as an array of strings. Observed values include 'UserImpactAssessment' (applying it may affect users, so it needs a change window) and 'internetFacing' (the exposed assets are reachable from the internet — a sharp prioritization signal). Filter without expanding using: tags has \"internetFacing\"."
+    sampleValues: ["UserImpactAssessment", "internetFacing"]
+
+  # ==========================================
+  # SCORE / EXPOSURE IMPACT
+  # ==========================================
+  - name: configScoreImpact
+    type: Float
+    description: "How many points the Microsoft Secure Score for Devices would gain if this recommendation were fully applied. Meaningful on 'sca-_-scid-' configuration recommendations; 0 on update recommendations. Sorting the configuration population by this field is the direct answer to 'what raises our secure score the most'."
+    sampleValues: [8.97, 0]
+
+  - name: exposureImpact
+    type: Float
+    description: "How much the organization's exposure score would improve if this recommendation were fully applied. The counterpart of configScoreImpact for update recommendations (and also populated on configuration ones). Reported at full floating-point precision — round it for display."
+    sampleValues: [10.615099009900991, 1.1744086343876479]
+
+  # ==========================================
+  # FLEET COUNTS
+  # ==========================================
+  - name: exposedMachinesCount
+    type: Long
+    description: "Number of devices currently affected by this recommendation. The numerator of coverage; with totalMachineCount it gives the exposed percentage. These counts are MDE's own, computed across the whole tenant, so they can exceed what a device-level join returns if the connector's device scope is narrower."
+    sampleValues: [193]
+
+  - name: totalMachineCount
+    type: Long
+    description: "Number of devices in scope for this recommendation (exposed plus already compliant). The denominator for a coverage percentage: 100.0 * exposedMachinesCount / totalMachineCount."
+    sampleValues: [261]
+
+  - name: exposedCriticalDevices
+    type: Long
+    description: "Number of exposed devices rated business-critical (the population marked with a high deviceValue / criticality in msDefenderMachine). A recommendation with a small exposed count but a high critical count outranks a broad one that touches nothing important."
+    sampleValues: [22]
+
+  - name: nonProductivityImpactedAssets
+    type: Long
+    description: "Number of affected devices where applying the recommendation is expected to cause no user-productivity impact — i.e. the population that can be remediated without a change window. The gap between exposedMachinesCount and this value is the work that needs scheduling and communication."
+    sampleValues: [180]

@@ -1,0 +1,43 @@
+description: >-
+  Devices whose Defender for Endpoint sensor is not reporting properly — stale
+  last-seen, a non-Active health status, or not onboarded at all. The EDR-coverage
+  hygiene report: every device here is one the tenant believes is protected but
+  from which no current telemetry arrives. lastSeen is the last *full device
+  report* (MDE sends one roughly daily and it lags the portal's own last-seen), so
+  the threshold is in days, not hours.
+datatype: msDefenderMachine
+kql: |
+  msDefenderMachine
+  | where isnull(mergedIntoMachineId) and isExcluded != true
+  | extend LastSeen = todatetime(lastSeen)
+  | extend
+      Stale        = LastSeen < ago(7d),
+      Unhealthy    = healthStatus != "Active",
+      NotOnboarded = onboardingStatus !~ "Onboarded"
+  | where Stale or Unhealthy or NotOnboarded
+  | extend Reasons = strcat_array(pack_array(
+      iff(Stale, "stale", ""),
+      iff(Unhealthy, strcat("health:", healthStatus), ""),
+      iff(NotOnboarded, strcat("onboarding:", onboardingStatus), "")), " ")
+  | project
+      computerDnsName,
+      id,
+      LastSeen,
+      StaleDays = datetime_diff('day', now(), LastSeen),
+      Reasons,
+      osPlatform,
+      version,
+      agentVersion,
+      managedBy,
+      rbacGroupName,
+      exposureLevel,
+      riskScore
+  | order by LastSeen asc
+tags: [microsoft, defender, mde, endpoint, hygiene, stale, sensor, coverage, security]
+expected_output: |
+  Devices not reporting properly, oldest first (sanitized).
+
+  computerDnsName         id                                        LastSeen              StaleDays  Reasons                          osPlatform  version  agentVersion         managedBy  rbacGroupName         exposureLevel  riskScore
+  corp-ws118.contoso.com  2f6cd8e8f524eee8013d3a43f529813c95e1dd18  2026-05-02T08:13:55Z  89         stale health:Inactive            Windows10   22H2     10.8830.19045.4291   Intune     Windows Workstations  High           None
+  corp-ws207.contoso.com  3a7de9f9a635fff9124e4b54a63a924da6f2ee29  2026-07-12T19:40:31Z  18         stale health:NoSensorData        Windows11   23H2     10.8830.22631.3593   Unknown    Windows Workstations  Medium         None
+  corp-lab04.contoso.com  4b8efa0ab746aa0a235f5c65b74ba35eb703ff3a  2026-07-19T08:27:53Z  11         stale onboarding:CanBeOnboarded  Windows11   24H2                          Unknown    Unassigned            None           None

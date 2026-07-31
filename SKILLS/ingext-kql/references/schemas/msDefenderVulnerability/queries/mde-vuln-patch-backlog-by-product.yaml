@@ -1,0 +1,40 @@
+description: >-
+  Patch backlog by product and device group: for each vendor/product, how many
+  devices are exposed, how many distinct CVEs, how old the oldest exposure is, and
+  which recommendation covers it. Answers "which single update closes the most
+  exposure" — one product update usually resolves dozens of CVEs at once, which is
+  why the CVE-level view (mde-vuln-top-cves.yaml) understates the value of a
+  product upgrade. Product and vendor names are MDE's normalized lowercase form
+  ('windows_10', not 'Windows 10'), and the operating system appears as a product
+  alongside applications.
+datatype: msDefenderVulnerability
+kql: |
+  msDefenderVulnerability
+  | where isnotempty(CveId)
+  | summarize
+      ExposedDevices  = dcount(DeviceId),
+      DistinctCves    = dcount(CveId),
+      CriticalCves    = dcountif(CveId, VulnerabilitySeverityLevel == "Critical"),
+      ExploitableCves = dcountif(CveId, ExploitabilityLevel in ("ExploitIsVerified", "ExploitIsInKit")),
+      MaxCvss         = max(CvssScore),
+      OldestExposure  = min(todatetime(FirstSeenTimestamp)),
+      Versions        = make_set(SoftwareVersion, 10),
+      Recommendation  = any(RecommendationReference),
+      WithUpdate      = countif(SecurityUpdateAvailable == true)
+      by SoftwareVendor, SoftwareName, RbacGroupName
+  | extend
+      BacklogDays  = datetime_diff('day', now(), OldestExposure),
+      FixAvailable = WithUpdate > 0
+  | project
+      SoftwareVendor, SoftwareName, RbacGroupName, ExposedDevices, DistinctCves,
+      CriticalCves, ExploitableCves, MaxCvss, BacklogDays, FixAvailable,
+      Recommendation, Versions
+  | order by ExploitableCves desc, ExposedDevices desc, DistinctCves desc
+tags: [microsoft, defender, mde, mdvm, vulnerability, patching, backlog, software, reporting, security]
+expected_output: |
+  Exposure per product and device group (sanitized).
+
+  SoftwareVendor  SoftwareName            RbacGroupName         ExposedDevices  DistinctCves  CriticalCves  ExploitableCves  MaxCvss  BacklogDays  FixAvailable  Recommendation                    Versions
+  microsoft       windows_10              Windows Workstations  62              148           17            4                9.8      412          true          va-_-microsoft-_-windows_10       ["10.0.19045.1889"]
+  google          chrome                  Windows Workstations  118             57            6             2                9.6      201          true          va-_-google-_-chrome              ["126.0.6478.127","127.0.6533.72"]
+  microsoft       windows_server_2022     Servers               14              63            9             0                8.8      54           true          va-_-microsoft-_-windows_server_2022  ["10.0.20348.2582"]

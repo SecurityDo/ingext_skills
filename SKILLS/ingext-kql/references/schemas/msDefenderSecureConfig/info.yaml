@@ -1,0 +1,137 @@
+schema: msDefenderSecureConfig
+description: >-
+  Microsoft Defender Vulnerability Management secure-configuration assessment,
+  per device, collected by Ingext from the Defender for Endpoint API
+  (GET /api/machines/SecureConfigurationsAssessmentByMachine). Each record is one
+  security configuration evaluated on one device — "is this hardening control
+  applicable here, and is it configured correctly?" — so the table is one row per
+  (deviceId, configurationId): a fleet of N devices against M applicable controls
+  produces on the order of N x M rows, typically the second-largest resource in
+  this family after msDefenderVulnerability.
+
+  These are the misconfiguration findings behind the Microsoft Secure Score for
+  Devices and the 'Security controls' half of msDefenderRecommendation: each
+  record's recommendationReference ('sca-_-scid-NNN') is the tenant-wide
+  recommendation this device-level finding rolls up into, and configurationImpact
+  is that control's weight in the score.
+
+  It is a resource stream: _key is the composite deviceId_configurationId, the
+  resource watch upserts on it, and each _key holds the latest snapshot — no
+  arg_max/dedup pattern is needed. The composite key matters: keying on the
+  device alone would collapse every finding on a device into one.
+
+  Three things to get right before counting anything. (1) isApplicable gates
+  everything — a control that does not apply to the platform is reported with
+  isCompliant false, so a non-compliance count that does not filter
+  isApplicable == true is wrong, usually by a lot. (2) timestamp comes from the
+  record's own 'timestamp' field, which the API returns in a space-separated,
+  zone-less UTC form ("2026-07-30 10:32:16"), not RFC3339 — todatetime() parses
+  it, but string comparison against an RFC3339 literal will not match. (3) The
+  device-side field names are camelCase here (deviceId, osPlatform), unlike
+  msDefenderVulnerability, whose export shape is PascalCase.
+
+  Join to msDefenderMachine on deviceId == msDefenderMachine.id for device group,
+  exposure and risk, and to msDefenderRecommendation on
+  recommendationReference == msDefenderRecommendation.id to get the tenant-wide
+  view of the same control.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Mapped from the record's 'timestamp' field — the last time this configuration was evaluated on this device. Assessments refresh on the order of hours, so use a lookback of at least a day for range filters."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key; the composite 'deviceId_configurationId' (the two values joined with an underscore). Unique per device+configuration — each _key holds the latest snapshot, so no arg_max/dedup is needed."
+    sampleValues: ["9eaf3a8b5962e0e6b1af9ec756664a9b823df2d1_scid-37"]
+
+  # ==========================================
+  # DEVICE
+  # ==========================================
+  - name: deviceId
+    type: String
+    description: "MDE device id the finding belongs to. Join key to msDefenderMachine.id, msDefenderAvHealth.machineId and msDefenderVulnerability.DeviceId."
+    sampleValues: ["9eaf3a8b5962e0e6b1af9ec756664a9b823df2d1"]
+
+  - name: deviceName
+    type: String
+    description: "Fully qualified device name. Can be null — MDE returns findings for devices whose name it never resolved — so fall back to deviceId (or join msDefenderMachine) rather than grouping a report by deviceName alone."
+    sampleValues: ["corp-ws042.contoso.com"]
+
+  - name: osPlatform
+    type: String
+    description: "Operating system platform of the device, at the granularity that distinguishes Windows 10 from Windows 11 and one server release from another. Many controls apply to only some platforms, so this is the usual second grouping column after configurationId."
+    sampleValues: ["Windows10", "Windows11", "WindowsServer2022", "macOS", "Linux"]
+
+  - name: osVersion
+    type: String
+    description: "Operating system version of the device. Form varies by platform and by how the device reported — a full four-part build (10.0.19045.1889), a two-part version (10.0), or a kernel description ('NT kernel 6.x') all occur, so do not parse it without checking the shape first."
+    sampleValues: ["10.0.19045.1889", "10.0"]
+
+  - name: rbacGroupId
+    type: Integer
+    description: "Numeric id of the MDE device group the device belongs to."
+    sampleValues: [140]
+
+  - name: rbacGroupName
+    type: String
+    description: "Name of the MDE device group; 'Unassigned' when the device is in no group, 'None' when the tenant defines no groups. The grouping column for a hardening report by owning team."
+    sampleValues: ["Windows Workstations", "Unassigned", "None"]
+
+  # ==========================================
+  # CONFIGURATION IDENTITY
+  # ==========================================
+  - name: configurationId
+    type: String
+    description: "Stable identifier of the security configuration, of the form 'scid-NNN'. The same id across every device, so this is the column to group by when asking 'which control is failing across the fleet'. Half of the composite _key."
+    sampleValues: ["scid-37", "scid-2513", "scid-10000"]
+
+  - name: configurationName
+    type: String
+    description: "Display name of the control, e.g. \"Enable 'Domain member: Digitally encrypt or sign secure channel data (always)'\". Names contain quotes, apostrophes and parentheses, and Microsoft rewords them over time — group by configurationId and carry the name along with any(), rather than grouping by name."
+    sampleValues: ["Enable 'Domain member: Digitally encrypt or sign secure channel data (always)'", "Onboard devices to Microsoft Defender for Endpoint"]
+
+  - name: configurationCategory
+    type: String
+    description: "Top-level grouping of the control. Documented values: Application, OS, Network, Accounts, Security controls."
+    sampleValues: ["OS", "Security controls", "Network", "Accounts", "Application"]
+
+  - name: configurationSubcategory
+    type: String
+    description: "Finer grouping within the category, naming the capability or feature — 'Antivirus', 'Attack Surface Reduction', 'Onboard Devices', 'Firewall', 'BitLocker'. Frequently null or empty (notably for the OS category), so coalesce before grouping on it."
+    sampleValues: ["Antivirus", "Attack Surface Reduction", "Onboard Devices"]
+
+  - name: configurationImpact
+    type: Integer
+    description: "Weight of this control on the overall configuration score, rated 1-10 (returned as a JSON number here even though Microsoft's property table types it as a string). Use it to rank remediation work: sum configurationImpact over the non-compliant, applicable findings per device to get that device's hardening debt, or per configurationId to find the control whose fleet-wide failure costs the most score."
+    sampleValues: [5, 9]
+
+  - name: recommendationReference
+    type: String
+    description: "Id of the tenant-wide security recommendation this per-device finding rolls up into, of the form 'sca-_-scid-NNN' (note the '_-' separators). Join key to msDefenderRecommendation.id — that record carries the severity, the exposure/score impact and the fleet-wide exposed counts for the same control."
+    sampleValues: ["sca-_-scid-37"]
+
+  # ==========================================
+  # ASSESSMENT RESULT
+  # ==========================================
+  - name: isApplicable
+    type: Boolean
+    description: "Whether the control applies to this device at all. THE critical filter of this table: non-applicable findings are returned with isCompliant false, so any non-compliance count must be scoped to isApplicable == true or it silently counts controls that could never apply (a Linux antivirus setting on a Windows workstation, a domain-member policy on a workgroup host)."
+    sampleValues: [true, false]
+
+  - name: isCompliant
+    type: Boolean
+    description: "Whether the control is properly configured on the device. Meaningful only where isApplicable is true. The pair (isApplicable == true and isCompliant == false) is the definition of a real misconfiguration finding."
+    sampleValues: [true, false]
+
+  - name: isExpectedUserImpact
+    type: Boolean
+    description: "Whether applying this control is expected to affect users. Almost always false; the true population is what a remediation plan needs to schedule and communicate, so it is worth surfacing rather than filtering out."
+    sampleValues: [false, true]

@@ -1,0 +1,26 @@
+description: >-
+  The current Microsoft Secure Score for Devices, with the freshness of the
+  calculation. This table holds exactly one row — the resource key is a fixed
+  singleton that every collection cycle overwrites — so there is nothing to
+  aggregate, filter or trend here: the query is a projection, and ScoreAgeHours is
+  the check that matters. A large age means either that Microsoft has not
+  recalculated or that the collection cycle stopped fetching the score (the
+  resource needs its own Score.Read.All permission), and the previous row is being
+  shown unchanged. The score is a raw point total, not a percentage: the API
+  returns no maximum, so the portal percentage cannot be derived from it — see
+  mde-secure-score-headroom.yaml for how much is achievable.
+datatype: msDefenderSecureScore
+kql: |
+  msDefenderSecureScore
+  | extend ScoreTime = todatetime(time)
+  | project
+      Score         = toint(score),
+      ScoreTime,
+      ScoreAgeHours = datetime_diff('hour', now(), ScoreTime),
+      Scope         = iff(isempty(tostring(rbacGroupName)), "tenant-wide", tostring(rbacGroupName))
+tags: [microsoft, defender, mde, mdvm, secure-score, posture, reporting, security]
+expected_output: |
+  The single secure-score record (sanitized).
+
+  Score  ScoreTime                    ScoreAgeHours  Scope
+  800    2026-07-30T17:55:53.813240Z  2              tenant-wide

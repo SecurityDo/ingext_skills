@@ -1,0 +1,35 @@
+description: >-
+  Open SentinelOne alert triage: lists Singularity/Unified alerts that are still
+  NEW or IN_PROGRESS, prioritizing CRITICAL/HIGH severity and malicious
+  confidence. Shows the affected host, classification, the triggering process and
+  its parent, the mitigation result (NOT_MITIGATED needs manual response), and
+  the SHA-256 for hunting. Ordered to surface the newest, most severe alerts
+  first.
+datatype: SentinelOneAlert
+kql: |
+  SentinelOneAlert
+  | where status in ("NEW", "IN_PROGRESS")
+  | extend Sev = case(severity == "CRITICAL", 4, severity == "HIGH", 3, severity == "MEDIUM", 2, 1)
+  | project
+      timestamp,
+      Host = tostring(asset.name),
+      Severity = severity,
+      Classification = classification,
+      Confidence = confidenceLevel,
+      Alert = name,
+      Product = tostring(detectionSource.product),
+      ParentProcess = tostring(process.parentName),
+      CmdLine = tostring(process.cmdLine),
+      Result = result,
+      AnalystVerdict = analystVerdict,
+      Sha256 = tostring(process.file.sha256),
+      Sev,
+      id
+  | order by Sev desc, timestamp desc
+  | project-away Sev
+tags: [sentinelone, edr, alerts, incident-response, triage, security]
+expected_output: |
+  Open alerts ranked by severity with process context (sanitized).
+
+  timestamp                 Host     Severity  Classification  Confidence  Alert                                      Product  ParentProcess  CmdLine                                              Result     AnalystVerdict           Sha256                                                            id
+  2026-07-22T16:58:21.660Z  alex-pc  CRITICAL  RANSOMWARE      MALICIOUS   Dr.Fone_Installer.exe - DLL Hijacking detected  EDR      msedge.exe     "C:\Users\alex.wilber\Downloads\Dr.Fone_Installer.exe"  MITIGATED  TRUE_POSITIVE_UNDEFINED  e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  00000000-0000-0000-0000-0000000000a1

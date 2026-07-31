@@ -4,9 +4,9 @@ description: >-
   the analyst verdict, and the set of behavioral indicator categories that fired.
   Endpoints in 'detect' mitigation mode did not auto-remediate, so these warrant
   manual response. Ordered to surface the most recent, high-confidence detections.
-datatype: sentinelOneThreat
+datatype: SentinelOneThreat
 kql: |
-  sentinelOneThreat
+  SentinelOneThreat
   | where threatInfo.incidentStatus == "unresolved"
       and threatInfo.mitigationStatus == "not_mitigated"
   | extend IndicatorCount = array_length(indicators)

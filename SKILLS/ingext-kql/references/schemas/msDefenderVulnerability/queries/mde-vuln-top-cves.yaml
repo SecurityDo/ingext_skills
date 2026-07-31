@@ -1,0 +1,45 @@
+description: >-
+  CVEs ranked by how many devices they expose, with the exploitability judgement,
+  the oldest exposure age and the update that fixes them. The fleet-wide "what do
+  we patch first" list — ExploitIsVerified / ExploitIsInKit means working exploit
+  code exists and outranks a higher CvssScore with NoExploit. Written against the
+  export/files record shape (PascalCase field names, device in DeviceId); a tenant
+  configured with vulnerabilitySource 'odata' emits camelCase names instead
+  (cveId, machineId, severity) and this query returns nothing there.
+datatype: msDefenderVulnerability
+kql: |
+  msDefenderVulnerability
+  | where isnotempty(CveId)
+  | summarize
+      ExposedDevices  = dcount(DeviceId),
+      Severity        = any(VulnerabilitySeverityLevel),
+      Cvss            = max(CvssScore),
+      Exploitability  = any(ExploitabilityLevel),
+      Products        = make_set(SoftwareName, 10),
+      OldestExposure  = min(todatetime(FirstSeenTimestamp)),
+      WithUpdate      = countif(SecurityUpdateAvailable == true),
+      UpdateId        = any(RecommendedSecurityUpdateId),
+      UpdateName      = any(RecommendedSecurityUpdate),
+      Advisory        = any(CveBatchUrl)
+      by CveId
+  | extend
+      UpdateAvailable = WithUpdate > 0,
+      ExploitRank = case(Exploitability == "ExploitIsInKit", 3,
+                         Exploitability == "ExploitIsVerified", 3,
+                         Exploitability == "ExploitIsPublic", 2, 0),
+      SeverityRank = case(Severity == "Critical", 4, Severity == "High", 3,
+                          Severity == "Medium", 2, Severity == "Low", 1, 0),
+      ExposureAgeDays = datetime_diff('day', now(), OldestExposure)
+  | project
+      CveId, Severity, Cvss, Exploitability, ExposedDevices, ExposureAgeDays,
+      UpdateAvailable, UpdateId, UpdateName, Products, Advisory,
+      ExploitRank, SeverityRank
+  | order by ExploitRank desc, SeverityRank desc, ExposedDevices desc
+tags: [microsoft, defender, mde, mdvm, vulnerability, cve, patching, prioritization, security]
+expected_output: |
+  CVEs ranked by exploitability, severity and blast radius (sanitized).
+
+  CveId           Severity  Cvss  Exploitability     ExposedDevices  ExposureAgeDays  UpdateAvailable  UpdateId  UpdateName                  Products         Advisory                                                                                  ExploitRank  SeverityRank
+  CVE-2025-33053  High      8.8   ExploitIsVerified  212             104              true             5060842   June 2025 Security Updates  ["windows_10","windows_11"]  https://portal.msrc.microsoft.com/en-US/security-guidance/advisory/CVE-2025-33053  3            3
+  CVE-2025-47981  Critical  9.8   NoExploit          198             346              true             5062554   July 2025 Security Updates  ["windows_10"]               https://portal.msrc.microsoft.com/en-US/security-guidance/advisory/CVE-2025-47981  0            4
+  CVE-2025-49719  Medium    5.5   NoExploit          41              212              false                                                  ["sql_server_2019"]                                                                                    0            2

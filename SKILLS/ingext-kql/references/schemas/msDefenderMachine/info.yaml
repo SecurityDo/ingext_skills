@@ -1,0 +1,236 @@
+schema: msDefenderMachine
+description: >-
+  Microsoft Defender for Endpoint (MDE) device inventory snapshot, collected by
+  Ingext from the Defender for Endpoint API (GET /api/machines). Each record is
+  the current state of one onboarded device: identity (MDE device id, FQDN,
+  Entra device id), operating system and build, every network interface the
+  sensor reported, onboarding and sensor health, the management channel (Intune /
+  Configuration Manager / MDE), the device group used for RBAC, and the two
+  Defender Vulnerability Management ratings — riskScore (active threat activity)
+  and exposureLevel (vulnerability/misconfiguration exposure).
+
+  This is a *resource* stream, not an event stream. It is the Defender for
+  Endpoint API surface (api.security.microsoft.com/api), which is a different API
+  from the Microsoft Graph security API behind MSDefenderAlert / MSDefenderIncident
+  — different host, different token audience, different record shapes. The two
+  must not be confused, but they join: msDefenderMachine.id is the same MDE device
+  id that appears in MSDefenderAlert evidence as
+  evidence[].mdeDeviceId (on '#microsoft.graph.security.deviceEvidence' elements).
+
+  Because it is a resource, each device appears exactly once with its latest
+  state: _key is the device id and the resource watch upserts on it. No
+  arg_max/dedup pattern is needed here — unlike MSDefenderAlert and
+  MSDefenderIncident, which are append-only snapshot streams. The whole
+  inventory is re-dumped every 8 hours (with jitter), so a snapshot is at most a
+  few hours stale.
+
+  This is the anchor table of the Defender for Endpoint resource family. It joins
+  to msDefenderAvHealth on machineId, to msDefenderSecureConfig on deviceId, and
+  to msDefenderVulnerability on DeviceId — all of them carrying the same device
+  id string. Those three are per-device *finding* tables (one row per device+item),
+  so the join direction is normally: filter here, then look up findings there.
+
+  The record is stored as a dynamic JSON document. ipAddresses is an array of
+  objects and needs mv-expand (or mv-apply) to enumerate; machineTags is an array
+  of strings; vmMetadata is an object present only on cloud VMs. timestamp is
+  parsed from lastSeen.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Mapped from the record's lastSeen — the last full device report received by MDE, not the collection time. A device typically sends a full report every 24 hours, so timestamp lags real activity and a narrow window (e.g. ago(1h)) returns almost nothing. Use a lookback of at least a day for range filters; use it directly as the staleness signal for finding devices that stopped reporting."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key; mapped to the 'id' field (the MDE device id). Unique per device — each _key holds the latest snapshot, so no arg_max/dedup is needed."
+    sampleValues: ["1e5bc9d7e413ddd7902c2932e418702b84d0cc07"]
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: id
+    type: String
+    description: "MDE device id — a 40-character lowercase hex string that identifies the device in Defender for Endpoint. Source of _key and the join key to every other Defender for Endpoint resource: msDefenderAvHealth.machineId, msDefenderSecureConfig.deviceId, msDefenderVulnerability.DeviceId, msDefenderMachineRecommendation.machineId. Also the value carried as mdeDeviceId on MSDefenderAlert device evidence."
+    sampleValues: ["1e5bc9d7e413ddd7902c2932e418702b84d0cc07"]
+
+  - name: computerDnsName
+    type: String
+    description: "Fully qualified device name as reported by the sensor. Lowercase in most tenants; match with tolower()/has rather than == when correlating against other products, which may report the short name or a different case. Can be null for devices that never completed a full report."
+    sampleValues: ["corp-ws101.contoso.com"]
+
+  - name: aadDeviceId
+    type: String
+    description: "Microsoft Entra (Azure AD) device object id, present when the device is Entra joined or hybrid joined; null otherwise. Join key to office365Device.deviceId and to MSDefenderAlert device evidence azureAdDeviceId — the bridge between the EDR view of a host and its directory object."
+    sampleValues: ["00000000-0000-0000-0000-000000000001"]
+
+  - name: isAadJoined
+    type: Boolean
+    description: "Whether the device is joined to Microsoft Entra ID. false with a non-null aadDeviceId does occur on hybrid/registered devices, so prefer testing aadDeviceId for presence when what you mean is 'has a directory object'."
+    sampleValues: [true, false]
+
+  - name: machineTags
+    type: DynamicArray
+    description: "Device tags applied in the Defender portal or pushed via registry/Intune, as an array of strings. Empty for untagged devices. Tags are the usual way tenants mark criticality, business unit, or exclusion scope, so most fleet-slicing queries go through here: mv-expand to enumerate, or use machineTags has \"Crown Jewel\" to filter without expanding."
+    sampleValues: ["Crown Jewel", "PCI"]
+
+  # ==========================================
+  # OPERATING SYSTEM / PLATFORM
+  # ==========================================
+  - name: osPlatform
+    type: String
+    description: "Operating system platform, at the granularity that distinguishes members of one family. Windows client and server, macOS and the Linux distributions all appear here, so this is the field to group a fleet by OS."
+    sampleValues: ["Windows11", "Windows10", "WindowsServer2022", "WindowsServer2019", "macOS", "Linux"]
+
+  - name: version
+    type: String
+    description: "Operating system release/feature-update name — the Windows release id (24H2, 23H2, 22H2, 1809) rather than a numeric version. Combine with osBuild to identify a servicing level."
+    sampleValues: ["24H2", "22H2"]
+
+  - name: osBuild
+    type: Long
+    description: "Operating system build number as a JSON number (not a string). Nullable. For Windows 10/11 this is the major build (19045, 26100); the patch/revision level is not exposed here — msDefenderAvHealth.osVersion carries the full four-part version for the same device."
+    sampleValues: [26100, 19045]
+
+  - name: osArchitecture
+    type: String
+    description: "Operating system architecture. Documented values are '32-bit' and '64-bit'. This is the field to use; osProcessor is the deprecated equivalent."
+    sampleValues: ["64-bit", "32-bit"]
+
+  - name: osProcessor
+    type: String
+    description: "Processor architecture (x64, x86, arm64). Deprecated by Microsoft in favour of osArchitecture, but still populated; the two disagree in form, not in meaning."
+    sampleValues: ["x64", "arm64"]
+
+  # ==========================================
+  # ONBOARDING / SENSOR HEALTH
+  # ==========================================
+  - name: onboardingStatus
+    type: String
+    description: "Whether the device is onboarded to Defender for Endpoint. Documented values: 'onboarded', 'CanBeOnboarded', 'Unsupported', 'InsufficientInfo' — but the API returns them with inconsistent casing ('Onboarded' is observed), so compare with =~ or tolower(). 'CanBeOnboarded' means MDE discovered the device (usually via network discovery) but no sensor is reporting: that is the coverage-gap population."
+    sampleValues: ["Onboarded", "CanBeOnboarded", "Unsupported", "InsufficientInfo"]
+
+  - name: healthStatus
+    type: String
+    description: "Sensor health as evaluated by MDE. Possible values: Active, Inactive, ImpairedCommunication, NoSensorData, NoSensorDataImpairedCommunication, Unknown. Anything other than 'Active' means the device is not fully protected/reporting; 'Inactive' is the normal state for a device that has simply been off for a while, so pair it with lastSeen before treating it as a problem."
+    sampleValues: ["Active", "Inactive", "ImpairedCommunication", "NoSensorData"]
+
+  - name: agentVersion
+    type: String
+    description: "Version of the Defender for Endpoint sensor/EDR component on the device. Not in the published Machine resource table but returned by the API. Grouping by this surfaces sensors that have stopped taking updates."
+    sampleValues: ["10.8830.26100.8875"]
+
+  - name: firstSeen
+    type: DateTime
+    description: "First time the device was observed by Defender for Endpoint (RFC3339 with fractional seconds). Onboarding age — a firstSeen within the last few days on a device with findings is a newly enrolled machine, not a regression."
+    sampleValues: ["2025-07-09T14:56:17.4552771Z"]
+
+  - name: lastSeen
+    type: DateTime
+    description: "Time of the last received full device report (RFC3339 with fractional seconds). Source of timestamp. NOTE (Microsoft's own caveat): this is the last full device *update*, not the 'last seen' value shown in the portal, which advances on any telemetry — so lastSeen here can be up to ~24h behind what the portal displays. Use it for staleness with a threshold of days, not hours."
+    sampleValues: ["2026-07-30T17:48:26.0607394Z"]
+
+  # ==========================================
+  # RISK / EXPOSURE / VALUE
+  # ==========================================
+  - name: riskScore
+    type: String
+    description: "Risk level from *active threat activity* on the device (alerts, detections), as evaluated by MDE. Possible values: None, Informational, Low, Medium, High. This is the 'is something happening here' rating; exposureLevel is the 'how attackable is this' rating. They move independently — a fully patched device under attack is High risk / Low exposure. Not numeric: sort with a case() mapping, not by value."
+    sampleValues: ["None", "Informational", "Low", "Medium", "High"]
+
+  - name: exposureLevel
+    type: String
+    description: "Vulnerability/misconfiguration exposure rating from Defender Vulnerability Management. Possible values: None, Low, Medium, High. Driven by the same findings that populate msDefenderVulnerability and msDefenderSecureConfig for this device, so it is the cheap fleet-wide summary of those two tables."
+    sampleValues: ["None", "Low", "Medium", "High"]
+
+  - name: deviceValue
+    type: String
+    description: "Business value assigned to the device by an administrator in the portal (asset criticality). Possible values: Normal, Low, High. Defaults to 'Normal' — a tenant that never set it will show 'Normal' everywhere, so treat 'High' as signal and the absence of 'High' as unknown rather than as low value."
+    sampleValues: ["Normal", "Low", "High"]
+
+  # ==========================================
+  # NETWORK
+  # ==========================================
+  - name: lastIpAddress
+    type: String
+    description: "Last IP address on the device's local NIC. Corresponds to one of the ipAddresses entries with operationalStatus 'Up'."
+    sampleValues: ["10.1.1.211"]
+
+  - name: lastExternalIpAddress
+    type: String
+    description: "Last public/egress IP address the device used to reach the internet. The join point to network- and proxy-side logs (ZscalerWeb, ZscalerFirewall, firewall NAT records) when you have an external IP and need the endpoint behind it."
+    sampleValues: ["192.0.2.114"]
+
+  - name: ipAddresses
+    type: DynamicArray
+    description: >-
+      Every network interface the sensor reported, as an array of objects. Each
+      element has: ipAddress (v4 or v6), macAddress (12 uppercase hex characters,
+      no separators — null on loopback), type (the interface media type:
+      Ethernet, IEEE80211 for Wi-Fi, SoftwareLoopback, Tunnel, Wireless80211,
+      Ppp), and operationalStatus (Up, Down). The list is not filtered: expect
+      link-local 169.254.x addresses, loopback (127.0.0.1, ::1), and stale
+      'Down' entries alongside the live address, so filter on
+      operationalStatus == "Up" and exclude loopback before treating an entry as
+      the device's address. mv-expand to enumerate, or use
+      mv-apply/set_has_element to test membership. This is the table to search
+      when an IP or MAC from another log needs to be resolved to a device.
+    sampleValues: ["ipAddress", "macAddress", "type", "operationalStatus"]
+
+  # ==========================================
+  # MANAGEMENT / RBAC
+  # ==========================================
+  - name: managedBy
+    type: String
+    description: "Which management channel owns the device's Defender configuration. Common values: Intune, ConfigurationManager (SCCM/MECM), MicrosoftDefenderForEndpoint (security-settings management), Unknown. Devices reporting 'Unknown' are the ones no MDM enforces policy on — usually the population that drifts on msDefenderSecureConfig compliance."
+    sampleValues: ["Intune", "ConfigurationManager", "MicrosoftDefenderForEndpoint", "Unknown"]
+
+  - name: managedByStatus
+    type: String
+    description: "Health of that management channel (e.g. Unknown, Success, Failed). Frequently 'Unknown' even on well-managed devices, so it is a weak signal on its own."
+    sampleValues: ["Unknown", "Success"]
+
+  - name: rbacGroupId
+    type: Integer
+    description: "Numeric id of the MDE device group the device is assigned to. Present on every Defender for Endpoint resource in this family (avHealth, secureConfig, vulnerability), so it is the common scope column across them."
+    sampleValues: [140]
+
+  - name: rbacGroupName
+    type: String
+    description: "Name of the MDE device group. 'Unassigned' when the device is in no group; 'None' when the tenant defines no groups at all. Device groups drive both RBAC and the automated-remediation level, so grouping a posture report by rbacGroupName usually maps onto who is responsible for fixing it."
+    sampleValues: ["Windows Workstations", "Unassigned", "None"]
+
+  # ==========================================
+  # DUPLICATE / EXCLUSION BOOKKEEPING
+  # ==========================================
+  - name: isPotentialDuplication
+    type: Boolean
+    description: "MDE flag that this record may be a duplicate of another device entry (reimaged host, cloned VM, sensor reinstall). Duplicates inflate every device count and every per-device finding count in this family. When a count has to be right, either filter isPotentialDuplication == false or count dcount(computerDnsName) alongside dcount(id) and reconcile the difference."
+    sampleValues: [false, true]
+
+  - name: mergedIntoMachineId
+    type: String
+    description: "When MDE merged this device record into another, the id of the surviving device; null otherwise. A non-null value means the record is superseded — exclude it from inventory counts and follow the id to the live device."
+
+  - name: isExcluded
+    type: Boolean
+    description: "Whether the device has been excluded from the Defender portal's views (and from vulnerability management scoring) by an administrator. Excluded devices still appear in this inventory, so posture reports should filter them out unless the point of the report is to audit the exclusions."
+    sampleValues: [false, true]
+
+  - name: exclusionReason
+    type: String
+    description: "Free-text/enumerated reason recorded when a device was excluded; null when isExcluded is false."
+
+  # ==========================================
+  # CLOUD VM METADATA
+  # ==========================================
+  - name: vmMetadata
+    type: Dynamic
+    description: "Cloud virtual-machine metadata, present only for devices MDE identified as cloud VMs; null for physical and on-prem virtual devices. Object with vmId, cloudProvider (e.g. Azure, AWS, GCP), resourceId (the full ARM resource path for Azure) and subscriptionId. Access with dot notation (vmMetadata.cloudProvider); use isnotnull(vmMetadata) to select cloud workloads. The same object appears on MSDefenderAlert device evidence, so an alert can be tied back to the subscription that owns the VM."
+    sampleValues: ["vmId", "cloudProvider", "resourceId", "subscriptionId"]

@@ -1,0 +1,71 @@
+description: >-
+  One row per device combining all four Defender for Endpoint resources: sensor
+  and risk state from msDefenderMachine, antivirus mode and signature currency
+  from msDefenderAvHealth, misconfiguration debt from msDefenderSecureConfig and
+  the vulnerability count from msDefenderVulnerability. The single-screen answer to
+  "how protected is this endpoint", and the report to run before or after a
+  hardening push. All four join on the same MDE device id (id / machineId /
+  deviceId / DeviceId) and each holds one current snapshot per device, so no dedup
+  is needed anywhere. leftouter joins throughout: a device missing from the AV or
+  findings tables is itself a finding, not a row to drop.
+datatype: msDefenderMachine
+kql: |
+  let AvState =
+      msDefenderAvHealth
+      | summarize
+          AvMode        = any(avMode),
+          SignatureOk   = any(avIsSignatureUpToDate),
+          SignatureAge  = min(datetime_diff('hour', now(), todatetime(avSignatureUpdateTime))),
+          LastQuickScan = max(todatetime(quickScanTime))
+          by AvDeviceId = machineId;
+  let ConfigDebt =
+      msDefenderSecureConfig
+      | where isApplicable == true and isCompliant == false
+      | summarize FailedControls = count(), DebtImpact = sum(configurationImpact)
+                  by CfgDeviceId = deviceId;
+  let VulnLoad =
+      msDefenderVulnerability
+      | where isnotempty(CveId)
+      | summarize
+          OpenCves     = dcount(CveId),
+          CriticalCves = dcountif(CveId, VulnerabilitySeverityLevel == "Critical"),
+          ExploitableCves = dcountif(CveId, ExploitabilityLevel in ("ExploitIsVerified", "ExploitIsInKit"))
+          by VulnDeviceId = DeviceId;
+  msDefenderMachine
+  | where isnull(mergedIntoMachineId) and isExcluded != true
+  | join kind=leftouter AvState on $left.id == $right.AvDeviceId
+  | join kind=leftouter ConfigDebt on $left.id == $right.CfgDeviceId
+  | join kind=leftouter VulnLoad on $left.id == $right.VulnDeviceId
+  | extend
+      AvModeName = case(AvMode == "0", "Active", AvMode == "1", "Passive",
+                        AvMode == "2", "Disabled", AvMode == "4", "EDRBlocked",
+                        AvMode == "5", "PassiveAudit", isempty(AvMode), "no-av-report", "Other"),
+      SignatureStale = SignatureOk =~ "False" or SignatureAge > 48
+  | project
+      computerDnsName,
+      id,
+      healthStatus,
+      LastSeen = todatetime(lastSeen),
+      riskScore,
+      exposureLevel,
+      deviceValue,
+      AvModeName,
+      SignatureStale,
+      SignatureAgeHours = SignatureAge,
+      LastQuickScan,
+      FailedControls = coalesce(FailedControls, 0),
+      DebtImpact     = coalesce(DebtImpact, 0),
+      OpenCves       = coalesce(OpenCves, 0),
+      CriticalCves   = coalesce(CriticalCves, 0),
+      ExploitableCves = coalesce(ExploitableCves, 0),
+      osPlatform, version, managedBy, rbacGroupName
+  | order by ExploitableCves desc, CriticalCves desc, DebtImpact desc
+tags: [microsoft, defender, mde, endpoint, posture, rollup, join, av, vulnerability, secure-configuration, security]
+expected_output: |
+  Full endpoint posture, one row per device (sanitized).
+
+  computerDnsName         id                                        healthStatus  LastSeen              riskScore  exposureLevel  deviceValue  AvModeName    SignatureStale  SignatureAgeHours  LastQuickScan         FailedControls  DebtImpact  OpenCves  CriticalCves  ExploitableCves  osPlatform  version  managedBy  rbacGroupName
+  corp-ws042.contoso.com  9eaf3a8b5962e0e6b1af9ec756664a9b823df2d1  Active        2026-07-30T15:02:16Z  Medium     High           Normal       Active        false           15                 2026-07-30T07:46:21Z  6               41          148       17            4                Windows10   22H2     Intune     Windows Workstations
+  corp-ws118.contoso.com  2f6cd8e8f524eee8013d3a43f529813c95e1dd18  Inactive      2026-05-02T08:13:55Z  None       High           Normal       Disabled      true            412                2026-07-13T04:12:08Z  9               63          131       14            3                Windows10   22H2     Unknown    Windows Workstations
+  corp-ws101.contoso.com  1e5bc9d7e413ddd7902c2932e418702b84d0cc07  Active        2026-07-30T17:48:26Z  High       Medium         Normal       Active        false           9                  2026-07-30T06:11:44Z  3               22          64        5             1                Windows11   24H2     Intune     Windows Workstations
+  corp-lab04.contoso.com  4b8efa0ab746aa0a235f5c65b74ba35eb703ff3a  Unknown       2026-07-19T08:27:53Z  None       None           Normal       no-av-report  false                                                     0               0           0         0             0                Windows11   24H2     Unknown    Unassigned

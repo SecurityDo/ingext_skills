@@ -1,0 +1,26 @@
+description: >-
+  ZPA connections that closed over the last 24 hours, summarized by internal
+  close reason, matched policy, and application. InternalReason on a 'close'
+  record explains why the connection ended — pairing it with Policy separates
+  normal closures from policy denials, connector failures, or unreachable
+  applications, so this is the first query to run when users report ZPA access
+  problems.
+datatype: ZPAUserActivity
+kql: |
+  ZPAUserActivity
+  | where timestamp > ago(24h)
+  | where ConnectionStatus == "close"
+  | summarize
+      Connections = count(),
+      Users = dcount(Username),
+      SampleHost = any(Host)
+      by InternalReason, Policy, Application
+  | order by Connections desc
+tags: [zscaler, zpa, private-access, troubleshooting, denied, security]
+expected_output: |
+  Closed ZPA connections by reason and policy (sanitized).
+
+  InternalReason              Policy                 Application         Connections  Users  SampleHost
+  MTUNNEL_TERMINATED          default access policy  Domain Controllers  310          24     addc02.contoso.int
+  APP_NOT_AVAILABLE           default access policy  Legacy ERP          12           3      erp01.contoso.int
+  POLICY_BLOCK                block contractors      Finance Share       5            2      finfs.contoso.int

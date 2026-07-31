@@ -1,0 +1,25 @@
+description: >-
+  SentinelOne activity feed overview: counts console/endpoint activity events by
+  numeric activityType and a representative description, over the selected time
+  range. Use it to understand which activity categories dominate the stream
+  (agent updates, Live Update merges, policy changes, threat lifecycle) before
+  drilling into a specific activityType. Swap the summarize for a filter on a
+  single activityType to inspect individual events.
+datatype: SentinelOneActivity
+kql: |
+  SentinelOneActivity
+  | where timestamp > ago(1d)
+  | summarize
+      Events = count(),
+      Endpoints = dcount(agentId),
+      Example = any(primaryDescription),
+      LastSeen = max(timestamp)
+      by activityType
+  | order by Events desc
+tags: [sentinelone, edr, activity, audit, overview, security]
+expected_output: |
+  Activity volume grouped by type with an example description (sanitized).
+
+  activityType  Events  Endpoints  Example                                                                          LastSeen
+  3631          842     418        Live Updates for Static AI, StaticSigMac262-9.23, were merged by endpoint alex-macbookpro  2026-07-23T12:26:04.043284Z
+  90            37      37         Agent was updated to version 25.3.4.8365                                          2026-07-23T11:04:11.201000Z

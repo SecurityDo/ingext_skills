@@ -1,4 +1,4 @@
-schema: sentinelOneThreat
+schema: SentinelOneThreat
 description: >-
   SentinelOne threat/detection resource snapshot collected by Ingext from the
   SentinelOne management API (threats). Each record is one detected threat on one
@@ -44,19 +44,51 @@ fields:
   - name: indicators
     type: DynamicArray
     description: >-
-      Array of behavioral indicator objects that contributed to the detection,
-      each with category (MITRE-style tactic, e.g. Persistence, Execution,
-      Discovery, Defense Evasion, Infostealer) and description (human-readable
-      behavior). Use mv-expand to enumerate, e.g.
-      mv-expand indicators | summarize count() by tostring(indicators.category).
-    sampleValues: ["Persistence", "Execution", "Discovery"]
+      Array of behavioral indicator objects that contributed to the detection.
+      Each has a category (e.g. Persistence, Execution, Discovery, Defense
+      Evasion, Infostealer, General), a human-readable description, an ids[]
+      array of internal indicator IDs, and a tactics[] array mapping the
+      behavior to MITRE ATT&CK — each tactic has a name and source (MITRE) plus
+      a techniques[] list of { name, link }. Use mv-expand to enumerate, e.g.
+      mv-expand indicators | summarize count() by tostring(indicators.category);
+      to pivot on ATT&CK, mv-expand twice through indicators then
+      indicators.tactics.
+    sampleValues: ["Persistence", "Execution", "Discovery", "Infostealer"]
 
   # ==========================================
   # MITIGATION (array)
   # ==========================================
   - name: mitigationStatus
     type: DynamicArray
-    description: "Array of mitigation-action objects describing remediation actions taken (e.g. kill, quarantine) and their per-action status. Empty when no automated mitigation occurred. Distinct from the scalar threatInfo.mitigationStatus. Use mv-expand to inspect."
+    description: >-
+      Array of mitigation-action objects describing remediation actions taken
+      and their per-action status. Each object has action (e.g. kill,
+      quarantine, remediate, unquarantine), status (e.g. success, failed,
+      pending), mitigationStartedAt / mitigationEndedAt, lastUpdate, reportId,
+      and agentSupportsReport. Empty when no automated mitigation occurred.
+      Distinct from the scalar threatInfo.mitigationStatus. Use mv-expand to
+      inspect, e.g. mv-expand mitigationStatus | summarize count() by
+      tostring(mitigationStatus.action), tostring(mitigationStatus.status).
+
+  # ==========================================
+  # WHITENING / CONTAINER / CLOUD CONTEXT
+  # ==========================================
+  - name: whiteningOptions
+    type: DynamicArray
+    description: "Top-level array of exclusion/whitening options applicable to the threat (e.g. path, certificate, hash). Empty when none apply. (Some collection versions instead expose this under threatInfo.whiteningOptions.)"
+    sampleValues: ["path", "certificate", "hash"]
+
+  - name: containerInfo
+    type: Dynamic
+    description: "Container context object (id, image, name, labels, isContainerQuarantine) when the threat occurred inside a container; all fields null for non-container endpoints."
+
+  - name: ecsInfo
+    type: Dynamic
+    description: "AWS ECS task context object (clusterName, serviceName/serviceArn, taskArn, taskDefinition* fields, taskAvailabilityZone) when the endpoint is an ECS task; all fields null otherwise."
+
+  - name: kubernetesInfo
+    type: Dynamic
+    description: "Kubernetes context object (cluster, namespace, node, pod, controllerKind/controllerName, and their *Labels) when the endpoint is a Kubernetes workload; all fields null otherwise."
 
   # ==========================================
   # THREAT INFO (threatInfo.*)
@@ -150,6 +182,15 @@ fields:
     description: "SHA-1 hash of the detected file."
     sampleValues: ["da39a3ee5e6b4b0d3255bfef95601890afd80709"]
 
+  - name: threatInfo.sha256
+    type: String
+    description: "SHA-256 hash of the detected file; may be null. Primary IOC for hash hunting/enrichment."
+    sampleValues: ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"]
+
+  - name: threatInfo.md5
+    type: String
+    description: "MD5 hash of the detected file; often null."
+
   - name: threatInfo.cloudFilesHashVerdict
     type: String
     description: "Reputation verdict for the file hash from SentinelOne cloud; may be empty."
@@ -157,7 +198,86 @@ fields:
 
   - name: threatInfo.whiteningOptions
     type: DynamicArray
-    description: "Exclusion/whitening options applicable to the threat; null when none."
+    description: "Exclusion/whitening options applicable to the threat; null when none. (Newer collections expose this as the top-level whiteningOptions instead.)"
+
+  - name: threatInfo.detectionType
+    type: String
+    description: "How the threat was detected."
+    sampleValues: ["static", "dynamic"]
+
+  - name: threatInfo.detectionEngines
+    type: DynamicArray
+    description: "Array of the detection engines that fired, each with a key and title (e.g. { key: pre_execution, title: 'On-Write Static AI' }). Use mv-expand to enumerate."
+
+  - name: threatInfo.engines
+    type: DynamicArray
+    description: "Array of short engine names that contributed to the detection (e.g. 'On-Write DFI', 'Manual')."
+    sampleValues: ["On-Write DFI", "Manual"]
+
+  - name: threatInfo.storyline
+    type: String
+    description: "Storyline (behavioral context) ID correlating the process activity behind the threat. Records sharing a storyline belong to the same attack story; matches SentinelOneAlert.storylineId for the corresponding alert."
+    sampleValues: ["089D9E82-A6D5-4189-A4D5-DA820E3B8D1C"]
+
+  - name: threatInfo.collectionId
+    type: String
+    description: "ID grouping threats detected in the same collection/sweep (numeric string)."
+    sampleValues: ["2000000000000000009"]
+
+  - name: threatInfo.initiatedBy
+    type: String
+    description: "What initiated the detection/threat record."
+    sampleValues: ["agent_policy", "star_active", "console"]
+
+  - name: threatInfo.initiatedByDescription
+    type: String
+    description: "Human-readable form of initiatedBy."
+    sampleValues: ["Agent Policy", "Custom Rule"]
+
+  - name: threatInfo.incidentStatusDescription
+    type: String
+    description: "Human-readable form of incidentStatus."
+    sampleValues: ["In progress", "Resolved", "Unresolved"]
+
+  - name: threatInfo.mitigationStatusDescription
+    type: String
+    description: "Human-readable form of the scalar mitigationStatus."
+    sampleValues: ["Mitigated", "Not mitigated"]
+
+  - name: threatInfo.originatorProcess
+    type: String
+    description: "Name of the process that originated (spawned) the detected file/process."
+    sampleValues: ["launchd", "explorer.exe"]
+
+  - name: threatInfo.maliciousProcessArguments
+    type: String
+    description: "Command-line arguments of the malicious process; often equals the file path."
+    sampleValues: ["/Applications/Suspicious.app/Contents/MacOS/Suspicious"]
+
+  - name: threatInfo.isFileless
+    type: Boolean
+    description: "Whether the threat is fileless (in-memory, no on-disk artifact)."
+    sampleValues: ["true", "false"]
+
+  - name: threatInfo.isValidCertificate
+    type: Boolean
+    description: "Whether the file's code-signing certificate is valid."
+    sampleValues: ["true", "false"]
+
+  - name: threatInfo.certificateId
+    type: String
+    description: "Identifier of the file's code-signing certificate (signer/subject descriptor); may be empty."
+    sampleValues: ["<Type=Apple/ID=com.apple.mds>"]
+
+  - name: threatInfo.identifiedAt
+    type: DateTime
+    description: "When the threat was first identified on the endpoint (UTC); usually just before createdAt."
+    sampleValues: ["2026-05-22T06:26:10Z"]
+
+  - name: threatInfo.updatedAt
+    type: DateTime
+    description: "When the threat record was last updated in SentinelOne (UTC), e.g. on verdict or incident-status change."
+    sampleValues: ["2026-05-24T03:55:29.440474Z"]
 
   # ==========================================
   # AGENT AT DETECTION (agentDetectionInfo.*)
@@ -215,6 +335,29 @@ fields:
     type: String
     description: "Public/egress IP of the endpoint at detection time."
     sampleValues: ["198.51.100.23"]
+
+  - name: agentDetectionInfo.agentIpV6
+    type: String
+    description: "Comma-separated list of the endpoint's IPv6 addresses at detection time. Split on ',' to enumerate."
+    sampleValues: ["2001:db8::1,fe80::1"]
+
+  - name: agentDetectionInfo.agentOsRevision
+    type: String
+    description: "OS version/build string of the endpoint at detection time."
+    sampleValues: ["15.6.1 (24G90)"]
+
+  - name: agentDetectionInfo.agentRegisteredAt
+    type: DateTime
+    description: "When the agent first registered with SentinelOne (UTC)."
+    sampleValues: ["2025-06-11T00:56:45.339925Z"]
+
+  - name: agentDetectionInfo.agentLastLoggedInUpn
+    type: String
+    description: "UPN of the last logged-in user at detection time; may be null."
+
+  - name: agentDetectionInfo.cloudProviders
+    type: Dynamic
+    description: "Cloud-provider metadata for the endpoint (AWS/Azure/GCP instance context) at detection time; empty object for non-cloud endpoints."
 
   # ==========================================
   # AGENT REAL-TIME (agentRealtimeInfo.*)
@@ -279,3 +422,64 @@ fields:
   - name: agentRealtimeInfo.externalIp
     type: String
     description: "Current public/egress IP; may be empty if not reported in real time."
+
+  - name: agentRealtimeInfo.agentId
+    type: String
+    description: "Current SentinelOne internal agent ID (numeric string). Relates to sentinelOneAgent.id and SentinelOneActivity.agentId."
+    sampleValues: ["2000000000000000002"]
+
+  - name: agentRealtimeInfo.agentOsType
+    type: String
+    description: "Current OS family of the endpoint."
+    sampleValues: ["macos", "windows", "linux"]
+
+  - name: agentRealtimeInfo.agentOsRevision
+    type: String
+    description: "Current OS version/build string of the endpoint."
+    sampleValues: ["15.6.1 (24G90)"]
+
+  - name: agentRealtimeInfo.agentNetworkStatus
+    type: String
+    description: "Current network isolation/connectivity state of the agent."
+    sampleValues: ["connected", "disconnected"]
+
+  - name: agentRealtimeInfo.agentInfected
+    type: Boolean
+    description: "Whether the endpoint currently has unresolved threats (is considered infected)."
+    sampleValues: ["true", "false"]
+
+  - name: agentRealtimeInfo.agentIsActive
+    type: Boolean
+    description: "Whether the agent is currently active (recently checked in)."
+    sampleValues: ["true", "false"]
+
+  - name: agentRealtimeInfo.agentIsDecommissioned
+    type: Boolean
+    description: "Whether the agent has been decommissioned in the console."
+    sampleValues: ["true", "false"]
+
+  - name: agentRealtimeInfo.activeThreats
+    type: Integer
+    description: "Current count of unresolved/active threats on the endpoint."
+    sampleValues: ["0", "1"]
+
+  - name: agentRealtimeInfo.scanStatus
+    type: String
+    description: "Current state of the most recent full disk scan."
+    sampleValues: ["finished", "started", "aborted", "none"]
+
+  - name: agentRealtimeInfo.operationalState
+    type: String
+    description: "Current operational state of the agent."
+    sampleValues: ["na", "fully_operational"]
+
+  - name: agentRealtimeInfo.userActionsNeeded
+    type: DynamicArray
+    description: "Array of pending user actions required on the endpoint (e.g. reboot to complete mitigation, agent upgrade); empty when none. Use mv-expand to enumerate."
+
+  - name: agentRealtimeInfo.networkInterfaces
+    type: DynamicArray
+    description: >-
+      Array of the endpoint's network interfaces, each with name, physical (MAC),
+      inet (IPv4 list), and inet6 (IPv6 list). Use mv-expand to enumerate, e.g.
+      mv-expand agentRealtimeInfo.networkInterfaces to pull MAC/IP pairs.
