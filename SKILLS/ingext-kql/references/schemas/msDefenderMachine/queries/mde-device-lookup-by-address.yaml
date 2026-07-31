@@ -1,0 +1,44 @@
+description: >-
+  Resolve an IP or MAC address seen in another log (firewall, proxy, DHCP, an
+  alert) to the Defender for Endpoint device that owns it, by expanding the
+  ipAddresses interface array. The array is unfiltered — it carries link-local
+  169.254.x, loopback and stale 'Down' interfaces next to the live address — so
+  those are dropped first; drop the operationalStatus filter if you need to match
+  an address the device has since stopped using. Set the SearchAddress parameter
+  to an IPv4/IPv6 address or a 12-hex-character MAC (no separators, as MDE
+  reports them).
+datatype: msDefenderMachine
+kql: |
+  let SearchAddress = "10.1.1.211";
+  msDefenderMachine
+  | where isnull(mergedIntoMachineId)
+  | mv-expand nic = ipAddresses
+  | extend
+      Ip     = tostring(nic.ipAddress),
+      Mac    = tostring(nic.macAddress),
+      NicType = tostring(nic.type),
+      NicStatus = tostring(nic.operationalStatus)
+  | where NicStatus == "Up"
+  | where NicType != "SoftwareLoopback" and Ip !startswith "169.254."
+  | where Ip =~ SearchAddress or Mac =~ SearchAddress
+  | project
+      computerDnsName,
+      id,
+      Ip,
+      Mac,
+      NicType,
+      lastIpAddress,
+      lastExternalIpAddress,
+      osPlatform,
+      version,
+      healthStatus,
+      LastSeen = todatetime(lastSeen),
+      rbacGroupName,
+      aadDeviceId
+  | order by LastSeen desc
+tags: [microsoft, defender, mde, endpoint, lookup, ip, mac, correlation, security]
+expected_output: |
+  The device holding the searched address (sanitized).
+
+  computerDnsName         id                                        Ip          Mac           NicType   lastIpAddress  lastExternalIpAddress  osPlatform  version  healthStatus  LastSeen              rbacGroupName         aadDeviceId
+  corp-ws101.contoso.com  1e5bc9d7e413ddd7902c2932e418702b84d0cc07  10.1.1.211  00155D000102  Ethernet  10.1.1.211     192.0.2.114            Windows11   24H2     Active        2026-07-30T17:48:26Z  Windows Workstations  00000000-0000-0000-0000-000000000001

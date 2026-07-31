@@ -1,0 +1,45 @@
+description: >-
+  Hunt for lateral movement by combining the three Windows audit events that
+  each mark a different stage of it: 4648 (a logon attempted with explicit
+  credentials — someone deliberately used an account other than their own
+  against a named TargetServerName), 4624 LogonType 9 (NewCredentials, i.e.
+  `runas /netonly`, where TargetOutboundUserName names the credential being
+  projected onto other hosts), and 5145 access to the IPC$ named pipes that
+  remote-execution tooling opens — svcctl (remote service control, the PsExec
+  family), atsvc (remote scheduled task), winreg (remote registry) and
+  samr/lsarpc (directory enumeration). Each row is one movement attempt with the
+  actor, the credential used and the destination. On 4648 the caller is
+  SubjectUserName and the credential used is TargetUserName — do not read
+  TargetUserName as the actor. Local-only 4648 rows (TargetServerName
+  "localhost") are ordinary `runas` and are filtered out.
+datatype: WindowsAudit
+kql: |
+  WindowsAudit
+  | where timestamp > ago(1d)
+  | where EventID in (4648, 4624, 5145)
+  | extend Actor = strcat(SubjectDomainName, "\\", SubjectUserName)
+  | extend Technique = case(
+      EventID == 4648, "explicit credentials (4648)",
+      EventID == 4624 and LogonType == "9", "runas /netonly (4624 type 9)",
+      EventID == 5145, strcat("named pipe ", RelativeTargetName, " (5145)"),
+      "")
+  | where isnotempty(Technique)
+  | where not(EventID == 4648 and TargetServerName in ("localhost", "-"))
+  | where not(EventID == 5145 and not(ShareName endswith "IPC$" and RelativeTargetName in ("svcctl", "atsvc", "winreg", "samr", "lsarpc", "srvsvc")))
+  | extend CredentialUsed = case(
+      EventID == 4648, strcat(TargetDomainName, "\\", TargetUserName),
+      EventID == 4624, strcat(TargetOutboundDomainName, "\\", TargetOutboundUserName),
+      Actor)
+  | extend Destination = case(
+      EventID == 4648, TargetServerName,
+      Hostname)
+  | project timestamp, Technique, SourceHost = Hostname, Actor, CredentialUsed,
+            Destination, SourceIp = IpAddress, ProcessName, SubjectLogonId
+  | order by timestamp desc
+tags: [windows, audit, 4648, 5145, lateral-movement, psexec, detection]
+expected_output: |
+  Lateral-movement attempts across the three audit signals (sanitized).
+
+  timestamp             Technique                       SourceHost                Actor                 CredentialUsed        Destination                 SourceIp      ProcessName                       SubjectLogonId
+  2026-07-27T09:33:41Z  named pipe svcctl (5145)        fileserver01.contoso.com  CONTOSO\dadmin        CONTOSO\dadmin        fileserver01.contoso.com    192.0.2.45                                      0x38d34
+  2026-07-27T09:20:40Z  explicit credentials (4648)     srv-app-01.contoso.com    CONTOSO\adele.vance   CONTOSO\svc-backup    fileserver01.contoso.com    -             C:\Windows\System32\mmc.exe       0x1a4b2c9

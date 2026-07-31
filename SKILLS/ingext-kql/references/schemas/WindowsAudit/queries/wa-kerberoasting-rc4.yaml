@@ -1,0 +1,45 @@
+description: >-
+  Detect Kerberoasting from 4769 (Kerberos service ticket requested) events on
+  domain controllers. Kerberoasting works by requesting service tickets for
+  accounts with a registered SPN and cracking them offline, so the signature is
+  one account requesting tickets for an unusual number of distinct services in a
+  short window — and, classically, doing so with TicketEncryptionType 0x17
+  (RC4-HMAC), which is far cheaper to crack than 0x11/0x12 (AES) and is what
+  the roasting tools explicitly request. Bins requests into 10-minute windows
+  per requesting account and source, keeps windows that touched 5 or more
+  distinct services, and reports how many of those tickets were RC4. Two
+  caveats: computer accounts (ServiceName ending in "$") and krbtgt are normal
+  high-volume targets and are excluded here, and a legacy application that
+  genuinely only supports RC4 will produce a steady low-variety baseline — tune
+  by excluding known service accounts rather than lowering the threshold.
+datatype: WindowsAudit
+kql: |
+  WindowsAudit
+  | where timestamp > ago(1d)
+  | where EventID == 4769
+  | where Status == "0x0"
+  | where ServiceName !endswith "$" and ServiceName != "krbtgt"
+  | extend Requester = tolower(TargetUserName)
+  | summarize
+      Requests = count(),
+      DistinctServices = dcount(ServiceName),
+      RC4Tickets = countif(TicketEncryptionType == "0x17"),
+      AESTickets = countif(TicketEncryptionType in ("0x11", "0x12")),
+      Services = make_set(ServiceName, 25),
+      EncTypes = make_set(TicketEncryptionType, 5),
+      DCs = make_set(Hostname, 5),
+      FirstSeen = min(timestamp),
+      LastSeen = max(timestamp)
+      by bin(timestamp, 10m), Requester, IpAddress
+  | where DistinctServices >= 5
+  | extend RC4Ratio = round(todouble(RC4Tickets) / todouble(Requests), 2)
+  | project timestamp, Requester, IpAddress, Requests, DistinctServices,
+            RC4Tickets, AESTickets, RC4Ratio, Services, EncTypes, DCs, FirstSeen, LastSeen
+  | order by RC4Tickets desc, DistinctServices desc
+tags: [windows, audit, 4769, kerberos, kerberoasting, credential-access, detection]
+expected_output: |
+  Accounts requesting service tickets for many distinct SPNs (sanitized).
+
+  timestamp             Requester                 IpAddress            Requests  DistinctServices  RC4Tickets  AESTickets  RC4Ratio  Services                                     EncTypes         DCs                    FirstSeen             LastSeen
+  2026-07-27T08:40:00Z  adele.vance@contoso.com   ::ffff:192.0.2.45    23        23                23          0           1.0       ["MSSQLSvc","HTTP","exchangeMDB",...]        ["0x17"]         ["dc01.contoso.com"]   2026-07-27T08:41:13Z  2026-07-27T08:47:02Z
+  2026-07-27T14:10:00Z  svc-monitor@contoso.com   ::ffff:192.0.2.88    9         6                 0           9           0.0       ["HTTP","MSSQLSvc",...]                      ["0x12"]         ["dc01.contoso.com"]   2026-07-27T14:11:40Z  2026-07-27T14:18:55Z

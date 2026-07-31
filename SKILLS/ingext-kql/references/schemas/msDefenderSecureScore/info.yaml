@@ -1,0 +1,81 @@
+schema: msDefenderSecureScore
+description: >-
+  Microsoft Secure Score for Devices — the organization-wide device hardening
+  score — collected by Ingext from the Defender for Endpoint API
+  (GET /api/configurationScore). A higher score means the endpoint estate is more
+  resilient; the score rises as the secure-configuration recommendations in
+  msDefenderRecommendation are applied.
+
+  THIS TABLE HOLDS EXACTLY ONE RECORD. The endpoint returns a single entity
+  rather than a collection, and because the record has no natural key the
+  resource watch keys it on the literal resource name, so every 8-hour cycle
+  overwrites the one row in place. Consequences, in order of how often they trip
+  a query up:
+
+    - No history. The table cannot be trended, differenced, or charted over time —
+      it always holds the current score and nothing else. 'summarize by bin(time,
+      1d)' returns one bucket. To trend the score, snapshot this row into another
+      table on a schedule, or reconstruct the trend from the recommendation
+      backlog instead.
+    - No grouping. Every aggregation over a one-row table is that row. Just
+      project it, or use toscalar() to pull the score into another query — see
+      queries/mde-secure-score-headroom.yaml.
+    - A stale row is possible. If a cycle fails to fetch the score (the resource
+      needs its own Score.Read.All permission), the previous row stays in place
+      unchanged. Always report the record's own 'time' alongside the score rather
+      than assuming it is current.
+
+  The score is a raw point total, not a percentage: the API returns no maximum,
+  so the percentage the Defender portal displays cannot be derived from this
+  record alone. The achievable headroom is available though — sum
+  configScoreImpact over the active 'sca-_-scid-' recommendations in
+  msDefenderRecommendation, whose per-device evidence is msDefenderSecureConfig.
+  Those three tables and this one describe the same thing at three levels of
+  detail: the fleet score here, the per-control rollup there, and the per-device
+  findings in msDefenderSecureConfig.
+
+  Note that this is the *device* secure score (Defender Vulnerability Management,
+  driven by endpoint configuration), which is a different measure from the
+  tenant-wide Microsoft Secure Score in the Defender portal that also covers
+  identity and apps. The two are not comparable and do not share a scale.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Mapped from the record's 'time' field — when Microsoft calculated the score, not when Ingext collected it. Since there is only ever one record, a range filter here either returns that record or nothing: keep any lookback wide (>= 1d), or omit the filter entirely."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key. The record has no identifier of its own, so the key is the literal string 'msDefenderSecureScore' — a fixed singleton key that every cycle upserts, which is why the table never holds more than one row."
+    sampleValues: ["msDefenderSecureScore"]
+
+  # ==========================================
+  # SCORE
+  # ==========================================
+  - name: score
+    type: Float
+    description: "Microsoft Secure Score for Devices as a raw point total (JSON number; integral in practice, e.g. 800). Higher is better. No maximum is returned by the API, so this cannot be converted to the percentage shown in the portal — report it as points, and use the achievable points from msDefenderRecommendation.configScoreImpact for context on how much is left. It moves in whole points as controls are applied fleet-wide, so a single device's remediation may not change it at all."
+    sampleValues: [800]
+
+  - name: time
+    type: DateTime
+    description: "When Microsoft calculated this score (RFC3339 with fractional seconds). Source of timestamp, and the freshness check that matters: Defender recalculates the score periodically, and a failed collection cycle leaves the previous row in place, so a 'time' far in the past means the score shown is stale rather than unchanged."
+    sampleValues: ["2026-07-30T17:55:53.81324Z"]
+
+  # ==========================================
+  # SCOPE
+  # ==========================================
+  - name: rbacGroupId
+    type: Integer
+    description: "Numeric id of the MDE device group the score is scoped to. Null in this feed: the connector fetches the unscoped, organization-wide score. A non-null value would mean the row covers only one device group."
+
+  - name: rbacGroupName
+    type: String
+    description: "Name of the MDE device group the score is scoped to. Null in this feed — the score is organization-wide. Treat null as 'tenant-wide' when labelling output; there is no per-group breakdown available from this resource (build one from msDefenderSecureConfig grouped by rbacGroupName instead)."

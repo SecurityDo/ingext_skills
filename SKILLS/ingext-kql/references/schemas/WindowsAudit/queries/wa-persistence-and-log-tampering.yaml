@@ -1,0 +1,49 @@
+description: >-
+  Timeline of persistence installation and audit-trail tampering on Windows
+  hosts, combining 4697 (service installed), 4698/4702 (scheduled task created
+  or updated), 4719 (system audit policy changed) and 1102 (the Security log was
+  cleared). These are all low-volume, high-signal events: on a healthy estate
+  1102 should essentially never appear outside deliberate maintenance, and a
+  4719 whose AuditPolicyChanges contains %%8448 (Success removed) or %%8450
+  (Failure removed) means auditing was turned OFF rather than on — that is the
+  defence-evasion case and the reason both events are in the same query. Any
+  host showing an audit-policy removal or a log clear shortly after a service or
+  scheduled-task install is a strong intrusion signal; the combination is worth
+  alerting on even when each event alone would be tolerated.
+datatype: WindowsAudit
+kql: |
+  WindowsAudit
+  | where timestamp > ago(7d)
+  | where EventID in (4697, 4698, 4702, 4719, 1102)
+  | extend Actor = strcat(SubjectDomainName, "\\", SubjectUserName)
+  | extend Activity = case(
+      EventID == 4697, strcat("service installed: ", ServiceName),
+      EventID == 4698, strcat("scheduled task created: ", TaskName),
+      EventID == 4702, strcat("scheduled task updated: ", TaskName),
+      EventID == 4719, "audit policy changed",
+      EventID == 1102, "SECURITY LOG CLEARED",
+      "")
+  | extend Detail = case(
+      EventID == 4697, strcat(ServiceFileName, "  [runs as ", ServiceAccount, ", type ", ServiceType, ", start ", ServiceStartType, "]"),
+      EventID in (4698, 4702), substring(TaskContent, 0, 400),
+      EventID == 4719, strcat(SubcategoryGuid, "  changes=", AuditPolicyChanges),
+      "")
+  | extend AuditingDisabled = EventID == 4719 and (AuditPolicyChanges has "%%8448" or AuditPolicyChanges has "%%8450")
+  | extend Severity = case(
+      EventID == 1102, 3,
+      AuditingDisabled, 3,
+      EventID == 4697 and ServiceType in ("0x1", "0x2", "0x8"), 3,
+      EventID == 4697 and ServiceAccount !in ("localSystem", "localService", "networkService", "LocalSystem", "NT AUTHORITY\\LocalService", "NT AUTHORITY\\NetworkService"), 2,
+      EventID in (4698, 4702) and TaskName !startswith "\\Microsoft\\", 2,
+      1)
+  | project timestamp, Severity, Hostname, EventID, Activity, Actor, Detail, AuditingDisabled
+  | order by Severity desc, timestamp desc
+tags: [windows, audit, 4697, 4698, 4719, 1102, persistence, defense-evasion, detection]
+expected_output: |
+  Persistence installs and audit-trail tampering, highest severity first (sanitized).
+
+  timestamp             Severity  Hostname                EventID  Activity                              Actor                 Detail                                                              AuditingDisabled
+  2026-07-27T09:39:01Z  3         wkstn-0142.contoso.com  1102     SECURITY LOG CLEARED                  CONTOSO\adele.vance                                                                       false
+  2026-07-27T09:38:09Z  3         wkstn-0142.contoso.com  4719     audit policy changed                  CONTOSO\adele.vance   {0CCE9223-69AE-11D9-BED3-505054503030}  changes=%%8448, %%8450      true
+  2026-07-27T09:36:43Z  2         wkstn-0142.contoso.com  4698     scheduled task created: \SystemUpdate CONTOSO\adele.vance   <?xml version="1.0"...<Command>C:\Users\...\Temp\update.exe</Command> false
+  2026-07-27T09:34:10Z  2         fileserver01.contoso.com 4697    service installed: PSEXESVC           CONTOSO\dadmin        %SystemRoot%\PSEXESVC.exe  [runs as localSystem, type 0x10, start 3]  false

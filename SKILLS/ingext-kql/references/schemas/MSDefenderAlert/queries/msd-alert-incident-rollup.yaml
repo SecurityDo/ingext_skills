@@ -1,0 +1,60 @@
+description: >-
+  Reconstructs each Defender incident from its alerts alone, using
+  MSDefenderAlert.incidentId — useful on its own and as the fallback when
+  MSDefenderIncident data is not available for the range. For every incident it
+  reports how many alerts it holds, the worst severity, how many are still open,
+  which products and tactics contributed (a multi-product incident is the
+  multi-stage-attack signal), the alert titles in order, the affected users and
+  hosts pulled out of evidence[], and the real activity window from the alerts'
+  firstActivityDateTime / lastActivityDateTime rather than the ingest time.
+datatype: MSDefenderAlert
+kql: |
+  // latest snapshot per record: this engine's dynamic schema does not support
+  // arg_max(<col>, *), so take the max timestamp per id and join it back
+  let LatestAlert =
+      MSDefenderAlert
+      | where timestamp > ago(14d)
+      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
+  MSDefenderAlert
+  | where timestamp > ago(14d)
+  | join kind=inner LatestAlert on $left.id == $right.AlertId
+  | where todatetime(lastUpdateDateTime) == LastUpdate
+  | project-away AlertId, LastUpdate
+  | extend Sev = case(severity == "high", 4, severity == "medium", 3, severity == "low", 2, 1)
+  | extend FirstActivity = todatetime(firstActivityDateTime), LastActivity = todatetime(lastActivityDateTime)
+  | mv-expand ev = evidence
+  | extend
+      Host = tostring(ev.hostName),
+      User = coalesce(tostring(ev.userAccount.userPrincipalName), tostring(ev.userAccount.accountName)),
+      Ip = tostring(ev.ipAddress)
+  | summarize
+      Alerts = dcount(id),
+      MaxSev = max(Sev),
+      OpenAlerts = dcountif(id, status in ("new", "inProgress")),
+      Products = make_set(productName, 10),
+      Tactics = make_set(category, 10),
+      Titles = make_set(title, 20),
+      Hosts = make_set_if(Host, isnotempty(Host), 20),
+      Users = make_set_if(User, isnotempty(User), 20),
+      IPs = make_set_if(Ip, isnotempty(Ip), 20),
+      CriticalAssetAlerts = dcountif(id, systemTags has "Critical asset"),
+      ActivityStart = min(FirstActivity),
+      ActivityEnd = max(LastActivity),
+      FirstAlertCreated = min(timestamp),
+      LastUpdated = max(todatetime(lastUpdateDateTime))
+    by IncidentId = incidentId, IncidentUrl = incidentWebUrl
+  | extend Severity = case(MaxSev == 4, "high", MaxSev == 3, "medium", MaxSev == 2, "low", "informational")
+  | extend MultiProduct = array_length(Products) > 1
+  | extend ActivitySpanHours = round(datetime_diff('minute', ActivityEnd, ActivityStart) / 60.0, 1)
+  | order by MaxSev desc, Alerts desc, LastUpdated desc
+  | project-away MaxSev
+tags: [msdefender, defender-xdr, incidents, correlation, triage, security]
+expected_output: |
+  Incidents rebuilt from their member alerts (sanitized). Incident 42438 spans two
+  products — Entra ID Protection plus XDR attack analysis on the same account —
+  which is the multi-stage signal worth escalating.
+
+  IncidentId  IncidentUrl                                   Alerts  OpenAlerts  Products                                                Tactics                                  Titles                                                                                     Hosts             Users                         IPs                          CriticalAssetAlerts  ActivityStart             ActivityEnd               ActivitySpanHours  Severity  MultiProduct
+  42438       https://security.microsoft.com/incident2/...   2       2           ["AAD Identity Protection","Microsoft Defender XDR"]   ["InitialAccess","SuspiciousActivity"]  ["Anomalous Token","Potential user account compromise identified through attack analysis"]  []                ["adele.vance@contoso.com"]   ["192.0.2.62","192.0.2.91"]  0                    2026-07-10T00:30:34.226Z  2026-07-15T12:46:39.977Z  132.3              high      true
+  101129      https://security.microsoft.com/incident2/...   1       1           ["Microsoft Defender for Endpoint"]                     ["Execution"]                            ["PowerMad script detected"]                                                               ["azstackhci01"]  ["HciOrchestrator"]           []                           1                    2026-07-27T14:30:30.271Z  2026-07-27T14:30:30.271Z  0.0                medium    false
+  101195      https://security.microsoft.com/incident2/...   1       0           ["Microsoft Defender for Endpoint"]                     ["Malware"]                              ["'PSWStealer' malware was prevented"]                                                     ["srv-app-02"]    []                            []                           0                    2026-07-29T22:31:39.050Z  2026-07-29T22:31:39.050Z  0.0                informational  false

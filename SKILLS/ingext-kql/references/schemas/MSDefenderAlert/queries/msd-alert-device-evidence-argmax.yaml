@@ -1,0 +1,70 @@
+description: >-
+  WILDCARD ARG_MAX VARIANT — do not use unless the engine supports
+  arg_max(<column>, *) over a dynamic schema. This is line-for-line the same query
+  as msd-alert-device-evidence.yaml, which is the runnable version today; the only
+  difference is the first three lines, where the latest-snapshot reduction is
+  expressed as the single Kusto idiom 'summarize arg_max(lastUpdateDateTime, *) by
+  id' instead of taking max(lastUpdateDateTime) per id and joining it back. Kept
+  side by side so that if wildcard support lands, the concise form can be adopted
+  by diffing these two files, and so the intent of the join-back block elsewhere in
+  queries/ is unambiguous — it is a workaround, not a semantic requirement.
+
+  The two forms are equivalent except in one edge case: arg_max picks exactly one
+  row per id, whereas the join-back keeps every row tied for the maximum
+  lastUpdateDateTime. Ties are duplicate copies of the same state, so this only
+  affects count(); both files use dcount(id) to be safe either way.
+
+  Device-centric view of Defender alerts: expands the polymorphic evidence[] array
+  down to deviceEvidence elements only, then aggregates per endpoint so an analyst
+  can see which machines are generating the most (and the most severe) alerts,
+  along with the MDE device context that comes free with the evidence — device
+  group, OS platform/build, health and onboarding state, Defender AV status, MDE
+  risk score, asset criticality tag, last internal/external IP, and the Azure/Arc
+  resource the machine maps to. mdeDeviceId is the join key to the rest of the
+  endpoint telemetry.
+datatype: MSDefenderAlert
+kql: |
+  // Requires arg_max(<col>, *) wildcard support. The portable equivalent is the
+  // let + max() + join block in msd-alert-device-evidence.yaml.
+  MSDefenderAlert
+  | where timestamp > ago(7d)
+  | summarize arg_max(lastUpdateDateTime, *) by id
+  | extend Sev = case(severity == "high", 4, severity == "medium", 3, severity == "low", 2, 1)
+  | mv-expand ev = evidence
+  | where tostring(ev["@odata.type"]) == "#microsoft.graph.security.deviceEvidence"
+  | extend
+      Host = tostring(ev.hostName),
+      Fqdn = tostring(ev.deviceDnsName),
+      DeviceGroup = tostring(ev.rbacGroupName),
+      OsPlatform = tostring(ev.osPlatform),
+      OsBuild = tostring(ev.osBuild),
+      Health = tostring(ev.healthStatus),
+      Onboarding = tostring(ev.onboardingStatus),
+      AvStatus = tostring(ev.defenderAvStatus),
+      MdeRisk = tostring(ev.riskScore),
+      LastIp = tostring(ev.lastIpAddress),
+      LastExternalIp = tostring(ev.lastExternalIpAddress),
+      MdeDeviceId = tostring(ev.mdeDeviceId),
+      AzureResourceId = tostring(ev.vmMetadata.resourceId),
+      DeviceTags = strcat_array(ev.tags, ", ")
+  | summarize
+      Alerts = dcount(id),
+      MaxSev = max(Sev),
+      Open = dcountif(id, status in ("new", "inProgress")),
+      Titles = make_set(title, 10),
+      Categories = make_set(category, 10),
+      LastAlert = max(timestamp)
+    by Host, Fqdn, DeviceGroup, OsPlatform, OsBuild, Health, Onboarding, AvStatus,
+       MdeRisk, LastIp, LastExternalIp, MdeDeviceId, AzureResourceId, DeviceTags
+  | extend Severity = case(MaxSev == 4, "high", MaxSev == 3, "medium", MaxSev == 2, "low", "informational")
+  | project-away MaxSev
+  | order by Alerts desc, LastAlert desc
+tags: [msdefender, defender-xdr, defender-for-endpoint, devices, alerts, triage, security, requires-wildcard-argmax, variant]
+expected_output: |
+  Identical to msd-alert-device-evidence.yaml — the dedup idiom does not change the
+  result. Alerting endpoints with their MDE context, pulled from deviceEvidence
+  (sanitized).
+
+  Host          Fqdn                      DeviceGroup      OsPlatform         OsBuild  Health  Onboarding  AvStatus  MdeRisk  LastIp         LastExternalIp  MdeDeviceId                               AzureResourceId                                          DeviceTags      Alerts  Open  Titles                        Categories     LastAlert                 Severity
+  azstackhci01  azstackhci01.contoso.com  UnassignedGroup  AzureStackHCI      26100    active  onboarded   unknown   medium   10.0.250.131   192.0.2.10      0000000000000000000000000000000000000f01  /subscriptions/0000.../machines/AZSTACKHCI01              Critical asset  1       1     ["PowerMad script detected"]  ["Execution"]  2026-07-27T14:32:28.890Z  medium
+  srv-app-02    srv-app-02.contoso.com    UnassignedGroup  WindowsServer2025  26100    active  onboarded   unknown   none     10.0.18.67     192.0.2.20      0000000000000000000000000000000000000f02  /subscriptions/0000.../machines/SRV-APP-02                                1       0     ["'PSWStealer' malware was prevented"]  ["Malware"]  2026-07-29T22:32:54.560Z  informational

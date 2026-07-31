@@ -1,0 +1,39 @@
+description: >-
+  Detect Duo MFA push-fatigue / push-bombardment: a user receiving a burst of
+  push authentications in a short window where at least one was rejected. Bins
+  authentication events into 10-minute windows per user and application, counts
+  denials and explicit fraud reports, and surfaces windows with three or more
+  attempts that include a rejection. A window containing
+  reason == "user_marked_fraud" is a confirmed compromise signal — the user told
+  Duo they did not initiate the login. Also rolls up the distinct source IPs and
+  countries seen in the window so an analyst can immediately see whether the
+  pushes came from an unexpected location.
+datatype: DuoAuthentication
+kql: |
+  DuoAuthentication
+  | where timestamp > ago(1d)
+  | where event_type == "authentication"
+  | where factor in ("duo_push", "phone_call")
+  | extend userName = tostring(user.name),
+           appName = tostring(application.name),
+           srcIp = tostring(access_device.ip),
+           srcCountry = tostring(access_device.location.country)
+  | summarize Attempts = count(),
+              Denied = countif(result == "denied"),
+              Fraud = countif(result == "fraud" or reason == "user_marked_fraud"),
+              Approved = countif(result == "success"),
+              SourceIPs = make_set(srcIp, 10),
+              Countries = make_set(srcCountry, 10),
+              FirstSeen = min(timestamp),
+              LastSeen = max(timestamp)
+      by bin(timestamp, 10m), userName, appName
+  | where Attempts >= 3 and (Denied > 0 or Fraud > 0)
+  | project timestamp, userName, appName, Attempts, Approved, Denied, Fraud,
+            SourceIPs, Countries, FirstSeen, LastSeen
+  | order by Fraud desc, Attempts desc
+tags: [duo, cisco, mfa, push-fatigue, mfa-bombing, authentication, detection]
+expected_output: |
+  Users hit with a burst of Duo pushes that included a rejection (sanitized).
+
+  timestamp             userName  appName        Attempts  Approved  Denied  Fraud  SourceIPs           Countries                        FirstSeen             LastSeen
+  2026-07-21T13:00:00Z  avance    Microsoft 365  5         1         3       1      ["198.51.100.23"]   ["Netherlands","United States"]  2026-07-21T13:02:11Z  2026-07-21T13:08:40Z

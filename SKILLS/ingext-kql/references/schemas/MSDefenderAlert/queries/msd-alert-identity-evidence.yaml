@@ -1,0 +1,72 @@
+description: >-
+  Identity-centric view of Defender alerts — the query for "which accounts are
+  under attack, and from where". For each alert it first rolls the whole evidence[]
+  array up into the source IPs, countries and client user agents (which live on
+  ipEvidence and cloudLogonSessionEvidence elements, not on the user element),
+  flattens those per-alert sets to strings so they can be re-aggregated, then
+  expands the userEvidence elements and aggregates per account. Identity labels are
+  coalesced because Defender frequently ships a user element with only an
+  azureAdUserId resolved. Accounts whose evidence carries the 'compromised' role or
+  a malicious verdict are the escalation candidates; several distinct countries on
+  one account is the impossible-travel signal.
+datatype: MSDefenderAlert
+kql: |
+  // latest snapshot per record: this engine's dynamic schema does not support
+  // arg_max(<col>, *), so take the max timestamp per id and join it back
+  let LatestAlert =
+      MSDefenderAlert
+      | where timestamp > ago(7d)
+      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
+  MSDefenderAlert
+  | where timestamp > ago(7d)
+  | join kind=inner LatestAlert on $left.id == $right.AlertId
+  | where todatetime(lastUpdateDateTime) == LastUpdate
+  | project-away AlertId, LastUpdate
+  | extend Sev = case(severity == "high", 4, severity == "medium", 3, severity == "low", 2, 1)
+  // keep a copy of the array: the first pass rolls it up, the second expands it again
+  | extend evidenceCopy = evidence
+  | mv-apply ev = evidenceCopy on (
+      summarize
+          IPSet = make_set_if(tostring(ev.ipAddress), isnotempty(tostring(ev.ipAddress))),
+          CountrySet = make_set_if(tostring(ev.countryLetterCode), isnotempty(tostring(ev.countryLetterCode))),
+          AgentSet = make_set_if(tostring(ev.userAgent), isnotempty(tostring(ev.userAgent)))
+    )
+  | extend AlertIPs = strcat_array(IPSet, " "),
+           AlertCountries = strcat_array(CountrySet, " "),
+           AlertAgent = strcat_array(AgentSet, " | ")
+  | mv-expand ev = evidence
+  | where tostring(ev["@odata.type"]) == "#microsoft.graph.security.userEvidence"
+  | extend
+      Account = coalesce(tostring(ev.userAccount.userPrincipalName),
+                         tostring(ev.userAccount.accountName),
+                         tostring(ev.userAccount.azureAdUserId)),
+      EntraObjectId = tostring(ev.userAccount.azureAdUserId),
+      Sid = tostring(ev.userAccount.userSid),
+      Verdict = tostring(ev.verdict),
+      EvidenceRoles = strcat_array(ev.roles, ", ")
+  | where isnotempty(Account)
+  | summarize
+      Alerts = dcount(id),
+      MaxSev = max(Sev),
+      MaliciousVerdict = dcountif(id, Verdict == "malicious"),
+      Compromised = dcountif(id, EvidenceRoles has "compromised"),
+      CriticalAsset = dcountif(id, systemTags has "Critical asset"),
+      Titles = make_set(title, 10),
+      Products = make_set(productName, 10),
+      Tactics = make_set(category, 10),
+      SourceIPs = make_set_if(AlertIPs, isnotempty(AlertIPs), 20),
+      Countries = make_set_if(AlertCountries, isnotempty(AlertCountries), 10),
+      UserAgents = make_set_if(AlertAgent, isnotempty(AlertAgent), 5),
+      FirstAlert = min(timestamp),
+      LastAlert = max(timestamp)
+    by Account, EntraObjectId, Sid
+  | extend Severity = case(MaxSev == 4, "high", MaxSev == 3, "medium", MaxSev == 2, "low", "informational")
+  | project-away MaxSev
+  | order by Compromised desc, Alerts desc, LastAlert desc
+tags: [msdefender, defender-xdr, identity, account-compromise, sign-in, triage, security]
+expected_output: |
+  Accounts appearing in alerts, with the IPs/countries/agents from the same alerts (sanitized).
+
+  Account                                   EntraObjectId                         Sid                                                   Alerts  MaliciousVerdict  Compromised  CriticalAsset  Titles                                                                                    Products                                               Tactics                                 SourceIPs                    Countries  UserAgents                                       FirstAlert                LastAlert                 Severity
+  adele.vance@contoso.com                   00000000-0000-0000-0000-0000000000a1  S-1-5-21-1111111111-2222222222-3333333333-1001         2       1                 1            0              ["Anomalous Token","Potential user account compromise identified through attack analysis"]  ["AAD Identity Protection","Microsoft Defender XDR"]  ["InitialAccess","SuspiciousActivity"]  ["192.0.2.62","192.0.2.62 192.0.2.91"]  ["NL"]     ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) ..."]  2026-07-10T01:21:29.013Z  2026-07-15T12:59:08.630Z  high
+  entra.dsiciliani@contoso.onmicrosoft.com  00000000-0000-0000-0000-0000000000a3  S-1-12-1-1111111111-2222222222-3333333333-4444444441  1       0                 0            1              ["Delegate Access Granted to User's Mailbox"]                                              ["Microsoft Defender for Cloud Apps"]                 ["SuspiciousActivity"]                  ["192.0.2.10"]               ["US"]     []                                               2026-07-27T16:21:29.623Z  2026-07-27T16:21:29.623Z  medium

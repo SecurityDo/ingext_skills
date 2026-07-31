@@ -1,0 +1,51 @@
+description: >-
+  Detect password guessing and account enumeration from Windows 4625 (failed
+  logon) events. Bins failures into 15-minute windows per source and decodes the
+  SubStatus code, which is the field that separates the two attack shapes: many
+  distinct accounts against one password (0xc0000064 "user does not exist" and
+  0xc000006a "bad password" spread across accounts) is spraying/enumeration,
+  while many failures against a single account is brute force. Because the
+  top-level Status on 4625 is usually the generic 0xc000006d, always read
+  SubStatus — coalesce to Status only when SubStatus is "0x0". Surfaces windows
+  with 10 or more failures, ranked by how many distinct accounts were touched.
+  Correlate a hit against 4740 (lockout) and against any subsequent 4624 from
+  the same IpAddress, which would mean the guessing succeeded.
+datatype: WindowsAudit
+kql: |
+  WindowsAudit
+  | where timestamp > ago(1d)
+  | where EventID == 4625
+  | extend Code = iff(SubStatus == "0x0" or isempty(SubStatus), Status, SubStatus)
+  | extend Reason = case(
+      Code == "0xc0000064", "user does not exist",
+      Code == "0xc000006a", "bad password",
+      Code == "0xc0000234", "account locked out",
+      Code == "0xc0000072", "account disabled",
+      Code == "0xc0000071", "password expired",
+      Code == "0xc0000193", "account expired",
+      Code == "0xc000015b", "logon type not granted",
+      Code == "0xc0000070", "unauthorized workstation",
+      Code == "0xc000006f", "outside permitted hours",
+      strcat("other (", Code, ")"))
+  | summarize
+      Failures = count(),
+      TargetedAccounts = dcount(TargetUserName),
+      Accounts = make_set(TargetUserName, 20),
+      Reasons = make_set(Reason, 5),
+      LogonTypes = make_set(LogonType, 5),
+      AuthPackages = make_set(AuthenticationPackageName, 5),
+      Workstations = make_set(WorkstationName, 5),
+      FirstSeen = min(timestamp),
+      LastSeen = max(timestamp)
+      by Hostname, IpAddress
+  | where Failures >= 10
+  | project Hostname, IpAddress, Failures, TargetedAccounts, Accounts, Reasons,
+            LogonTypes, AuthPackages, Workstations, FirstSeen, LastSeen
+  | order by TargetedAccounts desc, Failures desc
+tags: [windows, audit, 4625, brute-force, password-spraying, authentication, detection]
+expected_output: |
+  Sources generating bursts of Windows logon failures (sanitized).
+
+  Hostname                  IpAddress       Failures  TargetedAccounts  Accounts                              Reasons                              LogonTypes  AuthPackages  Workstations  FirstSeen             LastSeen
+  srv-app-01.contoso.com    198.51.100.77   842       311               ["administrator","adele.vance",...]   ["user does not exist","bad password"] ["3"]      ["NTLM"]      ["KALI"]      2026-07-27T03:12:04Z  2026-07-27T03:41:19Z
+  wkstn-0142.contoso.com    192.0.2.45      31        1                 ["svc-backup"]                        ["bad password"]                     ["3"]       ["NTLM"]      ["WKSTN-9"]   2026-07-27T11:02:55Z  2026-07-27T11:09:12Z

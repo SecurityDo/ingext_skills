@@ -1,0 +1,47 @@
+description: >-
+  Security configuration controls ranked by how much secure score their fleet-wide
+  failure costs: for each control, the applicable device count, the non-compliant
+  count and the total configuration impact left on the table. THE filter that must
+  not be dropped is isApplicable == true — non-applicable controls are returned
+  with isCompliant false, so a non-compliance count without it is wrong, usually
+  by a large margin. Group by configurationId, not by configurationName: Microsoft
+  rewords the display names.
+datatype: msDefenderSecureConfig
+kql: |
+  msDefenderSecureConfig
+  | where isApplicable == true
+  | summarize
+      ApplicableDevices = dcount(deviceId),
+      NonCompliant      = dcountif(deviceId, isCompliant == false),
+      Impact            = any(configurationImpact),
+      ControlName       = any(configurationName),
+      Category          = any(configurationCategory),
+      Subcategory       = any(configurationSubcategory),
+      UserImpact        = any(isExpectedUserImpact),
+      Recommendation    = any(recommendationReference)
+      by configurationId
+  | where NonCompliant > 0
+  | extend
+      NonCompliantPct = round(100.0 * NonCompliant / ApplicableDevices, 1),
+      ScoreAtStake    = NonCompliant * Impact
+  | project
+      configurationId,
+      ControlName,
+      Category,
+      Subcategory,
+      ApplicableDevices,
+      NonCompliant,
+      NonCompliantPct,
+      Impact,
+      ScoreAtStake,
+      UserImpact,
+      Recommendation
+  | order by ScoreAtStake desc
+tags: [microsoft, defender, mde, mdvm, secure-configuration, hardening, secure-score, posture, security]
+expected_output: |
+  Controls ranked by the impact of their fleet-wide failure (sanitized).
+
+  configurationId  ControlName                                                              Category          Subcategory               ApplicableDevices  NonCompliant  NonCompliantPct  Impact  ScoreAtStake  UserImpact  Recommendation
+  scid-2513        Block Adobe Reader from creating child processes                         Security controls  Attack Surface Reduction  261                193           73.9             9       1737          true        sca-_-scid-2513
+  scid-2000        Turn on Microsoft Defender Antivirus real-time protection                Security controls  Antivirus                 259                24            9.3              9       216           false       sca-_-scid-2000
+  scid-37          Enable 'Domain member: Digitally encrypt or sign secure channel data (always)'  OS                                    261                18            6.9              5       90            false       sca-_-scid-37

@@ -1,0 +1,200 @@
+schema: SentinelOneAlert
+description: >-
+  SentinelOne Singularity / Unified Alert collected by Ingext from the SentinelOne
+  alerts API. Each record is one normalized alert raised by a SentinelOne product
+  (EDR, Cloud, Identity, STAR, etc.): the detection (name/description,
+  classification, severity, confidence, verdict, and mitigation result), the
+  affected asset, the triggering process and its file, and the detection source.
+  This is SentinelOne's newer normalized alert schema and is distinct from the
+  legacy SentinelOneThreat resource — an alert references its underlying threat
+  via externalId and shares correlation context through storylineId. Nested
+  objects (asset, process, detectionSource) are dynamic and accessed with dot
+  notation.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Alert time, derived from the createdAt field (when SentinelOne created the alert). Primary time column for range filters (e.g. where timestamp > ago(1d)). See detectedAt for the underlying detection time."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Record key used to identify/deduplicate the alert; mapped to the 'id' field (a UUID). Each _key holds the latest snapshot of the alert, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # IDENTITY & TIME
+  # ==========================================
+  - name: id
+    type: String
+    description: "SentinelOne alert ID (a UUID); source of _key. Distinct from externalId (the underlying threat/detection ID)."
+    sampleValues: ["00000000-0000-0000-0000-0000000000a1"]
+
+  - name: externalId
+    type: String
+    description: "ID of the underlying detection/threat that produced this alert (a numeric string). Join key to SentinelOneThreat.id / threatInfo.threatId when the alert came from an EDR threat."
+    sampleValues: ["2000000000000000003"]
+
+  - name: name
+    type: String
+    description: "Short alert title, typically '<process/file> - <detection> detected'. Primary field to display or search an alert."
+    sampleValues: ["Dr.Fone_Installer.exe - DLL Hijacking detected"]
+
+  - name: description
+    type: String
+    description: "Human-readable description of what the detection observed."
+    sampleValues: ["Windows process events analysis detected DLL Hijacking."]
+
+  - name: createdAt
+    type: DateTime
+    description: "When SentinelOne created the alert (UTC); source of the 'timestamp' column."
+    sampleValues: ["2026-07-22T16:58:21.660Z"]
+
+  - name: detectedAt
+    type: DateTime
+    description: "When the underlying activity was detected on the endpoint (UTC). Usually slightly before createdAt; use for detection recency."
+    sampleValues: ["2026-07-22T16:57:13.046Z"]
+
+  - name: firstSeenAt
+    type: DateTime
+    description: "When the alert's activity was first observed (UTC)."
+    sampleValues: ["2026-07-22T16:57:13.046Z"]
+
+  - name: lastSeenAt
+    type: DateTime
+    description: "When the alert's activity was last observed (UTC). Equals firstSeenAt for point-in-time detections; later for ongoing activity."
+    sampleValues: ["2026-07-22T16:59:26.862Z"]
+
+  - name: updatedAt
+    type: DateTime
+    description: "When the alert record was last updated in SentinelOne (UTC), e.g. on status/verdict change."
+    sampleValues: ["2026-07-22T16:59:26.862Z"]
+
+  # ==========================================
+  # CLASSIFICATION & VERDICT
+  # ==========================================
+  - name: classification
+    type: String
+    description: "Detection classification / attack category."
+    sampleValues: ["RANSOMWARE", "MALWARE", "PUA", "TROJAN", "INFOSTEALER"]
+
+  - name: severity
+    type: String
+    description: "Alert severity. Filter to CRITICAL/HIGH for triage."
+    sampleValues: ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+
+  - name: confidenceLevel
+    type: String
+    description: "Engine confidence in the detection."
+    sampleValues: ["MALICIOUS", "SUSPICIOUS"]
+
+  - name: analystVerdict
+    type: String
+    description: "Analyst's verdict on the alert after review."
+    sampleValues: ["TRUE_POSITIVE_UNDEFINED", "TRUE_POSITIVE", "FALSE_POSITIVE", "UNDEFINED"]
+
+  - name: status
+    type: String
+    description: "Workflow status of the alert. Filter on NEW/IN_PROGRESS to find open alerts."
+    sampleValues: ["NEW", "IN_PROGRESS", "RESOLVED"]
+
+  - name: result
+    type: String
+    description: "Outcome of automated response for the alert. NOT_MITIGATED indicates the threat was not auto-remediated and needs manual action."
+    sampleValues: ["MITIGATED", "NOT_MITIGATED", "BLOCKED"]
+
+  - name: assignee
+    type: String
+    description: "Console user the alert is assigned to; null when unassigned."
+
+  - name: noteExists
+    type: Boolean
+    description: "Whether an analyst note has been added to the alert."
+    sampleValues: ["true", "false"]
+
+  - name: storylineId
+    type: String
+    description: "SentinelOne Storyline (behavioral context) ID correlating the events behind this alert. Alerts and threats sharing a storylineId belong to the same attack story."
+    sampleValues: ["00000000000000A1"]
+
+  # ==========================================
+  # DETECTION SOURCE (detectionSource.*)
+  # ==========================================
+  - name: detectionSource.vendor
+    type: String
+    description: "Vendor that produced the detection (SentinelOne for native alerts; may differ for ingested third-party alerts)."
+    sampleValues: ["SentinelOne"]
+
+  - name: detectionSource.product
+    type: String
+    description: "SentinelOne product/module that raised the alert."
+    sampleValues: ["EDR", "Cloud", "Identity", "STAR"]
+
+  - name: detectionSource.engine
+    type: String
+    description: "Specific detection engine within the product, when reported; often null."
+
+  # ==========================================
+  # AFFECTED ASSET (asset.*)
+  # ==========================================
+  - name: asset.name
+    type: String
+    description: "Hostname of the affected endpoint. Primary field for identifying the affected machine."
+    sampleValues: ["alex-pc"]
+
+  - name: asset.id
+    type: String
+    description: "SentinelOne asset ID for the affected endpoint (an opaque token)."
+    sampleValues: ["s1assetplaceholder00000001"]
+
+  - name: asset.agentUuid
+    type: String
+    description: "UUID of the SentinelOne agent on the affected endpoint. Relates to sentinelOneAgent.uuid."
+    sampleValues: ["00000000-0000-0000-0000-000000000001"]
+
+  - name: asset.osType
+    type: String
+    description: "OS family of the affected endpoint."
+    sampleValues: ["WINDOWS", "MACOS", "LINUX"]
+
+  - name: asset.type
+    type: String
+    description: "Asset type/category; UNKNOWN when not classified."
+    sampleValues: ["UNKNOWN", "SERVER", "WORKSTATION"]
+
+  # ==========================================
+  # TRIGGERING PROCESS (process.*)
+  # ==========================================
+  - name: process.cmdLine
+    type: String
+    description: "Full command line of the process that triggered the alert."
+    sampleValues: ["\"C:\\Users\\alex.wilber\\Downloads\\Dr.Fone_Installer.exe\""]
+
+  - name: process.parentName
+    type: String
+    description: "Name of the parent process image. Useful for spotting suspicious lineage (e.g. a browser spawning an installer)."
+    sampleValues: ["msedge.exe"]
+
+  - name: process.file.path
+    type: String
+    description: "Full path of the process's on-disk image."
+    sampleValues: ["\\Device\\HarddiskVolume3\\Users\\alex.wilber\\Downloads\\Dr.Fone_Installer.exe"]
+
+  - name: process.file.sha256
+    type: String
+    description: "SHA-256 hash of the process image. Primary IOC for hash hunting/enrichment."
+    sampleValues: ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"]
+
+  - name: process.file.sha1
+    type: String
+    description: "SHA-1 hash of the process image."
+    sampleValues: ["da39a3ee5e6b4b0d3255bfef95601890afd80709"]
+
+  - name: process.file.md5
+    type: String
+    description: "MD5 hash of the process image; often null."

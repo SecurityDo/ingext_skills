@@ -1,0 +1,27 @@
+description: >-
+  Audit trail of Duo administrative changes that can weaken MFA enforcement:
+  bypass-code creation, activation resets, secret-key views, and deletions or
+  edits of policies, integrations, and admin accounts. Excludes the automated
+  directory-sync actor so only human/API-driven changes remain, and renders the
+  raw change detail alongside a readable action + object line. Cross-check any
+  bypass_create row against DuoAuthentication for a matching
+  factor == "bypass_code" login by the same user shortly afterwards.
+datatype: DuoAdmin
+kql: |
+  DuoAdmin
+  | where timestamp > ago(30d)
+  | where username !startswith "Active Directory User Sync"
+  | where action in ("bypass_create", "user_reset_activation", "integration_skey_view",
+                     "policy_update", "policy_delete", "integration_update",
+                     "integration_delete", "admin_create", "admin_update",
+                     "admin_delete", "user_delete", "group_delete")
+  | extend Change = strcat(action, " -> ", object),
+           Detail = tostring(description)
+  | project timestamp, username, action, object, Change, Detail
+  | order by timestamp desc
+tags: [duo, cisco, admin, audit, mfa, bypass, change-control]
+expected_output: |
+  Sensitive Duo admin changes over the last 30 days (sanitized).
+
+  timestamp             username                 action         object       Change                       Detail
+  2026-07-21T14:15:52Z  adele.vance@contoso.com  bypass_create  acontractor  bypass_create -> acontractor {"bypass": "generated", "count": 1, "valid_secs": 3600, "remaining_uses": 1, "auto_generated": true}

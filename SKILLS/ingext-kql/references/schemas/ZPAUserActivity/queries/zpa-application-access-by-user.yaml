@@ -1,0 +1,26 @@
+description: >-
+  Private application access through ZPA over the last 24 hours, summarized by
+  user and application. Counts distinct app connections (by ConnectionID, since
+  one connection can emit open/active/close records) and sums transfer volume
+  from the lifetime byte counters on each connection's latest record — useful
+  for seeing who is reaching which internal applications and spotting unusual
+  access or data volume.
+datatype: ZPAUserActivity
+kql: |
+  ZPAUserActivity
+  | where timestamp > ago(24h)
+  | summarize arg_max(timestamp, ConnectionStatus, ZENTotalBytesRxClient, ZENTotalBytesTxClient)
+      by ConnectionID, Username, Application, AppGroup, Host, ServicePort
+  | summarize
+      Connections = count(),
+      BytesUp = sum(ZENTotalBytesRxClient),
+      BytesDown = sum(ZENTotalBytesTxClient)
+      by Username, Application, Host, ServicePort
+  | order by Connections desc
+tags: [zscaler, zpa, private-access, application, user, network]
+expected_output: |
+  ZPA application access by user (sanitized).
+
+  Username                  Application         Host                 ServicePort  Connections  BytesUp  BytesDown
+  adele.vance@contoso.com   Domain Controllers  addc02.contoso.int   135          42           13776    11760
+  lee.gu@contoso.com        HR Portal           hrweb.contoso.int    443          17           88214    923410

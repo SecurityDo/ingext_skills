@@ -1,0 +1,59 @@
+description: >-
+  Devices where Microsoft Defender Antivirus is not actually protecting: not in
+  active mode, security intelligence or engine out of date, definitions older than
+  two days, or the last scan failed. This is a different question from EDR sensor
+  health in msDefenderMachine — a device can be healthStatus Active and have AV
+  disabled. Note the typing: avMode is a string-typed integer ("0" = Active) and
+  the up-to-date fields are the strings "True"/"False"/"Unknown", so all
+  comparisons here are string comparisons. Passive mode (1/5) is normal where a
+  third-party AV is primary, so it is reported but ranked below Disabled and
+  EDRBlocked.
+datatype: msDefenderAvHealth
+kql: |
+  msDefenderAvHealth
+  | extend
+      AvModeName    = case(avMode == "0", "Active", avMode == "1", "Passive",
+                           avMode == "2", "Disabled", avMode == "4", "EDRBlocked",
+                           avMode == "5", "PassiveAudit", "Other"),
+      SignatureAge  = datetime_diff('hour', now(), todatetime(avSignatureUpdateTime))
+  | extend
+      NoActiveAv    = avMode in ("2", "4"),
+      PassiveAv     = avMode in ("1", "5"),
+      SigOutOfDate  = avIsSignatureUpToDate =~ "False" or SignatureAge > 48,
+      EngineOld     = avIsEngineUpToDate =~ "False",
+      PlatformOld   = avIsPlatformUpToDate =~ "False",
+      ScanFailed    = quickScanResult == "Failed" or fullScanResult == "Failed"
+  | where NoActiveAv or PassiveAv or SigOutOfDate or EngineOld or PlatformOld or ScanFailed
+  | extend Reasons = strcat_array(pack_array(
+      iff(NoActiveAv, strcat("no-active-av:", AvModeName), ""),
+      iff(PassiveAv, strcat("passive:", AvModeName), ""),
+      iff(SigOutOfDate, "signatures-stale", ""),
+      iff(EngineOld, "engine-outdated", ""),
+      iff(PlatformOld, "platform-outdated", ""),
+      iff(ScanFailed, "scan-failed", "")), " ")
+  | project
+      computerDnsName,
+      machineId,
+      AvModeName,
+      Reasons,
+      SignatureAgeHours = SignatureAge,
+      avSignatureVersion,
+      avIsSignatureUpToDate,
+      avEngineVersion,
+      avPlatformVersion,
+      quickScanResult,
+      quickScanError,
+      LastQuickScan = todatetime(quickScanTime),
+      osPlatform,
+      osVersion,
+      rbacGroupName,
+      LastSeen = todatetime(lastSeenTime)
+  | order by NoActiveAv desc, SignatureAgeHours desc
+tags: [microsoft, defender, mde, antivirus, av, posture, compliance, hygiene, security]
+expected_output: |
+  Devices with an antivirus protection gap, worst first (sanitized).
+
+  computerDnsName         machineId                                 AvModeName  Reasons                            SignatureAgeHours  avSignatureVersion  avIsSignatureUpToDate  avEngineVersion   avPlatformVersion  quickScanResult  quickScanError  LastQuickScan         osPlatform  osVersion         rbacGroupName         LastSeen
+  corp-ws118.contoso.com  2f6cd8e8f524eee8013d3a43f529813c95e1dd18  Disabled    no-active-av:Disabled signatures-stale  412              1.443.118.0         False                  1.1.25090.1010    4.18.25090.1010    Completed                        2026-07-13T04:12:08Z  Windows10   10.0.19045.1889   Windows Workstations  2026-07-30T06:15:44Z
+  corp-ws207.contoso.com  3a7de9f9a635fff9124e4b54a63a924da6f2ee29  Passive     passive:Passive                    9                  1.455.420.0         True                   1.1.26060.3008    4.18.26060.3008    Completed                        2026-07-30T05:31:19Z  Windows11   10.0.26100.4652   Windows Workstations  2026-07-30T15:44:02Z
+  corp-ws042.contoso.com  9eaf3a8b5962e0e6b1af9ec756664a9b823df2d1  Active      platform-outdated                  15                 1.455.420.0         True                   1.1.26060.3008    4.18.25050.5      Completed                        2026-07-30T07:46:21Z  Windows10   10.0.19045.1889   Windows Workstations  2026-07-30T15:02:16Z

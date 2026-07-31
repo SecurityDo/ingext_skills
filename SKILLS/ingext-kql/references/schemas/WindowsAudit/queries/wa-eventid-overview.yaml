@@ -1,0 +1,32 @@
+description: >-
+  Windows audit feed overview: counts records by EventID with its description
+  and success/failure split, over the selected time range. Use it first, to see
+  which audit categories are actually being collected before writing a detection
+  — Windows audit policy varies enormously between estates, and a query for
+  4688 or 5145 returns nothing if those subcategories were never enabled. The
+  Hosts column tells you the collection breadth for each event type; an EventID
+  reported by only one or two hosts usually means audit policy was applied
+  inconsistently rather than that the activity is rare.
+datatype: WindowsAudit
+kql: |
+  WindowsAudit
+  | where timestamp > ago(1d)
+  | summarize
+      Events = count(),
+      Hosts = dcount(Hostname),
+      Failures = countif(EventType == "AUDIT_FAILURE"),
+      Description = any(EventIDDescription),
+      Category = any(Category),
+      LastSeen = max(timestamp)
+      by EventID
+  | order by Events desc
+tags: [windows, audit, overview, coverage, security]
+expected_output: |
+  Audit volume grouped by EventID with collection breadth (sanitized).
+
+  EventID  Events    Hosts  Failures  Description                                    Category               LastSeen
+  4624     1284551   412    0         An account was successfully logged on          Logon                  2026-07-27T21:30:09Z
+  4634     1190228   412    0         An account was logged off                      Logoff                 2026-07-27T21:30:11Z
+  4769     418902    4      1204      A Kerberos service ticket was requested        Kerberos Service Ticket Operations  2026-07-27T21:30:08Z
+  4688     92104     38     0         A new process has been created                 Process Creation       2026-07-27T21:29:58Z
+  4625     3117      96     3117      An account failed to log on                    Logon                  2026-07-27T21:28:44Z

@@ -1,0 +1,34 @@
+description: >-
+  MITRE ATT&CK rollup of SentinelOne threats: expands each threat's behavioral
+  indicators and their mapped ATT&CK tactics/techniques, then counts distinct
+  threats and affected endpoints per tactic/technique over the selected window.
+  Use it to see which adversary behaviors dominate detections and to pivot from a
+  technique to the underlying threats. Relies on the indicators[].tactics[]
+  structure in the full threats feed.
+datatype: SentinelOneThreat
+kql: |
+  SentinelOneThreat
+  | where timestamp > ago(30d)
+  | mv-expand indicators
+  | mv-expand tactic = indicators.tactics
+  | mv-expand technique = tactic.techniques
+  | project
+      Tactic = tostring(tactic.name),
+      Technique = tostring(technique.name),
+      TechniqueLink = tostring(technique.link),
+      ThreatId = tostring(threatInfo.threatId),
+      Host = tostring(agentRealtimeInfo.agentComputerName)
+  | where isnotempty(Tactic)
+  | summarize
+      Threats = dcount(ThreatId),
+      Endpoints = dcount(Host),
+      AnyLink = any(TechniqueLink)
+      by Tactic, Technique
+  | order by Threats desc
+tags: [sentinelone, edr, threats, mitre, attack, security]
+expected_output: |
+  Threat counts grouped by ATT&CK tactic/technique (sanitized).
+
+  Tactic           Technique                            Threats  Endpoints  AnyLink
+  Defense Evasion  Exploitation for Defense Evasion     14       12         https://attack.mitre.org/techniques/T1211/
+  Credential Access  Keychain                           3        3          https://attack.mitre.org/techniques/T1555/001/

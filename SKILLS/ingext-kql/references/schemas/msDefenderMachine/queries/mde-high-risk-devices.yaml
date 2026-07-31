@@ -1,0 +1,43 @@
+description: >-
+  Devices ranked by the two independent Defender ratings — riskScore (active
+  threat activity seen on the device) and exposureLevel (how attackable it is) —
+  weighted by the business value an administrator assigned. The two ratings move
+  independently, so the interesting rows are the ones scoring on both, and the
+  high-value devices score first regardless. Feeds triage: take the top rows to
+  MSDefenderAlert (by device name / mdeDeviceId) for what actually happened, and
+  to msDefenderVulnerability for what to fix.
+datatype: msDefenderMachine
+kql: |
+  msDefenderMachine
+  | where isnull(mergedIntoMachineId) and isExcluded != true
+  | where riskScore in ("Medium", "High") or exposureLevel in ("Medium", "High")
+  | extend
+      RiskRank     = case(riskScore == "High", 4, riskScore == "Medium", 3,
+                          riskScore == "Low", 2, riskScore == "Informational", 1, 0),
+      ExposureRank = case(exposureLevel == "High", 3, exposureLevel == "Medium", 2,
+                          exposureLevel == "Low", 1, 0),
+      ValueRank    = case(deviceValue == "High", 2, deviceValue == "Low", 0, 1)
+  | extend Priority = RiskRank * 10 + ExposureRank * 3 + ValueRank
+  | project
+      Priority,
+      computerDnsName,
+      id,
+      riskScore,
+      exposureLevel,
+      deviceValue,
+      osPlatform,
+      version,
+      healthStatus,
+      LastSeen = todatetime(lastSeen),
+      rbacGroupName,
+      machineTags,
+      LastExternalIp = lastExternalIpAddress
+  | order by Priority desc, computerDnsName asc
+tags: [microsoft, defender, mde, endpoint, risk, exposure, triage, prioritization, security]
+expected_output: |
+  Devices carrying active risk or high exposure, highest priority first (sanitized).
+
+  Priority  computerDnsName          id                                        riskScore  exposureLevel  deviceValue  osPlatform         version  healthStatus  LastSeen              rbacGroupName         machineTags       LastExternalIp
+  50        corp-dc01.contoso.com    5c9f0b1bc857bb1b346a6d76c85cb46fc814aa4b  High       High           High         WindowsServer2022  21H2     Active        2026-07-30T17:02:19Z  Domain Controllers    ["Crown Jewel"]   192.0.2.114
+  41        corp-ws101.contoso.com   1e5bc9d7e413ddd7902c2932e418702b84d0cc07  High       Medium         Normal       Windows11          24H2     Active        2026-07-30T17:48:26Z  Windows Workstations  []                192.0.2.114
+  32        corp-ws042.contoso.com   9eaf3a8b5962e0e6b1af9ec756664a9b823df2d1  Medium     High           Normal       Windows10          22H2     Active        2026-07-30T15:02:16Z  Windows Workstations  []                192.0.2.114

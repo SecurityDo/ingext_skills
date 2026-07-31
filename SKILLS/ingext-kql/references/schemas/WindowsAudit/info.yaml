@@ -1,0 +1,1151 @@
+schema: WindowsAudit
+description: >-
+  Windows audit events collected from the Windows Security event log (and a few
+  adjacent channels) and forwarded by NXLog's im_msvistalog module as JSON. Like
+  the Office365 audit stream, this is one wide, sparse schema: every record
+  carries a common NXLog/Windows envelope (EventID, EventTime, Hostname,
+  Channel, EventType, ...), and the numeric EventID selects which additional
+  fields are present. Use the per-field 'applicableEventIDs' list to know
+  whether a field is populated for the event you are querying, and always
+  constrain on EventID first — a query that filters on TargetUserName without
+  pinning EventID will mix logons, group changes and Kerberos ticket requests
+  into one result set.
+
+  The record is stored as a dynamic JSON document, so any field can be
+  referenced directly by name. Two typing rules matter when writing KQL:
+    * Fields from the event's <System> block (EventID, Task, Version, ProcessID,
+      ThreadID, RecordNumber, Keywords, OpcodeValue, SeverityValue) arrive as
+      JSON numbers.
+    * Fields from the event's <EventData> block arrive as strings, even when
+      they look numeric — LogonType is "3", KeyLength is "0", IpPort is "0",
+      SubjectLogonId is "0x0". Compare them as strings, or wrap in toint()/
+      tolong() first. Hex values (LogonId, Status, TicketOptions, AccessMask)
+      are lowercase "0x"-prefixed strings and should be compared as strings.
+
+  Several EventData fields carry Windows message-table references rather than
+  text — a "%%NNNN" token (for example ElevatedToken "%%1842" = Yes). The common
+  tokens are documented on the individual fields below.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Event timestamp (UTC), normalized to epoch milliseconds, derived from EventTime (when Windows generated the record). Primary time column for range filters (e.g. where timestamp > ago(1d)). Prefer this over EventTime/EventReceivedTime for time ranges; use EventReceivedTime only to measure collection lag."
+    applicableEventIDs: ["All"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+    applicableEventIDs: ["All"]
+
+  # ==========================================
+  # ENRICHMENT (Added by Ingext)
+  # ==========================================
+  - name: _behaviors
+    type: DynamicArray
+    description: "A list of behavior rule names that this event triggered. Each element is a string. Use mv-expand to flatten before grouping, e.g. `mv-expand _behaviors | summarize count() by Behavior = _behaviors`."
+    applicableEventIDs: ["All"]
+
+  - name: _ip.city
+    type: String
+    description: "GeoIP resolved city for the event's client IP (IpAddress / SourceAddress). Only meaningful for events carrying a routable public address; most Windows audit traffic is RFC1918 or ::1 and will not resolve."
+    applicableEventIDs: ["4624", "4625", "4648", "4768", "4769", "4771", "5140", "5145", "5156", "5157"]
+
+  - name: _ip.country
+    type: String
+    description: "GeoIP resolved country for the event's client IP."
+    applicableEventIDs: ["4624", "4625", "4648", "4768", "4769", "4771", "5140", "5145", "5156", "5157"]
+
+  - name: _ip.countryCode
+    type: String
+    description: "Two-letter country code for the event's client IP."
+    applicableEventIDs: ["4624", "4625", "4648", "4768", "4769", "4771", "5140", "5145", "5156", "5157"]
+
+  - name: _ip.isp
+    type: String
+    description: "Internet Service Provider of the client IP."
+    applicableEventIDs: ["4624", "4625", "4648", "4768", "4769", "4771", "5140", "5145", "5156", "5157"]
+
+  - name: _ip.org
+    type: String
+    description: "Organization owning the client IP ASN."
+    applicableEventIDs: ["4624", "4625", "4648", "4768", "4769", "4771", "5140", "5145", "5156", "5157"]
+
+  - name: _ip.latitude
+    type: Float
+    description: "GeoIP latitude of the client IP."
+    applicableEventIDs: ["4624", "4625", "4648", "4768", "4769", "4771", "5140", "5145", "5156", "5157"]
+
+  - name: _ip.longitude
+    type: Float
+    description: "GeoIP longitude of the client IP."
+    applicableEventIDs: ["4624", "4625", "4648", "4768", "4769", "4771", "5140", "5145", "5156", "5157"]
+
+  # ==========================================
+  # EVENT ENVELOPE (present on every record)
+  # ==========================================
+  - name: EventID
+    type: Integer
+    description: >-
+      The Windows event identifier. This is the discriminator for the whole
+      schema — it determines which EventData fields exist on the record and what
+      the event means. Always filter on it first. See the 'EventID catalogue'
+      section at the end of this file for the security-relevant identifiers
+      covered here.
+    sampleValues: ["4624", "4625", "4688", "4720", "4769", "5145"]
+    applicableEventIDs: ["All"]
+
+  - name: EventIDDescription
+    type: String
+    description: "Human-readable title for the EventID, added during ingest (e.g. \"An account was successfully logged on\"). Convenient for reports; do not filter on it — filter on the numeric EventID, which is stable."
+    sampleValues: ["An account was successfully logged on", "An account failed to log on", "A new process has been created"]
+    applicableEventIDs: ["All"]
+
+  - name: EventTime
+    type: DateTime
+    description: "When Windows generated the event on the originating host (local time as reported by the agent, second resolution). Source of the 'timestamp' column."
+    sampleValues: ["2026-07-27 21:30:09"]
+    applicableEventIDs: ["All"]
+
+  - name: EventReceivedTime
+    type: DateTime
+    description: "When the NXLog agent read the record out of the event log. Subtract EventTime from it to measure collection lag; a persistently growing gap means the agent is backlogged or the host clock has drifted."
+    sampleValues: ["2026-07-27 21:30:11"]
+    applicableEventIDs: ["All"]
+
+  - name: EventType
+    type: String
+    description: "Audit outcome. AUDIT_SUCCESS for a successful audited operation, AUDIT_FAILURE for a denied/failed one. For dual-outcome events (4768/4769/5145) this is the fastest success/failure filter; for 4625 it is always AUDIT_FAILURE. Non-audit channels use INFO/WARNING/ERROR."
+    sampleValues: ["AUDIT_SUCCESS", "AUDIT_FAILURE", "INFO"]
+    applicableEventIDs: ["All"]
+
+  - name: Hostname
+    type: String
+    description: "FQDN of the Windows host that generated the record (the <Computer> element). This is the machine where the session was created / the operation was audited — for a network logon it is the destination, not the client. For DC-only events (4768/4769/4771/4776) it is the domain controller that answered."
+    sampleValues: ["dc01.contoso.com", "wkstn-0142.contoso.com"]
+    applicableEventIDs: ["All"]
+
+  - name: Channel
+    type: String
+    description: "Windows event log channel the record came from. \"Security\" for audit events; other channels appear if the agent is configured to collect them (e.g. \"System\" for 7045 service installs, \"Microsoft-Windows-PowerShell/Operational\" for 4104 script blocks)."
+    sampleValues: ["Security", "System", "Microsoft-Windows-PowerShell/Operational"]
+    applicableEventIDs: ["All"]
+
+  - name: SourceName
+    type: String
+    description: "Event provider name. \"Microsoft-Windows-Security-Auditing\" for the audit subsystem; \"Microsoft-Windows-Eventlog\" for 1102 (audit log cleared); \"Service Control Manager\" for 7045."
+    sampleValues: ["Microsoft-Windows-Security-Auditing", "Microsoft-Windows-Eventlog"]
+    applicableEventIDs: ["All"]
+
+  - name: ProviderGuid
+    type: String
+    description: "GUID of the event provider. {54849625-5478-4994-A5BA-3E3B0328C30D} is Microsoft-Windows-Security-Auditing; {fc65ddd8-d6ef-4962-83d5-6e5cfe9ce148} is Microsoft-Windows-Eventlog (the provider for 1102)."
+    sampleValues: ["{54849625-5478-4994-A5BA-3E3B0328C30D}"]
+    applicableEventIDs: ["All"]
+
+  - name: Category
+    type: String
+    description: "The audit subcategory name, resolved by the agent from the numeric Task. Useful for grouping related EventIDs without enumerating them — e.g. Category == \"Logon\" covers 4624/4625/4648, \"Security Group Management\" covers 4727-4735 and 4756-4758."
+    sampleValues: ["Logon", "Logoff", "Special Logon", "Process Creation", "User Account Management", "Security Group Management", "Credential Validation", "Kerberos Service Ticket Operations", "Detailed File Share", "Audit Policy Change"]
+    applicableEventIDs: ["All"]
+
+  - name: Task
+    type: Integer
+    description: >-
+      Numeric audit subcategory identifier that Category is derived from; fixed
+      per EventID. Verified mappings: 12544 = Logon (4624, 4648), 12546 =
+      Account Lockout (4625), 12548 = Special Logon (4672), 13824 = User Account
+      Management (4720, 4740), 13826 = Security Group Management (4732), 14336 =
+      Credential Validation (4776), 14337 = Kerberos Service Ticket Operations
+      (4769), 14339 = Kerberos Authentication Service (4768), 12289 = Security
+      System Extension (4697), 12804 = Other Object Access Events (4698), 12810
+      = Filtering Platform Connection (5156), 12811 = Detailed File Share
+      (5145), 13568 = Audit Policy Change (4719), 104 = log-management (1102).
+      Prefer filtering on EventID or Category; Task is mostly useful for
+      grouping.
+    sampleValues: ["12544", "13824", "14337"]
+    applicableEventIDs: ["All"]
+
+  - name: Keywords
+    type: Long
+    description: >-
+      Windows keyword bitmask as a signed 64-bit integer. 0x8020000000000000
+      (audit success) = -9214364837600034816 and 0x8010000000000000 (audit
+      failure) = -9218868437227405312. NOTE: JSON consumers that parse large
+      integers as doubles will show a rounded value (e.g.
+      -9214364837600035000); do not test Keywords for exact equality — use
+      EventType instead, which carries the same success/failure information as
+      text.
+    sampleValues: ["-9214364837600034816", "-9218868437227405312"]
+    applicableEventIDs: ["All"]
+
+  - name: Severity
+    type: String
+    description: "Agent-assigned severity label. INFO for audit-success records, WARNING for most audit-failure records."
+    sampleValues: ["INFO", "WARNING", "ERROR"]
+    applicableEventIDs: ["All"]
+
+  - name: SeverityValue
+    type: Integer
+    description: "Numeric form of Severity (2 = INFO, 3 = WARNING, 4 = ERROR)."
+    sampleValues: ["2", "3"]
+    applicableEventIDs: ["All"]
+
+  - name: RecordNumber
+    type: Long
+    description: "Monotonically increasing record number within the host's event log. Combined with Hostname it uniquely identifies a record and can be used for deduplication; a backwards jump indicates the log was cleared or wrapped."
+    sampleValues: ["165621415"]
+    applicableEventIDs: ["All"]
+
+  - name: Version
+    type: Integer
+    description: "Schema version of the event definition. Matters for field availability: 4624 version 2 (Windows 10 / Server 2016+) added RestrictedAdminMode, VirtualAccount, ElevatedToken, TargetLinkedLogonId and TargetOutbound*; 4688 version 2 added TargetUser*/ParentProcessName; 4768/4769 version 2 (Jan 2025 cumulative update and later) added the encryption-type and ticket-hash fields."
+    sampleValues: ["0", "1", "2"]
+    applicableEventIDs: ["All"]
+
+  - name: ProcessID
+    type: Integer
+    description: "Decimal process ID from the event's <Execution> block — the process that *emitted* the record, normally lsass.exe for Security-Auditing events. This is NOT the audited/subject process; that one is in the EventData fields ProcessName / NewProcessName."
+    sampleValues: ["812", "716"]
+    applicableEventIDs: ["All"]
+
+  - name: ThreadID
+    type: Integer
+    description: "Thread ID from the event's <Execution> block. Diagnostic only."
+    sampleValues: ["1712"]
+    applicableEventIDs: ["All"]
+
+  - name: Opcode
+    type: String
+    description: "Event opcode name; \"Info\" for essentially all audit events."
+    sampleValues: ["Info"]
+    applicableEventIDs: ["All"]
+
+  - name: OpcodeValue
+    type: Integer
+    description: "Numeric form of Opcode; 0 for audit events."
+    sampleValues: ["0"]
+    applicableEventIDs: ["All"]
+
+  - name: ActivityID
+    type: String
+    description: "Correlation GUID from the event's <Correlation> element, when the provider set one. Records sharing an ActivityID belong to the same logical operation. Frequently absent."
+    sampleValues: ["{00000000-0000-0000-0000-000000000001}"]
+    applicableEventIDs: ["All"]
+
+  - name: SourceModuleName
+    type: String
+    description: "NXLog input module instance that collected the record (collector-side config name, e.g. \"security_in\"). Use it to separate log sources if one agent collects several channels."
+    sampleValues: ["security_in"]
+    applicableEventIDs: ["All"]
+
+  - name: SourceModuleType
+    type: String
+    description: "NXLog input module type. \"im_msvistalog\" for the Windows Event Log reader."
+    sampleValues: ["im_msvistalog"]
+    applicableEventIDs: ["All"]
+
+  # ==========================================
+  # SUBJECT — the account that performed / requested the operation
+  # (present on nearly every Security-channel event)
+  # ==========================================
+  - name: SubjectUserSid
+    type: String
+    description: "SID of the account that requested or reported the operation. Well-known values: S-1-5-18 = LOCAL SYSTEM, S-1-5-19 = LOCAL SERVICE, S-1-5-20 = NETWORK SERVICE, S-1-0-0 = NULL SID (no subject — normal on 4624 network logons and on 4625 for the target account). For account-management and object-access events this is the actor, and the account being acted on is in Target*/Member*."
+    sampleValues: ["S-1-5-18", "S-1-0-0", "S-1-5-21-1111111111-2222222222-3333333333-1001"]
+    applicableEventIDs: ["4624", "4625", "4648", "4656", "4663", "4672", "4688", "4697", "4698", "4719", "4720", "4722", "4724", "4725", "4726", "4728", "4729", "4732", "4733", "4738", "4740", "4756", "4767", "4798", "4799", "5140", "5145", "1102"]
+
+  - name: SubjectUserName
+    type: String
+    description: "Name of the account that requested the operation. Ends with '$' for computer accounts (e.g. DC01$). \"-\" when there is no subject."
+    sampleValues: ["dadmin", "DC01$", "-"]
+    applicableEventIDs: ["4624", "4625", "4648", "4656", "4663", "4672", "4688", "4697", "4698", "4719", "4720", "4722", "4724", "4725", "4726", "4728", "4729", "4732", "4733", "4738", "4740", "4756", "4767", "4798", "4799", "5140", "5145", "1102"]
+
+  - name: SubjectDomainName
+    type: String
+    description: "Domain (or computer name, for local accounts) of the subject. \"NT AUTHORITY\" for well-known principals such as SYSTEM and ANONYMOUS LOGON."
+    sampleValues: ["CONTOSO", "NT AUTHORITY", "-"]
+    applicableEventIDs: ["4624", "4625", "4648", "4656", "4663", "4672", "4688", "4697", "4698", "4719", "4720", "4722", "4724", "4725", "4726", "4728", "4729", "4732", "4733", "4738", "4740", "4756", "4767", "4798", "4799", "5140", "5145", "1102"]
+
+  - name: SubjectLogonId
+    type: String
+    description: "Hexadecimal logon-session ID of the subject, as a string (e.g. \"0x3e7\"). 0x3e7 is the SYSTEM session, 0x3e4 NETWORK SERVICE, 0x3e5 LOCAL SERVICE. Join key: the same value appears as TargetLogonId on the 4624 that created the session, which lets you attribute a process creation, share access or group change back to a specific logon (and therefore to a source IP)."
+    sampleValues: ["0x3e7", "0x0", "0x37099632"]
+    applicableEventIDs: ["4624", "4625", "4648", "4656", "4663", "4672", "4688", "4697", "4698", "4719", "4720", "4722", "4724", "4725", "4726", "4728", "4729", "4732", "4733", "4738", "4740", "4756", "4767", "4798", "4799", "5140", "5145", "1102"]
+
+  # ==========================================
+  # TARGET ACCOUNT — the identity that was authenticated / created / changed
+  # ==========================================
+  - name: TargetUserSid
+    type: String
+    description: "SID of the account the event is about — the account that logged on (4624), failed to log on (4625, where it is often S-1-0-0 because the name did not resolve), or logged off (4634/4647)."
+    sampleValues: ["S-1-5-18", "S-1-0-0", "S-1-5-21-1111111111-2222222222-3333333333-1001"]
+    applicableEventIDs: ["4624", "4625", "4634", "4647", "4778", "4779", "4964"]
+
+  - name: TargetSid
+    type: String
+    description: "SID of the object the operation acted on. Note the naming split: logon events use TargetUserSid, whereas account-management events (4720/4722/4724/4725/4726/4738/4740/4767) and group events (4728/4732/4756, where it is the *group's* SID) use TargetSid."
+    sampleValues: ["S-1-5-21-1111111111-2222222222-3333333333-1105"]
+    applicableEventIDs: ["4720", "4722", "4724", "4725", "4726", "4728", "4729", "4732", "4733", "4738", "4740", "4756", "4767", "4768", "4798", "4799"]
+
+  - name: TargetUserName
+    type: String
+    description: >-
+      The account name the event is about. Its meaning shifts with EventID, so
+      always pin EventID before aggregating on it:
+        * 4624/4625/4634/4647 — the account that logged on / failed / logged off.
+          A trailing '$' means a computer account (machine-to-machine traffic,
+          usually high-volume noise you want to exclude).
+        * 4648 — the account whose credentials were supplied (not the caller;
+          the caller is SubjectUserName).
+        * 4720/4722/4724/4725/4726/4738/4740/4767 — the account created,
+          enabled, reset, disabled, deleted, changed, locked out or unlocked.
+        * 4728/4729/4732/4733/4756/4757 — the GROUP name, not a user. The member
+          added or removed is in MemberName/MemberSid.
+        * 4768/4776 — the account requesting the TGT / being validated.
+        * 4769 — the requesting account in UPN form (user@REALM).
+        * 4798/4799 — the user or group whose membership was enumerated.
+    sampleValues: ["adele.vance", "WKSTN-0142$", "Domain Admins", "dadmin@CONTOSO.COM"]
+    applicableEventIDs: ["4624", "4625", "4634", "4647", "4648", "4720", "4722", "4724", "4725", "4726", "4728", "4729", "4732", "4733", "4738", "4740", "4756", "4767", "4768", "4769", "4771", "4776", "4778", "4779", "4798", "4799", "4964"]
+
+  - name: TargetDomainName
+    type: String
+    description: "Domain (or workstation name, for local accounts) of TargetUserName. On 4768/4769 this is the Kerberos realm and is often the uppercase full domain name."
+    sampleValues: ["CONTOSO", "CONTOSO.COM", "WKSTN-0142"]
+    applicableEventIDs: ["4624", "4625", "4634", "4647", "4648", "4720", "4722", "4724", "4725", "4726", "4728", "4729", "4732", "4733", "4738", "4740", "4756", "4767", "4768", "4769", "4778", "4779", "4798", "4799", "4964"]
+
+  - name: TargetLogonId
+    type: String
+    description: "Hexadecimal ID of the logon session that was created (4624) or torn down (4634/4647), as a string. This is the primary correlation key for session reconstruction: join 4624.TargetLogonId to 4672.SubjectLogonId (privileged session), 4688.SubjectLogonId (what the session ran), 5145.SubjectLogonId (what it touched) and 4634.TargetLogonId (when it ended)."
+    sampleValues: ["0x37099632", "0x3e7"]
+    applicableEventIDs: ["4624", "4634", "4647", "4688", "4964"]
+
+  # ==========================================
+  # LOGON DETAIL — 4624 / 4625 / 4634
+  # ==========================================
+  - name: LogonType
+    type: String
+    description: >-
+      How the session was established, as a NUMERIC STRING (compare as "3", not
+      3). Values: 0 System, 2 Interactive (console), 3 Network (SMB, most
+      machine-to-machine traffic — by far the highest volume), 4 Batch
+      (scheduled task), 5 Service, 7 Unlock, 8 NetworkCleartext (password sent
+      unhashed — worth alerting on), 9 NewCredentials (runas /netonly, a classic
+      lateral-movement pattern), 10 RemoteInteractive (RDP), 11
+      CachedInteractive, 12 CachedRemoteInteractive, 13 CachedUnlock. Mismatches
+      matter: an administrative account arriving as type 4 or 5, or a service
+      account arriving as type 10, is worth investigating.
+    sampleValues: ["3", "2", "10", "5"]
+    applicableEventIDs: ["4624", "4625", "4634"]
+
+  - name: LogonProcessName
+    type: String
+    description: "The trusted logon process that handled the authentication. \"Kerberos\" and \"NtLmSsp\" for network logons, \"User32\" for interactive console logons, \"Advapi\" for service/batch and for programmatic LogonUser() calls (seccessive Advapi logons from one host are a credential-spraying signature), \"seclogo\" for runas."
+    sampleValues: ["Kerberos", "NtLmSsp", "User32", "Advapi", "seclogo"]
+    applicableEventIDs: ["4624", "4625"]
+
+  - name: AuthenticationPackageName
+    type: String
+    description: "The authentication package used. \"Kerberos\", \"NTLM\", or \"Negotiate\" (which selects Kerberos when it can and falls back to NTLM otherwise). NTLM on a Kerberos-only network, or NTLM to a host addressed by IP rather than name, is a common pass-the-hash / relay indicator."
+    sampleValues: ["Kerberos", "NTLM", "Negotiate"]
+    applicableEventIDs: ["4624", "4625"]
+
+  - name: LmPackageName
+    type: String
+    description: "NTLM sub-protocol actually negotiated: \"NTLM V2\", \"NTLM V1\", or \"LM\". \"-\" when the logon was not NTLM. Any \"NTLM V1\" or \"LM\" is a downgrade worth reporting."
+    sampleValues: ["-", "NTLM V2", "NTLM V1"]
+    applicableEventIDs: ["4624", "4625"]
+
+  - name: KeyLength
+    type: String
+    description: "NTLM session-security key length as a numeric string (\"128\", \"56\"). Always \"0\" for Kerberos, and also \"0\" when Kerberos was chosen through the Negotiate package."
+    sampleValues: ["0", "128"]
+    applicableEventIDs: ["4624", "4625"]
+
+  - name: WorkstationName
+    type: String
+    description: "NetBIOS name of the machine the logon came from, as supplied by the client. Populated for NTLM; typically \"-\" for Kerberos network logons, which carry no workstation information. Because the client supplies it, it is spoofable — corroborate with IpAddress."
+    sampleValues: ["WKSTN-0142", "-"]
+    applicableEventIDs: ["4624", "4625"]
+
+  - name: IpAddress
+    type: String
+    description: "Source network address of the operation. Formats vary: IPv4, IPv6, ::ffff:<IPv4>, \"::1\"/\"127.0.0.1\" for local, and \"-\" when the authenticating service gave LSASS no network context (common for Kerberos and for interactive logons). Normalize the ::ffff: prefix before joining on it."
+    sampleValues: ["192.0.2.45", "::1", "::ffff:192.0.2.45", "-"]
+    applicableEventIDs: ["4624", "4625", "4648", "4656", "4663", "4768", "4769", "4771", "5140", "5145"]
+
+  - name: IpPort
+    type: String
+    description: "Source port as a numeric string. \"0\" for interactive/local operations. On 4768/4769, a value below 1024 is anomalous and worth examining."
+    sampleValues: ["0", "54393"]
+    applicableEventIDs: ["4624", "4625", "4648", "4768", "4769", "4771", "5140", "5145"]
+
+  - name: LogonGuid
+    type: String
+    description: "GUID linking a Kerberos logon on the target host to the ticket request on the domain controller. Join 4624/4648.LogonGuid to 4769.LogonGuid to tie a session back to the TGS request that produced it. \"{00000000-0000-0000-0000-000000000000}\" when not captured (all NTLM logons)."
+    sampleValues: ["{00000000-0000-0000-0000-000000000001}", "{00000000-0000-0000-0000-000000000000}"]
+    applicableEventIDs: ["4624", "4648", "4769"]
+
+  - name: TransmittedServices
+    type: String
+    description: "Kerberos-only. The list of SPNs traversed when the logon resulted from S4U (Service-for-User) delegation. \"-\" for ordinary logons. A non-\"-\" value on an unexpected account is a delegation-abuse signal."
+    sampleValues: ["-"]
+    applicableEventIDs: ["4624", "4625", "4769"]
+
+  - name: ImpersonationLevel
+    type: String
+    description: "Message-table token for the impersonation level granted to the new session: %%1832 = Identification, %%1833 = Impersonation (the common case), %%1840 = Delegation, and an empty value for Anonymous. Present from 4624 version 1."
+    sampleValues: ["%%1833", "%%1840"]
+    applicableEventIDs: ["4624"]
+
+  - name: ElevatedToken
+    type: String
+    description: "Whether the new session holds an elevated (administrative) token. %%1842 = Yes, %%1843 = No. Filtering 4624 on ElevatedToken == \"%%1842\" is the cleanest way to enumerate privileged logons. Present from 4624 version 2."
+    sampleValues: ["%%1842", "%%1843"]
+    applicableEventIDs: ["4624"]
+
+  - name: VirtualAccount
+    type: String
+    description: "Whether the account is a virtual/managed service account. %%1842 = Yes, %%1843 = No. Present from 4624 version 2."
+    sampleValues: ["%%1843", "%%1842"]
+    applicableEventIDs: ["4624"]
+
+  - name: RestrictedAdminMode
+    type: String
+    description: "Whether an RDP logon used Restricted Admin mode. \"Yes\"/\"No\" for LogonType 10; \"-\" for every other logon type. \"Yes\" means a hash rather than a password crossed the wire — legitimate for hardened admin workflows, and a pass-the-hash indicator otherwise. Present from 4624 version 2."
+    sampleValues: ["-", "Yes", "No"]
+    applicableEventIDs: ["4624"]
+
+  - name: TargetLinkedLogonId
+    type: String
+    description: "Hexadecimal ID of the paired logon session for UAC split tokens (the elevated session linked to the filtered one, or vice versa). \"0x0\" when there is no pair. Present from 4624 version 2."
+    sampleValues: ["0x0", "0x37099640"]
+    applicableEventIDs: ["4624"]
+
+  - name: TargetOutboundUserName
+    type: String
+    description: "Account name used for outbound network connections. Only meaningful for LogonType 9 (NewCredentials, i.e. runas /netonly); \"-\" otherwise. When populated it names the credential an operator is projecting onto other hosts — high-value for lateral-movement hunting. Present from 4624 version 2."
+    sampleValues: ["-", "svc-backup"]
+    applicableEventIDs: ["4624"]
+
+  - name: TargetOutboundDomainName
+    type: String
+    description: "Domain of TargetOutboundUserName; \"-\" outside LogonType 9. Present from 4624 version 2."
+    sampleValues: ["-", "CONTOSO"]
+    applicableEventIDs: ["4624"]
+
+  - name: ProcessName
+    type: String
+    description: "Full path of the process associated with the audited operation — the process that attempted the logon (4624/4625/4648), requested the handle (4656/4663), or enumerated the group (4798/4799). \"-\" when there is none (network logons). Note this is the EventData process, distinct from the envelope's ProcessID."
+    sampleValues: ["C:\\Windows\\System32\\svchost.exe", "C:\\Windows\\System32\\winlogon.exe", "-"]
+    applicableEventIDs: ["4624", "4625", "4648", "4656", "4663", "4670"]
+
+  - name: ProcessId
+    type: String
+    description: "Hexadecimal process ID of the process associated with the audited operation, as a string (e.g. \"0x44c\"). Convert with a base-16 parse before comparing to the decimal PIDs in 4688's NewProcessId. Beware the case difference from the envelope field ProcessID."
+    sampleValues: ["0x44c", "0x0"]
+    applicableEventIDs: ["4624", "4625", "4648", "4656", "4663", "4670", "4798", "4799"]
+
+  # ==========================================
+  # LOGON FAILURE — 4625
+  # ==========================================
+  - name: Status
+    type: String
+    description: >-
+      Hexadecimal NTSTATUS for the operation, as a string. On 4625 it is the
+      top-level failure reason and is frequently the generic 0xc000006d; the
+      specific cause is then in SubStatus. On 4768/4769/4771 it is the Kerberos
+      result code ("0x0" = success). On 4776 it is the NTLM validation error.
+      Common NTSTATUS values: 0xc0000064 user does not exist (enumeration when
+      repeated), 0xc000006a bad password (brute force when repeated),
+      0xc000006d generic bad username/password, 0xc000006e account restriction,
+      0xc000006f logon outside permitted hours, 0xc0000070 logon from
+      unauthorized workstation, 0xc0000071 expired password, 0xc0000072 account
+      disabled, 0xc000015b logon type not granted, 0xc0000193 account expired,
+      0xc0000224 must change password at next logon, 0xc0000234 account locked
+      out, 0xc0000371 no secret material for the account.
+    sampleValues: ["0x0", "0xc000006d", "0xc0000234", "0xc000006a"]
+    applicableEventIDs: ["4625", "4768", "4769", "4771", "4776"]
+
+  - name: SubStatus
+    type: String
+    description: "Hexadecimal NTSTATUS giving the specific reason a 4625 failed, using the same value table as Status. When Status is 0xc000006d, SubStatus is the field that distinguishes \"no such user\" (0xc0000064) from \"wrong password\" (0xc000006a) — the difference between account enumeration and password guessing. \"0x0\" when unused."
+    sampleValues: ["0x0", "0xc0000064", "0xc000006a"]
+    applicableEventIDs: ["4625"]
+
+  - name: FailureReason
+    type: String
+    description: "Message-table token summarizing the 4625 failure, e.g. %%2307 = \"Account locked out\", %%2313 = \"Unknown user name or bad password\". The token set is not fully documented by Microsoft; prefer Status/SubStatus, which are authoritative and stable."
+    sampleValues: ["%%2313", "%%2307"]
+    applicableEventIDs: ["4625"]
+
+  # ==========================================
+  # EXPLICIT CREDENTIALS — 4648
+  # ==========================================
+  - name: TargetServerName
+    type: String
+    description: "The server the explicit-credential logon was directed at. \"localhost\" when the process ran locally (runas on the same box). A remote hostname here is a direct lateral-movement indicator: SubjectUserName used TargetUserName's credentials against TargetServerName."
+    sampleValues: ["localhost", "fileserver01.contoso.com"]
+    applicableEventIDs: ["4648"]
+
+  - name: TargetInfo
+    type: String
+    description: "Additional target detail for 4648, usually the service or server string (often identical to TargetServerName)."
+    sampleValues: ["localhost", "cifs/fileserver01.contoso.com"]
+    applicableEventIDs: ["4648"]
+
+  - name: TargetLogonGuid
+    type: String
+    description: "Logon GUID of the credential that was supplied on a 4648, correlating to the 4769 TGS request made with it."
+    sampleValues: ["{00000000-0000-0000-0000-000000000002}"]
+    applicableEventIDs: ["4648"]
+
+  # ==========================================
+  # PRIVILEGES — 4672 / account management
+  # ==========================================
+  - name: PrivilegeList
+    type: String
+    description: >-
+      Space-separated list of sensitive privileges. On 4672 it is the privilege
+      set assigned to a brand-new logon session, which is the standard marker
+      for "an administrative session just started" — note it fires for every
+      SYSTEM logon too, so exclude S-1-5-18/19/20 subjects before alerting.
+      Privileges worth singling out: SeDebugPrivilege (credential dumping),
+      SeTcbPrivilege, SeCreateTokenPrivilege, SeLoadDriverPrivilege,
+      SeBackupPrivilege / SeRestorePrivilege (bypass ACLs, NTDS.dit theft),
+      SeTakeOwnershipPrivilege, SeEnableDelegationPrivilege. On
+      account-management events this is the privileges used to perform the
+      operation, usually "-". Match with `has` / `contains`, not equality.
+    sampleValues: ["SeSecurityPrivilege SeTakeOwnershipPrivilege SeDebugPrivilege SeBackupPrivilege SeRestorePrivilege", "-"]
+    applicableEventIDs: ["4672", "4720", "4722", "4724", "4725", "4726", "4728", "4729", "4732", "4733", "4738", "4756", "4767"]
+
+  # ==========================================
+  # PROCESS CREATION — 4688 / 4689
+  # ==========================================
+  - name: NewProcessId
+    type: String
+    description: "Hexadecimal PID of the process that was created, as a string. Join to CreatorProcessId on child events to build a process tree within a host."
+    sampleValues: ["0x1a4c"]
+    applicableEventIDs: ["4688", "4689"]
+
+  - name: NewProcessName
+    type: String
+    description: "Full path of the executable that was launched. The core process-execution telemetry field: hunt on binaries outside %windir%/Program Files, on LOLBins (powershell.exe, wmic.exe, rundll32.exe, mshta.exe, certutil.exe, regsvr32.exe, bitsadmin.exe), and on execution from user-writable directories (\\Users\\, \\Temp\\, \\AppData\\, \\ProgramData\\)."
+    sampleValues: ["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "C:\\Users\\adele.vance\\AppData\\Local\\Temp\\update.exe"]
+    applicableEventIDs: ["4688", "4689"]
+
+  - name: CommandLine
+    type: String
+    description: "Full command line of the created process. Only populated when the \"Include command line in process creation events\" policy is enabled — it is empty by default, so verify coverage before relying on it. Highest-signal field in the whole schema: encoded PowerShell (-enc/-EncodedCommand), download cradles (IEX, DownloadString, Invoke-WebRequest), credential access (lsass, comsvcs.dll MiniDump), and discovery bursts (whoami/net group/nltest) all surface here."
+    sampleValues: ["powershell.exe -nop -w hidden -enc SQBFAFgAIAAoAA==", "\"C:\\Windows\\System32\\net.exe\" group \"Domain Admins\" /domain"]
+    applicableEventIDs: ["4688"]
+
+  - name: CreatorProcessId
+    type: String
+    description: "Hexadecimal PID of the parent process that spawned NewProcessName."
+    sampleValues: ["0x2b8"]
+    applicableEventIDs: ["4688"]
+
+  - name: CreatorProcessName
+    type: String
+    description: "Full path of the parent process. Present from 4688 version 2 (Windows 10 / Server 2016+). Parent/child anomalies are the classic detection: Office applications or browsers spawning cmd.exe/powershell.exe, w3wp.exe or sqlservr.exe spawning a shell, services.exe spawning an unsigned binary."
+    sampleValues: ["C:\\Windows\\System32\\services.exe", "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE"]
+    applicableEventIDs: ["4688"]
+
+  - name: ParentProcessName
+    type: String
+    description: "Parent process path as reported in 4688 version 2. Populated alongside CreatorProcessName; check both, as collectors and OS builds differ in which one they fill."
+    sampleValues: ["C:\\Windows\\explorer.exe"]
+    applicableEventIDs: ["4688"]
+
+  - name: TokenElevationType
+    type: String
+    description: "Message-table token for the token the new process received: %%1936 = Type 1, full token (UAC disabled, built-in Administrator, or a service account), %%1937 = Type 2, elevated token (\"Run as administrator\" or a manifest requiring elevation), %%1938 = Type 3, limited token (the normal case when UAC is on). Type 2 processes are the ones to review."
+    sampleValues: ["%%1938", "%%1937", "%%1936"]
+    applicableEventIDs: ["4688"]
+
+  - name: MandatoryLabel
+    type: String
+    description: "Integrity level SID of the new process: S-1-16-4096 Low, S-1-16-8192 Medium, S-1-16-12288 High, S-1-16-16384 System. A High/System label on a process launched from a user directory is worth flagging."
+    sampleValues: ["S-1-16-8192", "S-1-16-12288"]
+    applicableEventIDs: ["4688"]
+
+  # ==========================================
+  # ACCOUNT MANAGEMENT — 4720 / 4738 and relatives
+  # ==========================================
+  - name: SamAccountName
+    type: String
+    description: "sAMAccountName (pre-Windows 2000 logon name) of the account created or changed."
+    sampleValues: ["adele.vance"]
+    applicableEventIDs: ["4720", "4738", "4741", "4742"]
+
+  - name: DisplayName
+    type: String
+    description: "displayName attribute of the account. \"<value not set>\" is normal for newly created local accounts."
+    sampleValues: ["Adele Vance", "<value not set>"]
+    applicableEventIDs: ["4720", "4738"]
+
+  - name: UserPrincipalName
+    type: String
+    description: "userPrincipalName (internet-style login name) of the account. \"-\" for local accounts."
+    sampleValues: ["adele.vance@contoso.com", "-"]
+    applicableEventIDs: ["4720", "4738"]
+
+  - name: OldUacValue
+    type: String
+    description: "Hexadecimal SAM account-control flags before the change. Always \"0x0\" on 4720 (creation). Comparing OldUacValue to NewUacValue on 4738 is how you detect a security-relevant account modification."
+    sampleValues: ["0x0", "0x15"]
+    applicableEventIDs: ["4720", "4738", "4741", "4742"]
+
+  - name: NewUacValue
+    type: String
+    description: "Hexadecimal SAM account-control flags after the change. Bits worth alerting on: 0x0002 account disabled cleared/set, 0x0010 lockout, 0x10000 password never expires, 0x400000 DONT_REQUIRE_PREAUTH (enables AS-REP roasting), 0x80000 TRUSTED_FOR_DELEGATION, 0x1000000 TRUSTED_TO_AUTH_FOR_DELEGATION."
+    sampleValues: ["0x15", "0x211"]
+    applicableEventIDs: ["4720", "4738", "4741", "4742"]
+
+  - name: UserAccountControl
+    type: String
+    description: "Space-separated message-table tokens describing the account-control flags that changed, e.g. \"%%2080 %%2082 %%2084\" on creation, or a single %%2089 (\"Don't Expire Password - Enabled\") on a change. Read alongside Old/NewUacValue."
+    sampleValues: ["%%2080 %%2082 %%2084", "-"]
+    applicableEventIDs: ["4720", "4738", "4741", "4742"]
+
+  - name: PasswordLastSet
+    type: String
+    description: "pwdLastSet value of the account. \"%%1794\" is the token for <never>. A future timestamp, or <never> on an account being used, is anomalous."
+    sampleValues: ["%%1794"]
+    applicableEventIDs: ["4720", "4738"]
+
+  - name: AccountExpires
+    type: String
+    description: "accountExpires value; \"%%1794\" = <never>, which is the norm. Any other value on a newly created account is worth noting."
+    sampleValues: ["%%1794"]
+    applicableEventIDs: ["4720", "4738"]
+
+  - name: PrimaryGroupId
+    type: String
+    description: "RID of the account's primary group. 513 (Domain Users) is the expected value for users; 515 is Domain Computers, 516 Domain Controllers. Anything else on a user account should be reviewed."
+    sampleValues: ["513"]
+    applicableEventIDs: ["4720", "4738", "4741", "4742"]
+
+  - name: AllowedToDelegateTo
+    type: String
+    description: "SPNs this account may present delegated credentials to (msDS-AllowedToDelegateTo). Normally \"-\". A value appearing here on 4738 is a constrained-delegation grant — a well-known privilege-escalation path and a high-priority alert."
+    sampleValues: ["-", "cifs/dc01.contoso.com"]
+    applicableEventIDs: ["4720", "4738", "4741", "4742"]
+
+  - name: SidHistory
+    type: String
+    description: "sIDHistory of the object. Always \"-\" unless the account was migrated from another domain — a non-\"-\" value outside a migration window is a SID-history injection indicator."
+    sampleValues: ["-"]
+    applicableEventIDs: ["4720", "4738", "4741", "4742"]
+
+  - name: HomeDirectory
+    type: String
+    description: "homeDirectory attribute. Typically \"-\" on new accounts; a UNC path set at creation time is unusual."
+    sampleValues: ["-"]
+    applicableEventIDs: ["4720", "4738"]
+
+  - name: HomePath
+    type: String
+    description: "homeDrive attribute (drive letter mapped to HomeDirectory). Typically \"-\"."
+    sampleValues: ["-"]
+    applicableEventIDs: ["4720", "4738"]
+
+  - name: ScriptPath
+    type: String
+    description: "Logon-script path (scriptPath). Typically \"-\"; a script assigned at account creation is worth checking as a persistence mechanism."
+    sampleValues: ["-"]
+    applicableEventIDs: ["4720", "4738"]
+
+  - name: ProfilePath
+    type: String
+    description: "Roaming profile path (profilePath). Typically \"-\"."
+    sampleValues: ["-"]
+    applicableEventIDs: ["4720", "4738"]
+
+  - name: UserWorkstations
+    type: String
+    description: "Comma-separated list of workstations the account may log on from (userWorkstations). \"-\" means unrestricted."
+    sampleValues: ["-"]
+    applicableEventIDs: ["4720", "4738"]
+
+  - name: UserParameters
+    type: String
+    description: "userParameters blob; shows \"<value changed, but not displayed>\" on 4738 when dial-in/RAS settings were modified."
+    sampleValues: ["-", "<value changed, but not displayed>"]
+    applicableEventIDs: ["4720", "4738"]
+
+  - name: LogonHours
+    type: String
+    description: "logonHours restriction. \"%%1793\" = <value not set> (the norm for domain accounts); \"All\" for new local accounts."
+    sampleValues: ["%%1793", "All"]
+    applicableEventIDs: ["4720", "4738"]
+
+  # ==========================================
+  # GROUP MEMBERSHIP — 4728 / 4729 / 4732 / 4733 / 4756 / 4757
+  # ==========================================
+  - name: MemberName
+    type: String
+    description: "The member added to or removed from the group, as a distinguished name for domain groups (\"CN=adele.vance,CN=Users,DC=contoso,DC=com\"). Often \"-\" for local groups even when the member is a domain account — in that case resolve MemberSid instead. Remember TargetUserName on these events is the GROUP."
+    sampleValues: ["CN=adele.vance,CN=Users,DC=contoso,DC=com", "-"]
+    applicableEventIDs: ["4728", "4729", "4732", "4733", "4756", "4757"]
+
+  - name: MemberSid
+    type: String
+    description: "SID of the member added to or removed from the group. Always populated, so it is the reliable identifier when MemberName is \"-\". Well-known high-value RIDs: -500 built-in Administrator, -512 Domain Admins, -519 Enterprise Admins."
+    sampleValues: ["S-1-5-21-1111111111-2222222222-3333333333-1001"]
+    applicableEventIDs: ["4728", "4729", "4732", "4733", "4756", "4757"]
+
+  # ==========================================
+  # ACCOUNT LOCKOUT — 4740
+  # ==========================================
+  - name: CallerComputerName
+    type: String
+    description: "For 4740, the computer the failing authentication attempts came from, i.e. where the lockout originated. Note this is a machine name, not an IP, and it can be absent (\"-\") or unresolvable for non-domain sources."
+    sampleValues: ["WKSTN-0142", "-"]
+    applicableEventIDs: ["4740", "4767"]
+
+  # ==========================================
+  # KERBEROS — 4768 / 4769 / 4771
+  # ==========================================
+  - name: ServiceName
+    type: String
+    description: >-
+      Kerberos: the service the ticket was requested for. On 4768 it is
+      "krbtgt" (a TGT request). On 4769 it is the target service or computer
+      account — this is the field that reveals Kerberoasting: a burst of 4769
+      requests from one account for many distinct user-account SPNs. On 4697
+      this field instead holds the name of the installed service.
+    sampleValues: ["krbtgt", "MSSQLSvc", "FILESERVER01$", "AppHostSvc"]
+    applicableEventIDs: ["4768", "4769", "4771", "4697"]
+
+  - name: ServiceSid
+    type: String
+    description: "SID of the service account the ticket was requested for. The krbtgt account is always RID 502. NULL SID (S-1-5-21-...-0 or S-1-0-0) appears on failure events."
+    sampleValues: ["S-1-5-21-1111111111-2222222222-3333333333-502"]
+    applicableEventIDs: ["4768", "4769", "4771"]
+
+  - name: TicketOptions
+    type: String
+    description: "Hexadecimal Kerberos ticket-flag bitmask (KDCOptions). Common: 0x40810010 Forwardable+Renewable+Canonicalize+Renewable-ok, 0x40810000 Forwardable+Renewable+Canonicalize, 0x60810010 adds Forwarded. Forwarded/forwardable tickets on unexpected accounts point at unconstrained delegation abuse."
+    sampleValues: ["0x40810010", "0x40810000"]
+    applicableEventIDs: ["4768", "4769", "4771"]
+
+  - name: TicketEncryptionType
+    type: String
+    description: >-
+      Hexadecimal encryption suite used for the issued ticket. 0x12 =
+      AES256-CTS-HMAC-SHA1-96 and 0x11 = AES128 are the expected modern values;
+      0x17 = RC4-HMAC is the Kerberoasting signature (offline-crackable) and
+      should be alerted on for user-account SPNs; 0x1/0x3 are DES and should
+      never appear; 0xffffffff appears on failure events.
+    sampleValues: ["0x12", "0x17", "0xffffffff"]
+    applicableEventIDs: ["4768", "4769"]
+
+  - name: PreAuthType
+    type: String
+    description: "Kerberos pre-authentication type on 4768/4771, as a numeric string. 2 = PA-ENC-TIMESTAMP (standard password auth), 15/16/17 = smart-card (PKINIT), 138 = PA-ENCRYPTED-CHALLENGE (Kerberos Armoring/FAST), and 0 = no pre-authentication — which means the account has DONT_REQUIRE_PREAUTH set and is exposed to AS-REP roasting. Alert on 0."
+    sampleValues: ["2", "0", "15", "138"]
+    applicableEventIDs: ["4768", "4771"]
+
+  - name: SessionKeyEncryptionType
+    type: String
+    description: "Hexadecimal encryption suite used for the ticket's session key. Added by the January 2025 cumulative update (4768/4769 version 2); absent on older hosts. Same value table as TicketEncryptionType."
+    sampleValues: ["0x12"]
+    applicableEventIDs: ["4768", "4769"]
+
+  - name: AccountSupportedEncryptionTypes
+    type: String
+    description: "The requesting account's msDS-SupportedEncryptionTypes, hex plus decoded names (e.g. \"0x27 (DES, RC4, AES-Sk)\"). \"N/A\" when unavailable. Version 2 field (Jan 2025 CU and later)."
+    sampleValues: ["0x1F (DES, RC4, AES128-SHA96, AES256-SHA96)", "N/A"]
+    applicableEventIDs: ["4768", "4769"]
+
+  - name: AccountAvailableKeys
+    type: String
+    description: "Key types actually available for the account in Active Directory (e.g. \"AES-SHA1, RC4\"). An account with only RC4 keys cannot use AES and is a Kerberoasting target. Version 2 field."
+    sampleValues: ["AES-SHA1, RC4", "N/A"]
+    applicableEventIDs: ["4768", "4769"]
+
+  - name: ServiceSupportedEncryptionTypes
+    type: String
+    description: "The service account's msDS-SupportedEncryptionTypes, hex plus decoded names. Version 2 field."
+    sampleValues: ["0x1F (DES, RC4, AES128-SHA96, AES256-SHA96)"]
+    applicableEventIDs: ["4768", "4769"]
+
+  - name: ServiceAvailableKeys
+    type: String
+    description: "Key types available for the service account. Version 2 field."
+    sampleValues: ["AES-SHA1, RC4"]
+    applicableEventIDs: ["4768", "4769"]
+
+  - name: DCSupportedEncryptionTypes
+    type: String
+    description: "The answering domain controller's supported encryption types. Version 2 field."
+    sampleValues: ["0x1F (DES, RC4, AES128-SHA96, AES256-SHA96)"]
+    applicableEventIDs: ["4768", "4769"]
+
+  - name: DCAvailableKeys
+    type: String
+    description: "Key types available on the domain controller. Version 2 field."
+    sampleValues: ["AES-SHA1, RC4"]
+    applicableEventIDs: ["4768", "4769"]
+
+  - name: ClientAdvertizedEncryptionTypes
+    type: String
+    description: "Space-separated encryption types the Kerberos client offered. A client advertising only RC4/legacy types against an AES-capable domain is a strong downgrade indicator (many attack tools advertise a distinctive set). Version 2 field."
+    sampleValues: ["AES256-CTS-HMAC-SHA1-96 AES128-CTS-HMAC-SHA1-96 RC4-HMAC-NT"]
+    applicableEventIDs: ["4768", "4769"]
+
+  - name: PreAuthEncryptionType
+    type: String
+    description: "Hexadecimal encryption type selected for the pre-authentication exchange on 4768. Version 2 field."
+    sampleValues: ["0x12"]
+    applicableEventIDs: ["4768"]
+
+  - name: RequestTicketHash
+    type: String
+    description: "Base64 hash of the ticket the client presented in the request (4769). Version 2 field; useful for correlating a specific ticket across events and for spotting replayed/forged tickets."
+    applicableEventIDs: ["4769"]
+
+  - name: ResponseTicketHash
+    type: String
+    description: "Base64 hash of the ticket the KDC returned (4769). Version 2 field."
+    applicableEventIDs: ["4769"]
+
+  - name: ResponseTicket
+    type: String
+    description: "Base64 hash of the TGT the KDC returned (4768). Version 2 field."
+    applicableEventIDs: ["4768"]
+
+  - name: CertIssuerName
+    type: String
+    description: "Issuing CA of the smart-card certificate used for PKINIT authentication. Empty for password authentication. A CA name outside your PKI is an immediate alert (certificate-based AD attacks)."
+    applicableEventIDs: ["4768", "4771"]
+
+  - name: CertSerialNumber
+    type: String
+    description: "Serial number of the smart-card certificate used for PKINIT authentication."
+    applicableEventIDs: ["4768", "4771"]
+
+  - name: CertThumbprint
+    type: String
+    description: "Thumbprint of the smart-card certificate used for PKINIT authentication."
+    applicableEventIDs: ["4768", "4771"]
+
+  # ==========================================
+  # NTLM CREDENTIAL VALIDATION — 4776
+  # ==========================================
+  - name: PackageName
+    type: String
+    description: "Authentication package for a 4776 credential validation; always \"MICROSOFT_AUTHENTICATION_PACKAGE_V1_0\"."
+    sampleValues: ["MICROSOFT_AUTHENTICATION_PACKAGE_V1_0"]
+    applicableEventIDs: ["4776"]
+
+  - name: Workstation
+    type: String
+    description: "For 4776, the name of the computer the NTLM authentication originated from (the source, not the destination — the destination is not recorded in this event). Note the field is 'Workstation', not 'WorkstationName' as on 4624/4625. 4776 on a DC is the single best view of all domain NTLM authentication."
+    sampleValues: ["WKSTN-0142"]
+    applicableEventIDs: ["4776"]
+
+  # ==========================================
+  # OBJECT ACCESS — 4656 / 4660 / 4663 / 4670
+  # ==========================================
+  - name: ObjectServer
+    type: String
+    description: "The subsystem that owns the object; \"Security\" for file/registry auditing."
+    sampleValues: ["Security"]
+    applicableEventIDs: ["4656", "4660", "4663", "4670", "4690"]
+
+  - name: ObjectType
+    type: String
+    description: "The kind of object accessed: \"File\" (files and directories), \"Key\" (registry), \"Process\", \"Token\", \"SAM\", plus many kernel object types. Always \"File\" on 5140/5145."
+    sampleValues: ["File", "Key", "Process"]
+    applicableEventIDs: ["4656", "4660", "4663", "4670", "5140", "5145"]
+
+  - name: ObjectName
+    type: String
+    description: "Full path of the accessed object — a filesystem path for ObjectType \"File\", a registry path (\\REGISTRY\\MACHINE\\...) for \"Key\". Only populated for objects with a SACL, so coverage depends entirely on how auditing was configured."
+    sampleValues: ["C:\\Finance\\payroll.xlsx", "\\REGISTRY\\MACHINE\\SYSTEM\\CurrentControlSet\\Services"]
+    applicableEventIDs: ["4656", "4660", "4663", "4670"]
+
+  - name: HandleId
+    type: String
+    description: "Hexadecimal handle ID. Correlates the object-access lifecycle on one host: 4656 (handle requested) -> 4663 (access performed) -> 4660 (deleted) -> 4658 (handle closed) all share it."
+    sampleValues: ["0x9dc"]
+    applicableEventIDs: ["4656", "4658", "4660", "4663", "4670"]
+
+  - name: AccessMask
+    type: String
+    description: "Hexadecimal bitmask of the access rights requested or exercised. Notable bits: 0x1 ReadData, 0x2 WriteData, 0x4 AppendData, 0x20 Execute, 0x10000 DELETE, 0x40000 WRITE_DAC, 0x80000 WRITE_OWNER, 0x100000 SYNCHRONIZE, 0x1000000 ACCESS_SYS_SEC. Test bits with binary_and(), do not compare the whole mask for equality."
+    sampleValues: ["0x100081", "0x1", "0x10000"]
+    applicableEventIDs: ["4656", "4663", "5140", "5145"]
+
+  - name: AccessList
+    type: String
+    description: "Space-separated message-table tokens naming the individual access rights, decoding AccessMask: %%4416 ReadData/ListDirectory, %%4417 WriteData/AddFile, %%4418 AppendData/AddSubdirectory, %%4419 ReadEA, %%4420 WriteEA, %%4421 Execute/Traverse, %%4422 DeleteChild, %%4423 ReadAttributes, %%4424 WriteAttributes, %%1537 DELETE, %%1538 READ_CONTROL, %%1539 WRITE_DAC, %%1540 WRITE_OWNER, %%1541 SYNCHRONIZE, %%1542 ACCESS_SYS_SEC. Match with `has`."
+    sampleValues: ["%%1541 %%4416 %%4423", "%%1537"]
+    applicableEventIDs: ["4656", "4663", "5140", "5145"]
+
+  - name: AccessReason
+    type: String
+    description: "Per-right access-check results with the SDDL of the ACE that granted or denied each one, e.g. \"%%1541: %%1801 D:(A;;FA;;;WD)\". Verbose; useful for forensic detail on why access succeeded, not for aggregation."
+    applicableEventIDs: ["4656", "5145"]
+
+  - name: ResourceAttributes
+    type: String
+    description: "Dynamic Access Control resource attributes (classification labels) on the object, in SDDL form. Usually \"S:AI\" when no classification is applied."
+    sampleValues: ["S:AI"]
+    applicableEventIDs: ["4656", "4663"]
+
+  - name: TransactionId
+    type: String
+    description: "GUID of the transaction, when the operation was transacted; all-zeros otherwise."
+    sampleValues: ["{00000000-0000-0000-0000-000000000000}"]
+    applicableEventIDs: ["4656", "4663", "4660"]
+
+  # ==========================================
+  # FILE SHARES — 5140 / 5145
+  # ==========================================
+  - name: ShareName
+    type: String
+    description: "Name of the network share accessed, in \\\\*\\SHARE form. \\\\*\\IPC$ is the named-pipe share and dominates by volume (it is how SMB sessions, remote-service and remote-registry calls start); \\\\*\\ADMIN$ and \\\\*\\C$ are the administrative shares whose use by non-admin accounts is a strong lateral-movement signal."
+    sampleValues: ["\\\\*\\IPC$", "\\\\*\\ADMIN$", "\\\\*\\C$", "\\\\*\\Finance"]
+    applicableEventIDs: ["5140", "5142", "5143", "5144", "5145"]
+
+  - name: ShareLocalPath
+    type: String
+    description: "The local NTFS path behind the share, in \\??\\PATH form. Empty for \\\\*\\IPC$."
+    sampleValues: ["\\??\\C:\\Shares\\Finance", "\\??\\C:\\Windows"]
+    applicableEventIDs: ["5140", "5142", "5143", "5144", "5145"]
+
+  - name: RelativeTargetName
+    type: String
+    description: "Path of the file or folder accessed, relative to the share (5145 only). \"\\\\\" when the share root itself was the target. On \\\\*\\IPC$ this is the named pipe being opened — svcctl (remote service control, i.e. PsExec-style execution), atsvc (remote scheduled task), winreg (remote registry), samr/lsarpc (AD enumeration) are all high-value values here."
+    sampleValues: ["payroll.xlsx", "svcctl", "winreg", "\\"]
+    applicableEventIDs: ["5145"]
+
+  # ==========================================
+  # WINDOWS FILTERING PLATFORM — 5156 / 5157
+  # ==========================================
+  - name: Application
+    type: String
+    description: "Path of the process that made or received the connection, in device form (\\device\\harddiskvolume2\\...) rather than drive-letter form — normalize before joining to 4688's NewProcessName."
+    sampleValues: ["\\device\\harddiskvolume2\\windows\\system32\\svchost.exe"]
+    applicableEventIDs: ["5156", "5157", "5158"]
+
+  - name: Direction
+    type: String
+    description: "Message-table token for connection direction: %%14592 = Inbound, %%14593 = Outbound."
+    sampleValues: ["%%14592", "%%14593"]
+    applicableEventIDs: ["5156", "5157"]
+
+  - name: SourceAddress
+    type: String
+    description: "Source IP of the connection. \"::\" or \"0.0.0.0\" means all addresses; \"127.0.0.1\"/\"::1\" is localhost."
+    sampleValues: ["192.0.2.45", "0.0.0.0"]
+    applicableEventIDs: ["5156", "5157", "5158", "5159"]
+
+  - name: SourcePort
+    type: String
+    description: "Source port as a numeric string."
+    sampleValues: ["49278"]
+    applicableEventIDs: ["5156", "5157", "5158", "5159"]
+
+  - name: DestAddress
+    type: String
+    description: "Destination IP of the connection."
+    sampleValues: ["192.0.2.100"]
+    applicableEventIDs: ["5156", "5157"]
+
+  - name: DestPort
+    type: String
+    description: "Destination port as a numeric string."
+    sampleValues: ["443", "445", "3389"]
+    applicableEventIDs: ["5156", "5157"]
+
+  - name: Protocol
+    type: String
+    description: "IP protocol number as a numeric string: 1 ICMP, 6 TCP, 17 UDP, 47 GRE, 50 ESP, 51 AH. Anything outside 1/6/17 on a workstation deserves a look."
+    sampleValues: ["6", "17"]
+    applicableEventIDs: ["5156", "5157"]
+
+  - name: FilterRTID
+    type: String
+    description: "Run-time ID of the WFP filter that allowed or blocked the connection. Resolve with `netsh wfp show filters` on the host."
+    sampleValues: ["70201"]
+    applicableEventIDs: ["5156", "5157"]
+
+  - name: LayerName
+    type: String
+    description: "Message-table token for the WFP/ALE layer that made the decision (e.g. %%14610 = ALE Receive/Accept)."
+    sampleValues: ["%%14610", "%%14611"]
+    applicableEventIDs: ["5156", "5157"]
+
+  - name: LayerRTID
+    type: String
+    description: "Run-time ID of the WFP layer. Resolve with `netsh wfp show state`."
+    sampleValues: ["44"]
+    applicableEventIDs: ["5156", "5157"]
+
+  - name: RemoteUserID
+    type: String
+    description: "SID of the remote user for IPsec-authenticated connections; S-1-0-0 when unauthenticated (the usual case)."
+    sampleValues: ["S-1-0-0"]
+    applicableEventIDs: ["5156", "5157"]
+
+  - name: RemoteMachineID
+    type: String
+    description: "SID of the remote machine for IPsec-authenticated connections; S-1-0-0 when unauthenticated."
+    sampleValues: ["S-1-0-0"]
+    applicableEventIDs: ["5156", "5157"]
+
+  # ==========================================
+  # SERVICE INSTALLATION — 4697 (Security) / 7045 (System)
+  # ==========================================
+  - name: ServiceFileName
+    type: String
+    description: "Command line the Service Control Manager will run to start the service, including arguments. The canonical PsExec/remote-execution artifact: a service whose file name is a temp path, an encoded PowerShell command, or a UNC path is almost always malicious. Only reflects the value at install time — later changes are not audited."
+    sampleValues: ["%windir%\\system32\\svchost.exe -k apphost", "C:\\Windows\\PSEXESVC.exe"]
+    applicableEventIDs: ["4697"]
+
+  - name: ServiceType
+    type: String
+    description: "Hexadecimal service type: 0x1 kernel driver, 0x2 file-system driver, 0x8 recognizer driver, 0x10 Win32 own process, 0x20 Win32 share process, 0x110/0x120 interactive variants. Types 0x1/0x2/0x8 install kernel-mode code and are rare enough to report on sight."
+    sampleValues: ["0x20", "0x10", "0x1"]
+    applicableEventIDs: ["4697"]
+
+  - name: ServiceStartType
+    type: String
+    description: "Service start type as a numeric string: 0 Boot, 1 System, 2 Automatic, 3 Manual, 4 Disabled. 0 and 1 are driver-only start types with unrestricted OS access; 4 (installing a service already disabled) is also unusual."
+    sampleValues: ["2", "3"]
+    applicableEventIDs: ["4697"]
+
+  - name: ServiceAccount
+    type: String
+    description: "Security context the service will run as. Populated only for user-mode services (kernel drivers have none). Anything other than localSystem / localService / networkService means the service runs as a named account and should be reviewed."
+    sampleValues: ["localSystem", "NT AUTHORITY\\LocalService", "CONTOSO\\svc-app"]
+    applicableEventIDs: ["4697"]
+
+  # ==========================================
+  # SCHEDULED TASKS — 4698 / 4699 / 4700 / 4701 / 4702
+  # ==========================================
+  - name: TaskName
+    type: String
+    description: "Scheduled task path and name, e.g. \"\\Microsoft\\Windows\\UpdateOrchestrator\\Reboot\". Tasks created directly in the library root (\"\\TaskName\", no intermediate folder) are disproportionately attacker-created; Microsoft's own tasks live under \\Microsoft\\Windows\\."
+    sampleValues: ["\\Microsoft\\Windows\\UpdateOrchestrator\\Reboot", "\\SystemUpdate"]
+    applicableEventIDs: ["4698", "4699", "4700", "4701", "4702"]
+
+  - name: TaskContent
+    type: String
+    description: "The task's full XML definition as a single string — triggers, principal (UserId, RunLevel, LogonType) and the <Actions><Exec><Command> that runs. Parse or substring-match it: <RunLevel>HighestAvailable</RunLevel>, a Command pointing at powershell/cmd/a temp path, or <LogonType>Password</LogonType> (which stores the password recoverably in Credential Manager) are the things worth alerting on."
+    applicableEventIDs: ["4698", "4700", "4701", "4702"]
+
+  - name: ClientProcessId
+    type: String
+    description: "PID of the process that created the scheduled task (added in Windows 10 1903+, 4698 version 1). Join to 4688 to identify what created the persistence."
+    sampleValues: ["3932"]
+    applicableEventIDs: ["4698", "4699", "4702"]
+
+  - name: ParentProcessId
+    type: String
+    description: "PID of the parent of the task-creating process (Windows 10 1903+)."
+    sampleValues: ["5304"]
+    applicableEventIDs: ["4698", "4699", "4702"]
+
+  - name: FQDN
+    type: String
+    description: "FQDN reported by the client that created the scheduled task (Windows 10 1903+). Differs from Hostname when the task was created remotely."
+    sampleValues: ["wkstn-0142.contoso.com"]
+    applicableEventIDs: ["4698", "4699", "4702"]
+
+  # ==========================================
+  # AUDIT POLICY — 4719
+  # ==========================================
+  - name: CategoryId
+    type: String
+    description: "Message-table token for the audit category whose subcategory changed (e.g. %%8274 = Object Access, %%8272 = System, %%8273 = Logon/Logoff, %%8276 = Policy Change, %%8280 = Account Logon)."
+    sampleValues: ["%%8274", "%%8280"]
+    applicableEventIDs: ["4719"]
+
+  - name: SubcategoryId
+    type: String
+    description: "Message-table token for the specific audit subcategory that was changed."
+    sampleValues: ["%%12807"]
+    applicableEventIDs: ["4719"]
+
+  - name: SubcategoryGuid
+    type: String
+    description: "GUID of the audit subcategory. Stable across languages, so prefer it over the %% tokens when matching a specific subcategory; enumerate them on a host with `auditpol /list /subcategory:* /v`."
+    sampleValues: ["{0CCE9223-69AE-11D9-BED3-505054503030}"]
+    applicableEventIDs: ["4719"]
+
+  - name: AuditPolicyChanges
+    type: String
+    description: "Comma-separated message-table tokens for what changed: %%8448 Success removed, %%8449 Success added, %%8450 Failure removed, %%8451 Failure added. Auditing being REMOVED (%%8448 / %%8450) is the defence-evasion case — pair it with 1102 for a single \"someone is covering their tracks\" detection."
+    sampleValues: ["%%8448, %%8450", "%%8449, %%8451"]
+    applicableEventIDs: ["4719"]
+
+# ==========================================
+# EVENTID CATALOGUE
+# ==========================================
+# The security-relevant identifiers this schema covers, grouped by audit
+# category. EventIDs 4768/4769/4771/4776 are logged only on domain controllers;
+# 1102 comes from the Eventlog provider rather than Security-Auditing.
+#
+# Logon / Logoff (Category "Logon", "Logoff", "Special Logon"):
+#   4624  An account was successfully logged on
+#   4625  An account failed to log on
+#   4634  An account was logged off
+#   4647  User initiated logoff
+#   4648  A logon was attempted using explicit credentials (lateral movement)
+#   4672  Special privileges assigned to new logon (admin session marker)
+#   4778  A session was reconnected to a Window Station (RDP)
+#   4779  A session was disconnected from a Window Station (RDP)
+#   4964  Special groups have been assigned to a new logon
+#
+# Account Logon — domain controllers only:
+#   4768  A Kerberos authentication ticket (TGT) was requested
+#   4769  A Kerberos service ticket was requested (Kerberoasting)
+#   4771  Kerberos pre-authentication failed (password spraying)
+#   4776  The computer attempted to validate the credentials (NTLM)
+#
+# Account Management:
+#   4720  A user account was created
+#   4722  A user account was enabled
+#   4723  An attempt was made to change an account's password (by the user)
+#   4724  An attempt was made to reset an account's password (by an admin)
+#   4725  A user account was disabled
+#   4726  A user account was deleted
+#   4738  A user account was changed
+#   4740  A user account was locked out
+#   4741  A computer account was created
+#   4742  A computer account was changed
+#   4767  A user account was unlocked
+#   4728 / 4729  Member added to / removed from a security-enabled GLOBAL group
+#   4732 / 4733  Member added to / removed from a security-enabled LOCAL group
+#   4756 / 4757  Member added to / removed from a security-enabled UNIVERSAL group
+#
+# Detailed Tracking:
+#   4688  A new process has been created
+#   4689  A process has exited
+#
+# Object Access:
+#   4656  A handle to an object was requested
+#   4658  The handle to an object was closed
+#   4660  An object was deleted
+#   4663  An attempt was made to access an object
+#   4670  Permissions on an object were changed
+#   4698 / 4699 / 4700 / 4701 / 4702  Scheduled task created / deleted / enabled / disabled / updated
+#   5140  A network share object was accessed
+#   5142 / 5143 / 5144  A network share was added / modified / deleted
+#   5145  A network share object was checked for desired access (per-file)
+#   5156 / 5157  The Windows Filtering Platform permitted / blocked a connection
+#
+# Policy Change / System:
+#   4697  A service was installed in the system
+#   4719  System audit policy was changed
+#   4798  A user's local group membership was enumerated (recon)
+#   4799  A security-enabled local group membership was enumerated (recon)
+#   1102  The audit log was cleared (provider: Microsoft-Windows-Eventlog)

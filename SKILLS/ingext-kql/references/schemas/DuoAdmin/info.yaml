@@ -1,0 +1,137 @@
+schema: DuoAdmin
+description: >-
+  Cisco Duo administrator log event, imported by Ingext from the Duo Admin API
+  administrator logs (/admin/v1/logs/administrator). One record per
+  administrative change made in the Duo Admin Panel or via the Admin API: who
+  made the change (username), what they did (action), what it was applied to
+  (object), and the change detail (description / descriptionFields).
+
+  This is the audit stream for the MFA control plane itself. High-value actions
+  to watch: bypass-code creation (bypass_create), user/phone re-enrollment or
+  reactivation (user_update, phone_update, user_reset_activation), policy and
+  integration edits (policy_update, integration_update, integration_delete),
+  and admin-account changes (admin_create, admin_update,
+  admin_2fa_error/admin_login_error). A directory sync also writes here
+  (ad_sync_finish and friends) under a synthetic service username.
+
+  Note the two representations of the same change detail: description is the
+  raw JSON *string* Duo emits (use parse_json() to work with it), while
+  descriptionFields is the same content already parsed into a dynamic object —
+  prefer descriptionFields and reach in with dot notation. Its keys vary by
+  action, and human-readable keys contain spaces, so index them with bracket
+  syntax: descriptionFields["Users added"]. timestamp is parsed from
+  isotimestamp. MFA login attempts are a separate stream — see
+  DuoAuthentication.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Primary time column for range filters (e.g. where timestamp > ago(7d)). Parsed from isotimestamp — when Duo recorded the administrative action (UTC)."
+    sampleValues: ["2026-07-21T12:08:32+00:00"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: isotimestamp
+    type: String
+    description: "Action time as reported by Duo, ISO-8601 with UTC offset. Source of the top-level timestamp. The raw Duo record also carries the same instant as a Unix epoch second in its own `timestamp` field, which the top-level DateTime timestamp supersedes."
+    sampleValues: ["2026-07-21T12:08:32+00:00"]
+
+  # ==========================================
+  # WHO / WHAT / WHERE
+  # ==========================================
+  - name: username
+    type: String
+    description: >-
+      The actor. For a human administrator this is the Duo admin's name or email
+      as shown in the Admin Panel. Automated actors use a descriptive service
+      string rather than a real account — e.g.
+      "Active Directory User Sync: AD Sync" for a directory sync, or an API
+      integration name for Admin API calls. Filter out the sync/service actors
+      when auditing human activity; alert when a human actor appears outside
+      expected hours or from an unexpected action set.
+    sampleValues: ["adele.vance@contoso.com", "Active Directory User Sync: AD Sync"]
+
+  - name: action
+    type: String
+    description: >-
+      The administrative action performed — the primary field to filter and
+      group on. Families:
+
+        Users / devices: user_create, user_update, user_delete,
+          user_reset_activation, bypass_create, phone_create, phone_update,
+          phone_delete, phone_send_sms_activation, token_create, token_delete,
+          u2ftoken_create, u2ftoken_delete.
+        Admins: admin_create, admin_update, admin_delete, admin_login,
+          admin_login_error, admin_2fa_error, admin_activation, admin_password_reset.
+        Configuration: policy_create, policy_update, policy_delete,
+          integration_create, integration_update, integration_delete,
+          integration_skey_view, group_create, group_update, group_delete,
+          customer_update.
+        Directory sync: ad_sync_begin, ad_sync_finish, ad_sync_user,
+          directory_create, directory_update, directory_delete.
+
+      bypass_create, integration_skey_view, user_reset_activation and
+      policy/integration deletions are the ones worth alerting on: each can
+      weaken or remove MFA enforcement.
+    sampleValues: ["ad_sync_finish", "admin_login", "user_update", "bypass_create", "policy_update", "integration_delete"]
+
+  - name: object
+    type: String
+    description: "The target the action was applied to — the Duo user, phone number, group, policy, integration, directory-sync name, or admin the change affected. Free-form and action-dependent; empty for actions with no distinct target (e.g. admin_login). Combine with action for a readable audit line (action + object)."
+    sampleValues: ["AD Sync", "avance", "Microsoft RDP", "Global Policy", "555-555-0142"]
+
+  # ==========================================
+  # CHANGE DETAIL
+  # ==========================================
+  - name: description
+    type: String
+    description: "The raw change detail exactly as Duo emits it — a JSON document encoded as a *string* (note the escaped quotes). Kept for fidelity; for querying, prefer descriptionFields, which is the same content already parsed. If you must use this field, wrap it in parse_json() first, and use it for free-text search across all actions (e.g. where description has \"bypass\")."
+    sampleValues: ["{\"Duration\": \"0:00:01\", \"Users added\": 0, \"Users seen\": 6}"]
+
+  - name: descriptionFields
+    type: Dynamic
+    description: >-
+      The change detail parsed into a dynamic object — the field to query.
+      Its keys vary by action, and many are human-readable with spaces, so use
+      bracket indexing and cast:
+      toint(descriptionFields["Users added"]),
+      tostring(descriptionFields["Errors"]).
+
+      Common keys by action family:
+
+        ad_sync_finish (directory sync results):
+          - descriptionFields["Duration"] — wall-clock sync time ("0:00:01").
+          - descriptionFields["Users seen"] / ["Users added"] /
+            ["Users modified"] / ["Users removed"] (numbers) — the sync delta.
+            A nonzero "Users removed" means accounts lost MFA coverage; a spike
+            in "Users added" is worth reviewing.
+          - descriptionFields["Errors"] — free text describing per-user sync
+            failures (e.g. an alias collision). Empty string when the sync was
+            clean; filter on isnotempty() to surface broken syncs.
+          - descriptionFields["authproxy_identifiers"] (array) — the
+            Authentication Proxy integration key(s) that ran the sync.
+          - descriptionFields["Sync Ref. Code"] — support reference hash for
+            the sync run; also correlates the ad_sync_begin/ad_sync_finish pair.
+
+        user_create / user_update / admin_update:
+          - the changed attributes as key/value pairs (e.g. ["status"],
+            ["notes"], ["realname"], ["email"], ["groups"]). For updates the
+            value is the new setting; compare consecutive events on the same
+            object to reconstruct the before/after.
+
+        bypass_create:
+          - ["bypass"] / ["count"] / ["valid_secs"] / ["remaining_uses"] —
+            how many bypass codes were issued and for how long they are valid.
+
+        policy_update / integration_update:
+          - the changed policy or integration settings, one key per setting.
+
+      Because the key set is action-dependent, restrict to one action before
+      reaching for a specific key, or use bag_keys()/mv-expand to discover
+      which keys a given action produces in your tenant.
+    sampleValues: ["0:00:01", 6, 0, "a1b2c3d4e5f60718293a4b5c6d7e8f90", "DIAPROXY000000000001"]

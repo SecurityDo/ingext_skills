@@ -1,0 +1,33 @@
+description: >-
+  Defender for Endpoint fleet inventory overview: device counts by OS platform,
+  onboarding status and sensor health, with the exposure/risk mix and how many
+  devices are stale. The starting point for any coverage question — the
+  'CanBeOnboarded' rows are devices MDE discovered but that no sensor reports on,
+  and the Inactive/NoSensorData rows are onboarded devices that stopped talking.
+  Each device appears once (the resource key is the device id), so no dedup is
+  needed.
+datatype: msDefenderMachine
+kql: |
+  msDefenderMachine
+  | where isnull(mergedIntoMachineId) and isExcluded != true
+  | extend LastSeen = todatetime(lastSeen)
+  | summarize
+      Devices        = dcount(id),
+      Stale7d        = countif(LastSeen < ago(7d)),
+      HighExposure   = countif(exposureLevel == "High"),
+      HighRisk       = countif(riskScore in ("High", "Medium")),
+      Duplicates     = countif(isPotentialDuplication == true),
+      OldestLastSeen = min(LastSeen),
+      NewestLastSeen = max(LastSeen)
+      by osPlatform, onboardingStatus, healthStatus
+  | order by Devices desc
+tags: [microsoft, defender, mde, endpoint, inventory, coverage, posture, security]
+expected_output: |
+  Device counts by platform and sensor state (sanitized).
+
+  osPlatform  onboardingStatus  healthStatus  Devices  Stale7d  HighExposure  HighRisk  Duplicates  OldestLastSeen        NewestLastSeen
+  Windows11   Onboarded         Active        184      3        12            5         2           2026-07-21T09:04:11Z  2026-07-30T17:48:26Z
+  Windows10   Onboarded         Active        62       1        9             2         0           2026-07-23T11:22:07Z  2026-07-30T16:51:02Z
+  Windows10   Onboarded         Inactive      11       11       4             0         1           2026-05-02T08:13:55Z  2026-07-12T19:40:31Z
+  WindowsServer2022  Onboarded  Active        14       0        3             1         0           2026-07-29T22:10:44Z  2026-07-30T17:02:19Z
+  Windows11   CanBeOnboarded    Unknown       7        7        0             0         0           2026-06-11T14:35:09Z  2026-07-19T08:27:53Z

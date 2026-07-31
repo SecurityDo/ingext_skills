@@ -1,0 +1,217 @@
+schema: msDefenderAvHealth
+description: >-
+  Microsoft Defender Antivirus health and configuration state per device,
+  collected by Ingext from the Defender for Endpoint API
+  (GET /api/deviceavinfo — the "device health and antivirus compliance" report).
+  Each record is the current AV posture of one device: the mode Defender
+  Antivirus is running in (active / passive / disabled / EDR-blocked), the three
+  component versions (security intelligence "signature", engine, platform) with
+  an up-to-date verdict for each, and the outcome and time of the last quick and
+  full scans.
+
+  This is the answer to "is Microsoft Defender Antivirus actually protecting this
+  device, and is it current?" — a question msDefenderMachine cannot answer:
+  healthStatus there describes the *EDR sensor*, not the antivirus. A device can
+  be healthStatus Active and still have AV disabled or three weeks of stale
+  signatures.
+
+  One row per device (per unique combination of device, AV mode, up-to-date
+  status and scan results, which in practice is one row per device). It is a
+  resource stream: _key is machineId, the resource watch upserts on it, and each
+  _key holds the latest snapshot — no arg_max/dedup pattern is needed. The whole
+  set is re-dumped every 8 hours.
+
+  Join to msDefenderMachine on machineId == msDefenderMachine.id for OS, device
+  group, risk and exposure. Two typing traps: the boolean-looking up-to-date
+  fields are *strings* ("True"/"False"/"Unknown"), and avMode is a *string-typed
+  integer* ("0".."5"), so both need string comparison, and avMode needs a case()
+  mapping to be readable.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Mapped from lastSeenTime, falling back to dataRefreshTimestamp when lastSeenTime is absent. Device-reported recency, not collection time. Because the report itself is only refreshed periodically, use a lookback of a day or more for range filters."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key; mapped to the 'machineId' field. Unique per device — each _key holds the latest snapshot, so no arg_max/dedup is needed."
+    sampleValues: ["9eaf3a8b5962e0e6b1af9ec756664a9b823df2d1"]
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: machineId
+    type: String
+    description: "MDE device id. Source of _key and the join key to msDefenderMachine.id, msDefenderSecureConfig.deviceId and msDefenderVulnerability.DeviceId."
+    sampleValues: ["9eaf3a8b5962e0e6b1af9ec756664a9b823df2d1"]
+
+  - name: id
+    type: String
+    description: "Record id. Equal to machineId in every observed record; prefer machineId for joins so the intent is explicit."
+    sampleValues: ["9eaf3a8b5962e0e6b1af9ec756664a9b823df2d1"]
+
+  - name: computerDnsName
+    type: String
+    description: "DNS name of the device. Same value as msDefenderMachine.computerDnsName, denormalized here so device-level AV reports need no join."
+    sampleValues: ["corp-ws042.contoso.com"]
+
+  - name: osKind
+    type: String
+    description: "Operating-system family. Documented values: windows, mac, linux. The coarse split — use it to scope a query to the platforms where a given AV setting is meaningful."
+    sampleValues: ["windows", "mac", "linux"]
+
+  - name: osPlatform
+    type: String
+    description: "Operating system major version name, at the same granularity as msDefenderMachine.osPlatform."
+    sampleValues: ["Windows10", "Windows11", "WindowsServer2019", "macOS"]
+
+  - name: osVersion
+    type: String
+    description: "Full operating system version string, including the patch/revision level that msDefenderMachine.osBuild omits (there: 19045; here: 10.0.19045.1889). This is the most precise servicing level available in this resource family."
+    sampleValues: ["10.0.19045.1889"]
+
+  # ==========================================
+  # ANTIVIRUS MODE / PROTECTION STATE
+  # ==========================================
+  - name: avMode
+    type: String
+    description: >-
+      The mode Microsoft Defender Antivirus is running in, as a *string-typed
+      integer* — compare as a string ("0"), never as a number. Documented
+      mapping: "0" = Active, "1" = Passive, "2" = Disabled, "3" = Other,
+      "4" = EDRBlocked, "5" = PassiveAudit; "" (empty) = Other. Only "0" means
+      Defender AV is the active antivirus and remediating. "1"/"5" are normal
+      when a third-party AV is primary (Defender still scans but does not
+      remediate), while "2" and "4" are the states worth alerting on — a device
+      with no active antivirus at all. Map with case() for readable output.
+    sampleValues: ["0", "1", "2", "4", "5"]
+
+  - name: cloudProtectionState
+    type: String
+    description: "Cloud-delivered protection (MAPS) state, as a string-typed integer. Not in Microsoft's published property table for this API but returned by it, and the value meanings are not documented there — observed \"2\" on devices with cloud protection on, and it lines up with the MAPS reporting levels (0 = off, 1 = basic, 2 = advanced). Treat \"0\" as cloud protection disabled and verify any finer interpretation against a known device before reporting on it."
+    sampleValues: ["2", "0"]
+
+  - name: avModeDataRefreshTime
+    type: DateTime
+    description: "When the avMode value was last refreshed from the device. Not in the published property table. A refresh time far behind dataRefreshTimestamp means the mode shown is stale, which matters when confirming that a device really is unprotected right now."
+    sampleValues: ["2026-07-30T15:12:34Z"]
+
+  # ==========================================
+  # SECURITY INTELLIGENCE (SIGNATURE) / ENGINE / PLATFORM
+  # ==========================================
+  - name: avSignatureVersion
+    type: String
+    description: "Security-intelligence (signature/definition) version on the device. Dotted numeric string — string-compare or split on '.' to order it; do not use as a number."
+    sampleValues: ["1.455.420.0"]
+
+  - name: avIsSignatureUpToDate
+    type: String
+    description: "Whether the security intelligence is current, as a *string*: \"True\", \"False\" or \"Unknown\" — not a boolean. Compare with ==\"False\" (or =~ \"false\"), and treat \"Unknown\" as a separate population: it means MDE could not evaluate, not that the device is fine."
+    sampleValues: ["True", "False", "Unknown"]
+
+  - name: avSignatureUpdateTime
+    type: DateTime
+    description: "When the device last applied a security-intelligence update. The direct measure of definition staleness: datetime_diff('hour', now(), todatetime(avSignatureUpdateTime)) is the age in hours. Microsoft publishes several updates a day, so anything past ~48h is a device that is not receiving updates."
+    sampleValues: ["2026-07-30T00:20:18Z"]
+
+  - name: avSignaturePublishTime
+    type: DateTime
+    description: "When the security-intelligence build the device is running was *released by Microsoft*. Paired with avSignatureUpdateTime it separates two different failures: a device that never downloads updates (old update time), and a device that downloads promptly but is pinned to an old build (update time recent, publish time old)."
+    sampleValues: ["2026-07-30T00:20:18Z"]
+
+  - name: avSignatureDataRefreshTime
+    type: DateTime
+    description: "When the signature data in this report was last refreshed from the device. Not in the published property table. Report freshness, not device freshness."
+    sampleValues: ["2026-07-30T15:09:49Z"]
+
+  - name: avEngineVersion
+    type: String
+    description: "Antivirus engine version on the device."
+    sampleValues: ["1.1.26060.3008"]
+
+  - name: avIsEngineUpToDate
+    type: String
+    description: "Whether the engine is current. String \"True\" / \"False\" / \"Unknown\", not a boolean."
+    sampleValues: ["True", "False", "Unknown"]
+
+  - name: avEngineUpdateTime
+    type: DateTime
+    description: "When the engine was last updated on the device."
+    sampleValues: ["2026-07-30T00:20:18Z"]
+
+  - name: avPlatformVersion
+    type: String
+    description: "Antivirus platform version (the Defender AV product build, e.g. 4.18.x). Updates monthly rather than daily, so a platform a few weeks old is normal where a signature a few days old is not."
+    sampleValues: ["4.18.26060.3008"]
+
+  - name: avIsPlatformUpToDate
+    type: String
+    description: "Whether the platform is current. String \"True\" / \"False\" / \"Unknown\", not a boolean."
+    sampleValues: ["True", "False", "Unknown"]
+
+  - name: avPlatformUpdateTime
+    type: DateTime
+    description: "When the platform was last updated on the device."
+    sampleValues: ["2026-07-08T07:47:34Z"]
+
+  # ==========================================
+  # SCAN RESULTS
+  # ==========================================
+  - name: quickScanResult
+    type: String
+    description: "Outcome of the last quick scan: Completed, Canceled, or Failed. Empty string when no quick scan has ever run/reported — empty is the common case on newly onboarded and on non-Windows devices, and it is not the same as a failure, so test isempty() separately from == \"Failed\"."
+    sampleValues: ["Completed", "Canceled", "Failed", ""]
+
+  - name: quickScanError
+    type: String
+    description: "Error code from the last quick scan, as an 0x-prefixed hex string (e.g. 0x80508023); empty string when there was no error. Non-empty here with a Failed result is the pair worth investigating."
+    sampleValues: ["", "0x80508023"]
+
+  - name: quickScanTime
+    type: DateTime
+    description: "When the last quick scan completed. Null when none has run. Scan recency is the third leg of AV posture alongside mode and signature age."
+    sampleValues: ["2026-07-30T07:46:21.6772991Z"]
+
+  - name: fullScanResult
+    type: String
+    description: "Outcome of the last full scan: Completed, Canceled, or Failed. Empty in most tenants — full scans are not scheduled by default, so an empty fullScanResult across the fleet is expected and is not a finding on its own."
+    sampleValues: ["Completed", "Canceled", "Failed", ""]
+
+  - name: fullScanError
+    type: String
+    description: "Error code from the last full scan, as an 0x-prefixed hex string; empty when there was no error."
+    sampleValues: ["", "0x80508023"]
+
+  - name: fullScanTime
+    type: DateTime
+    description: "When the last full scan completed; null when none has run (the usual case)."
+
+  # ==========================================
+  # REPORT FRESHNESS / SCOPE
+  # ==========================================
+  - name: lastSeenTime
+    type: DateTime
+    description: "Last seen time of the device as recorded by this report. Source of timestamp. Note it is a different measurement from msDefenderMachine.lastSeen (last *full device report*), so the two can differ by hours for the same device."
+    sampleValues: ["2026-07-30T15:02:16Z"]
+
+  - name: dataRefreshTimestamp
+    type: DateTime
+    description: "When the data in this report was refreshed for the device — the report's own freshness. Fallback source of timestamp when lastSeenTime is absent. A dataRefreshTimestamp much older than the collection time means the AV state shown is not current."
+    sampleValues: ["2026-07-30T14:39:47Z"]
+
+  - name: rbacGroupId
+    type: Integer
+    description: "Numeric id of the MDE device group the device belongs to."
+    sampleValues: [140]
+
+  - name: rbacGroupName
+    type: String
+    description: "Name of the MDE device group. 'Unassigned' when the device is in no group, 'None' when the tenant defines no groups. The natural grouping column for an AV-compliance report by owner."
+    sampleValues: ["Windows Workstations", "Unassigned", "None"]

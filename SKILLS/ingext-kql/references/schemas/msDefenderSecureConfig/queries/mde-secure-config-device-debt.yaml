@@ -1,0 +1,51 @@
+description: >-
+  Per-device hardening debt: the applicable controls each device fails, summed by
+  configuration impact, enriched from msDefenderMachine with the device group,
+  management channel and exposure level. Devices no MDM manages (managedBy
+  'Unknown') are usually the ones that drift, so the join earns its cost. The
+  FailedControls column lists the configuration ids so the row is actionable
+  without a second query; take a configurationId back to
+  mde-secure-config-failing-controls.yaml for its fleet-wide picture.
+datatype: msDefenderSecureConfig
+kql: |
+  let DeviceDebt =
+      msDefenderSecureConfig
+      | where isApplicable == true and isCompliant == false
+      | summarize
+          FailedCount    = count(),
+          DebtImpact     = sum(configurationImpact),
+          UserImpacting  = countif(isExpectedUserImpact == true),
+          FailedControls = make_set(configurationId, 20)
+          by DeviceId = deviceId;
+  DeviceDebt
+  | join kind=leftouter (
+        msDefenderMachine
+        | where isnull(mergedIntoMachineId) and isExcluded != true
+        | project MachineId = id, computerDnsName, osPlatform, version,
+                  exposureLevel, riskScore, deviceValue, managedBy, rbacGroupName,
+                  LastSeen = todatetime(lastSeen)
+    ) on $left.DeviceId == $right.MachineId
+  | project
+      computerDnsName,
+      DeviceId,
+      DebtImpact,
+      FailedCount,
+      UserImpacting,
+      exposureLevel,
+      riskScore,
+      deviceValue,
+      managedBy,
+      rbacGroupName,
+      osPlatform,
+      version,
+      LastSeen,
+      FailedControls
+  | order by DebtImpact desc, FailedCount desc
+tags: [microsoft, defender, mde, mdvm, secure-configuration, hardening, device, remediation, security]
+expected_output: |
+  Devices carrying the most misconfiguration debt (sanitized).
+
+  computerDnsName         DeviceId                                  DebtImpact  FailedCount  UserImpacting  exposureLevel  riskScore  deviceValue  managedBy  rbacGroupName         osPlatform  version  LastSeen              FailedControls
+  corp-ws118.contoso.com  2f6cd8e8f524eee8013d3a43f529813c95e1dd18  63          9            2              High           None       Normal       Unknown    Windows Workstations  Windows10   22H2     2026-05-02T08:13:55Z  ["scid-2513","scid-2000","scid-37","scid-39"]
+  corp-ws042.contoso.com  9eaf3a8b5962e0e6b1af9ec756664a9b823df2d1  41          6            1              High           Medium     Normal       Intune     Windows Workstations  Windows10   22H2     2026-07-30T15:02:16Z  ["scid-2513","scid-6093","scid-39"]
+  corp-ws101.contoso.com  1e5bc9d7e413ddd7902c2932e418702b84d0cc07  22          3            1              Medium         High       Normal       Intune     Windows Workstations  Windows11   24H2     2026-07-30T17:48:26Z  ["scid-2513","scid-37"]

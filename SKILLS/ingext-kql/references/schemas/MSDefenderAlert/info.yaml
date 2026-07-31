@@ -1,0 +1,605 @@
+schema: MSDefenderAlert
+description: >-
+  Microsoft Defender XDR alert, imported by Ingext from the Microsoft Graph
+  security API (GET /security/alerts_v2). Each record is one alert as surfaced in
+  the Microsoft Defender portal (security.microsoft.com), regardless of which
+  Microsoft security product raised it — Defender for Endpoint, Defender
+  Antivirus, Defender for Office 365, Defender for Cloud Apps, Defender for
+  Identity, Entra ID Protection, Defender for Cloud, Microsoft Sentinel analytic
+  rules, Purview Insider Risk Management, and app-governance. The alert carries
+  its classification (severity, category, MITRE techniques), the product and
+  detector that produced it, the analyst workflow state (status, classification,
+  determination, assignedTo, comments), and an evidence[] array of the entities
+  involved (users, devices, processes, files, IPs, mailboxes, cloud apps, ...).
+
+  Every alert belongs to an incident: incidentId is the join key to
+  MSDefenderIncident.id, and one incident typically groups several alerts from
+  different serviceSources telling one story.
+
+  Two fields govern how to read the rest of the record:
+
+    - serviceSource / detectionSource — which product raised the alert. This
+      selects which evidence @odata.types appear and what additionalData holds.
+      Note that products onboarded through the unified portal (Sentinel analytic
+      rules, Purview IRM) report serviceSource == "unknownFutureValue" and
+      detectionSource == "unknownFutureValue"; use productName to identify them.
+    - evidence[].@odata.type — the entity kind of each evidence element. The
+      array is heterogeneous, so always filter on @odata.type before reaching
+      into type-specific fields.
+
+  The record is stored as a dynamic JSON document, so nested fields use dot
+  notation (e.g. tostring(evidence[0].userAccount.userPrincipalName)) and the
+  arrays (evidence, categories, mitreTechniques, comments, systemTags) require
+  mv-expand / mv-apply to enumerate. Because '@odata.type' contains an @ and a
+  dot, index it as a bracketed key: ev['@odata.type']. timestamp is parsed from
+  createdDateTime. This stream is selected by the label eventType ==
+  "MSDefenderAlert".
+
+  Alerts are re-emitted as their state changes (status, classification,
+  determination, assignedTo, comments, added evidence), so the same id appears more
+  than once in a time range and must be reduced to its latest snapshot before
+  counting, filtering on status, or reporting. This is observed, not theoretical:
+  the two records in eventSamples/msDefenderAlert_defenderForOffice365_reemitted
+  .json share id 'fa...ca' and are byte-identical except for lastUpdateDateTime
+  (04:01:27.07 vs 04:02:21.846) — same status, same evidence, no new information in
+  the second copy. Duplicates therefore inflate count() and any per-alert metric
+  while adding nothing, and the interval between copies can be under a minute.
+  Prefer dcount(id) over count() wherever a stray duplicate would distort a number.
+
+  IMPORTANT — this engine does not support arg_max(<column>, *) (the '*' cannot be
+  expanded against a dynamic schema), so the usual Kusto one-liner is unavailable.
+  Take the max lastUpdateDateTime per id and join it back instead; naming the key
+  column on the right-hand side avoids relying on how the engine renames a
+  duplicate join key:
+
+    let LatestAlert =
+        MSDefenderAlert
+        | where timestamp > ago(7d)
+        | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
+    MSDefenderAlert
+    | where timestamp > ago(7d)
+    | join kind=inner LatestAlert on $left.id == $right.AlertId
+    | where todatetime(lastUpdateDateTime) == LastUpdate
+    | project-away AlertId, LastUpdate
+
+  Keep the two time windows identical, or the join will drop or resurrect rows. If
+  two snapshots of one id ever share the same lastUpdateDateTime, both survive this
+  pattern — arg_max would have picked exactly one — but they are duplicates of the
+  same state, so it matters only for count() and dcount(id) is safer either way.
+  Every query sample in queries/ opens with this block.
+
+  Should wildcard arg_max support be added for this case, the block collapses to
+  'summarize arg_max(lastUpdateDateTime, *) by id' with no other change to any
+  query. queries/msd-alert-device-evidence-argmax.yaml holds that form side by side
+  with the portable msd-alert-device-evidence.yaml — the two are identical from the
+  first pipeline stage onward, so they double as the migration diff. It is tagged
+  'requires-wildcard-argmax' and must not be run until the engine supports it.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Primary time column for range filters (e.g. where timestamp > ago(1d)). Parsed from createdDateTime (when Defender created the alert). For when the malicious activity actually happened use firstActivityDateTime / lastActivityDateTime, which can be hours or months earlier — Insider Risk and attack-analysis alerts routinely span weeks."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  # ==========================================
+  # ALERT IDENTITY
+  # ==========================================
+  - name: id
+    type: String
+    description: "Defender XDR alert ID, unique within the tenant, and the value used in alertWebUrl. Not a plain GUID — the format encodes the source product via a short prefix: 'da' (Defender for Endpoint / Antivirus, suffixed '_1'), 'ca' (Defender for Cloud Apps, hex), 'sn' (Sentinel analytic rule), 'ir' (Insider Risk Management), 'fa' (Defender for Office 365), 'r...' + '_aml' (XDR attack analysis / anomaly ML), 'ad' + long hex (Entra ID Protection). Use 'startswith' on id (or better, filter serviceSource/productName) rather than parsing it."
+    sampleValues: ["da00000000-0000-0000-0000-0000000000c3_1", "ca0000000000000000000000c4", "sn00000000-0000-0000-0000-0000000000c5", "ir00000000-0000-0000-0000-0000000000c2", "r00000000-0000-0000-0000-0000000000c1_aml", "fa00000000-0000-0000-0000-0000000000ca"]
+
+  - name: providerAlertId
+    type: String
+    description: "The originating product's own alert ID — i.e. the id field with the Defender routing prefix stripped. Join key back to the source product's console/API (e.g. the Sentinel SecurityAlert.SystemAlertId, the MDE alert id, the MDA alert id)."
+    sampleValues: ["00000000-0000-0000-0000-0000000000c3_1", "0000000000000000000000c4"]
+
+  - name: tenantId
+    type: String
+    description: "Entra ID (Azure AD) tenant GUID the alert belongs to. In a multi-tenant / MSSP feed this is the field that separates customers; also appears as the ?tid= parameter of alertWebUrl and incidentWebUrl."
+    sampleValues: ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"]
+
+  - name: title
+    type: String
+    description: "Short alert title as shown in the Defender portal queue. The primary display/grouping field — 'summarize count() by title' is the standard way to see what is firing. For Sentinel and IRM alerts this is the analytic-rule / policy name. WATCH OUT: Defender for Office 365 titles can carry an invisible U+200B zero-width space (the MDO sample's title ends with one, and the same artifact appears in MSDefenderIncident.displayName), so an '==' or 'in (...)' match against a hand-typed title silently returns nothing. Use 'startswith'/'contains', or normalize with replace_regex(title, @'[^\\x20-\\x7E]', '')."
+    sampleValues: ["PowerMad script detected", "'PSWStealer' malware was prevented", "Anomalous Token", "Delegate Access Granted to User's Mailbox", "User added to Microsoft Entra ID Privileged Groups", "Email messages containing malicious URL removed after delivery<U+200B>"]
+
+  - name: description
+    type: String
+    description: "Long free-text explanation of what the detection means — usually generic product boilerplate about the detection class, but MDA and IRM alerts interpolate the actual policy name and acting user. Multi-line (\\n / \\r\\n) and can be several hundred characters."
+    sampleValues: ["Anomalous token indicates that there are abnormal characteristics in the token such as token duration and authentication from unfamiliar IP address"]
+
+  - name: alertWebUrl
+    type: String
+    description: "Deep link to the alert page in the Defender portal (https://security.microsoft.com/alerts/<id>?tid=<tenantId>). Include it in triage output so analysts can pivot to the portal."
+
+  # ==========================================
+  # INCIDENT LINKAGE
+  # ==========================================
+  - name: incidentId
+    type: String
+    description: "ID of the incident this alert was correlated into — a tenant-scoped sequence number as a string. Join key to MSDefenderIncident.id. Multiple alerts (often from different serviceSources) share one incidentId; 'summarize by incidentId' reconstructs the incident's alert set. Defender may also merge incidents over time, in which case alerts are re-emitted with a new incidentId."
+    sampleValues: ["42438", "101129", "100879"]
+
+  - name: incidentWebUrl
+    type: String
+    description: "Deep link to the parent incident in the Defender portal (https://security.microsoft.com/incident2/<incidentId>/overview?tid=<tenantId>)."
+
+  # ==========================================
+  # SEVERITY & WORKFLOW STATE
+  # ==========================================
+  - name: severity
+    type: String
+    description: "Alert severity, lowercase. Ordered informational < low < medium < high — sort with a case() expression, not alphabetically. 'informational' is heavily used by Defender Antivirus for already-blocked/prevented malware, so filter it out for triage queues but keep it for coverage reporting."
+    sampleValues: ["high", "medium", "low", "informational"]
+
+  - name: status
+    type: String
+    description: "Analyst workflow state of the alert. Open queue = status in ('new','inProgress'). Note resolution can be automated: AIR closes alerts and sets resolvedDateTime without a human ever touching them."
+    sampleValues: ["new", "inProgress", "resolved", "unknown", "unknownFutureValue"]
+
+  - name: classification
+    type: String
+    description: "Analyst verdict on whether the alert was a real threat; null while untriaged. Combine with determination for the reason. 'summarize count() by title, classification' gives per-detection false-positive rates."
+    sampleValues: ["falsePositive", "truePositive", "informationalExpectedActivity", "unknown", "unknownFutureValue"]
+
+  - name: determination
+    type: String
+    description: "The finer-grained reason behind classification (Defender's 'determination' picker); null while untriaged. True-positive values include malware, phishing, apt, compromisedAccount, maliciousUserActivity, unwantedSoftware, multiStagedAttack; benign values include notMalicious, securityTesting, lineOfBusinessApplication, confirmedActivity, notEnoughDataToValidate, other."
+    sampleValues: ["notMalicious", "malware", "phishing", "compromisedAccount", "securityTesting", "lineOfBusinessApplication"]
+
+  - name: assignedTo
+    type: String
+    description: "Owner of the alert — a UPN when a human is assigned, or a service identity string when automation took it. Null when unassigned. Observed non-human values: 'API-Automated Investigation and Response' (AIR closed it) and 'Suppression rule' (a tenant suppression/tuning rule auto-resolved it at creation — see resolvedDateTime). Filter these out before computing analyst workload, and treat 'Suppression rule' as a tuning signal: those alerts were never triaged by anyone."
+    sampleValues: ["entra.mbowen@contoso.onmicrosoft.com", "API-Automated Investigation and Response", "Suppression rule"]
+
+  - name: investigationState
+    type: String
+    description: "State of Defender's Automated Investigation and Response (AIR) for this alert. 'unsupportedAlertType' — the overwhelmingly common value — means AIR does not cover this alert source, not that anything failed. Meaningful values appear mostly on Defender for Endpoint / Antivirus and Office 365 alerts. It is independent of 'status': the MDO sample is investigationState 'running' while already status 'resolved' (suppressed), so never infer one from the other."
+    sampleValues: ["unsupportedAlertType", "successfullyRemediated", "running", "queued", "benign", "partiallyRemediated", "terminatedByUser", "failed", "pendingApproval"]
+
+  - name: comments
+    type: DynamicArray
+    description: >-
+      Analyst comments added in the portal, newest last. Each element is an object
+      { comment, createdByDisplayName, createdDateTime } — mv-expand to enumerate.
+      Note that 'comment' is frequently null even when an element exists: closing
+      an alert writes a comment record whose only meaningful content is the actor
+      (createdByDisplayName, a UPN) and the time, which is the audit trail for who
+      resolved it. array_length(comments) > 0 indicates the alert was touched.
+    sampleValues: ["entra.mbowen@contoso.onmicrosoft.com"]
+
+  - name: recommendedActions
+    type: String
+    description: "Product-authored remediation playbook for this detection, as a long multi-line string (often A./B./C. sections or a bulleted list). Empty string — not null — for products that supply none (Defender for Cloud Apps, Sentinel, IRM, Entra ID Protection). Useful to surface verbatim in a report; don't try to parse it."
+
+  # ==========================================
+  # THREAT CLASSIFICATION
+  # ==========================================
+  - name: category
+    type: String
+    description: "Primary attack category — the MITRE ATT&CK tactic the detection maps to, or a Defender pseudo-category. Single value; see 'categories' for the full set. Note some alerts report a tactic here (InitialAccess, Execution, Exfiltration) while others report a non-tactic bucket (SuspiciousActivity, Malware), so treat this as a label, not a strict tactic enum."
+    sampleValues: ["InitialAccess", "Execution", "Exfiltration", "Persistence", "PrivilegeEscalation", "SuspiciousActivity", "Malware", "CredentialAccess", "Discovery", "Collection", "CommandAndControl", "DefenseEvasion", "LateralMovement", "Impact", "Ransomware", "UnwantedSoftware"]
+
+  - name: categories
+    type: DynamicArray
+    description: "All categories/tactics the alert maps to (array of strings). Usually contains 'category', but not always — the XDR attack-analysis alert in the samples has category 'SuspiciousActivity' with categories ['CredentialAccess','Collection']. Filter with 'categories has \"Exfiltration\"' or mv-expand to count per tactic. Can be empty."
+    sampleValues: ["InitialAccess", "Discovery", "Execution", "CredentialAccess", "Collection", "PreAttack", "Probing", "Exfiltration"]
+
+  - name: mitreTechniques
+    type: DynamicArray
+    description: "MITRE ATT&CK technique IDs attributed to the alert, including sub-techniques in T####.### form (e.g. T1059.001). Frequently empty — Entra ID Protection, Defender for Cloud Apps, and IRM alerts generally carry no techniques, so ATT&CK coverage reports built on this field under-count. Use mv-expand for per-technique aggregation, and 'split(t, \".\")[0]' to roll sub-techniques up to the parent."
+    sampleValues: ["T1059.001", "T1016", "T1069", "T1078", "T1078.004", "T1098", "T1110", "T1114", "T1212", "T1539"]
+
+  - name: actorDisplayName
+    type: String
+    description: "Named threat actor / activity group attributed to the alert (Microsoft's weather-themed naming, e.g. 'Midnight Blizzard'); null on all but nation-state and named-campaign alerts. When non-null this is a strong escalation signal."
+
+  - name: threatDisplayName
+    type: String
+    description: "Malware/threat name as reported by the detecting engine, in Defender Antivirus naming ('Type:Platform/Family.Variant!Suffix'); null for non-malware alerts."
+    sampleValues: ["Trojan:Python/PSWStealer.K!AMTB"]
+
+  - name: threatFamilyName
+    type: String
+    description: "Malware family only, without type/platform/variant decoration; null for non-malware alerts. Better than threatDisplayName for grouping ('summarize count() by threatFamilyName')."
+    sampleValues: ["PSWStealer"]
+
+  # ==========================================
+  # SOURCE PRODUCT & DETECTOR
+  # ==========================================
+  - name: serviceSource
+    type: String
+    description: "Microsoft security service that owns the alert. The main field for slicing the stream by product. Caveat: products routed through the unified portal without a dedicated enum value report 'unknownFutureValue' — in the samples both Microsoft Sentinel analytic-rule alerts and Purview Insider Risk alerts do — so use productName when you need to tell those apart."
+    sampleValues: ["microsoftDefenderForEndpoint", "microsoftDefenderForCloudApps", "microsoftDefenderForIdentity", "microsoftDefenderForOffice365", "microsoft365Defender", "azureAdIdentityProtection", "microsoftDefenderForCloud", "microsoftAppGovernance", "microsoftDataLossPrevention", "unknownFutureValue"]
+
+  - name: detectionSource
+    type: String
+    description: "The specific detection technology that fired, one level finer than serviceSource — e.g. 'antivirus' vs 'microsoftDefenderForEndpoint' (EDR) vs 'automatedInvestigation', both under the endpoint service. Same 'unknownFutureValue' caveat as serviceSource."
+    sampleValues: ["microsoftDefenderForEndpoint", "antivirus", "microsoft365Defender", "azureAdIdentityProtection", "cloudAppSecurity", "smartScreen", "customDetection", "automatedInvestigation", "manual", "unknownFutureValue"]
+
+  - name: productName
+    type: String
+    description: "Display name of the originating product. Use this (not serviceSource) to identify products that report serviceSource == 'unknownFutureValue', and for human-readable per-product reporting."
+    sampleValues: ["Microsoft Defender for Endpoint", "Microsoft Defender for Cloud Apps", "Microsoft Defender XDR", "AAD Identity Protection", "Microsoft Sentinel", "Microsoft Insider Risk Management"]
+
+  - name: detectorId
+    type: String
+    description: "Identifier of the specific detector/analytic that produced the alert. Format varies by product and is not always a GUID: an MDE/AV detector GUID, a readable token for Entra ID Protection ('AnomalousToken') and IRM ('Policy Violation'), an MCAS constant ('MCAS_ALERT_CABINET_EVENT_MATCH_AUDIT'), or, for Sentinel, '<workspaceId>_<ruleId>' truncated to 64 characters — so Sentinel detectorIds are not reliably parseable and their rule GUID is cut short. Stable across firings of the same detection, which makes it a good grouping key for tuning."
+    sampleValues: ["AnomalousToken", "Policy Violation", "MCAS_ALERT_CABINET_EVENT_MATCH_AUDIT", "692cc67c-baa6-4d28-b9dd-910b7b2e9b73"]
+
+  - name: alertPolicyId
+    type: String
+    description: "ID of the customer-configured policy or rule behind the alert — the Sentinel analytic rule GUID (untruncated, unlike detectorId), the Defender for Cloud Apps policy id, or the IRM policy GUID. Null for built-in Microsoft detections (MDE, AV, Entra ID Protection). This is the field to group on when reporting which of your own rules are noisy."
+    sampleValues: ["00000000-0000-0000-0000-0000000000d3", "0000000000000000000000d2"]
+
+  # ==========================================
+  # TIMES
+  # ==========================================
+  - name: createdDateTime
+    type: DateTime
+    description: "When Defender created the alert (UTC, ISO-8601 with fractional seconds). Source of the 'timestamp' column."
+    sampleValues: ["2026-07-27T14:32:28.89Z"]
+
+  - name: firstActivityDateTime
+    type: DateTime
+    description: "Start of the malicious activity the alert covers. Can precede createdDateTime by a long interval — minutes for endpoint detections, but months for Insider Risk (the sample opens on 2026-04-13 for an alert created 2026-07-12) and days for attack-analysis alerts. Use this, not timestamp, when building an attack timeline; use 'createdDateTime - firstActivityDateTime' for detection latency."
+    sampleValues: ["2026-07-27T14:30:30.2713211Z", "2026-04-13T00:00:00Z"]
+
+  - name: lastActivityDateTime
+    type: DateTime
+    description: "End of the observed activity window. Equals firstActivityDateTime for point-in-time detections; later for ongoing or aggregated activity (the IRM sample keeps advancing it as the user keeps exfiltrating)."
+    sampleValues: ["2026-07-27T14:30:30.2713211Z", "2026-07-29T00:00:00Z"]
+
+  - name: lastUpdateDateTime
+    type: DateTime
+    description: "When the alert record last changed in Defender (new evidence, status/classification change, comment, incident re-correlation). The field used to collapse repeated emissions of the same alert to its current state — see the latest-snapshot join pattern in the schema description above (arg_max(lastUpdateDateTime, *) is not available on this engine)."
+    sampleValues: ["2026-07-27T14:32:33.79Z"]
+
+  - name: resolvedDateTime
+    type: DateTime
+    description: "When the alert was resolved; null while open. Set by an analyst closing the alert or by automation (AIR, or a suppression rule). 'resolvedDateTime - createdDateTime' is the alert's time-to-close, but note it can be exactly zero: when resolvedDateTime == createdDateTime to the tick, the alert was suppressed at creation and never entered the queue (the MDO sample, with assignedTo 'Suppression rule', has both at 04:00:07.0133333). Exclude those from MTTR."
+    sampleValues: ["2026-07-29T22:41:12.8149557Z", "2026-07-30T04:00:07.0133333Z"]
+
+  # ==========================================
+  # PRODUCT-SPECIFIC EXTRAS
+  # ==========================================
+  - name: additionalData
+    type: Dynamic
+    description: >-
+      Free-form product-specific key/value bag; '{}' (an empty object, not null)
+      for most Defender for Endpoint, Antivirus, Entra ID Protection, and XDR
+      alerts. Keys vary entirely by source product, are not a fixed schema, and
+      often contain spaces — so index them with bracket syntax:
+      additionalData["Analytic Rule Name"]. Notable payloads:
+
+        Microsoft Sentinel analytic-rule alerts — the full rule context:
+          - "Analytic Rule Name" / "Analytic Rule Ids" (a JSON array *as a
+            string* — needs parse_json()) / "AnalyticsTemplateId" (the Content
+            Hub template GUID, shared across tenants).
+          - "Query" — the entire KQL of the rule that fired, including a leading
+            'set query_now = datetime(...)' comment; plus "Query Period",
+            "Query Start Time UTC", "Query End Time UTC", "Trigger Operator",
+            "Trigger Threshold", "Search Query Results Overall Count".
+          - "WorkspaceId" / "WorkspaceName" — the Log Analytics workspace, i.e.
+            which Sentinel instance produced the alert.
+          - "SystemAlertId" — the Sentinel-side alert GUID (join key to the
+            SecurityAlert table), "Correlation Id", "Event Grouping",
+            "OriginalAlertProductName" / "OriginalAlertProviderName" /
+            "OriginatingAlertSource" / "ProcessedBySentinel".
+          - "Intent" — the numeric MITRE tactic bitmask, paired with an
+            "Intent@odata.type": "#Int64" type-annotation key.
+
+        Purview Insider Risk Management alerts:
+          - "AlertPolicyTitle", "RiskScore" (a numeric *string*), "Intent",
+            "LastTriggeringEvent", "TriggeringSignalDateTimeUtc" (US-format
+            local-looking date string such as "7/11/2026 3:46:42 PM", NOT
+            ISO-8601 — parse accordingly), "SequenceActivities",
+            "HighestScoredUserInsightType" / "...InsightId" /
+            "...InsightStartTime",
+            "AggregatedDataLeakTriggerEventInsightType", "CaseId" / "CaseStatus"
+            / "AssignedOwner" / "ContentExplorerUrl" / "UnusualActivity" (often
+            empty strings rather than null).
+
+      Values are strings far more often than their apparent type (RiskScore is
+      "50"), so cast explicitly: toint(additionalData.RiskScore).
+    sampleValues: ["Full alert created", "SingleAlert", "Privileged Account Permissions Changed", "AggregatedDataLeakTrigger", "50"]
+
+  - name: customDetails
+    type: Dynamic
+    description: "Custom key/value details attached to the alert — populated by Sentinel analytic rules configured with custom details, or by custom detection rules. Empty object '{}' in every sample here; treat any key as tenant-specific."
+
+  # ==========================================
+  # EVIDENCE (polymorphic entity array)
+  # ==========================================
+  - name: evidence
+    type: DynamicArray
+    description: >-
+      The entities involved in the alert — the richest part of the record and the
+      only place users, hosts, IPs, files, processes and cloud apps appear. It is
+      a heterogeneous array: each element's kind is given by its '@odata.type'
+      key, and the element's own fields depend on that type. Because the key
+      starts with '@' and contains a dot it must be bracket-indexed:
+
+        MSDefenderAlert
+        | mv-expand ev = evidence
+        | extend evType = tostring(ev['@odata.type'])
+        | where evType == "#microsoft.graph.security.deviceEvidence"
+        | extend Host = tostring(ev.hostName)
+
+      Use mv-apply when you want to pull one entity kind out without multiplying
+      rows (e.g. mv-apply ev = evidence on (where ... | summarize
+      Hosts = make_set(tostring(ev.hostName)))). Elements are additive over the
+      alert's life, so a re-emitted alert can carry more evidence than the first
+      copy (the attack-analysis sample gained a second ipEvidence five days
+      later, visible via the per-element createdDateTime).
+
+      Fields present on EVERY evidence element regardless of type:
+        - @odata.type — the entity kind (see catalogue at the end of this file).
+        - createdDateTime — when this evidence item was added to the alert.
+        - verdict — Defender's assessment of the entity: malicious, suspicious,
+          noThreatsFound, unknown, unknownFutureValue. Filtering to
+          verdict == "malicious" is the fastest way to find the actual IOCs.
+        - remediationStatus — none, remediated, prevented, blocked, active,
+          notFound, unremediated, running, failed, declined, unknown.
+        - remediationStatusDetails — free text explaining the above (e.g.
+          "Entity was pre-remediated by Windows Defender"); usually null.
+        - roles / detailedRoles — the entity's part in the story, as arrays.
+          roles carries semantic values (compromised, attacker, victim,
+          contextual, scanned, destination, source, related, policyViolator);
+          detailedRoles carries product-specific labels (e.g. "PrimaryDevice").
+          Both are commonly empty — an empty roles[] does not mean the entity is
+          unimportant.
+        - tags — array of asset tags inherited from the entity (e.g.
+          "Critical asset"); mirrors the alert's systemTags.
+        - stream — null in practice on the types that carry it.
+
+      Type-specific fields for the evidence kinds seen in this tenant's data:
+
+        userEvidence — an account. Everything is under userAccount:
+          accountName (SAM/short name), userPrincipalName (UPN; may be null even
+          when accountName is set), displayName, domainName (an AD domain, a DNS
+          domain, or the local machine name for local accounts; null for
+          cloud-only accounts), azureAdUserId (Entra object GUID — the most
+          reliable identity join key), userSid (S-1-5-21-... for AD/local
+          accounts, S-1-12-1-... for Entra accounts), activeDirectoryObjectGuid,
+          resourceAccessEvents (array, usually empty). Beware partially-empty
+          elements: an alert may include a user whose only populated field is
+          azureAdUserId (a target account Defender could not resolve), so
+          coalesce accountName / userPrincipalName / azureAdUserId when labeling.
+
+        deviceEvidence — an onboarded endpoint (Defender for Endpoint):
+          hostName, deviceDnsName (FQDN), dnsDomain, ntDomain,
+          mdeDeviceId (the MDE machine GUID/hex id — join key to endpoint
+          telemetry and to processEvidence/fileEvidence on the same alert),
+          azureAdDeviceId, lastIpAddress, lastExternalIpAddress,
+          ipInterfaces (array of every local address, IPv4 + IPv6 + loopback +
+          link-local — filter before displaying), loggedOnUsers (array of
+          { accountName, domainName }), osPlatform (e.g. Windows11,
+          WindowsServer2025, AzureStackHCI), osBuild (number), version (e.g.
+          "24H2"), healthStatus (active/inactive/impairedCommunication),
+          onboardingStatus (onboarded/canBeOnboarded/unsupported/insufficientInfo),
+          defenderAvStatus (updated/notUpdated/disabled/notSupported/unknown),
+          riskScore (none/low/medium/high — a *string*), rbacGroupId (number) /
+          rbacGroupName (the MDE device group, useful for scoping by
+          business unit), firstSeenDateTime, and vmMetadata
+          { cloudProvider, resourceId, subscriptionId, vmId } for Azure/Arc
+          machines — resourceId is the full ARM path, so it also reveals the
+          resource group.
+
+        processEvidence — a process execution:
+          processId (number), processCreationDateTime, processCommandLine
+          (the full command line, frequently containing base64
+          -EncodedCommand payloads worth decoding with base64_decode_tostring()),
+          imageFile (see file object below), parentProcessId,
+          parentProcessCreationDateTime, parentProcessImageFile (same shape,
+          usually with hashes null), userAccount (same shape as userEvidence's),
+          mdeDeviceId (links the process to the deviceEvidence element),
+          detectionStatus (detected/blocked/prevented).
+
+        fileEvidence — a file on disk:
+          fileDetails (see below), detectionStatus, mdeDeviceId.
+
+        The file object (imageFile / parentProcessImageFile / fileDetails all
+        share it): fileName, filePath (the *directory*, without the file name —
+        strcat them for a full path), fileSize (number), filePublisher, signer,
+        issuer, md5, sha1, sha256, sha256Ac. Hash coverage is uneven: sha1 and
+        sha256 are usually present on the triggering image, md5 often null, and
+        parent-process files frequently have no hashes at all.
+
+        ipEvidence — an IP address:
+          ipAddress, countryLetterCode (2-letter ISO code, may be null), and
+          location { city, state, countryName, latitude, longitude } — the whole
+          location object can be null, and its individual fields can be null even
+          when it exists, so guard with isnotempty(). Note countryLetterCode is
+          often populated when location is null and vice versa.
+
+        cloudLogonSessionEvidence — a sign-in session (Entra ID Protection):
+          sessionId, startUtcDateTime, previousLogonDateTime, userAgent,
+          browser, operatingSystem, deviceName, protocol, and a nested account
+          object holding the same userAccount shape as userEvidence. browser /
+          operatingSystem / deviceName are commonly null even when userAgent is
+          present, so parse userAgent if you need the client.
+
+        cloudLogonRequestEvidence — the individual authentication request behind
+          a sign-in alert: requestId only (join key to the Entra sign-in logs'
+          correlation/request id).
+
+        cloudApplicationEvidence — a SaaS/cloud app (Defender for Cloud Apps):
+          displayName, appId (numeric MCAS app id, e.g. 20893 = Exchange
+          Online), saasAppId (usually equal to appId), instanceName, instanceId
+          (0 when there is a single instance).
+
+        mailboxEvidence — a targeted mailbox (Defender for Office 365):
+          primaryAddress, upn (both the SMTP address in practice), displayName,
+          and a nested userAccount with the same shape as userEvidence's. An MDO
+          alert typically carries mailboxEvidence AND a userEvidence element for
+          the same person, with different verdicts — noThreatsFound on the
+          mailbox, suspicious on the user — so de-duplicate by UPN when listing
+          affected people, and do not read the mailbox verdict as the alert's.
+
+        analyzedMessageEvidence — the email itself, and the richest evidence type
+          in the email family:
+            - identity: networkMessageId (the Defender-side message GUID, the
+              join key to Office 365 email telemetry and to
+              mailClusterEvidence.networkMessageIds), internetMessageId (the RFC
+              Message-ID, angle-bracketed), urn (urn:MailEntityModel:<hash>).
+            - who: recipientEmailAddress, senderIp, and two sender objects —
+              p1Sender (the SMTP envelope sender, MAIL FROM) and p2Sender (the
+              From: header, what the user sees), each { emailAddress, domainName,
+              displayName }. A mismatch between p1Sender and p2Sender domains is
+              itself a spoofing signal; p1Sender.displayName is often an empty
+              string rather than null.
+            - content: subject, attachmentsCount, urlCount, urls (array of every
+              URL found, commonly including gateway-rewritten wrappers with the
+              real destination percent-encoded inside a query parameter, so the
+              same click can appear two or three times at different unwrap
+              stages), language (often null).
+            - verdict: threats (array of Defender's threat labels, e.g. ZapPhish,
+              HighConfPhish, Phish, Malware, Spam — WITH DUPLICATES: the sample
+              carries HighConfPhish four times, so always make_set/distinct before
+              displaying or counting), threatDetectionMethods (e.g.
+              FingerPrintMatch, UrlDetonationReputation, Spoof),
+              antiSpamDirection (often null despite being echoed inside
+              mailClusterEvidence.clusterByValue).
+            - delivery: deliveryAction (delivered / blocked / replaced) and
+              deliveryLocation (inbox / junkFolder / quarantine / deletedItems /
+              failed / dropped). Read them together: deliveryAction 'delivered'
+              with deliveryLocation 'quarantine' means it reached the user and was
+              pulled afterwards by ZAP — which is exactly what
+              remediationStatus 'remediated' on this element records.
+            - receivedDateTime — when the mail arrived, which can be much earlier
+              than the alert's createdDateTime (9 hours in the sample).
+
+        mailClusterEvidence — Defender's grouping of similar mail around the
+          alert; one alert commonly carries several of these, one per clustering
+          strategy, so expect repeated elements of this type:
+            clusterBy (the semicolon-joined field names used to cluster, e.g.
+            'Subject;SenderIp;AntispamDirection;ContentType;...'), clusterByValue
+            (the semicolon-joined values in the same order — split both on ';'
+            and zip them to read a cluster), emailCount (mail in the cluster; may
+            be 0), query (the raw KQL-ish Threat Explorer query string that
+            defines the cluster), networkMessageIds (array of member message ids —
+            empty in the samples even when emailCount is 1, so do not rely on it
+            to enumerate the cluster), urn
+            (urn:MailClusterEntityModel:<hash>).
+
+        The mail evidence types additionally carry a 'urn' field that the other
+        types do not; it is a stable per-entity identifier of the form
+        urn:<Model>:<hash> and is useful for de-duplicating repeated evidence
+        elements across snapshots of the same alert.
+
+      Other @odata.types are emitted by products not represented in these
+      samples (urlEvidence, registryKeyEvidence, azureResourceEvidence,
+      containerEvidence, ...). The catalogue at the end of this file lists them
+      with their key fields. Always branch on @odata.type rather than assuming a
+      field exists.
+    sampleValues: ["#microsoft.graph.security.userEvidence", "#microsoft.graph.security.deviceEvidence", "#microsoft.graph.security.processEvidence", "#microsoft.graph.security.fileEvidence", "#microsoft.graph.security.ipEvidence", "#microsoft.graph.security.cloudLogonSessionEvidence", "#microsoft.graph.security.cloudLogonRequestEvidence", "#microsoft.graph.security.cloudApplicationEvidence", "#microsoft.graph.security.mailboxEvidence", "#microsoft.graph.security.analyzedMessageEvidence", "#microsoft.graph.security.mailClusterEvidence"]
+
+  # ==========================================
+  # TAGS
+  # ==========================================
+  - name: systemTags
+    type: DynamicArray
+    description: "Tags applied by Defender itself, inherited from the involved assets rather than set on the alert. 'Critical asset' — from Defender's critical-asset management — is the one that matters for triage: 'where systemTags has \"Critical asset\"' surfaces alerts on business-critical users and devices. Usually empty; the same values reappear in evidence[].tags."
+    sampleValues: ["Critical asset"]
+
+
+# ==========================================
+# EVIDENCE @odata.type CATALOGUE
+# ==========================================
+# Values are the full '#microsoft.graph.security.<type>' strings. The eleven types
+# marked (*) appear in this repository's samples and are documented field-by-field
+# under 'evidence' above; the rest come from products whose alerts are not in the
+# samples — treat their field lists as the Graph-documented shape, to be confirmed
+# against real data before relying on them in a query.
+#
+# Identity / account:
+#   userEvidence (*)                  userAccount{...}
+#   mailboxEvidence (*)               primaryAddress, upn, displayName, userAccount
+#   servicePrincipalEvidence          servicePrincipalName/-Type, appId, appOwnerTenantId
+#   oauthApplicationEvidence          appId, objectId, displayName, publisher
+#   securityGroupEvidence             securityGroupId, displayName
+#
+# Endpoint:
+#   deviceEvidence (*)                hostName, mdeDeviceId, ipInterfaces, vmMetadata{...}
+#   processEvidence (*)               processCommandLine, imageFile{...}, parentProcess*
+#   fileEvidence (*)                  fileDetails{...}, detectionStatus
+#   fileHashEvidence                  algorithm, value
+#   registryKeyEvidence               registryHive, registryKey
+#   registryValueEvidence             registryHive, registryKey, registryValue*, valueType
+#   driverEvidence                    loadedImage, driverName
+#
+# Network / web:
+#   ipEvidence (*)                    ipAddress, countryLetterCode, location{...}
+#   urlEvidence                       url
+#   dnsEvidence                       domainName, ipAddresses[]
+#   nicEvidence                       ipAddress, macAddress, vlans[]
+#
+# Cloud sign-in (Entra ID Protection):
+#   cloudLogonSessionEvidence (*)     sessionId, startUtcDateTime, userAgent, account{...}
+#   cloudLogonRequestEvidence (*)     requestId
+#
+# SaaS / Defender for Cloud Apps:
+#   cloudApplicationEvidence (*)      displayName, appId, saasAppId, instanceName
+#
+# Email (Defender for Office 365):
+#   analyzedMessageEvidence (*)       networkMessageId, internetMessageId, subject,
+#                                     senderIp, p1Sender/p2Sender, recipientEmailAddress,
+#                                     deliveryAction, deliveryLocation, urls[], urlCount,
+#                                     attachmentsCount, threats[], threatDetectionMethods[],
+#                                     antiSpamDirection, language
+#   mailClusterEvidence (*)           clusterBy, clusterByValue, emailCount, query,
+#                                     networkMessageIds[], urn
+#
+# Cloud resources (Defender for Cloud):
+#   azureResourceEvidence             resourceId, resourceName, resourceType
+#   amazonResourceEvidence            resourceId, resourceType, amazonAccountId
+#   googleCloudResourceEvidence       resourceName, resourceType, projectId, location
+#   blobEvidence / blobContainerEvidence   url, name, etag, fileHashes[]
+#   sasTokenEvidence                  allowedResourceTypes, permissions, expiryDateTime
+#
+# Containers / Kubernetes:
+#   containerEvidence                 containerId, name, image, isPrivileged, args[]
+#   containerImageEvidence            imageId, registry
+#   containerRegistryEvidence         registry
+#   kubernetesClusterEvidence         name, distribution, version, platform
+#   kubernetesNamespaceEvidence       name, cluster
+#   kubernetesPodEvidence             name, namespace, containers[], podIp, serviceAccount
+#   kubernetesServiceEvidence         name, namespace, clusterIP, servicePorts[]
+#   kubernetesSecretEvidence          name, namespace, secretType
+#   kubernetesServiceAccountEvidence  name, namespace
+#   kubernetesControllerEvidence      name, namespace, controllerType
+#
+# Other:
+#   gitHubOrganizationEvidence / gitHubRepoEvidence / gitHubUserEvidence
+#   ioTDeviceEvidence                 deviceId, deviceName, deviceType, zone, sensor
+#
+#
+# ==========================================
+# SOURCE-PRODUCT CHEAT SHEET
+# ==========================================
+# How the samples in eventSamples/ map to the fields that identify their source,
+# and which evidence types each produces. Use this to pick the right filter.
+#
+#   productName                        serviceSource                   id prefix  evidence types
+#   ---------------------------------- ------------------------------- ---------- ---------------------------------
+#   Microsoft Defender for Endpoint    microsoftDefenderForEndpoint    da..._1    device, process, file, user
+#     (detectionSource microsoftDefenderForEndpoint for EDR, antivirus for AV)
+#   Microsoft Defender for Cloud Apps  microsoftDefenderForCloudApps   ca<hex>    user, cloudApplication, ip
+#   AAD Identity Protection            azureAdIdentityProtection       ad<hex>    user, cloudLogonSession,
+#                                                                                 cloudLogonRequest, ip
+#   Microsoft Defender XDR             microsoft365Defender            r...._aml  user, ip
+#     (attack analysis / anomaly ML correlation over other products' signals)
+#   Microsoft Sentinel                 unknownFutureValue              sn<guid>   user (entity mapping of the rule)
+#     (identify via productName; rule GUID in alertPolicyId, KQL in additionalData.Query)
+#   Microsoft Defender for Office 365  microsoftDefenderForOffice365   fa<guid>   mailbox, analyzedMessage,
+#                                                                                 mailCluster (xN), user, ip
+#   Microsoft Insider Risk Management  unknownFutureValue              ir<guid>   user
+#     (identify via productName; risk score and insights in additionalData)

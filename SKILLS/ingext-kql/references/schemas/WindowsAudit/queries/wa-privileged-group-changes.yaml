@@ -1,0 +1,44 @@
+description: >-
+  Report every addition to or removal from a Windows security group across the
+  three group scopes — 4728/4729 (global), 4732/4733 (local, including the
+  Builtin\Administrators group on member servers and workstations) and
+  4756/4757 (universal). On these events TargetUserName is the GROUP and
+  MemberName/MemberSid is the account, which is the single most common mistake
+  when querying this data. MemberName is often "-" for local groups even when
+  the member is a domain account, so MemberSid is the reliable identifier.
+  Flags membership changes to high-value groups by well-known RID/SID suffix:
+  -512 Domain Admins, -519 Enterprise Admins, -518 Schema Admins, -520 Group
+  Policy Creator Owners, -516 Domain Controllers, S-1-5-32-544 built-in
+  Administrators, S-1-5-32-551 Backup Operators, S-1-5-32-548 Account
+  Operators. Additions outside a change window, or any addition performed by an
+  account that is not a recognised administrator, warrant investigation.
+datatype: WindowsAudit
+kql: |
+  WindowsAudit
+  | where timestamp > ago(7d)
+  | where EventID in (4728, 4729, 4732, 4733, 4756, 4757)
+  | extend Action = iff(EventID in (4728, 4732, 4756), "added", "removed")
+  | extend Scope = case(EventID in (4728, 4729), "global",
+                        EventID in (4732, 4733), "local",
+                        "universal")
+  | extend HighValue = TargetSid endswith "-512"            // Domain Admins
+                    or TargetSid endswith "-519"            // Enterprise Admins
+                    or TargetSid endswith "-518"            // Schema Admins
+                    or TargetSid endswith "-520"            // Group Policy Creator Owners
+                    or TargetSid endswith "-516"            // Domain Controllers
+                    or TargetSid in ("S-1-5-32-544",        // Administrators
+                                     "S-1-5-32-551",        // Backup Operators
+                                     "S-1-5-32-548",        // Account Operators
+                                     "S-1-5-32-549")        // Server Operators
+  | project timestamp, Hostname, Action, Scope, HighValue,
+            GroupName = TargetUserName, GroupDomain = TargetDomainName, GroupSid = TargetSid,
+            Member = coalesce(iff(MemberName == "-", "", MemberName), MemberSid), MemberSid,
+            ChangedBy = strcat(SubjectDomainName, "\\", SubjectUserName), SubjectLogonId
+  | order by HighValue desc, timestamp desc
+tags: [windows, audit, 4728, 4732, 4756, privilege-escalation, group-membership, detection]
+expected_output: |
+  Security group membership changes, high-value groups first (sanitized).
+
+  timestamp             Hostname                Action   Scope   HighValue  GroupName       GroupDomain  GroupSid                                          Member                                        MemberSid                                          ChangedBy         SubjectLogonId
+  2026-07-27T11:05:18Z  dc01.contoso.com        added    global  true       Domain Admins   CONTOSO      S-1-5-21-1111111111-2222222222-3333333333-512     CN=adele.vance,CN=Users,DC=contoso,DC=com     S-1-5-21-1111111111-2222222222-3333333333-1001     CONTOSO\dadmin    0x30dc2
+  2026-07-27T11:41:01Z  wkstn-0142.contoso.com  added    local   true       Administrators  Builtin      S-1-5-32-544                                      S-1-5-21-1111111111-2222222222-3333333333-1001  S-1-5-21-1111111111-2222222222-3333333333-1001    CONTOSO\dadmin    0x1a4b2c9

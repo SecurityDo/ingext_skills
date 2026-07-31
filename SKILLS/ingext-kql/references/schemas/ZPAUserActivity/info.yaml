@@ -1,0 +1,408 @@
+schema: ZPAUserActivity
+description: >-
+  Zscaler Private Access (ZPA) user activity log, streamed by Ingext from a ZPA
+  Log Streaming Service (LSS) user-activity feed (log type zpn_trans_log).
+  Each record is one application connection brokered by ZPA: the user and client
+  device (identity, platform, private/public IP, geolocation), the application
+  and app group requested, the App Connector and server that fulfilled the
+  request, the access-policy rule that matched, connection status and byte
+  counts through the ZPA Service Edge (ZEN), a detailed timeline of setup
+  timestamps, and Privileged Remote Access (PRA) session details when
+  applicable. Field semantics follow the Zscaler "User Activity Log Fields"
+  specification for LSS JSON feeds. Unlike the ZIA NSS feeds, numeric fields
+  arrive as native JSON numbers. timestamp is parsed from the 'LogTimestamp'
+  field. Timing fields (PolicyProcessingTime, ServerSetupTime) are in
+  microseconds.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Log emit time, parsed from the 'LogTimestamp' field (Zscaler ctime-style string, UTC). Primary time column for range filters (e.g. where timestamp > ago(1d))."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting. Distinct from the ZENBytes*/ZENTotalBytes* connection byte counters."
+
+  - name: LogTimestamp
+    type: String
+    description: "Log timestamp as emitted by ZPA — a ctime-format string ('Ddd Mmm DD HH:MM:SS YYYY'), not a parsed DateTime. Source of the 'timestamp' column; use 'timestamp' for range filters/arithmetic."
+    sampleValues: ["Thu Jul 23 02:33:07 2026"]
+
+  # ==========================================
+  # SESSION / CONNECTION IDENTITY & STATUS
+  # ==========================================
+  - name: SessionID
+    type: String
+    description: "ID of the user's Zscaler Client Connector session (the TLS tunnel to the ZPA Service Edge). Shared by every app connection made within that session — use it to group a user's connections."
+    sampleValues: ["AbCdEfGhIjKlMnOpQrSt"]
+
+  - name: ConnectionID
+    type: String
+    description: "Unique ID of this application connection, formatted as '<SessionID>,<connection token>'. The token after the comma identifies the individual connection within the session."
+    sampleValues: ["AbCdEfGhIjKlMnOpQrSt,UvWxYz0123AbCdEfGhIj"]
+
+  - name: ConnectionStatus
+    type: String
+    description: "Status of the connection at log time: 'open' (established), 'active' (in progress, interval log), or 'close' (ended). A single connection can emit multiple records over its life — filter on 'close' for completed-connection analytics."
+    sampleValues: ["active", "open", "close"]
+
+  - name: InternalReason
+    type: String
+    description: "Internal reason code for the connection status (e.g. OPEN_OR_ACTIVE_CONNECTION while open/active; on close, the close/denial reason). Examine together with Policy when investigating denied or failed connections."
+    sampleValues: ["OPEN_OR_ACTIVE_CONNECTION"]
+
+  - name: IPProtocol
+    type: Integer
+    description: "IP protocol number of the brokered connection (6 = TCP, 17 = UDP, 1 = ICMP)."
+    sampleValues: ["6", "17"]
+
+  - name: DoubleEncryption
+    type: Integer
+    description: "1 if double encryption is enabled for the application segment (traffic re-encrypted inside the ZPA microtunnel), 0 otherwise."
+    sampleValues: ["0", "1"]
+
+  - name: ClientToClient
+    type: String
+    description: "'1' when this is a ZPA client-to-client connection (e.g. remote-assistance between two Client Connector devices), '0' for a normal client-to-application connection."
+    sampleValues: ["0"]
+
+  # ==========================================
+  # USER / CLIENT DEVICE
+  # ==========================================
+  - name: Username
+    type: String
+    description: "Authenticated user identity (typically the UPN/email from the IdP) for the session."
+    sampleValues: ["adele.vance@contoso.com"]
+
+  - name: Idp
+    type: String
+    description: "Name of the identity provider (IdP) configuration that authenticated the user."
+    sampleValues: ["ZPA User Auth"]
+
+  - name: Platform
+    type: String
+    description: "Operating system platform of the client device running Zscaler Client Connector."
+    sampleValues: ["windows", "mac", "linux", "ios", "android"]
+
+  - name: Hostname
+    type: String
+    description: "Hostname of the client device that originated the connection."
+    sampleValues: ["CONTOSO-WS03"]
+
+  - name: ClientPrivateIP
+    type: String
+    description: "Private (local network) IP address of the client device."
+    sampleValues: ["192.168.0.235"]
+
+  - name: ClientPublicIP
+    type: String
+    description: "Public (egress) IP address the client connected to the ZPA Service Edge from."
+    sampleValues: ["198.51.100.23"]
+
+  - name: ClientCity
+    type: String
+    description: "City geolocated from the client's public IP."
+    sampleValues: ["Redmond"]
+
+  - name: ClientCountryCode
+    type: String
+    description: "ISO country code geolocated from the client's public IP."
+    sampleValues: ["US"]
+
+  - name: ClientLatitude
+    type: Float
+    description: "Latitude geolocated from the client's public IP."
+    sampleValues: ["47.674"]
+
+  - name: ClientLongitude
+    type: Float
+    description: "Longitude geolocated from the client's public IP."
+    sampleValues: ["-122.1215"]
+
+  - name: ClientZEN
+    type: String
+    description: "ZPA Service Edge (formerly ZEN broker) instance the client is connected to."
+    sampleValues: ["US-CA-0716"]
+
+  # ==========================================
+  # APPLICATION / SERVER
+  # ==========================================
+  - name: Application
+    type: String
+    description: "Name of the ZPA application segment the connection matched."
+    sampleValues: ["Domain Controllers"]
+
+  - name: AppGroup
+    type: String
+    description: "Name of the segment group the matched application segment belongs to."
+    sampleValues: ["Domain Controllers"]
+
+  - name: Host
+    type: String
+    description: "Destination host (FQDN or IP) the client requested."
+    sampleValues: ["addc02.contoso.int"]
+
+  - name: ServicePort
+    type: Integer
+    description: "Destination port the client requested on the application."
+    sampleValues: ["135", "443", "3389"]
+
+  - name: Server
+    type: String
+    description: "Unique ID of the configured server that fulfilled the request; '0' when servers are dynamically discovered rather than statically defined."
+    sampleValues: ["0"]
+
+  - name: ServerIP
+    type: String
+    description: "IP address of the internal server the App Connector connected to."
+    sampleValues: ["10.0.3.165"]
+
+  - name: ServerPort
+    type: Integer
+    description: "Port on the internal server the App Connector connected to (normally equal to ServicePort)."
+    sampleValues: ["135"]
+
+  - name: ServerSetupTime
+    type: Integer
+    description: "Time the App Connector took to establish the connection to the server, in microseconds. High values indicate application-side slowness."
+    sampleValues: ["378"]
+
+  # ==========================================
+  # POLICY
+  # ==========================================
+  - name: Policy
+    type: String
+    description: "Name of the access-policy rule that matched the connection. Empty when no named rule matched."
+    sampleValues: ["default access policy"]
+
+  - name: PolicyProcessingTime
+    type: Integer
+    description: "Time taken to evaluate policy for the connection, in microseconds."
+    sampleValues: ["90"]
+
+  # ==========================================
+  # APP CONNECTOR
+  # ==========================================
+  - name: Connector
+    type: String
+    description: "Name of the App Connector that served the connection. Empty when no connector was assigned."
+    sampleValues: ["CONTOSO-ZPACON01"]
+
+  - name: ConnectorIP
+    type: String
+    description: "IP address of the App Connector."
+    sampleValues: ["10.0.18.71"]
+
+  - name: ConnectorPort
+    type: Integer
+    description: "Source port the App Connector used for its connection toward the server."
+    sampleValues: ["41174"]
+
+  - name: ConnectorZEN
+    type: String
+    description: "ZPA Service Edge (ZEN) instance the App Connector is connected to. May differ from ClientZEN; traffic is bridged between the two edges."
+    sampleValues: ["US-IL-4708"]
+
+  # ==========================================
+  # TENANT
+  # ==========================================
+  - name: Customer
+    type: String
+    description: "ZPA tenant (customer) name the log belongs to."
+    sampleValues: ["Contoso"]
+
+  - name: MicroTenantID
+    type: String
+    description: "ID of the microtenant the user/policy belongs to; '0' when microtenants are not in use."
+    sampleValues: ["0"]
+
+  - name: AppMicroTenantID
+    type: String
+    description: "ID of the microtenant the application segment belongs to; '0' when microtenants are not in use."
+    sampleValues: ["0"]
+
+  # ==========================================
+  # CONNECTION TIMELINE (ISO-8601 UTC; empty when not yet reached / not applicable)
+  # ==========================================
+  - name: TimestampConnectionStart
+    type: DateTime
+    description: "When the application connection started (ISO-8601 UTC)."
+    sampleValues: ["2026-07-23T02:28:07.880Z"]
+
+  - name: TimestampConnectionEnd
+    type: DateTime
+    description: "When the application connection ended (ISO-8601 UTC). Empty while the connection is still open/active."
+
+  - name: TimestampCATx
+    type: DateTime
+    description: "When the connection request was transmitted to the ZPA Central Authority for policy/app lookup (ISO-8601 UTC)."
+    sampleValues: ["2026-07-23T02:28:07.880Z"]
+
+  - name: TimestampCARx
+    type: DateTime
+    description: "When the response was received from the ZPA Central Authority (ISO-8601 UTC). CARx - CATx approximates Central Authority round-trip latency."
+    sampleValues: ["2026-07-23T02:28:07.913Z"]
+
+  - name: TimestampAppLearnStart
+    type: DateTime
+    description: "When application learning (dynamic discovery of app reachability) started for this connection (ISO-8601 UTC). Usually empty."
+
+  - name: TimestampConnectorZENSetupComplete
+    type: DateTime
+    description: "When the microtunnel between the App Connector and its Service Edge was established for this connection (ISO-8601 UTC)."
+    sampleValues: ["2026-07-23T02:28:07.937Z"]
+
+  - name: TimestampZENFirstRxClient
+    type: DateTime
+    description: "When the Service Edge first received data from the client (ISO-8601 UTC)."
+    sampleValues: ["2026-07-23T02:28:07.998Z"]
+
+  - name: TimestampZENFirstTxClient
+    type: DateTime
+    description: "When the Service Edge first transmitted data to the client (ISO-8601 UTC)."
+    sampleValues: ["2026-07-23T02:28:07.978Z"]
+
+  - name: TimestampZENLastRxClient
+    type: DateTime
+    description: "When the Service Edge last received data from the client (ISO-8601 UTC)."
+    sampleValues: ["2026-07-23T02:28:07.998Z"]
+
+  - name: TimestampZENLastTxClient
+    type: DateTime
+    description: "When the Service Edge last transmitted data to the client (ISO-8601 UTC)."
+    sampleValues: ["2026-07-23T02:28:08.081Z"]
+
+  - name: TimestampZENFirstRxConnector
+    type: DateTime
+    description: "When the Service Edge first received data from the App Connector (ISO-8601 UTC)."
+    sampleValues: ["2026-07-23T02:28:07.978Z"]
+
+  - name: TimestampZENFirstTxConnector
+    type: DateTime
+    description: "When the Service Edge first transmitted data to the App Connector (ISO-8601 UTC)."
+    sampleValues: ["2026-07-23T02:28:07.937Z"]
+
+  - name: TimestampZENLastRxConnector
+    type: DateTime
+    description: "When the Service Edge last received data from the App Connector (ISO-8601 UTC)."
+    sampleValues: ["2026-07-23T02:28:08.081Z"]
+
+  - name: TimestampZENLastTxConnector
+    type: DateTime
+    description: "When the Service Edge last transmitted data to the App Connector (ISO-8601 UTC)."
+    sampleValues: ["2026-07-23T02:28:07.998Z"]
+
+  # ==========================================
+  # BYTE COUNTERS (through the Service Edge)
+  # ==========================================
+  - name: ZENBytesRxClient
+    type: Long
+    description: "Bytes the Service Edge received from the client since the previous log record for this connection (interval counter). Client upload direction."
+    sampleValues: ["168"]
+
+  - name: ZENBytesTxClient
+    type: Long
+    description: "Bytes the Service Edge transmitted to the client since the previous log record (interval counter). Client download direction."
+    sampleValues: ["280"]
+
+  - name: ZENBytesRxConnector
+    type: Long
+    description: "Bytes the Service Edge received from the App Connector since the previous log record (interval counter)."
+    sampleValues: ["280"]
+
+  - name: ZENBytesTxConnector
+    type: Long
+    description: "Bytes the Service Edge transmitted to the App Connector since the previous log record (interval counter)."
+    sampleValues: ["328"]
+
+  - name: ZENTotalBytesRxClient
+    type: Long
+    description: "Total bytes the Service Edge has received from the client over the life of the connection. Use the ZENTotalBytes* counters (on the last record per ConnectionID) for volume analytics."
+    sampleValues: ["328"]
+
+  - name: ZENTotalBytesTxClient
+    type: Long
+    description: "Total bytes the Service Edge has transmitted to the client over the life of the connection."
+    sampleValues: ["280"]
+
+  - name: ZENTotalBytesRxConnector
+    type: Long
+    description: "Total bytes the Service Edge has received from the App Connector over the life of the connection."
+    sampleValues: ["280"]
+
+  - name: ZENTotalBytesTxConnector
+    type: Long
+    description: "Total bytes the Service Edge has transmitted to the App Connector over the life of the connection."
+    sampleValues: ["328"]
+
+  # ==========================================
+  # PRIVILEGED REMOTE ACCESS (PRA)
+  # Populated only for PRA console sessions; empty/0 for normal app connections.
+  # ==========================================
+  - name: PRASessionType
+    type: String
+    description: "PRA session protocol type (e.g. RDP, SSH, VNC). Empty for non-PRA connections — filter on isnotempty(PRASessionType) to isolate privileged remote access activity."
+    sampleValues: [""]
+
+  - name: PRAConsoleType
+    type: String
+    description: "Type of PRA console used for the session. Empty for non-PRA connections."
+    sampleValues: [""]
+
+  - name: PRAConnectionID
+    type: String
+    description: "Unique ID of the PRA connection. Empty for non-PRA connections."
+    sampleValues: [""]
+
+  - name: PRAApprovalID
+    type: Long
+    description: "ID of the privileged approval under which the PRA session was allowed; 0 when no approval applies."
+    sampleValues: ["0"]
+
+  - name: PRACapabilityPolicyID
+    type: Long
+    description: "ID of the PRA capability policy governing what the user may do in the session (clipboard, file transfer, etc.); 0 when not applicable."
+    sampleValues: ["0"]
+
+  - name: PRACredentialPolicyID
+    type: Long
+    description: "ID of the PRA credential policy used to inject credentials into the session; 0 when not applicable."
+    sampleValues: ["0"]
+
+  - name: PRACredentialLoginType
+    type: String
+    description: "How the PRA session authenticated to the target (e.g. injected credential vs. user-supplied). Empty for non-PRA connections."
+    sampleValues: [""]
+
+  - name: PRACredentialUserName
+    type: String
+    description: "Username of the credential used on the PRA target host. Empty for non-PRA connections."
+    sampleValues: [""]
+
+  - name: PRARecordingStatus
+    type: String
+    description: "Session-recording status for the PRA session. Empty for non-PRA connections."
+    sampleValues: [""]
+
+  - name: PRAFileTransferList
+    type: String
+    description: "List of files transferred during the PRA session. Empty when no transfers occurred — review when auditing privileged file movement."
+    sampleValues: [""]
+
+  - name: PRASharedMode
+    type: String
+    description: "Sharing mode of the PRA session (whether the console was shared with other users). Empty for non-PRA connections."
+    sampleValues: [""]
+
+  - name: PRASharedUsersList
+    type: String
+    description: "Users the PRA session was shared with. Empty when not shared."
+    sampleValues: [""]
+
+  - name: PRAErrorStatus
+    type: String
+    description: "Error status reported for the PRA session, if any. Empty when no error."
+    sampleValues: [""]

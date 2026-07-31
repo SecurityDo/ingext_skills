@@ -1,0 +1,48 @@
+description: >-
+  Where Defender alerts are coming from, over 30 days — the orientation query to
+  run before any other MSDefenderAlert question. Breaks volume down by the three
+  fields that identify the source (productName / serviceSource / detectionSource)
+  with a severity histogram, how many are still open, how many were closed as
+  false positives, and how many distinct detections and incidents each product
+  contributes. Because Sentinel analytic rules and Purview Insider Risk both
+  report serviceSource == "unknownFutureValue", productName is what separates
+  them.
+datatype: MSDefenderAlert
+kql: |
+  // latest snapshot per record: this engine's dynamic schema does not support
+  // arg_max(<col>, *), so take the max timestamp per id and join it back
+  let LatestAlert =
+      MSDefenderAlert
+      | where timestamp > ago(30d)
+      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
+  MSDefenderAlert
+  | where timestamp > ago(30d)
+  | join kind=inner LatestAlert on $left.id == $right.AlertId
+  | where todatetime(lastUpdateDateTime) == LastUpdate
+  | project-away AlertId, LastUpdate
+  | summarize
+      Alerts = count(),
+      High = countif(severity == "high"),
+      Medium = countif(severity == "medium"),
+      Low = countif(severity == "low"),
+      Info = countif(severity == "informational"),
+      Open = countif(status in ("new", "inProgress")),
+      FalsePositive = countif(classification == "falsePositive"),
+      Detections = dcount(title),
+      Incidents = dcount(incidentId),
+      WithTechniques = countif(array_length(mitreTechniques) > 0)
+    by Product = productName, ServiceSource = serviceSource, DetectionSource = detectionSource
+  | extend OpenPct = round(100.0 * Open / Alerts, 1)
+  | order by Alerts desc
+tags: [msdefender, defender-xdr, alerts, coverage, reporting, security]
+expected_output: |
+  Alert volume and disposition per source product (sanitized).
+
+  Product                            ServiceSource                  DetectionSource               Alerts  High  Medium  Low  Info  Open  FalsePositive  Detections  Incidents  WithTechniques  OpenPct
+  Microsoft Defender for Endpoint     microsoftDefenderForEndpoint   microsoftDefenderForEndpoint  1        0     1       0    0     1     0              1           1          1               100.0
+  Microsoft Defender for Endpoint     microsoftDefenderForEndpoint   antivirus                     1        0     0       0    1     0     0              1           1          0               0.0
+  Microsoft Sentinel                  unknownFutureValue             unknownFutureValue            2        0     2       0    0     1     1              2           2          2               50.0
+  AAD Identity Protection             azureAdIdentityProtection      azureAdIdentityProtection     1        1     0       0    0     1     0              1           1          0               100.0
+  Microsoft Defender for Cloud Apps   microsoftDefenderForCloudApps  cloudAppSecurity              1        0     1       0    0     1     0              1           1          0               100.0
+  Microsoft Defender XDR              microsoft365Defender           microsoft365Defender          1        0     1       0    0     1     0              1           1          1               100.0
+  Microsoft Insider Risk Management   unknownFutureValue             unknownFutureValue            1        0     1       0    0     1     0              1           1          0               100.0

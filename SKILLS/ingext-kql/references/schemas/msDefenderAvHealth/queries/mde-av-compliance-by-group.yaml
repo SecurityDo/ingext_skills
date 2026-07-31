@@ -1,0 +1,35 @@
+description: >-
+  Antivirus compliance rolled up by device group and OS platform: how many devices
+  run Defender AV actively, how many are passive or disabled, how many have
+  current security intelligence, and how many have never reported a scan. Device
+  groups drive both RBAC and remediation ownership in Defender, so this is the
+  report that maps an AV gap onto the team that has to close it. Empty scan
+  results are counted separately from failures — a blank quickScanResult means no
+  scan was ever reported, which is not the same as a failed one.
+datatype: msDefenderAvHealth
+kql: |
+  msDefenderAvHealth
+  | extend SignatureAge = datetime_diff('hour', now(), todatetime(avSignatureUpdateTime))
+  | summarize
+      Devices         = dcount(machineId),
+      ActiveAv        = countif(avMode == "0"),
+      PassiveAv       = countif(avMode in ("1", "5")),
+      DisabledAv      = countif(avMode in ("2", "4")),
+      SignaturesOk    = countif(avIsSignatureUpToDate =~ "True" and SignatureAge <= 48),
+      SignaturesStale = countif(avIsSignatureUpToDate =~ "False" or SignatureAge > 48),
+      SignatureUnknown = countif(avIsSignatureUpToDate =~ "Unknown"),
+      NeverQuickScanned = countif(isempty(quickScanResult)),
+      QuickScanFailed = countif(quickScanResult == "Failed"),
+      WorstSignatureAgeHours = max(SignatureAge)
+      by rbacGroupName, osPlatform
+  | extend ActiveAvPct = round(100.0 * ActiveAv / Devices, 1)
+  | order by DisabledAv desc, SignaturesStale desc
+tags: [microsoft, defender, mde, antivirus, av, compliance, rollup, reporting, security]
+expected_output: |
+  Antivirus posture per device group and platform (sanitized).
+
+  rbacGroupName         osPlatform         Devices  ActiveAv  PassiveAv  DisabledAv  SignaturesOk  SignaturesStale  SignatureUnknown  NeverQuickScanned  QuickScanFailed  WorstSignatureAgeHours  ActiveAvPct
+  Windows Workstations  Windows10          62       57        3          2           58            4                0                 6                  1                412                     91.9
+  Windows Workstations  Windows11          184      181       2          1           180           4                0                 11                 0                96                      98.4
+  Servers               WindowsServer2022  14       14        0          0           14            0                0                 14                 0                21                      100
+  Unassigned            Windows11          7        5         2          0           6             1                0                 3                  0                73                      71.4

@@ -1,0 +1,97 @@
+description: >-
+  Open Microsoft Defender XDR incident queue, joined to the alerts that make up
+  each incident. Three things this query has to get right, all of them traps in
+  this stream: the incident table is append-only snapshots, so it reduces to the
+  latest snapshot per id before filtering on status; 'timestamp'
+  comes from createdDateTime and never advances on update, so the lookback is
+  generous rather than tight; and untriaged incidents carry the literal string
+  "unknown" in classification/determination rather than null. Because the ingested
+  incident has no alerts[] array and no entity data at all, the member alert count,
+  contributing products, alert titles, affected users/hosts and the real activity
+  start are pulled from MSDefenderAlert on incidentId. Ranked by severity, then by
+  priorityScore within the band, then by alert count.
+datatype: MSDefenderIncident
+kql: |
+  // latest snapshot per record: this engine's dynamic schema does not support
+  // arg_max(<col>, *), so take the max timestamp per id and join it back
+  let LatestAlert =
+      MSDefenderAlert
+      | where timestamp > ago(30d)
+      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
+  let LatestIncident =
+      MSDefenderIncident
+      | where timestamp > ago(30d)
+      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by IncId = id;
+  let AlertRollup =
+      MSDefenderAlert
+      | where timestamp > ago(30d)
+      | join kind=inner LatestAlert on $left.id == $right.AlertId
+      | where todatetime(lastUpdateDateTime) == LastUpdate
+      | project-away AlertId, LastUpdate
+      | mv-apply ev = evidence on (
+          summarize
+              UserSet = make_set_if(tostring(ev.userAccount.userPrincipalName), isnotempty(tostring(ev.userAccount.userPrincipalName))),
+              HostSet = make_set_if(tostring(ev.hostName), isnotempty(tostring(ev.hostName)))
+        )
+      | extend AlertUsers = strcat_array(UserSet, " "), AlertHosts = strcat_array(HostSet, " ")
+      | summarize
+          AlertCount = count(),
+          OpenAlerts = countif(status in ("new", "inProgress")),
+          Products = make_set(productName, 10),
+          Tactics = make_set(category, 10),
+          AlertTitles = make_set(title, 20),
+          Users = make_set_if(AlertUsers, isnotempty(AlertUsers), 20),
+          Hosts = make_set_if(AlertHosts, isnotempty(AlertHosts), 20),
+          CriticalAssetAlerts = countif(systemTags has "Critical asset"),
+          ActivityStart = min(todatetime(firstActivityDateTime)),
+          ActivityEnd = max(todatetime(lastActivityDateTime))
+        by incidentId;
+  MSDefenderIncident
+  | where timestamp > ago(30d)
+  | join kind=inner LatestIncident on $left.id == $right.IncId
+  | where todatetime(lastUpdateDateTime) == LastUpdate
+  | project-away IncId, LastUpdate
+  | where isempty(tostring(redirectIncidentId)) and status !in ("redirected", "resolved")
+  | extend Sev = case(severity == "high", 4, severity == "medium", 3, severity == "low", 2, 1)
+  | join kind=leftouter AlertRollup on $left.id == $right.incidentId
+  | project
+      Sev,
+      IncidentId = id,
+      Severity = severity,
+      Priority = priorityScore,
+      Status = status,
+      Incident = displayName,
+      AlertCount,
+      OpenAlerts,
+      Products,
+      Tactics,
+      AlertTitles,
+      Users,
+      Hosts,
+      CriticalAssetAlerts,
+      Opened = todatetime(createdDateTime),
+      ActivityStart,
+      LastChange = todatetime(lastUpdateDateTime),
+      ChangedBy = lastModifiedBy,
+      AgeHours = round(datetime_diff('minute', now(), todatetime(createdDateTime)) / 60.0, 1),
+      Owner = assignedTo,
+      Triaged = iff(classification !in ("unknown", ""), classification, ""),
+      Tags = strcat_array(customTags, ", "),
+      IncidentUrl = incidentWebUrl
+  | order by Sev desc, Priority desc, AlertCount desc
+  | project-away Sev
+tags: [msdefender, defender-xdr, incidents, triage, incident-response, queue, security]
+expected_output: |
+  Open incidents with their member-alert rollup (sanitized). Note 101196 is 'high'
+  with priorityScore 2 while 101188 is 'medium' with 4 — priorityScore does not
+  track severity, which is why severity leads the sort. 101188's two alerts come
+  from the same Sentinel rule; incidents with several distinct Products are the
+  multi-stage cases.
+
+  IncidentId  Severity  Priority  Status  Incident                                                                     AlertCount  OpenAlerts  Products                             Tactics                                AlertTitles                                           Users                                       Hosts  CriticalAssetAlerts  Opened                    ActivityStart             LastChange                ChangedBy                                    AgeHours  Owner  Triaged  IncidentUrl
+  101196      high      2         active  New high upload volume app                                                                                                                                                                                                                                                        2026-07-29T23:27:19.160Z                            2026-07-29T23:27:19.160Z  Microsoft 365 Defender-IncidentCreation      1.1                          https://security.microsoft.com/incident2/101196/...
+  101188      medium    4         active  Persistence incident involving multiple users                                 1           1           ["Microsoft Sentinel"]               ["Persistence"]                        ["User added to Microsoft Entra ID Privileged Groups"]  ["entra.nwilke@contoso.onmicrosoft.com"]        1                    2026-07-29T16:45:49.476Z  2026-07-29T20:56:42.786Z  2026-07-29T19:45:41.903Z  Microsoft 365 Defender-AlertCorrelation      7.9                          https://security.microsoft.com/incident2/101188/...
+  101198      medium    2         active  Office365 Sharepoint File transfer Folders above threshold involving one user                                                                                                                                                                                                     2026-07-30T00:33:16.373Z                            2026-07-30T00:33:16.373Z  Microsoft 365 Defender-IncidentCreation      0.1                          https://security.microsoft.com/incident2/101198/...
+
+  (Empty rollup columns are incidents whose member alerts are not in the sample
+  set — the leftouter join keeps the incident visible rather than dropping it.)

@@ -1,0 +1,47 @@
+description: >-
+  MITRE ATT&CK coverage of the Defender alert stream over 30 days: which
+  techniques are actually firing, how many alerts and distinct detections back each
+  one, which products contribute them, and how many incidents they touch.
+  Sub-techniques (T####.###) are rolled up to their parent technique while the full
+  list is kept alongside. Alerts with an empty mitreTechniques array — Entra ID
+  Protection, Defender for Cloud Apps and Insider Risk generally ship none — are
+  deliberately mapped to a "(none)" bucket instead of being dropped by mv-expand,
+  so the coverage gap stays visible rather than silently shrinking the denominator.
+datatype: MSDefenderAlert
+kql: |
+  // latest snapshot per record: this engine's dynamic schema does not support
+  // arg_max(<col>, *), so take the max timestamp per id and join it back
+  let LatestAlert =
+      MSDefenderAlert
+      | where timestamp > ago(30d)
+      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
+  MSDefenderAlert
+  | where timestamp > ago(30d)
+  | join kind=inner LatestAlert on $left.id == $right.AlertId
+  | where todatetime(lastUpdateDateTime) == LastUpdate
+  | project-away AlertId, LastUpdate
+  | extend Techniques = iff(array_length(mitreTechniques) == 0, dynamic(["(none)"]), mitreTechniques)
+  | mv-expand Technique = Techniques to typeof(string)
+  | extend ParentTechnique = tostring(split(Technique, ".")[0])
+  | summarize
+      Alerts = dcount(id),
+      Detections = dcount(title),
+      Incidents = dcount(incidentId),
+      High = dcountif(id, severity == "high"),
+      Open = dcountif(id, status in ("new", "inProgress")),
+      SubTechniques = make_set(Technique, 20),
+      Tactics = make_set(category, 10),
+      Products = make_set(productName, 10),
+      LastSeen = max(timestamp)
+    by ParentTechnique
+  | order by Alerts desc, ParentTechnique asc
+tags: [msdefender, defender-xdr, mitre, attack, coverage, reporting, security]
+expected_output: |
+  Techniques observed in the alert stream, sub-techniques rolled up (sanitized).
+
+  ParentTechnique  Alerts  Detections  Incidents  High  Open  SubTechniques         Tactics                                  Products                                                        LastSeen
+  (none)           4       4           4          1     4     ["(none)"]            ["InitialAccess","Exfiltration","SuspiciousActivity","Malware"]  ["AAD Identity Protection","Microsoft Insider Risk Management","Microsoft Defender for Cloud Apps","Microsoft Defender for Endpoint"]  2026-07-29T22:32:54.560Z
+  T1078            2       2           2          0     1     ["T1078","T1078.004"]  ["PrivilegeEscalation","Persistence"]   ["Microsoft Sentinel"]                                          2026-07-29T21:45:41.436Z
+  T1059            1       1           1          0     1     ["T1059.001"]         ["Execution"]                            ["Microsoft Defender for Endpoint"]                             2026-07-27T14:32:28.890Z
+  T1098            1       1           1          0     1     ["T1098"]             ["Persistence"]                          ["Microsoft Sentinel"]                                          2026-07-29T21:45:41.436Z
+  T1110            1       1           1          0     1     ["T1110"]             ["SuspiciousActivity"]                   ["Microsoft Defender XDR"]                                      2026-07-10T01:21:29.013Z

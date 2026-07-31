@@ -1,0 +1,39 @@
+description: >-
+  Report every Duo authentication that succeeded without a live second factor —
+  the MFA coverage gaps. Covers bypass codes (factor == "bypass_code", an
+  administratively issued single-use code), remembered devices, and trusted
+  networks/policy allowances. Each of these means the user reached the protected
+  application without approving a push or entering a passcode, so a spike, an
+  unexpected user, or an unmanaged endpoint (trusted_endpoint_status != "trusted")
+  in this list deserves review. Pair the bypass_code rows with DuoAdmin
+  action == "bypass_create" to confirm who issued the code.
+datatype: DuoAuthentication
+kql: |
+  DuoAuthentication
+  | where timestamp > ago(7d)
+  | where event_type == "authentication" and result == "success"
+  | where factor in ("bypass_code", "remembered_device", "trusted_network")
+       or reason in ("bypass_user", "allowed_by_policy", "trusted_network", "trusted_location")
+  | extend userName = tostring(user.name),
+           appName = tostring(application.name),
+           srcIp = tostring(access_device.ip),
+           srcCity = tostring(access_device.location.city),
+           srcCountry = tostring(access_device.location.country),
+           endpoint = tostring(access_device.hostname),
+           os = strcat(tostring(access_device.os), " ", tostring(access_device.os_version))
+  | summarize Logins = count(),
+              Apps = make_set(appName, 10),
+              SourceIPs = make_set(srcIp, 10),
+              Endpoints = make_set(endpoint, 10),
+              LastSeen = max(timestamp)
+      by userName, factor, reason, trusted_endpoint_status
+  | project userName, factor, reason, trusted_endpoint_status, Logins, Apps,
+            SourceIPs, Endpoints, LastSeen
+  | order by Logins desc
+tags: [duo, cisco, mfa, bypass, remembered-device, policy, audit]
+expected_output: |
+  Successful logins that skipped a live second factor, by user and mechanism (sanitized).
+
+  userName       factor              reason              trusted_endpoint_status  Logins  Apps                Endpoints          LastSeen
+  avance         remembered_device   remembered_device   unknown                  42      ["Microsoft RDP"]   ["WKSTN-0142"]     2026-07-21T12:35:39Z
+  acontractor    bypass_code         bypass_user         unknown                  1       ["Cisco AnyConnect VPN"]  [""]         2026-07-21T14:19:05Z
