@@ -181,7 +181,11 @@ sum by (index) (increase(lake_ingress_bytes[1h]))
 | Counter | Description |
 |---|---|
 | `lake_search_count` | search event count |
-| `lake_search_bytes` | search byte count |
+| `lake_search_bytes` | search byte count (uncompressed) |
+| `lake_search_compressed` | search byte count (on-disk / compressed) |
+| `lake_search_pod_seconds` | billable search-pod occupancy, in pod-seconds |
+| `lake_search_core_seconds` | `pod_seconds` × the pod CPU request (1.5 cores) |
+| `lake_search_cost_millicents` | search cost, in **thousandths of a cent** |
 
 | Label | Description | Sample values |
 |---|---|---|
@@ -189,11 +193,36 @@ sum by (index) (increase(lake_ingress_bytes[1h]))
 | `index` | datalake index **full name** `$datalake-$index` | `managed-default`, `managed-Office365` |
 | `provider` | service provider name | — |
 
+`count` / `bytes` / `compressed` measure **data volume** — they are incremented at plan time from
+the size of the slots scheduled to be scanned. The other three measure **cost**, and are recorded
+once per completed search from the wall-clock each search pod was occupied.
+
+Cost accounting (SaaS on-demand search only — `AccountSearchManagerV2`):
+
+- Time is billed per pod, with a **60-second floor**: a pod that runs for 2 s still bills 60. A
+  search fanned out to *N* pods bills at least `60 × N` pod-seconds. Failed and retried pod
+  attempts count too, since the pod was occupied either way.
+- Rate is **$0.126 per pod-hour**, i.e. exactly **3.5 millicents per pod-second** — so
+  `cost_millicents == 3.5 × pod_seconds` and `core_seconds == 1.5 × pod_seconds` always hold.
+  Divide `cost_millicents` by 1000 for cents, by 100000 for dollars. Millicents rather than cents
+  because a minimum-size search costs ~0.21 ¢, which whole cents would round away.
+- Realtime search emits **no** pod/core/cost series (see §6) — it runs in-process on no search pod.
+
 ```promql
 # Searched events per second by provider, last 5 minutes.
 sum by (provider) (rate(lake_search_count[5m]))
 # Total bytes searched per index over the last hour.
 sum by (index) (increase(lake_search_bytes[1h]))
+# Search spend in dollars per account over the last day.
+sum by (account) (increase(lake_search_cost_millicents[1d])) / 100000
+# Search CPU burn (cores) per account, last hour.
+sum by (account) (rate(lake_search_core_seconds[1h]))
+# Top 10 most expensive accounts this week.
+topk(10, sum by (account) (increase(lake_search_cost_millicents[7d])))
+# Pod-seconds bought per GB actually scanned — high means many small fan-out searches
+# paying the 60 s floor.
+sum by (account) (increase(lake_search_pod_seconds[1d]))
+  / (sum by (account) (increase(lake_search_bytes[1d])) / 1e9)
 ```
 
 ## 6. lake_realtime_search — datalake realtime search metrics
@@ -201,7 +230,13 @@ sum by (index) (increase(lake_search_bytes[1h]))
 | Counter | Description |
 |---|---|
 | `lake_realtime_search_count` | realtime search event count |
-| `lake_realtime_search_bytes` | realtime search byte count |
+| `lake_realtime_search_bytes` | realtime search byte count (uncompressed) |
+| `lake_realtime_search_compressed` | realtime search byte count (on-disk / compressed) |
+
+There is **no** `lake_realtime_search_pod_seconds` / `_core_seconds` / `_cost_millicents`: realtime
+search runs in-process and occupies no search pod, so it has no pod time to bill. The API still
+reports a per-search cost equal to one minimum pod unit (210 millicents), but that figure is not
+pushed as a metric.
 
 | Label | Description | Sample values |
 |---|---|---|
@@ -267,3 +302,7 @@ as authoritative for querying.
 | Lake ingress | `lake_ingress_count` | `lake_ingress_bytes` | `account`, `index` (full) |
 | Lake search | `lake_search_count` | `lake_search_bytes` | `account`, `index` (full), `provider` |
 | Lake realtime search | `lake_realtime_search_count` | `lake_realtime_search_bytes` | `account`, `index` (full), `provider` |
+
+**Search cost counters** (SaaS on-demand search only, same labels as `lake_search_*`):
+`lake_search_pod_seconds`, `lake_search_core_seconds` (= 1.5 × pod-seconds),
+`lake_search_cost_millicents` (= 3.5 × pod-seconds; ÷1000 for cents, ÷100000 for dollars).
