@@ -6,8 +6,10 @@ search the web to answer a metrics question. Everything queryable lives in this 
 
 Source: `ingext_schema/metrics/*.yaml`. Query language: **PromQL** or **MetricsQL**.
 
-> Most internal/operational metrics (datalake merge, compressed-byte counters, runtime profiling,
-> buffer gauges) are intentionally excluded — end users do not query them. If asked about one, treat
+> Most internal/operational metrics (datalake merge, component-level compressed-byte counters,
+> runtime profiling, buffer gauges) are intentionally excluded — end users do not query them. The
+> `lake_search_*` compressed-byte and cost counters (§5) are the exception and **are** exposed. If
+> asked about an excluded metric, treat
 > it as out of scope (see the scope rule below). The one exception is the `ingext_queue_length`
 > gauge (§7), which is exposed for queue-depth monitoring.
 
@@ -26,7 +28,7 @@ Aggregate across series with `sum`, and break out by label with `sum by (<label>
 
 ## Scope rule — reject anything not in this catalog
 
-This catalog is an **allowlist**. There are exactly **six counter families** (twelve counters) plus
+This catalog is an **allowlist**. There are exactly **six counter families** (seventeen counters) plus
 **one gauge** (`ingext_queue_length`). If a request names a counter, gauge, or label that does not
 appear in this file, **reject it** —
 **even if it is a real, valid counter on the instance.** Many live counters exist only for internal
