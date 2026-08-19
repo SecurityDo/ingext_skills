@@ -1,0 +1,56 @@
+description: >-
+  Current posture of every endpoint enrolled in Workspace Endpoint Management,
+  built from the latest DEVICE_SYNC_EVENT per device. Each sync record carries
+  Google's own verdicts, so no version parsing is needed — but three quirks of
+  the mobile report have to be handled or the result is wrong. The posture
+  flags are STRINGS, not Booleans, and they are negatively phrased
+  (DEVICE_IS_NOT_ENCRYPTED == "true" means unencrypted), so they are decoded
+  into positively-named columns here. SERIAL_NUMBER arrives as the JSON Boolean
+  false when the device does not report one, so it is guarded before being
+  shown as an asset-inventory key. And LAST_SYNC_AUDIT_DATE is Unix
+  milliseconds — not the 0001-01-01 seconds the Calendar report uses. DaysStale
+  is the column to sort by when hunting for devices that stopped checking in:
+  the posture flags describe the device as of its last sync, so a finding on a
+  device that has not synced in weeks may already be stale.
+datatype: GSuite
+kql: |
+  GSuite
+  | where timestamp > ago(30d)
+  | where tostring(event.type) == "device_updates"
+  | where tostring(event.name) == "DEVICE_SYNC_EVENT"
+  | extend P = event.parameters
+  | extend DeviceId = tostring(P.DEVICE_ID)
+  | where isnotempty(DeviceId)
+  | summarize arg_max(timestamp, *) by DeviceId
+  | extend
+      User = tostring(P.USER_EMAIL),
+      DeviceType = tostring(P.DEVICE_TYPE),
+      Model = tostring(P.DEVICE_MODEL),
+      OsVersion = tostring(P.OS_VERSION),
+      Encrypted = tostring(P.DEVICE_IS_NOT_ENCRYPTED) != "true",
+      HasScreenLock = tostring(P.DEVICE_IS_MISSING_SCREENLOCK) != "true",
+      OsOutdated = tostring(P.DEVICE_OS_IS_OUTDATED) == "true",
+      LastSync = unixtime_milliseconds_todatetime(tolong(P.LAST_SYNC_AUDIT_DATE)),
+      Serial = iff(tostring(P.SERIAL_NUMBER) in ("", "false", "true"), "", tostring(P.SERIAL_NUMBER))
+  | extend
+      DaysStale = round(datetime_diff('minute', now(), LastSync) / 1440.0, 1),
+      Issues = set_difference(
+          pack_array(
+              iff(not(Encrypted), "unencrypted", ""),
+              iff(not(HasScreenLock), "no-screenlock", ""),
+              iff(OsOutdated, "os-outdated", "")),
+          pack_array(""))
+  | project
+      DeviceId, User, DeviceType, Model, OsVersion, Serial,
+      Encrypted, HasScreenLock, OsOutdated,
+      IssueCount = array_length(Issues), Issues,
+      LastSync, DaysStale
+  | order by IssueCount desc, DaysStale desc
+tags: [gsuite, google-workspace, endpoint-management, device-posture, compliance]
+expected_output: |
+  Latest posture per enrolled endpoint, worst first (sanitized).
+
+  DeviceId                              User                     DeviceType  Model            OsVersion                Serial      Encrypted  HasScreenLock  OsOutdated  IssueCount  Issues                            LastSync                  DaysStale
+  00000000-0000-0000-0000-000000000001  sam.cole@contoso.com     WINDOWS     Virtual Machine  Windows 10.0.26200.8328              false      true           true        2           ["unencrypted","os-outdated"]     2026-08-04T19:42:09.159Z  0.1
+  00000000-0000-0000-0000-000000000002  megan.bowen@contoso.com  ANDROID     Pixel 8          Android 14               ABC0000001  true       false          false       1           ["no-screenlock"]                 2026-07-21T08:14:02.400Z  14.5
+  00000000-0000-0000-0000-000000000003  adele.vance@contoso.com  MAC         MacBook Pro      macOS 15.6               C02000000A  true       true           false       0           []                                2026-08-04T18:02:55.010Z  0.2

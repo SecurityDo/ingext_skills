@@ -1,0 +1,70 @@
+description: >-
+  An IOC list from the Gmail phishing alerts of the last 30 days: attachment
+  hashes, sender addresses and sender domains in one table, each with how many
+  alerts and how many recipients it touched and when it was first and last seen.
+  This is the block/hunt list to feed to EDR, a mail gateway or a threat-intel
+  lookup. Two caveats are built into the query. attachmentsSha256Hash covers the
+  attachments AND all MIME parts of a message, so a hash here is not necessarily
+  a file an analyst can look up — the ones worth chasing are those appearing
+  across several alerts and many recipients, which is what the ordering surfaces.
+  And the same hash and sender repeat on every message record of an alert, so
+  everything is counted with dcount rather than count; a plain count() would
+  report the campaign size, not the IOC's reach.
+datatype: GoogleWorkspaceAlert
+kql: |
+  let Phish =
+      GoogleWorkspaceAlert
+      | where timestamp > ago(30d)
+      | where tostring(data["@type"]) endswith "MailPhishing"
+      | extend LastUpdate = todatetime(updateTime)
+      | summarize arg_max(LastUpdate, *) by alertId, messageIndex;
+  union
+  (
+      Phish
+      | mv-expand Hash = message.attachmentsSha256Hash
+      | where isnotempty(tostring(Hash))
+      | summarize
+          Alerts = dcount(alertId),
+          Recipients = dcount(tostring(message.recipient)),
+          Types = make_set(tostring(type), 5),
+          FirstSeen = min(todatetime(message.sentTime)),
+          LastSeen = max(timestamp)
+          by IocType = "sha256", Ioc = tostring(Hash)
+  ),
+  (
+      Phish
+      | where isnotempty(tostring(data.maliciousEntity.fromHeader))
+      | summarize
+          Alerts = dcount(alertId),
+          Recipients = dcount(tostring(message.recipient)),
+          Types = make_set(tostring(type), 5),
+          FirstSeen = min(todatetime(message.sentTime)),
+          LastSeen = max(timestamp)
+          by IocType = "sender", Ioc = tostring(data.maliciousEntity.fromHeader)
+  ),
+  (
+      Phish
+      | extend Domain = tostring(split(tostring(data.maliciousEntity.fromHeader), "@")[1])
+      | where isnotempty(Domain)
+      // an internal sender is a compromised account, not an IOC to block
+      | where tobool(coalesce(data.isInternal, false)) == false
+      | where Domain != tostring(data.domainId.customerPrimaryDomain)
+      | summarize
+          Alerts = dcount(alertId),
+          Recipients = dcount(tostring(message.recipient)),
+          Types = make_set(tostring(type), 5),
+          FirstSeen = min(todatetime(message.sentTime)),
+          LastSeen = max(timestamp)
+          by IocType = "sender_domain", Ioc = Domain
+  )
+  | project IocType, Ioc, Alerts, Recipients, Types, FirstSeen, LastSeen
+  | order by Recipients desc, Alerts desc
+tags: [google-workspace, alert-center, phishing, ioc, threat-intel, hunting, security]
+expected_output: |
+  Attachment hashes, senders and sender domains from Gmail phishing alerts (sanitized).
+
+  IocType        Ioc                                                                Alerts  Recipients  Types                                                    FirstSeen              LastSeen
+  sender_domain  fabrikam.com                                                       4       28          ["User reported spam spike","Phishing reclassification"]  2026-07-24T06:12:55Z   2026-07-28T13:52:29Z
+  sender         billing@fabrikam.com                                               2       19          ["User reported spam spike"]                              2026-07-27T20:01:42Z   2026-07-28T13:52:29Z
+  sha256         0000000000000000000000000000000000000000000000000000000000000001   2       19          ["User reported spam spike"]                              2026-07-27T20:01:42Z   2026-07-28T13:52:29Z
+  sender         hr-notice@fabrikam.com                                             1       9           ["Phishing reclassification"]                             2026-07-26T06:12:55Z   2026-07-26T09:41:03Z

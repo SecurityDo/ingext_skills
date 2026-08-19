@@ -1,0 +1,866 @@
+schema: GoogleWorkspaceAlert
+description: >-
+  Google Workspace Alert Center alerts collected by Ingext from the Alert Center
+  API (alertcenter.googleapis.com, alerts.list). This is Google's own detection
+  and notification surface for a Workspace tenant — the alerts an administrator
+  sees at admin.google.com/ac/ac — and it is a different API and a different
+  record shape from the GSuite data type, which carries raw audit activity from
+  the Admin SDK Reports API. Use GoogleWorkspaceAlert for "what did Google flag",
+  and GSuite for "what actually happened".
+
+  Every record carries the same small envelope
+
+      alertId / customerId / etag / deleted
+      type / source
+      createTime / startTime / endTime / updateTime
+      securityInvestigationToolLink
+      metadata.{alertId, customerId, severity, status, assignee, updateTime, etag}
+      data.{"@type", ...payload...}
+
+  and everything detection-specific lives inside the polymorphic `data` object.
+  THREE discriminators describe an alert and they are not interchangeable:
+
+    * source — the reporting system inside Google ("Gmail phishing",
+      "Google identity", "Mobile device management", "Data Loss Prevention",
+      "Sensitive Admin Action", "Apps outage", ...). The coarse selector.
+    * type — the specific alert, as a human-readable string WITH SPACES and
+      mixed case ("User reported spam spike", "Suspicious login",
+      "Government attack warning"). This is what an analyst names, and what the
+      Admin console shows under a slightly different label (the console calls
+      the sample's alert "Spike in user reported spam").
+    * data["@type"] — the proto type URL of the payload
+      (type.googleapis.com/google.apps.alertcenter.type.MailPhishing). THIS is
+      what selects the field shape of `data`, and it is many-to-one with `type`:
+      five different Gmail phishing alert types all carry a MailPhishing
+      payload, and eight Google identity types all carry an AccountWarning
+      payload. Pin data["@type"] before reaching into `data`, and pin `type`
+      only when you mean that one specific alert.
+
+  The record is stored as a dynamic JSON document, so nested fields are reached
+  with dot notation (metadata.severity, data.maliciousEntity.fromHeader) and
+  array fields need mv-expand (message.attachmentsSha256Hash,
+  data.ruleViolationInfo.recipients).
+
+  Six traps are worth knowing before writing a query:
+
+    1. ONE ALERT IS SEVERAL RECORDS. Ingext expands the MailPhishing payload's
+       `messages[]` array into one record per message: `data.messages` is gone,
+       the single message sits at TOP LEVEL as `message`, and `messageIndex` /
+       `messageCount` say which one of how many this record is. The sample
+       alert has messageCount 15, so it occupies 15 records that share one
+       alertId, one createTime and one metadata block. Any "how many alerts"
+       must be `dcount(alertId)`, never `count()`; any per-alert summary must
+       `summarize ... by alertId`. Conversely, "how many users were hit" is a
+       message-level question and is answered by counting rows.
+    2. SEVERITY AND STATUS LIVE UNDER metadata. There is no top-level
+       `severity`, `status` or `assignee` — they are metadata.severity ("HIGH" /
+       "MEDIUM" / "LOW", uppercase, and legitimately EMPTY on informational
+       alerts), metadata.status ("NOT_STARTED" / "IN_PROGRESS" / "CLOSED") and
+       metadata.assignee. `where severity == "HIGH"` silently matches nothing.
+    3. TRIAGE STATE CHANGES RE-EMIT THE ALERT. metadata is mutable — an admin
+       assigning or closing an alert bumps metadata.updateTime and the top-level
+       updateTime while createTime stays fixed, so a re-poll can bring the same
+       (alertId, messageIndex) back with a newer state. Reduce to the current
+       state before reporting on status:
+         | extend LastUpdate = todatetime(updateTime)
+         | summarize arg_max(LastUpdate, *) by alertId, messageIndex
+       This is correct whether or not your tenant's collection actually produced
+       duplicates. Note `deleted` (see below) is the other half of this: alerts
+       marked for deletion keep arriving until they age out.
+    4. FOUR TIMES, THREE MEANINGS. createTime is when GOOGLE RAISED THE ALERT
+       and is the source of the `timestamp` column — it is NOT when the activity
+       happened. startTime/endTime bracket the triggering activity, and for a
+       Gmail alert the mail itself is older still (message.sentTime). In the
+       sample the message was sent 2026-07-27T20:01:42Z, the activity window
+       opened 2026-07-28T11:59:41Z and closed 13:48:38Z, and the alert was
+       created 13:52:29Z — endTime BEFORE createTime is normal, not corruption.
+       Detection latency is `createTime - startTime`; mailbox dwell time is
+       `createTime - message.sentTime`, and it is the number that matters for a
+       phishing response.
+    5. customerId HAS NO LEADING "C". The Alert Center returns the Workspace
+       customer ID stripped of the C prefix that the Reports API uses, so this
+       stream's customerId "00000000" is the same tenant as GSuite's
+       id.customerId "C00000000". Join with `strcat("C", customerId)` (or trim
+       the other side) — a direct equality join returns nothing.
+    6. data["@type"] NEEDS BRACKET NOTATION and is not a flat namespace. The
+       leading @ makes `data.@type` a parse error; write `data["@type"]`. Some
+       payloads sit in a sub-package of google.apps.alertcenter.type (the DLP
+       and outage families), so match with endswith/has rather than == against
+       a fully-spelled base path:
+         | extend Payload = tostring(split(tostring(data["@type"]), "alertcenter.type.")[1])
+       which yields "MailPhishing" for the sample and a "<subpackage>.<Type>"
+       string for the nested ones.
+
+  A note on coverage: the collected samples contain Gmail phishing
+  (MailPhishing) alerts only. Every other payload below is documented from the
+  Alert Center API reference so a query can be written against it, but the field
+  set has not been confirmed against this tenant's data — run
+  `summarize count() by tostring(data["@type"])` first, then
+  `project bag_keys(data)` for the payload you care about, before relying on any
+  field marked "not present in the collected samples".
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Event timestamp (UTC), normalized to epoch milliseconds, converted from createTime — when Google RAISED the alert, not when the underlying activity happened. Primary time column for range filters (e.g. where timestamp > ago(7d)). To hunt on when the activity occurred, filter on startTime (or message.sentTime for mail) instead; an alert raised today can describe mail delivered a week ago."
+    applicablePayloads: ["All"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+    applicablePayloads: ["All"]
+
+  # ==========================================
+  # ENRICHMENT (Added by Ingext)
+  # ==========================================
+  - name: _behaviors
+    type: DynamicArray
+    description: "A list of behavior rule names that this event triggered. Each element is a string. Use mv-expand to flatten before grouping, e.g. `mv-expand _behaviors | summarize count() by Behavior = tostring(_behaviors)`."
+    applicablePayloads: ["All"]
+
+  # NOTE: there is no _ip enrichment on this data type. An Alert Center record
+  # has no top-level IP field — the only address any payload carries is
+  # data.loginDetails.ipAddress, nested inside an AccountWarning, which the
+  # GeoIP enrichment does not reach. For geolocated sign-in data, pivot the
+  # actor into the GSuite login report, which does carry ipAddress and _ip.*.
+
+  # ==========================================
+  # ALERT IDENTITY
+  # ==========================================
+  - name: alertId
+    type: String
+    description: "The unique identifier of the alert (a UUID), assigned by Google and stable for the life of the alert. The primary grouping key for this whole data type — one alert spans messageCount records (trap 1) and can be re-emitted on triage changes (trap 3), so `dcount(alertId)` is how you count alerts and `by alertId` is how you summarize one. Also the value embedded in securityInvestigationToolLink and the key used by the Alert Center undelete/feedback endpoints."
+    sampleValues: ["00000000-0000-0000-0000-000000000001"]
+    applicablePayloads: ["All"]
+
+  - name: customerId
+    type: String
+    description: "Immutable ID of the Google Workspace customer (account) the alert belongs to. TRAP: the Alert Center returns it WITHOUT the leading 'C' that the Admin SDK Reports API uses, so this field's \"00000000\" is GSuite's id.customerId \"C00000000\". Join across the two data types with `strcat(\"C\", customerId)`. The field to split on in a multi-tenant lake."
+    sampleValues: ["00000000"]
+    applicablePayloads: ["All"]
+
+  - name: etag
+    type: String
+    description: "Entity tag of the alert, used by the API for optimistic concurrency on update. Changes whenever any part of the alert changes, so it is a cheap way to tell two emissions of the same alertId apart — but it is not ordered, so use updateTime, not etag, to pick the newest."
+    applicablePayloads: ["All"]
+
+  - name: deleted
+    type: Boolean
+    description: "True if the alert has been marked for deletion by an administrator. Deleted alerts remain retrievable (and keep being collected) for 30 days before Google purges them, and can be undeleted in that window — so this is a soft-delete flag, not an absence. Absent rather than false on the collected samples; guard with `where tobool(coalesce(deleted, false)) == false` when producing an operational queue, and query `deleted == true` deliberately to see what an admin dismissed."
+    sampleValues: ["true", "false"]
+    applicablePayloads: ["All"]
+
+  - name: securityInvestigationToolLink
+    type: String
+    description: "Deep link into the Security Investigation Tool, pre-loaded with the query behind this alert — the single most useful column to hand an analyst. Note it arrives WITHOUT a URL scheme (\"admin.google.com/ac/ac/investigate?alert=...\"), so prepend https:// before rendering it as a link. The trailing token is a base64 encoding of the alertId, not an independent identifier. Not populated for every alert type."
+    sampleValues: ["admin.google.com/ac/ac/investigate?alert=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
+    applicablePayloads: ["All"]
+
+  # ==========================================
+  # CLASSIFICATION
+  # ==========================================
+  - name: type
+    type: String
+    description: >-
+      The specific alert type, as a human-readable string with SPACES and mixed
+      case — "User reported spam spike", "Suspicious login", "Leaked password",
+      "Government attack warning", "Data Loss Prevention". Always quote it, and
+      match it exactly as Google spells it (the Admin console shows a different,
+      friendlier label for the same value: the console's "Spike in user reported
+      spam" is this field's "User reported spam spike"). Many types share one
+      payload shape, so pin data["@type"] when you are reaching into `data` and
+      pin `type` only when you mean this one alert. Full catalogue at the end of
+      this file.
+    sampleValues: ["User reported spam spike", "User reported phishing", "Suspicious login", "Leaked password", "Government attack warning", "Data Loss Prevention", "Device compromised"]
+    applicablePayloads: ["All"]
+
+  - name: source
+    type: String
+    description: >-
+      The system inside Google that reported the alert — the coarse
+      discriminator and the natural way to slice a triage queue by domain:
+      "Gmail phishing" (mail threats), "Google identity" (account compromise and
+      suspension), "Mobile device management", "Data Loss Prevention",
+      "Sensitive Admin Action", "State Sponsored Attack", "Security Center
+      rules" / "Reporting Rule" (admin-authored rules), "Domain wide takeout",
+      "Apps outage", "Google Operations", "Customer abuse", "User Changes",
+      "App Settings Changed", "Drive Counter Abuse", "Client Side Encryption",
+      "Access Approvals", "Google Voice", "Google Mandatory Service
+      Announcement", "AppMaker Editor". Note "Apps outage", "Google Operations"
+      and the MSA family are service announcements, not security findings —
+      exclude them from any detection-oriented query or they dominate it.
+    sampleValues: ["Gmail phishing", "Google identity", "Mobile device management", "Data Loss Prevention", "Sensitive Admin Action", "Apps outage"]
+    applicablePayloads: ["All"]
+
+  - name: 'data["@type"]'
+    type: String
+    description: >-
+      Proto type URL of the `data` payload, e.g.
+      "type.googleapis.com/google.apps.alertcenter.type.MailPhishing". THE field
+      that selects which keys exist inside `data`, and the one to pin before
+      touching any of them. Two mechanics: the leading @ means it must be
+      indexed as `data["@type"]` (dot notation is a parse error), and the DLP
+      and outage families live in sub-packages of ...alertcenter.type, so match
+      with `endswith "MailPhishing"` / `has "DlpRuleViolation"` rather than ==
+      against a fully-spelled base path. To get a readable payload name:
+      `extend Payload = tostring(split(tostring(data["@type"]), "alertcenter.type.")[1])`.
+      Discover what your tenant actually produces with
+      `summarize count(), dcount(alertId) by tostring(data["@type"])`.
+    sampleValues: ["type.googleapis.com/google.apps.alertcenter.type.MailPhishing"]
+    applicablePayloads: ["All"]
+
+  # ==========================================
+  # TIMES
+  # ==========================================
+  - name: createTime
+    type: DateTime
+    description: "When Google created the alert (RFC 3339, microsecond precision, trailing Z). Source of the `timestamp` column. Fixed for the life of the alert — it does not move when the alert is re-emitted with new triage state, which makes it the right field to age an alert against (`now() - todatetime(createTime)`)."
+    sampleValues: ["2026-07-28T13:52:29.976703Z"]
+    applicablePayloads: ["All"]
+
+  - name: startTime
+    type: DateTime
+    description: "When the triggering event began or was first detected — the start of the activity window the alert summarizes. This, not createTime, is the activity time. `createTime - startTime` is Google's detection latency for the alert and is worth reporting: a several-hour gap on a phishing alert means the mail sat in inboxes for that long."
+    sampleValues: ["2026-07-28T11:59:41.812816Z"]
+    applicablePayloads: ["All"]
+
+  - name: endTime
+    type: DateTime
+    description: "When the triggering event stopped, for alerts that summarize a window of activity rather than a point event. Optional — absent on point-in-time alerts. Frequently EARLIER than createTime (the window closed, then Google raised the alert a few minutes later); that ordering is normal and is not a sign of bad data. `endTime - startTime` is the span of activity the alert covers."
+    sampleValues: ["2026-07-28T13:48:38.255733Z"]
+    applicablePayloads: ["All"]
+
+  - name: updateTime
+    type: DateTime
+    description: "When the alert was last updated. Equal to createTime on a freshly raised, untriaged alert (as in the sample) and equal to metadata.updateTime once an admin has touched it, since the only thing that changes on an existing alert is its metadata. The ordering key for reducing repeated emissions to the current state (trap 3)."
+    sampleValues: ["2026-07-28T13:52:29.976703Z"]
+    applicablePayloads: ["All"]
+
+  # ==========================================
+  # TRIAGE METADATA (metadata.*)
+  # Mutable state, maintained by administrators in the Alert Center UI or via
+  # the alerts.batchUpdate / alerts.feedback endpoints.
+  # ==========================================
+  - name: metadata.severity
+    type: String
+    description: >-
+      Google's severity rating for the alert: "HIGH", "MEDIUM" or "LOW" —
+      UPPERCASE, and legitimately an EMPTY STRING on alert types Google does not
+      rate (outages, service announcements, some rule alerts). Remember it is
+      nested: `where metadata.severity == "HIGH"` works, `where severity ==
+      "HIGH"` matches nothing. For ordering, map it explicitly rather than
+      sorting the string:
+      `case(tostring(metadata.severity) == "HIGH", 3, tostring(metadata.severity) == "MEDIUM", 2, tostring(metadata.severity) == "LOW", 1, 0)`.
+    sampleValues: ["HIGH", "MEDIUM", "LOW", ""]
+    applicablePayloads: ["All"]
+
+  - name: metadata.status
+    type: String
+    description: "Triage state of the alert: \"NOT_STARTED\" (untriaged — the open queue), \"IN_PROGRESS\" (being worked) or \"CLOSED\". Set by administrators, so it lags reality in tenants that do not work the Alert Center. Open queue is `metadata.status in (\"NOT_STARTED\", \"IN_PROGRESS\")`. Because it is mutable, always reduce to the newest emission per alertId before reporting on it."
+    sampleValues: ["NOT_STARTED", "IN_PROGRESS", "CLOSED"]
+    applicablePayloads: ["All"]
+
+  - name: metadata.assignee
+    type: String
+    description: "Email address of the administrator the alert is assigned to. Absent (not empty) on unassigned alerts, which is the normal state — an unassigned HIGH alert older than a day is the standard SLA finding. Not present in the collected samples, which are all untriaged."
+    sampleValues: ["admin@contoso.com"]
+    applicablePayloads: ["All"]
+
+  - name: metadata.updateTime
+    type: DateTime
+    description: "When the alert's metadata was last updated — the moment of the most recent triage action. Equal to createTime while the alert is untouched. `metadata.updateTime - createTime` on a CLOSED alert is the tenant's actual time-to-close for it."
+    sampleValues: ["2026-07-28T13:52:29.976703Z"]
+    applicablePayloads: ["All"]
+
+  - name: metadata.alertId
+    type: String
+    description: "The alert identifier, repeated inside the metadata block. Always equal to the top-level alertId — use the top-level field; this one exists because AlertMetadata is a standalone API resource."
+    applicablePayloads: ["All"]
+
+  - name: metadata.customerId
+    type: String
+    description: "The customer ID, repeated inside the metadata block. Always equal to the top-level customerId, and carries the same missing-'C' caveat."
+    applicablePayloads: ["All"]
+
+  - name: metadata.etag
+    type: String
+    description: "Entity tag of the metadata resource specifically, for optimistic concurrency on batchUpdate. Distinct from the top-level etag and of no analytical value."
+    applicablePayloads: ["All"]
+
+  # ==========================================
+  # MESSAGE EXPANSION (top level, MailPhishing only)
+  #
+  # The Alert Center delivers a MailPhishing payload with a data.messages[]
+  # array — one GmailMessageInfo per malicious mail in the campaign. Ingext
+  # expands that array: data.messages is REMOVED and each element is emitted as
+  # its own record carrying `message` plus its position. Everything else on the
+  # record (alertId, createTime, data.maliciousEntity, metadata) is identical
+  # across the set.
+  # ==========================================
+  - name: messageIndex
+    type: Integer
+    description: "Zero-based position of this record's message within the alert's original data.messages[] array. Together with alertId it forms the natural per-record key. Not a severity or ordering signal — index 0 is not the 'first' or 'worst' mail, just the first element Google returned."
+    sampleValues: ["8", "9"]
+    applicablePayloads: ["MailPhishing"]
+
+  - name: messageCount
+    type: Integer
+    description: "Total number of messages in the alert — the length of the original data.messages[] array, repeated identically on every one of those records. The campaign size, and the fan-out factor for trap 1: an alert with messageCount 15 produces 15 records. Use `any(messageCount)` (or max) when summarizing by alertId rather than counting rows, and compare it against the row count to spot a partially collected alert."
+    sampleValues: ["15"]
+    applicablePayloads: ["MailPhishing"]
+
+  - name: message.recipient
+    type: String
+    description: "The Workspace user this malicious message was delivered to. The victim, and the pivot into every other data type — joins to GSuite actor.email and to GSuiteResources gsuiteUser.primaryEmail. `summarize dcount(message.recipient) by alertId` is the blast radius of a campaign; `summarize Campaigns = dcount(alertId) by tostring(message.recipient)` finds the users who are targeted repeatedly."
+    sampleValues: ["adele.vance@contoso.com", "sam.cole@contoso.com"]
+    applicablePayloads: ["MailPhishing"]
+
+  - name: message.subjectText
+    type: String
+    description: "Subject line of the message. Free text — match with contains/has, never ==. Google populates it only for REPORTED emails (the user-reported-phishing/spam families and suspicious message reports); on reclassification alerts it is absent and only md5HashSubject is available, so an isnotempty() filter on it quietly restricts you to user-reported alerts."
+    sampleValues: ["Benefit Plan Designation - ACTION REQUIRED"]
+    applicablePayloads: ["MailPhishing"]
+
+  - name: message.messageBodySnippet
+    type: String
+    description: "A short excerpt of the message body, lowercased by Google and typically starting with a leading space. Same availability rule as subjectText — reported emails only. Useful for lure classification (`has \"invoice\"`, `has \"payroll\"`, `has \"password\"`) and for clustering near-identical mails across alerts, but it is truncated and must not be treated as the full body."
+    sampleValues: [" please review the attached benefit designation form and confirm your selection before the enrollment window closes"]
+    applicablePayloads: ["MailPhishing"]
+
+  - name: message.messageId
+    type: String
+    description: "The Gmail message identifier, in RFC 5322 Message-ID form without the angle brackets (\"<local>@<host>\"). Unique per delivered mail and therefore the key that distinguishes two records of the same alert that share a recipient. The host part is the sending infrastructure and is worth profiling across a campaign; it is attacker-controlled, so do not treat it as evidence of origin."
+    sampleValues: ["1000000000.11111.1780000000001@mail.example.com"]
+    applicablePayloads: ["MailPhishing"]
+
+  - name: message.md5HashSubject
+    type: String
+    description: "MD5 of the subject line. The reliable campaign-clustering key, because it is present on reclassification alerts where subjectText is not: `summarize dcount(alertId), dcount(message.recipient) by tostring(message.md5HashSubject)` groups one wave of mail regardless of which alert type reported it. Populated for reported emails."
+    sampleValues: ["00000000000000000000000000000001"]
+    applicablePayloads: ["MailPhishing"]
+
+  - name: message.md5HashMessageBody
+    type: String
+    description: "MD5 of the message body text. Pairs with md5HashSubject to cluster identical mail; a shared body hash across different subjects is the signature of a templated campaign with randomized subject lines. Not present in the collected samples."
+    applicablePayloads: ["MailPhishing"]
+
+  - name: message.attachmentsSha256Hash
+    type: DynamicArray
+    description: >-
+      Array of SHA-256 hashes of the message's attachments AND of all its MIME
+      parts — so an element is not necessarily a file an analyst can look up,
+      and a mail with no attachment can still carry hashes here. mv-expand to
+      emit an IOC list, and expect the same hash to repeat across every record
+      of an alert (the whole campaign carries the same attachment), so dedupe
+      with make_set/dcount rather than counting occurrences. These are the
+      values to check against VirusTotal or to hunt for in EDR telemetry.
+    sampleValues: ["0000000000000000000000000000000000000000000000000000000000000001"]
+    applicablePayloads: ["MailPhishing"]
+
+  - name: message.sentTime
+    type: DateTime
+    description: "When the message was sent, per the mail headers. Frequently a day or more before the alert's createTime — in the sample, mail sent 2026-07-27T20:01:42Z produced an alert at 2026-07-28T13:52:29Z. `createTime - message.sentTime` is the mailbox dwell time and is the number that drives the urgency of a remediation. Header-derived and therefore attacker-influenceable; use message.date for Google's own view."
+    sampleValues: ["2026-07-27T20:01:42Z"]
+    applicablePayloads: ["MailPhishing"]
+
+  - name: message.date
+    type: DateTime
+    description: "The date of the event related to this email as Google recorded it — in practice the delivery/reporting moment for this particular message, distinct per record within an alert while sentTime is near-identical across them. Sits between startTime and endTime and is the field to use when reconstructing the order in which a campaign landed."
+    sampleValues: ["2026-07-28T11:59:54.782738Z"]
+    applicablePayloads: ["MailPhishing"]
+
+  # NOT AVAILABLE on a Gmail phishing alert, and frequently assumed to be:
+  #   * attachment FILENAMES — attachmentsSha256Hash is all Google gives; the
+  #     names must come from the Security Investigation Tool (via
+  #     securityInvestigationToolLink) or from a mail-gateway data type such as
+  #     AbnormalSecurity, whose AbnormalThreat messages[] carries
+  #     attachmentNames[].
+  #   * URLs in the message body — there is no urls[] anywhere in MailPhishing;
+  #     messageBodySnippet is the only body text and it is truncated.
+  #   * the sending IP or the envelope sender — only the From header
+  #     (data.maliciousEntity.fromHeader) is carried.
+  #   * delivery location / whether the user clicked — the Alert Center reports
+  #     detection, not disposition beyond data.systemActionType.
+
+  # ==========================================
+  # PAYLOAD — MailPhishing (data.*)
+  #
+  # source "Gmail phishing"; types "User reported phishing", "User reported
+  # spam spike", "Suspicious message reported", "Phishing reclassification",
+  # "Malware reclassification". The only payload present in the collected
+  # samples.
+  # ==========================================
+  - name: data.maliciousEntity.fromHeader
+    type: String
+    description: "The sender address from the message's From header — the attacker identity as displayed to the user, and the single most useful IOC on a Gmail phishing alert. Compare its domain against data.domainId.customerPrimaryDomain to separate external senders from an internal compromised account (see data.isInternal). Spoofable by definition; treat a match as an indicator, not proof."
+    sampleValues: ["billing@fabrikam.com"]
+    applicablePayloads: ["MailPhishing"]
+
+  - name: data.maliciousEntity.displayName
+    type: String
+    description: "The From header's display name — the part a user actually reads, and where impersonation lives (\"IT Helpdesk\", a spoofed executive's name). A display name matching an internal person while fromHeader is an external domain is the classic display-name spoof. Not present in the collected samples."
+    applicablePayloads: ["MailPhishing"]
+
+  - name: data.maliciousEntity.entity.emailAddress
+    type: String
+    description: "Email address of the actor Google identified as triggering the alert, when it resolved one to a directory identity — as opposed to fromHeader, which is only what the header claimed. Populated for internal-origin alerts (a compromised account sending phish); absent on the collected external samples, where fromHeader is the only sender field."
+    applicablePayloads: ["MailPhishing"]
+
+  - name: data.maliciousEntity.entity.displayName
+    type: String
+    description: "Display name of the resolved actor identity. Pairs with entity.emailAddress and, like it, is absent when Google could not resolve the sender to a user."
+    applicablePayloads: ["MailPhishing"]
+
+  - name: data.domainId.customerPrimaryDomain
+    type: String
+    description: "The customer's primary domain, i.e. the tenant the alert is about — not the sender's domain and not necessarily the recipient's (a multi-domain tenant reports its primary domain here while recipients sit on secondary domains). Use it as the comparison base for 'is this sender external', and message.recipient's domain for which of the tenant's domains was hit."
+    sampleValues: ["contoso.com"]
+    applicablePayloads: ["MailPhishing"]
+
+  - name: data.isInternal
+    type: Boolean
+    description: "True if the mail originated inside the organization — which reframes the alert entirely: an internal-origin phishing alert is an account-compromise investigation, not a mail-filtering one. A real JSON Boolean; absent (not false) on the collected samples, so read it as `tobool(coalesce(data.isInternal, false))`."
+    sampleValues: ["true", "false"]
+    applicablePayloads: ["MailPhishing"]
+
+  - name: data.systemActionType
+    type: String
+    description: "What Gmail itself did to the messages, as an enum string — \"NO_OPERATION\" when nothing was done and \"REMOVED_FROM_INBOX\" when Google pulled the mail out of users' inboxes. The remediation-state field: an alert with NO_OPERATION and a live external sender still has mail sitting in mailboxes. Not present in the collected samples; verify the exact spelling against live data before pinning a detection on it."
+    sampleValues: ["NO_OPERATION", "REMOVED_FROM_INBOX"]
+    applicablePayloads: ["MailPhishing"]
+
+  - name: data.messages
+    type: DynamicArray
+    description: "ABSENT BY DESIGN — do not query it. The API's messages[] array is expanded by Ingext into one record per element (see messageIndex / messageCount and the top-level `message` object). A query written from Google's API reference that does `mv-expand data.messages` returns nothing on this data type."
+    applicablePayloads: ["MailPhishing"]
+
+  # ==========================================
+  # PAYLOAD — AccountWarning (data.*)
+  #
+  # source "Google identity"; types "Suspicious login", "Suspicious login (less
+  # secure app)", "Suspicious programmatic login", "Leaked password", "User
+  # suspended", "User suspended (spam)", "User suspended (spam through relay)",
+  # "User suspended (suspicious activity)". Documented from the API — no
+  # samples collected.
+  # ==========================================
+  - name: data.email
+    type: String
+    description: >-
+      The user the alert is about. Shared by several payloads with the same
+      meaning but different implications: on AccountWarning it is the account
+      Google flagged or suspended, on StateSponsoredAttack the target of a
+      government-backed attack, on DeviceCompromised / SuspiciousActivity the
+      device's enrolled user, and on DomainWideTakeoutInitiated the ADMIN who
+      started the export (a perpetrator, not a victim). Because the meaning
+      flips, never aggregate data.email across payload types without splitting
+      by data["@type"] first. Joins to GSuite actor.email and to
+      GSuiteResources gsuiteUser.primaryEmail.
+    sampleValues: ["adele.vance@contoso.com"]
+    applicablePayloads: ["AccountWarning", "StateSponsoredAttack", "DeviceCompromised", "SuspiciousActivity", "DomainWideTakeoutInitiated"]
+
+  - name: data.loginDetails.ipAddress
+    type: String
+    description: "The IP address associated with the warning — the only address anywhere in this data type, and it is nested inside the payload, so it receives no _ip GeoIP enrichment. Available only on the four login-related Google identity types (Suspicious login, Suspicious login (less secure app), Suspicious programmatic login, User suspended (suspicious activity)). To geolocate it, pivot to the GSuite login report for the same actor and window, which carries ipAddress and _ip.* natively."
+    sampleValues: ["192.0.2.10"]
+    applicablePayloads: ["AccountWarning"]
+
+  - name: data.loginDetails.loginTime
+    type: DateTime
+    description: "When the flagged sign-in SUCCEEDED. Its absence is the signal: Google does not populate it for BLOCKED login attempts, so a Suspicious login alert with no loginTime means the attempt was stopped, and one with a loginTime means the attacker got in. That distinction does not appear anywhere else on the record."
+    applicablePayloads: ["AccountWarning"]
+
+  # ==========================================
+  # PAYLOAD — device alerts (data.*)
+  #
+  # source "Mobile device management"; DeviceCompromised for "Device
+  # compromised", SuspiciousActivity for "Suspicious activity". Both wrap a
+  # data.events[] array of per-device detail. Documented from the API — no
+  # samples collected.
+  # ==========================================
+  - name: data.events
+    type: DynamicArray
+    description: >-
+      Array of per-device security detail objects — DeviceCompromisedSecurityDetail
+      for a Device compromised alert, SuspiciousActivitySecurityDetail for a
+      Suspicious activity alert. mv-expand it and reach into the element.
+      IMPORTANT: unlike the MailPhishing messages[] array, this one is NOT known
+      to be expanded into separate records by the collector; if your tenant
+      produces device alerts, check whether the record carries data.events (an
+      array) or an expanded singular field before writing the query
+      (`project bag_keys(data), array_length(data.events)`).
+    applicablePayloads: ["DeviceCompromised", "SuspiciousActivity"]
+
+  - name: data.events[].deviceId
+    type: String
+    description: "The enrolled device's identifier. Joins to the GSuite mobile report's event.parameters.DEVICE_ID, which is how you get from 'Google says this device is compromised' to the device's sync and posture history."
+    applicablePayloads: ["DeviceCompromised", "SuspiciousActivity"]
+
+  - name: data.events[].deviceCompromisedState
+    type: String
+    description: "The verdict on a Device compromised alert: the literal strings \"Compromised\" or \"Not Compromised\" — mixed case with a space, not an enum. \"Not Compromised\" appears because Google raises the alert again when a device recovers, so a naive count of Device compromised alerts overstates the number of rooted/jailbroken devices; filter on this field."
+    sampleValues: ["Compromised", "Not Compromised"]
+    applicablePayloads: ["DeviceCompromised"]
+
+  - name: data.events[].deviceProperty
+    type: String
+    description: "On a Suspicious activity alert, the device property that changed; oldValue and newValue hold the transition. This is the whole content of the alert — the alert says 'something about this device changed unexpectedly' and this triple says what."
+    applicablePayloads: ["SuspiciousActivity"]
+
+  - name: data.events[].oldValue
+    type: String
+    description: "The device property's value before the change. Pairs with newValue and deviceProperty."
+    applicablePayloads: ["SuspiciousActivity"]
+
+  - name: data.events[].newValue
+    type: String
+    description: "The device property's value after the change."
+    applicablePayloads: ["SuspiciousActivity"]
+
+  - name: data.events[].deviceType
+    type: String
+    description: "Platform of the device. Same vocabulary as the GSuite mobile report's DEVICE_TYPE (ANDROID, IOS, WINDOWS, MAC, LINUX, CHROME_OS)."
+    applicablePayloads: ["DeviceCompromised", "SuspiciousActivity"]
+
+  - name: data.events[].deviceModel
+    type: String
+    description: "Hardware model string as reported by the device."
+    applicablePayloads: ["DeviceCompromised", "SuspiciousActivity"]
+
+  - name: data.events[].serialNumber
+    type: String
+    description: "Hardware serial number — the join key to an asset inventory. Empty rather than absent when the device does not report one."
+    applicablePayloads: ["DeviceCompromised", "SuspiciousActivity"]
+
+  - name: data.events[].resourceId
+    type: String
+    description: "The Directory API mobiledevices resource ID — a long opaque string, the same identifier the GSuite mobile report carries as RESOURCE_ID. Use it for Admin SDK lookups, not for grouping."
+    applicablePayloads: ["DeviceCompromised", "SuspiciousActivity"]
+
+  - name: data.events[].iosVendorId
+    type: String
+    description: "Apple identifierForVendor. Populated on iOS devices, empty on every other platform."
+    applicablePayloads: ["DeviceCompromised", "SuspiciousActivity"]
+
+  # ==========================================
+  # PAYLOAD — DlpRuleViolation (data.ruleViolationInfo.*)
+  #
+  # source "Data Loss Prevention", type "Data Loss Prevention". Also the shape
+  # behind the Security Center rules / Reporting Rule families, which wrap the
+  # same RuleViolationInfo. Documented from the API — no samples collected.
+  # ==========================================
+  - name: data.ruleViolationInfo.ruleInfo.displayName
+    type: String
+    description: "Name of the DLP rule the administrator configured, as shown in the Admin console. The field to group a DLP queue by — which rules fire, how often, and which are noise. Free text chosen by an admin, so it changes when the rule is renamed; ruleInfo.resourceName is the stable identity."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.ruleInfo.resourceName
+    type: String
+    description: "Stable resource name of the rule. Use it as the grouping key in anything long-lived; use displayName for the report."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.triggeringUserEmail
+    type: String
+    description: "The user whose action violated the rule. The subject of the investigation, and the join key into GSuite Drive activity (actor.email) to see what else they did around the same time."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.recipients
+    type: DynamicArray
+    description: "Array of the addresses the sensitive content was being shared with. mv-expand and compare each element's domain against data.domainId / the tenant's domains to separate internal over-sharing from external exfiltration — this array is what makes a DLP alert actionable."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.dataSource
+    type: String
+    description: "Which product the violating content lived in, as an enum string (the Drive, Chat and Chrome families). Pin it before interpreting resourceInfo, whose populated key depends on it. Verify the exact enum spellings against live data — this file documents the shape, not a confirmed value list."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.trigger
+    type: String
+    description: "The action that caused the rule to evaluate — the Drive share, Chat message send, and Chrome file upload/download/print/URL-visit family. Together with dataSource it tells you whether the alert is about storage, messaging or endpoint browsing. Exact enum spellings to be confirmed against live data."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.resourceInfo.resourceTitle
+    type: String
+    description: "Title of the document or resource that violated the rule. Free text; match with contains/has."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.resourceInfo.documentId
+    type: String
+    description: "Drive file ID of the offending document — the join key to GSuite event.parameters.doc_id, which is how you get the full access and ACL history of a file a DLP rule fired on. Part of a union with chatMessageId / chatAttachmentId: exactly one of the three is populated, selected by dataSource."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.resourceInfo.chatMessageId
+    type: String
+    description: "Chat message identifier, populated instead of documentId when the violation happened in Google Chat."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.resourceInfo.chatAttachmentId
+    type: String
+    description: "Chat attachment identifier, populated instead of documentId when the violating content was a file shared in Chat."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.resourceInfo.deviceId
+    type: String
+    description: "The device the violating action was taken from, on Chrome-sourced violations."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.matchInfo
+    type: DynamicArray
+    description: "Array of the detectors that matched, each element carrying either predefinedDetector.detectorName (a Google-supplied detector such as a credit-card or SSN matcher) or userDefinedDetector.displayName/resourceName (an admin-authored one). mv-expand it — the detector names are what turn 'a DLP rule fired' into 'this file contains card numbers', and one violation commonly matches several."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.triggeredActionTypes
+    type: DynamicArray
+    description: "Array of the actions actually applied as a consequence of the violation (block external sharing, warn, alert, and so on). An alert whose only triggered action is the alert itself means nothing was blocked — the content went out. That is the field that separates a prevented incident from a recorded one."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.suppressedActionTypes
+    type: DynamicArray
+    description: "Array of actions that would have applied but were suppressed by a higher-priority action on another matching rule. Useful when a rule appears not to be working: it fired, but something else won."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  - name: data.ruleViolationInfo.eventType
+    type: String
+    description: "Whether the record describes a content violation or a rule lifecycle event (rule activated / deactivated). Filter the lifecycle values out of a violation report — they carry no user or resource."
+    applicablePayloads: ["DlpRuleViolation"]
+
+  # ==========================================
+  # PAYLOAD — ActivityRule (data.*)
+  #
+  # source "Security Center rules", type "Activity Rule". The alert Google
+  # raises when an admin-authored activity rule matches. Documented from the
+  # API — no samples collected.
+  # ==========================================
+  - name: data.displayName
+    type: String
+    description: "Human-readable name of the activity rule that fired. The grouping key for a rule-alert queue."
+    applicablePayloads: ["ActivityRule"]
+
+  - name: data.query
+    type: String
+    description: "The rule's query — literally the detection logic, as configured by the administrator. Reading it is how you decide whether a burst of rule alerts is a real finding or a badly scoped rule."
+    applicablePayloads: ["ActivityRule"]
+
+  - name: data.threshold
+    type: String
+    description: "The threshold that had to be crossed for the rule to fire, over data.windowSize. A string, not a number — cast before comparing."
+    applicablePayloads: ["ActivityRule"]
+
+  - name: data.windowSize
+    type: String
+    description: "The evaluation window the threshold applies to, as a duration string. Together with threshold it explains the alert's sensitivity."
+    applicablePayloads: ["ActivityRule"]
+
+  - name: data.triggerSource
+    type: String
+    description: "Which data the rule evaluates against (the audit log or report the rule is built on)."
+    applicablePayloads: ["ActivityRule"]
+
+  - name: data.actionNames
+    type: DynamicArray
+    description: "Array of the actions the rule is configured to take when it matches."
+    applicablePayloads: ["ActivityRule"]
+
+  - name: data.supersedingAlert
+    type: String
+    description: "The alertId of a later alert that supersedes this one, when Google consolidates repeated rule matches. Its presence means this record is superseded — exclude those from a live queue or the same finding is counted several times."
+    applicablePayloads: ["ActivityRule"]
+
+  - name: data.supersededAlerts
+    type: DynamicArray
+    description: "Array of alertIds this alert supersedes. The other half of the consolidation link — a long array here means the rule has been firing repeatedly."
+    applicablePayloads: ["ActivityRule"]
+
+  # ==========================================
+  # PAYLOAD — SensitiveAdminAction (data.*)
+  #
+  # source "Sensitive Admin Action"; types "Primary admin changed", "SSO profile
+  # added", "SSO profile updated", "SSO profile deleted", "Super admin password
+  # reset". The highest-severity administrative changes in a tenant — a
+  # federation takeover looks exactly like an "SSO profile updated" alert.
+  # Documented from the API — no samples collected.
+  # ==========================================
+  - name: data.actorEmail
+    type: String
+    description: "The administrator who performed the sensitive action. Cross-check it against the expected admin set — this payload is the reason to alert on this source at all."
+    applicablePayloads: ["SensitiveAdminAction"]
+
+  - name: data.eventTime
+    type: DateTime
+    description: "When the sensitive admin action occurred, as recorded by the reporting system. Use it rather than startTime for the precise moment; the two can differ by the detection delay."
+    applicablePayloads: ["SensitiveAdminAction"]
+
+  - name: data.primaryAdminChangedEvent
+    type: Dynamic
+    description: "Present only on a \"Primary admin changed\" alert; carries the previous and updated primary admin email. One of five mutually exclusive sub-objects — which one is present is the real alert subtype, so branch on `bag_keys(data)` or on `type`."
+    applicablePayloads: ["SensitiveAdminAction"]
+
+  - name: data.ssoProfileCreatedEvent
+    type: Dynamic
+    description: "Present only on \"SSO profile added\"; carries the inbound SSO profile name. A new SSO profile on a tenant that already federates is a credible identity-takeover path."
+    applicablePayloads: ["SensitiveAdminAction"]
+
+  - name: data.ssoProfileUpdatedEvent
+    type: Dynamic
+    description: "Present only on \"SSO profile updated\"; carries the profile name and which fields of the profile changed. Changes to the IdP endpoint or signing certificate are the case to escalate."
+    applicablePayloads: ["SensitiveAdminAction"]
+
+  - name: data.ssoProfileDeletedEvent
+    type: Dynamic
+    description: "Present only on \"SSO profile deleted\"; carries the profile name."
+    applicablePayloads: ["SensitiveAdminAction"]
+
+  - name: data.superAdminPasswordResetEvent
+    type: Dynamic
+    description: "Present only on \"Super admin password reset\"; carries userEmail, the super administrator whose password was reset."
+    applicablePayloads: ["SensitiveAdminAction"]
+
+  # ==========================================
+  # PAYLOAD — remaining types (data.*)
+  # All documented from the API; no samples collected.
+  # ==========================================
+  - name: data.takeoutRequestId
+    type: String
+    description: "On a \"Customer takeout initiated\" alert (source \"Domain wide takeout\"), the identifier of the takeout request. data.email on the same record is the ADMIN who initiated the export — a domain-wide takeout is a bulk extraction of every user's data, so an unexpected one is an exfiltration event, not an administrative footnote."
+    applicablePayloads: ["DomainWideTakeoutInitiated"]
+
+  - name: data.name
+    type: String
+    description: "The rule name, on the UserChanges, ReportingRule and AbuseDetected payloads — which is all those payloads carry. These alerts say only 'this predefined rule fired'; everything about what actually changed must come from the GSuite admin/user_accounts reports for the same window. Note the collision with ActivityRule's data.name (the rule's resource name), so pin data[\"@type\"] before using it."
+    applicablePayloads: ["UserChanges", "ReportingRule", "AbuseDetected", "ActivityRule"]
+
+  - name: data.products
+    type: DynamicArray
+    description: "On an \"Apps outage\" alert, the array of Workspace products affected. Outage alerts are service announcements, not security findings — they can outnumber everything else in the stream, so exclude source \"Apps outage\" (and \"Google Operations\" and the MSA family) from any detection query."
+    applicablePayloads: ["AppsOutage"]
+
+  - name: data.status
+    type: String
+    description: "Current status of an outage. Note that when it is MERGED the real state lives on a different alert — data.mergeInfo.newAlertId points at it, and this record is stale."
+    applicablePayloads: ["AppsOutage"]
+
+  - name: data.dashboardUri
+    type: String
+    description: "Link to the incident on the Google Workspace Status Dashboard."
+    applicablePayloads: ["AppsOutage"]
+
+  - name: data.incidentTrackingId
+    type: String
+    description: "Google's tracking ID for the outage incident. Several alerts (opening, updating, resolving) share it, so group on it rather than on alertId when reconstructing an outage timeline."
+    applicablePayloads: ["AppsOutage"]
+
+  - name: data.nextUpdateTime
+    type: DateTime
+    description: "When Google expects to post the next update on the outage."
+    applicablePayloads: ["AppsOutage"]
+
+  - name: data.resolutionTime
+    type: DateTime
+    description: "When the outage is expected to be, or was, resolved. Populated only when known."
+    applicablePayloads: ["AppsOutage"]
+
+# ==========================================
+# ALERT CATALOGUE — source / type / data["@type"]
+# ==========================================
+# The payload class in the third column is what selects the shape of `data`;
+# note how many `type` values collapse onto one payload. Only the MailPhishing
+# rows appear in the collected samples.
+#
+# Gmail phishing
+#   User reported phishing                     MailPhishing
+#   User reported spam spike                   MailPhishing   (console: "Spike in user reported spam")
+#   Suspicious message reported                MailPhishing
+#   Phishing reclassification                  MailPhishing   (console: "Phishing message detected post-delivery")
+#   Malware reclassification                   MailPhishing   (console: "Malware message detected post-delivery")
+#   Misconfigured whitelist                    BadWhitelist   (console: "Phishing in inboxes due to bad whitelist")
+#
+# Google identity
+#   Suspicious login                           AccountWarning  (loginDetails present)
+#   Suspicious login (less secure app)         AccountWarning  (loginDetails present)
+#   Suspicious programmatic login              AccountWarning  (loginDetails present)
+#   User suspended (suspicious activity)       AccountWarning  (loginDetails present)
+#   Leaked password                            AccountWarning
+#   User suspended                             AccountWarning
+#   User suspended (spam)                      AccountWarning
+#   User suspended (spam through relay)        AccountWarning
+#   Account suspension warning                 AccountSuspensionWarning
+#
+# State Sponsored Attack
+#   Government attack warning                  StateSponsoredAttack   (data.email only — the target)
+#
+# Mobile device management
+#   Device compromised                         DeviceCompromised
+#   Suspicious activity                        SuspiciousActivity
+#   APNS certificate is expiring soon          ApnsCertificateExpirationInfo
+#   APNS certificate has expired               ApnsCertificateExpirationInfo
+#
+# Data Loss Prevention
+#   Data Loss Prevention                       DlpRuleViolation
+#
+# Security Center rules / Reporting Rule
+#   Activity Rule                              ActivityRule
+#   Reporting Rule                             ReportingRule
+#
+# Sensitive Admin Action
+#   Primary admin changed                      SensitiveAdminAction
+#   SSO profile added / updated / deleted      SensitiveAdminAction
+#   Super admin password reset                 SensitiveAdminAction
+#
+# User Changes  (predefined admin-notification rules)
+#   New user Added                             UserChanges
+#   Suspended user made active                 UserChanges
+#   User deleted                               UserChanges
+#   User granted Admin privilege               UserChanges
+#   Users Admin privilege revoked              UserChanges
+#   User suspended (Administrator email alert) UserChanges
+#   Users password changed                     UserChanges
+#
+# App Settings Changed
+#   Calendar / Drive / Email / Mobile settings changed    AppSettingsChanged
+#
+# Domain wide takeout
+#   Customer takeout initiated                 DomainWideTakeoutInitiated
+#
+# Drive Counter Abuse
+#   Potential ransomware detected              DriveSyncStateChanged
+#   File syncing resumed                       DriveSyncStateChanged
+#
+# Customer abuse
+#   Customer abuse detected                    AbuseDetected
+#
+# Client Side Encryption
+#   Client-side encryption service unavailable ClientSideEncryptionServiceUnavailable
+#
+# Access Approvals
+#   Access Approvals request                   AccessApproval
+#
+# Google Voice
+#   Configuration problem                      VoiceMisconfiguration
+#
+# AppMaker Editor
+#   AppMaker Default Cloud SQL setup           AppMakerSqlSetupNotification
+#
+# Non-security announcements — exclude from detection queries:
+#   Apps outage / Apps outage                  AppsOutage
+#   Google Operations / Google Operations      GoogleOperations
+#   Google Mandatory Service Announcement / MSA Billing|Legal|Product|Security
+#                                              MandatoryServiceAnnouncement
+#
+# ==========================================
+# RELATED DATA TYPES
+# ==========================================
+#   GSuite            Admin SDK Reports API audit activity for the same tenant.
+#                     The verification layer: an Alert Center alert says Google
+#                     flagged something, the GSuite login/drive/token reports
+#                     say what the account actually did around it. Join on
+#                     data.email or message.recipient -> actor.email, and on
+#                     strcat("C", customerId) -> id.customerId.
+#   GSuiteResources   gsuiteUser / gsuiteGroup directory snapshots — org unit,
+#                     admin status and 2SV enrollment for the user named in an
+#                     alert. Join on primaryEmail.
+#   AbnormalSecurity  Where a third-party mail-security product is also
+#                     deployed, AbnormalThreat covers the same mail with
+#                     attachment names, URLs and remediation state that the
+#                     Alert Center does not carry.

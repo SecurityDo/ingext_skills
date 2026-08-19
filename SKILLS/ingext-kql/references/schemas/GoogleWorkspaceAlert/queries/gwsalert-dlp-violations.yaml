@@ -1,0 +1,81 @@
+description: >-
+  Data Loss Prevention rule violations, with the two columns that decide whether
+  a row is an incident or a log entry. External is computed by comparing every
+  address in ruleViolationInfo.recipients[] against the tenant's own domains —
+  internal over-sharing and external exfiltration arrive as the same alert type
+  and only this comparison separates them. Blocked comes from
+  triggeredActionTypes[]: if the only action Google took was to raise the alert,
+  nothing was prevented and the content left. Detectors names what the rule
+  matched (card numbers, an SSN pattern, an admin-authored detector), which is
+  what turns "a DLP rule fired" into a described finding, and DocumentId is the
+  join key into GSuite Drive activity for the file's full access and ACL history.
+  No DLP samples were collected from this tenant — confirm the enum spellings in
+  Trigger/DataSource and the shape of triggeredActionTypes with
+  `project bag_keys(data.ruleViolationInfo)` before pinning a detection on them.
+datatype: GoogleWorkspaceAlert
+kql: |
+  GoogleWorkspaceAlert
+  | where timestamp > ago(30d)
+  | where tostring(data["@type"]) has "DlpRuleViolation"
+  | extend LastUpdate = todatetime(updateTime)
+  | summarize arg_max(LastUpdate, *) by alertId
+  | where tobool(coalesce(deleted, false)) == false
+  | extend R = data.ruleViolationInfo
+  | extend
+      Rule = tostring(R.ruleInfo.displayName),
+      User = tostring(R.triggeringUserEmail),
+      Tenant = tostring(data.domainId.customerPrimaryDomain),
+      Recipients = R.recipients,
+      Actions = R.triggeredActionTypes
+  // an alert whose only action was the alert itself prevented nothing
+  | extend Blocked = iff(array_length(Actions) > 0
+                         and not(array_length(Actions) == 1 and tostring(Actions[0]) == "ALERT"),
+                         "yes", "")
+  // coalesce to a one-element array: mv-apply drops the row entirely when the
+  // array is empty or absent, which would silently hide every violation that
+  // had no recipient list (a Chrome file upload, a device-local match)
+  | mv-apply rcp = coalesce(Recipients, dynamic([""])) on (
+      summarize
+          External = make_set_if(tostring(rcp),
+                                 isnotempty(tostring(rcp))
+                                 and tostring(split(tostring(rcp), "@")[1]) != Tenant, 10),
+          RecipientCount = countif(isnotempty(tostring(rcp)))
+    )
+  // note: tostring() of an absent key yields "", not null, so coalesce() would
+  // stop at the empty string — pick the populated detector with iff/isnotempty
+  | mv-apply m = coalesce(R.matchInfo, dynamic([{}])) on (
+      summarize Detectors = make_set_if(
+          iff(isnotempty(tostring(m.predefinedDetector.detectorName)),
+              tostring(m.predefinedDetector.detectorName),
+              tostring(m.userDefinedDetector.displayName)),
+          isnotempty(tostring(m.predefinedDetector.detectorName))
+          or isnotempty(tostring(m.userDefinedDetector.displayName)), 10)
+    )
+  | project
+      Created = todatetime(createTime),
+      Severity = tostring(metadata.severity),
+      Rule,
+      User,
+      Detectors,
+      Resource = tostring(R.resourceInfo.resourceTitle),
+      Source = tostring(R.dataSource),
+      Trigger = tostring(R.trigger),
+      RecipientCount,
+      ExternalRecipients = External,
+      Blocked,
+      TriggeredActions = Actions,
+      Suppressed = R.suppressedActionTypes,
+      DocumentId = tostring(R.resourceInfo.documentId),
+      DeviceId = tostring(R.resourceInfo.deviceId),
+      Status = tostring(metadata.status),
+      Url = strcat("https://", tostring(securityInvestigationToolLink)),
+      alertId
+  | order by array_length(ExternalRecipients) desc, Created desc
+tags: [google-workspace, alert-center, dlp, data-loss-prevention, exfiltration, drive, security]
+expected_output: |
+  DLP violations with external recipients resolved and prevention state (sanitized).
+
+  Created                   Severity  Rule                     User                     Detectors                          Resource               Source  Trigger      RecipientCount  ExternalRecipients          Blocked  TriggeredActions                       DocumentId                        Status
+  2026-07-28T08:31:57.402Z  MEDIUM    Card numbers in Drive    adele.vance@contoso.com  ["CREDIT_CARD_NUMBER"]             Q3 Vendor Invoice.pdf  DRIVE   DRIVE_SHARE  3               ["billing@fabrikam.com"]             ["ALERT"]                              10000000000000000000000000000001  NOT_STARTED
+  2026-07-27T14:02:18.663Z  HIGH      SSN in shared documents  sam.cole@contoso.com     ["US_SOCIAL_SECURITY_NUMBER"]      Payroll Export         DRIVE   DRIVE_SHARE  1               ["hr@fabrikam.com"]         yes      ["DRIVE_BLOCK_EXTERNAL_SHARING","ALERT"]  10000000000000000000000000000002  IN_PROGRESS
+  2026-07-25T10:44:51.209Z  MEDIUM    Source code in Chat      alex.wilber@contoso.com  ["Internal repo path detector"]                           CHAT    CHAT_MESSAGE_SENT  2         []                                   ["ALERT"]                                                                CLOSED

@@ -46,34 +46,19 @@ description: >-
   while adding nothing, and the interval between copies can be under a minute.
   Prefer dcount(id) over count() wherever a stray duplicate would distort a number.
 
-  IMPORTANT — this engine does not support arg_max(<column>, *) (the '*' cannot be
-  expanded against a dynamic schema), so the usual Kusto one-liner is unavailable.
-  Take the max lastUpdateDateTime per id and join it back instead; naming the key
-  column on the right-hand side avoids relying on how the engine renames a
-  duplicate join key:
+  The reduction is the standard Kusto one-liner — this engine supports
+  arg_max(<column>, *) over the dynamic schema:
 
-    let LatestAlert =
-        MSDefenderAlert
-        | where timestamp > ago(7d)
-        | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
     MSDefenderAlert
     | where timestamp > ago(7d)
-    | join kind=inner LatestAlert on $left.id == $right.AlertId
-    | where todatetime(lastUpdateDateTime) == LastUpdate
-    | project-away AlertId, LastUpdate
+    | extend LastUpdate = todatetime(lastUpdateDateTime)
+    | summarize arg_max(LastUpdate, *) by id
 
-  Keep the two time windows identical, or the join will drop or resurrect rows. If
-  two snapshots of one id ever share the same lastUpdateDateTime, both survive this
-  pattern — arg_max would have picked exactly one — but they are duplicates of the
-  same state, so it matters only for count() and dcount(id) is safer either way.
-  Every query sample in queries/ opens with this block.
-
-  Should wildcard arg_max support be added for this case, the block collapses to
-  'summarize arg_max(lastUpdateDateTime, *) by id' with no other change to any
-  query. queries/msd-alert-device-evidence-argmax.yaml holds that form side by side
-  with the portable msd-alert-device-evidence.yaml — the two are identical from the
-  first pipeline stage onward, so they double as the migration diff. It is tagged
-  'requires-wildcard-argmax' and must not be run until the engine supports it.
+  Parse lastUpdateDateTime with todatetime() in the extend rather than passing it
+  to arg_max as a string: it arrives as a string field, and string ordering only
+  happens to agree with time ordering while the format is uniform. arg_max keeps
+  exactly one row per id, so nothing downstream has to defend against ties. Every
+  query sample in queries/ opens with this block.
 fields:
 
   # ==========================================
@@ -259,7 +244,7 @@ fields:
 
   - name: lastUpdateDateTime
     type: DateTime
-    description: "When the alert record last changed in Defender (new evidence, status/classification change, comment, incident re-correlation). The field used to collapse repeated emissions of the same alert to its current state — see the latest-snapshot join pattern in the schema description above (arg_max(lastUpdateDateTime, *) is not available on this engine)."
+    description: "When the alert record last changed in Defender (new evidence, status/classification change, comment, incident re-correlation). The field used to collapse repeated emissions of the same alert to its current state — 'summarize arg_max(todatetime(lastUpdateDateTime), *) by id', see the latest-snapshot pattern in the schema description above."
     sampleValues: ["2026-07-27T14:32:33.79Z"]
 
   - name: resolvedDateTime

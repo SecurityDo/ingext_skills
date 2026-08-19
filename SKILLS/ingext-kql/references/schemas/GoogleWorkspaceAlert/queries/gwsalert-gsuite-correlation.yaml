@@ -1,0 +1,93 @@
+description: >-
+  The verification pass: every user Google raised an alert about, joined to what
+  that account actually did in the GSuite audit stream over the same window. An
+  Alert Center alert on its own says Google was worried; these columns say
+  whether anything followed. SuspiciousLogins and Countries come from the login
+  report (with the GeoIP enrichment the alert payload lacks), OAuthGrants from
+  the token report — a third-party app consented to right after a phishing or
+  suspicious-login alert is the classic post-compromise persistence step — and
+  ExternalShares from the Drive acl_change report, which is what exfiltration
+  looks like. The user key is data.email for the identity, device and takeout
+  payloads and message.recipient for Gmail alerts, so one row covers a victim of
+  a phish and a flagged account alike. Rows where the alert stands alone with no
+  following activity are the ones to close; rows with grants or external shares
+  after FirstAlert are the ones to escalate.
+datatype: GoogleWorkspaceAlert
+kql: |
+  let Window = 7d;
+  let Flagged =
+      GoogleWorkspaceAlert
+      | where timestamp > ago(Window)
+      | where tostring(source) !in ("Apps outage", "Google Operations", "Google Mandatory Service Announcement")
+      | extend LastUpdate = todatetime(updateTime)
+      | summarize arg_max(LastUpdate, *) by alertId, messageIndex
+      // data.email on identity/device/takeout payloads, message.recipient on Gmail
+      | extend User = iff(isnotempty(tostring(data.email)),
+                          tostring(data.email),
+                          tostring(message.recipient))
+      | where isnotempty(User)
+      | summarize
+          Alerts = dcount(alertId),
+          AlertTypes = make_set(tostring(type), 6),
+          TopSeverity = max(case(tostring(metadata.severity) == "HIGH", 3,
+                                 tostring(metadata.severity) == "MEDIUM", 2,
+                                 tostring(metadata.severity) == "LOW", 1, 0)),
+          FirstAlert = min(todatetime(createTime)),
+          LastAlert = max(todatetime(createTime))
+          by User;
+  let LoginActivity =
+      GSuite
+      | where timestamp > ago(Window)
+      | where tostring(id.applicationName) == "login"
+      | summarize
+          Logins = countif(tostring(event.name) == "login_success"),
+          SuspiciousLogins = countif(tobool(coalesce(event.parameters.is_suspicious, false))),
+          Failures = countif(tostring(event.name) startswith "login_failure"),
+          Countries = make_set_if(tostring(_ip.countryCode), isnotempty(tostring(_ip.countryCode)), 8),
+          Isps = make_set_if(tostring(_ip.isp), isnotempty(tostring(_ip.isp)), 5)
+          by User = tostring(actor.email);
+  let GrantActivity =
+      GSuite
+      | where timestamp > ago(Window)
+      | where tostring(event.type) == "auth" and tostring(event.name) == "authorize"
+      | summarize
+          OAuthGrants = count(),
+          Apps = make_set(tostring(event.parameters.app_name), 8),
+          LastGrant = max(timestamp)
+          by User = tostring(actor.email);
+  let ShareActivity =
+      GSuite
+      | where timestamp > ago(Window)
+      | where tostring(event.type) == "acl_change"
+      | where tostring(event.parameters.visibility_change) == "external"
+      | summarize
+          ExternalShares = count(),
+          SharedDocs = dcount(tostring(event.parameters.doc_id)),
+          LastShare = max(timestamp)
+          by User = tostring(actor.email);
+  Flagged
+  | join kind=leftouter LoginActivity on User
+  | join kind=leftouter GrantActivity on User
+  | join kind=leftouter ShareActivity on User
+  | extend
+      Severity = case(TopSeverity == 3, "HIGH", TopSeverity == 2, "MEDIUM", TopSeverity == 1, "LOW", ""),
+      GrantAfterAlert = iff(isnotnull(LastGrant) and LastGrant > FirstAlert, "yes", ""),
+      ShareAfterAlert = iff(isnotnull(LastShare) and LastShare > FirstAlert, "yes", "")
+  | order by TopSeverity desc, ExternalShares desc, OAuthGrants desc, Alerts desc
+  | project
+      User, Severity, Alerts, AlertTypes, FirstAlert, LastAlert,
+      Logins = coalesce(Logins, 0),
+      SuspiciousLogins = coalesce(SuspiciousLogins, 0),
+      Failures = coalesce(Failures, 0),
+      Countries, Isps,
+      OAuthGrants = coalesce(OAuthGrants, 0), Apps, GrantAfterAlert,
+      ExternalShares = coalesce(ExternalShares, 0), SharedDocs = coalesce(SharedDocs, 0), ShareAfterAlert
+tags: [google-workspace, alert-center, gsuite, correlation, account-compromise, exfiltration, security]
+expected_output: |
+  Alerted users with their following Workspace activity (sanitized).
+
+  User                     Severity  Alerts  AlertTypes                                          FirstAlert                LastAlert                 Logins  SuspiciousLogins  Failures  Countries      Isps                           OAuthGrants  Apps                            GrantAfterAlert  ExternalShares  SharedDocs  ShareAfterAlert
+  megan.bowen@contoso.com  HIGH      3       ["Suspicious login","User reported spam spike"]     2026-07-28T11:02:44Z     2026-07-28T13:52:29Z      14      2                 6         ["US","NL"]    ["Example ISP","Example Hosting"]  2            ["Example Workspace Add-on"]    yes              7               5           yes
+  alex.wilber@contoso.com  HIGH      1       ["Government attack warning"]                       2026-07-27T04:19:55Z     2026-07-27T04:19:55Z      9       0                 0         ["US"]         ["Example ISP"]                    0            []                                               0               0
+  adele.vance@contoso.com  HIGH      2       ["User reported spam spike"]                        2026-07-28T13:52:29Z     2026-07-28T13:52:29Z      11      0                 1         ["US"]         ["Example ISP"]                    1            ["Google Chrome"]               yes              0               0
+  sam.cole@contoso.com     HIGH      1       ["Leaked password"]                                 2026-07-26T16:40:11Z     2026-07-26T16:40:11Z      6       0                 3         ["US"]         ["Example ISP"]                    0            []                                               0               0

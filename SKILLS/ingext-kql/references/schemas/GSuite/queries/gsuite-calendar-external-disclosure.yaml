@@ -1,0 +1,59 @@
+description: >-
+  Calendar notifications delivered to addresses outside the actor's domain,
+  enriched with the meeting they refer to. Calendar is a quiet disclosure
+  channel: a notification carries the meeting title, time and organizer to
+  every recipient, so an external recipient on an internal meeting leaks
+  roadmap, incident-response and M&A titles without any file ever being shared.
+  The notification record itself holds only calendar_id / event_id, so the
+  query joins back to the event_change records on event_id to recover the
+  title and schedule. It also demonstrates the Calendar time conversion:
+  start_time / end_time are seconds since 0001-01-01, not Unix, so they are
+  converted with `datetime(0001-01-01) + 1s * tolong(...)` — using
+  unixtime_seconds_todatetime() here silently returns dates in the year 4000.
+  The Meetings lookback is one day wider than the notification range so that
+  invitations sent for meetings created just before the window still resolve.
+datatype: GSuite
+kql: |
+  let Meetings =
+      GSuite
+      | where timestamp > ago(8d)
+      | where tostring(event.type) == "event_change"
+      | extend P = event.parameters
+      | extend EventId = tostring(P.event_id)
+      | where isnotempty(EventId)
+      | summarize arg_max(timestamp, *) by EventId
+      | project
+          EventId,
+          Title = tostring(P.event_title),
+          StartTime = datetime(0001-01-01) + 1s * tolong(P.start_time),
+          EndTime = datetime(0001-01-01) + 1s * tolong(P.end_time),
+          Organizer = tostring(P.organizer_calendar_id),
+          Recurring = tostring(P.recurring);
+  GSuite
+  | where timestamp > ago(7d)
+  | where tostring(event.type) == "notification"
+  | extend P = event.parameters, Actor = tostring(actor.email)
+  | extend
+      Recipient = tostring(P.recipient_email),
+      EventId = tostring(P.event_id),
+      NotificationType = tostring(P.notification_type),
+      Method = tostring(P.notification_method),
+      CalendarId = tostring(P.calendar_id)
+  | extend
+      ActorDomain = tostring(split(Actor, "@")[1]),
+      RecipientDomain = tostring(split(Recipient, "@")[1])
+  | where isnotempty(RecipientDomain) and RecipientDomain != ActorDomain
+  | join kind=leftouter Meetings on EventId
+  | project
+      timestamp, Actor, Recipient, RecipientDomain,
+      NotificationType, Method,
+      Title, StartTime, EndTime, Recurring, Organizer, CalendarId,
+      IP = tostring(ipAddress), Country = tostring(_ip.countryCode)
+  | order by timestamp desc
+tags: [gsuite, google-workspace, calendar, external-sharing, data-disclosure]
+expected_output: |
+  Calendar notifications sent outside the organization, with the meeting behind them (sanitized).
+
+  timestamp                 Actor                 Recipient                     RecipientDomain      NotificationType  Method  Title                 StartTime             EndTime               Recurring  Organizer             CalendarId            IP          Country
+  2026-08-04T16:29:17.998Z  sam.cole@contoso.com  ext.user@partner.example.com  partner.example.com  new_event         email   Weekly Team Review    2026-08-06T15:00:00Z  2026-08-06T16:00:00Z  no         sam.cole@contoso.com  sam.cole@contoso.com  192.0.2.10  US
+  2026-08-03T09:02:44.512Z  sam.cole@contoso.com  advisor@example.net           example.net          event_changed     email   Q3 Board Prep         2026-08-05T13:00:00Z  2026-08-05T14:30:00Z  yes        sam.cole@contoso.com  sam.cole@contoso.com  192.0.2.10  US

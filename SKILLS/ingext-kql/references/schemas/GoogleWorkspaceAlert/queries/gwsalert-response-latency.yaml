@@ -1,0 +1,59 @@
+description: >-
+  Two latencies per alert type, which are owned by two different parties.
+  DetectMin is createTime minus startTime — how long Google took to raise the
+  alert after the activity started, which you cannot change but must know,
+  because it sets the floor on any response. TriageHrs is metadata.updateTime
+  minus createTime on alerts that have left NOT_STARTED — the tenant's own
+  time-to-first-touch, which is the number an operations review is actually
+  about. DwellHrs is the Gmail-only third figure: createTime minus the earliest
+  message.sentTime, i.e. how long the phishing mail sat in mailboxes before
+  anyone knew. Untouched counts alerts still sitting at NOT_STARTED, and
+  OldestOpenDays ages the worst of them; a type with a high Untouched count and
+  a low alert volume is usually one nobody has been told to look at.
+datatype: GoogleWorkspaceAlert
+kql: |
+  GoogleWorkspaceAlert
+  | where timestamp > ago(90d)
+  | extend LastUpdate = todatetime(updateTime)
+  | summarize arg_max(LastUpdate, *) by alertId, messageIndex
+  | where tobool(coalesce(deleted, false)) == false
+  // fold the message records back into one row per alert first
+  | summarize FirstSent = min(todatetime(message.sentTime))
+      by
+      alertId,
+      Created = todatetime(createTime),
+      Started = todatetime(startTime),
+      Touched = todatetime(metadata.updateTime),
+      Status = tostring(metadata.status),
+      Severity = tostring(metadata.severity),
+      Type = tostring(type),
+      Source = tostring(source)
+  | extend
+      DetectMin = (Created - Started) / 1m,
+      TriageHrs = iff(Status == "NOT_STARTED", real(null), (Touched - Created) / 1h),
+      DwellHrs = iff(isnull(FirstSent), real(null), (Created - FirstSent) / 1h),
+      OpenDays = iff(Status == "CLOSED", real(null), (now() - Created) / 1d)
+  | summarize
+      Alerts = count(),
+      High = countif(Severity == "HIGH"),
+      DetectMinP50 = round(percentile(DetectMin, 50), 1),
+      DetectMinP90 = round(percentile(DetectMin, 90), 1),
+      DwellHrsP50 = round(percentile(DwellHrs, 50), 1),
+      TriageHrsP50 = round(percentile(TriageHrs, 50), 1),
+      Untouched = countif(Status == "NOT_STARTED"),
+      Unassigned = countif(Status == "NOT_STARTED" and Severity == "HIGH"),
+      OldestOpenDays = round(max(OpenDays), 1)
+      by Source, Type
+  | project Source, Type, Alerts, High, DetectMinP50, DetectMinP90, DwellHrsP50, TriageHrsP50, Untouched, Unassigned, OldestOpenDays
+  | order by Unassigned desc, Alerts desc
+tags: [google-workspace, alert-center, metrics, sla, detection-latency, triage, security]
+expected_output: |
+  Detection, dwell and triage latency per alert type, with the untouched backlog (sanitized).
+
+  Source                    Type                       Alerts  High  DetectMinP50  DetectMinP90  DwellHrsP50  TriageHrsP50  Untouched  Unassigned  OldestOpenDays
+  Gmail phishing            User reported spam spike   34      34    112.8         241.6         17.8         26.1          21         21          61.4
+  Gmail phishing            User reported phishing     28      6     18.2          44.9          2.9          9.4           11         3           47.2
+  Google identity           Suspicious login           19      19    4.2           11.7                       3.1           4          4           12.8
+  Data Loss Prevention      Data Loss Prevention       6       2     0.9           2.4                        30.6          6          2           33.9
+  Mobile device management  Device compromised         3       3     15.0          22.1                       48.2          1          1           92.8
+  Sensitive Admin Action    SSO profile updated        1       1     2.1           2.1                        0.4          0          0

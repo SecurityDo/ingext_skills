@@ -1,0 +1,49 @@
+description: >-
+  Drive access volume per user per hour, built to surface bulk collection —
+  the staging step before exfiltration. Counts distinct documents touched,
+  distinct documents taken off-platform (download / print / copy), and how many
+  of them belong to someone else, then keeps only hours above a threshold. Two
+  correctness details matter here: primary_event == true is required or the
+  Drive fan-out records double-count every action, and access_url records are
+  excluded (they carry no doc_id and describe an add-on fetching a URL, not a
+  user opening a file). NoIpShare tells you how much of the hour was
+  server-side/add-on activity rather than a person at a keyboard — a user whose
+  spike is entirely app-driven is usually an integration, not an insider.
+  Adjust the thresholds to the estate; 50 documents an hour is a starting point
+  for an office population, far too low for a data-heavy team.
+datatype: GSuite
+kql: |
+  GSuite
+  | where timestamp > ago(1d)
+  | where tostring(event.type) == "access"
+  | extend EventName = tostring(event.name), P = event.parameters, Actor = tostring(actor.email)
+  | where tobool(coalesce(P.primary_event, false)) == true
+  | extend
+      DocId = tostring(P.doc_id),
+      DocTitle = tostring(P.doc_title),
+      Owner = tostring(P.owner),
+      Visibility = tostring(P.visibility),
+      HasIp = isnotempty(tostring(ipAddress))
+  | where isnotempty(DocId)
+  | extend Hour = bin(timestamp, 1h)
+  | extend TakenOffPlatform = EventName in ("download", "print", "copy")
+  | summarize
+      Docs = dcount(DocId),
+      OffPlatformDocs = dcountif(DocId, TakenOffPlatform),
+      OthersDocs = dcountif(DocId, isnotempty(Owner) and Owner != Actor),
+      SharedDriveDocs = dcountif(DocId, tobool(coalesce(P.owner_is_shared_drive, false))),
+      Actions = count(),
+      NoIpShare = round(1.0 * countif(not(HasIp)) / count(), 2),
+      TopTitles = make_set_if(DocTitle, TakenOffPlatform, 10),
+      Verbs = make_set(EventName, 10),
+      IPs = make_set_if(tostring(ipAddress), HasIp, 5)
+      by Actor, Hour
+  | where Docs >= 50 or OffPlatformDocs >= 20
+  | order by OffPlatformDocs desc, Docs desc
+tags: [gsuite, google-workspace, drive, exfiltration, insider-threat, security]
+expected_output: |
+  Hours where a user touched an unusual number of Drive documents (sanitized).
+
+  Actor                    Hour                  Docs  OffPlatformDocs  OthersDocs  SharedDriveDocs  Actions  NoIpShare  TopTitles                                       Verbs                       IPs
+  sam.cole@contoso.com     2026-08-04T20:00:00Z  312   287              298         141              694      0          ["Q3 Vendor Invoice.pdf","Payroll 2026.xlsx"]   ["view","download","copy"]  ["192.0.2.10"]
+  megan.bowen@contoso.com  2026-08-04T14:00:00Z  128   4                12          0                203      0.94       ["Team Offsite Agenda"]                         ["view","edit","download"]  ["192.0.2.11"]

@@ -1,0 +1,50 @@
+description: >-
+  How much secure score is still on the table, and which configuration
+  recommendations hold it. msDefenderSecureScore gives the current point total but
+  no maximum, so the headroom comes from the other side: the configScoreImpact of
+  every active 'sca-_-scid-' recommendation is what applying it would add. The
+  single score row is pulled in with toscalar() — it cannot be joined, since it
+  has no key to join on and only ever holds one row. Take a row's id to
+  mde-recommendation-affected-devices.yaml for the devices behind it, or to
+  msDefenderSecureConfig directly.
+datatype: msDefenderSecureScore
+kql: |
+  let ScoreNow = toscalar(msDefenderSecureScore | project toint(score) | take 1);
+  let TotalHeadroom = toscalar(
+      msDefenderRecommendation
+      | where status =~ "Active" and id startswith "sca-"
+      | summarize Total = sum(configScoreImpact)
+      | project round(Total, 2));
+  msDefenderRecommendation
+  | where status =~ "Active" and id startswith "sca-"
+  | where configScoreImpact > 0
+  | extend
+      CurrentScore   = ScoreNow,
+      TotalAchievable = TotalHeadroom,
+      ScoreIfApplied = round(ScoreNow + configScoreImpact, 2),
+      ExposedPct     = round(100.0 * exposedMachinesCount / totalMachineCount, 1),
+      UserImpact     = tags has "UserImpactAssessment"
+  | project
+      recommendationName,
+      subCategory,
+      ScoreGain = round(configScoreImpact, 2),
+      ScoreIfApplied,
+      CurrentScore,
+      TotalAchievable,
+      exposedMachinesCount,
+      totalMachineCount,
+      ExposedPct,
+      exposedCriticalDevices,
+      UserImpact,
+      remediationType,
+      id
+  | order by ScoreGain desc
+  | take 20
+tags: [microsoft, defender, mde, mdvm, secure-score, recommendations, hardening, prioritization, security]
+expected_output: |
+  Configuration recommendations ranked by the secure score they would return (sanitized).
+
+  recommendationName                                        subCategory               ScoreGain  ScoreIfApplied  CurrentScore  TotalAchievable  exposedMachinesCount  totalMachineCount  ExposedPct  exposedCriticalDevices  UserImpact  remediationType      id
+  Block Adobe Reader from creating child processes           Attack Surface Reduction  8.97       808.97          800           47.3             193                   261                73.9        22                      true        ConfigurationChange  sca-_-scid-2513
+  Turn on Microsoft Defender Antivirus real-time protection  Antivirus                 4.1        804.1           800           47.3             24                    259                9.3         3                       false       ConfigurationChange  sca-_-scid-2000
+  Enable 'Domain member: Digitally encrypt or sign secure channel data (always)'  ""                        5.0        805.0           800           47.3             18                    261                6.9         1                       false       ConfigurationChange  sca-_-scid-37

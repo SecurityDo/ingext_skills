@@ -1,0 +1,65 @@
+description: >-
+  Expand one or more security recommendations into the devices they affect. The
+  recommendation record holds counts but no device information at all, so the
+  device list always comes from a join, and which table to join depends on the id
+  prefix: 'sca-_-scid-NNN' recommendations resolve through
+  msDefenderSecureConfig.recommendationReference (non-compliant, applicable
+  devices), 'va-_-vendor-_-product' recommendations through
+  msDefenderVulnerability.RecommendationReference (devices with an open CVE on
+  that product). Both branches are unioned here, so the query works whichever kind
+  of id is set in Recommendations — and because the parameter is a list, ids of
+  both kinds expand together. A single id may be given as a bare string
+  ("sca-_-scid-2513") instead of a list. Findings counts failed configurations on
+  the secure-config side and distinct CVEs on the vulnerability side;
+  count_distinct is deliberate there, because dcount's estimate is off by up to a
+  percent and this number is read per device. Enriched from msDefenderMachine and
+  ordered by business value first, so the devices worth remediating first come
+  first.
+datatype: msDefenderRecommendation
+kql: |
+  let Recommendations = dynamic([
+      "sca-_-scid-2513",
+      "va-_-microsoft-_-windows_11"
+  ]);
+  let ConfigDevices =
+      msDefenderSecureConfig
+      | where recommendationReference in (Recommendations)
+      | where isApplicable == true and isCompliant == false
+      | summarize Findings = count(), Configurations = make_set(configurationName, 5)
+                  by DeviceId = deviceId, DeviceName = deviceName
+      | extend Source = "secure-config",
+               Detail = strcat_array(Configurations, "; ")
+      | project DeviceId, DeviceName, Findings, Detail, Source;
+  let VulnDevices =
+      msDefenderVulnerability
+      | where RecommendationReference in (Recommendations) and isnotempty(CveId)
+      | summarize Findings = count_distinct(CveId), MaxCvss = max(CvssScore)
+                  by DeviceId, DeviceName
+      | extend Source = "vulnerability",
+               Detail = strcat(tostring(Findings), " CVEs, max CVSS ", tostring(MaxCvss))
+      | project DeviceId, DeviceName, Findings, Detail, Source;
+  union ConfigDevices, VulnDevices
+  | join kind=leftouter (
+        msDefenderMachine
+        | where isnull(mergedIntoMachineId) and isExcluded != true
+        | project MachineId = id, osPlatform, version, exposureLevel, riskScore,
+                  deviceValue, managedBy, rbacGroupName, LastSeen = todatetime(lastSeen)
+    ) on $left.DeviceId == $right.MachineId
+  | project
+      DeviceName, DeviceId, Source, Findings, Detail, exposureLevel, riskScore,
+      deviceValue, managedBy, rbacGroupName, osPlatform, version, LastSeen
+  | order by case(deviceValue == "High", 3, deviceValue == "Normal", 2, 1) desc,
+             Findings desc, DeviceName asc
+tags: [microsoft, defender, mde, mdvm, recommendations, remediation, join, device, security]
+expected_output: |
+  Devices affected by the selected recommendations (sanitized). A device appears
+  once per branch, so one that both fails a configuration and carries CVEs is
+  listed twice, told apart by Source. A device with no msDefenderMachine record
+  keeps its row with the enrichment columns empty.
+
+  DeviceName              DeviceId                                  Source         Findings  Detail                                                                                                   exposureLevel  riskScore  deviceValue  managedBy  rbacGroupName         osPlatform         version  LastSeen
+  corp-dc01.contoso.com   5c9f0b1bc857bb1b346a6d76c85cb46fc814aa4b  vulnerability  41        41 CVEs, max CVSS 9.8                                                                                    High           High       High         Intune     Domain Controllers    WindowsServer2022  21H2     2026-07-30T17:02:19Z
+  corp-dc01.contoso.com   5c9f0b1bc857bb1b346a6d76c85cb46fc814aa4b  secure-config  1         Block Adobe Reader from creating child processes                                                          High           High       High         Intune     Domain Controllers    WindowsServer2022  21H2     2026-07-30T17:02:19Z
+  corp-ws042.contoso.com  9eaf3a8b5962e0e6b1af9ec756664a9b823df2d1  vulnerability  31        31 CVEs, max CVSS 9.8                                                                                    High           Medium     Normal       Intune     Windows Workstations  Windows10          22H2     2026-07-30T15:02:16Z
+  corp-ws118.contoso.com  2f6cd8e8f524eee8013d3a43f529813c95e1dd18  vulnerability  22        22 CVEs, max CVSS 9.8                                                                                    High           None       Normal       Intune     Windows Workstations  Windows10          22H2     2026-05-02T08:13:55Z
+  corp-ws101.contoso.com  1e5bc9d7e413ddd7902c2932e418702b84d0cc07  secure-config  2         Block Adobe Reader from creating child processes; Block Office applications from creating executable content  Medium         High       Normal       Intune     Windows Workstations  Windows11          24H2     2026-07-30T17:48:26Z

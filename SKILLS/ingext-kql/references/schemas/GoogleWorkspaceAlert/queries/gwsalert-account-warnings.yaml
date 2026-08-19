@@ -1,0 +1,66 @@
+description: >-
+  Google's own account-compromise alerts — the AccountWarning family (suspicious
+  logins, leaked password, the suspension types) plus the government-backed
+  attack warning, which is the highest-signal alert Google emits. The Outcome
+  column is the reason to run this rather than reading the alert titles: Google
+  populates data.loginDetails.loginTime only for sign-ins that SUCCEEDED, so its
+  absence means the attempt was blocked and its presence means the attacker held
+  a session. That distinction appears nowhere else on the record, and it is the
+  difference between an FYI and an incident. Note the IP here is nested inside
+  the payload and therefore carries no _ip GeoIP enrichment — the query emits it
+  raw, and gwsalert-gsuite-correlation is the way to geolocate the same sign-in
+  through the GSuite login report.
+datatype: GoogleWorkspaceAlert
+kql: |
+  GoogleWorkspaceAlert
+  | where timestamp > ago(30d)
+  | where tostring(data["@type"]) endswith "AccountWarning"
+       or tostring(data["@type"]) endswith "AccountSuspensionWarning"
+       or tostring(data["@type"]) endswith "StateSponsoredAttack"
+  | extend LastUpdate = todatetime(updateTime)
+  | summarize arg_max(LastUpdate, *) by alertId
+  | where tobool(coalesce(deleted, false)) == false
+  | extend
+      User = tostring(data.email),
+      Ip = tostring(data.loginDetails.ipAddress),
+      LoginTime = tostring(data.loginDetails.loginTime),
+      Severity = tostring(metadata.severity),
+      Type = tostring(type)
+  | extend Outcome = case(
+      Type == "Government attack warning", "targeted - no session implied",
+      isnotempty(LoginTime), "SUCCEEDED - session established",
+      isnotempty(Ip), "blocked at sign-in",
+      "no login detail")
+  | extend Suspension = iff(Type startswith "User suspended" or Type == "Account suspension warning", "yes", "")
+  | project
+      Created = todatetime(createTime),
+      Severity,
+      Type,
+      User,
+      Outcome,
+      SignInTime = todatetime(LoginTime),
+      Ip,
+      Suspension,
+      Status = tostring(metadata.status),
+      Assignee = tostring(metadata.assignee),
+      Url = strcat("https://", tostring(securityInvestigationToolLink)),
+      alertId
+  | order by Created desc
+  //
+  // Users Google has flagged more than once — repeat targets, and the shortlist
+  // for a 2SV enforcement review against GSuiteResources gsuiteUser:
+  //   | summarize Alerts = count(), Types = make_set(Type, 6), Ips = make_set(Ip, 10),
+  //               Succeeded = countif(Outcome startswith "SUCCEEDED"), Last = max(Created)
+  //       by User
+  //   | where Alerts > 1
+  //   | order by Succeeded desc, Alerts desc
+tags: [google-workspace, alert-center, identity, account-compromise, suspicious-login, security]
+expected_output: |
+  Google identity and state-sponsored-attack alerts with the succeeded/blocked verdict (sanitized).
+
+  Created                   Severity  Type                                  User                     Outcome                          SignInTime                Ip            Suspension  Status       Assignee           alertId
+  2026-07-28T11:02:44.117Z  HIGH      Suspicious login                      megan.bowen@contoso.com  SUCCEEDED - session established  2026-07-28T10:58:31Z      198.51.100.7              IN_PROGRESS  admin@contoso.com  00000000-0000-0000-0000-000000000004
+  2026-07-27T04:19:55.320Z  HIGH      Government attack warning             alex.wilber@contoso.com  targeted - no session implied                                                       NOT_STARTED                     00000000-0000-0000-0000-000000000005
+  2026-07-26T16:40:11.884Z  HIGH      Leaked password                       sam.cole@contoso.com     no login detail                                                                     CLOSED       admin@contoso.com  00000000-0000-0000-0000-000000000006
+  2026-07-26T02:33:09.510Z  HIGH      Suspicious programmatic login         svc.reports@contoso.com  blocked at sign-in                                          192.0.2.44                NOT_STARTED                     00000000-0000-0000-0000-000000000008
+  2026-07-25T21:11:02.774Z  HIGH      User suspended (spam through relay)   adele.vance@contoso.com  no login detail                                                            yes        NOT_STARTED                     00000000-0000-0000-0000-000000000009
