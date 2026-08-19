@@ -1,0 +1,50 @@
+description: >-
+  Sign-in events worth looking at, from the login report: anything Google itself
+  flagged (is_suspicious, suspicious_login, gov_attack_warning, the
+  account_disabled_* family) plus every login_failure, with the geo enrichment
+  and the 2SV challenge chain attached. PasswordOnly is the column to read next
+  to a hit — login_challenge_method of exactly ["password"] means the sign-in
+  completed with no second factor, so a suspicious-flagged, password-only
+  success from an unusual country or a hosting-provider ISP is a takeover
+  candidate rather than a curiosity. Cross-check the actor against
+  gsuiteUser.isEnrolledIn2Sv: a user enrolled in 2SV who is still completing
+  password-only sign-ins is either using a remembered device or being bypassed.
+datatype: GSuite
+kql: |
+  GSuite
+  | where timestamp > ago(7d)
+  | where tostring(id.applicationName) == "login"
+  | extend EventName = tostring(event.name), P = event.parameters
+  | extend
+      IsSuspicious = tobool(coalesce(P.is_suspicious, false)),
+      LoginType = tostring(P.login_type),
+      FailureType = tostring(P.login_failure_type),
+      Challenges = P.login_challenge_method
+  | where IsSuspicious
+      or EventName startswith "login_failure"
+      or EventName startswith "suspicious_"
+      or EventName startswith "account_disabled_"
+      or EventName == "gov_attack_warning"
+  | extend PasswordOnly = array_length(Challenges) == 1 and tostring(Challenges[0]) == "password"
+  | project
+      timestamp,
+      Actor = tostring(actor.email),
+      EventName,
+      IsSuspicious,
+      LoginType,
+      FailureType,
+      PasswordOnly,
+      Challenges,
+      IP = tostring(ipAddress),
+      Country = tostring(_ip.countryCode),
+      City = tostring(_ip.city),
+      ISP = tostring(_ip.isp)
+  | order by timestamp desc
+tags: [gsuite, google-workspace, login, authentication, mfa, 2sv, security]
+expected_output: |
+  Flagged and failed Workspace sign-ins with geo and challenge detail (sanitized).
+
+  timestamp                 Actor                    EventName      IsSuspicious  LoginType        FailureType                     PasswordOnly  Challenges                          IP            Country  City          ISP
+  2026-08-04T18:09:24.574Z  adele.vance@contoso.com  login_success  true          google_password                                 true          ["password"]                        192.0.2.10    US       Example City  Example ISP
+  2026-08-04T17:52:11.002Z  sam.cole@contoso.com     login_failure  false         google_password  login_failure_invalid_password  true          ["password"]                        198.51.100.7  NL       Example City  Example Hosting
+  2026-08-04T09:14:03.881Z  megan.bowen@contoso.com  suspicious_login  true       saml                                            false         ["password","idv_preregistered_phone"]  192.0.2.10  US     Example City  Example ISP

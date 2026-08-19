@@ -1,0 +1,58 @@
+description: >-
+  Single-user timeline across every Workspace report — sign-ins, OAuth grants,
+  Drive access and ACL changes, Calendar changes and notifications, device
+  syncs — in one ordered list, with a per-event-type Detail column that pulls the one
+  parameter that matters for each kind of activity out of the free-form
+  parameter bag. This is the query to run after an alert names an account:
+  it answers "what did this person (or whoever had their session) do", in
+  order, without having to know which report each action lives in. Rows with no
+  IP are kept deliberately — a gap in the IP column marks server-side or add-on
+  activity, which is exactly what a compromised OAuth grant looks like after
+  the initial consent. Replace the actor address before running.
+datatype: GSuite
+kql: |
+  GSuite
+  | where timestamp > ago(3d)
+  | where tostring(actor.email) == "adele.vance@contoso.com"
+  | extend
+      App = tostring(id.applicationName),
+      EventType = tostring(event.type),
+      EventName = tostring(event.name),
+      P = event.parameters
+  | extend Detail = case(
+      EventType == "login",
+          strcat(tostring(P.login_type),
+                 iff(tobool(coalesce(P.is_suspicious, false)), " [SUSPICIOUS]", ""),
+                 iff(isnotempty(tostring(P.login_failure_type)), strcat(" ", tostring(P.login_failure_type)), "")),
+      EventType == "auth",
+          strcat(tostring(P.app_name), " (", tostring(P.client_type), ") ",
+                 tostring(array_length(P.scope)), " scopes"),
+      EventType == "access",
+          coalesce(tostring(P.doc_title), tostring(P.accessed_url[0])),
+      EventType == "acl_change",
+          strcat(tostring(P.doc_title), ": ", tostring(P.old_value[0]), " -> ", tostring(P.new_value[0]),
+                 " for ", tostring(P.target_user), " (", tostring(P.visibility), ")"),
+      EventType == "event_change",
+          strcat(tostring(P.event_title), " @ ",
+                 tostring(datetime(0001-01-01) + 1s * tolong(P.start_time))),
+      EventType == "notification",
+          strcat(tostring(P.notification_type), " -> ", tostring(P.recipient_email)),
+      EventType == "device_updates",
+          strcat(tostring(P.DEVICE_TYPE), " ", tostring(P.DEVICE_MODEL), " ", tostring(P.DEVICE_ID)),
+      "")
+  | project
+      timestamp, App, EventType, EventName, Detail,
+      IP = tostring(ipAddress),
+      Country = tostring(_ip.countryCode),
+      ISP = tostring(_ip.isp)
+  | order by timestamp asc
+tags: [gsuite, google-workspace, timeline, investigation, incident-response]
+expected_output: |
+  Cross-application activity for one Workspace account, oldest first (sanitized).
+
+  timestamp                 App       EventType     EventName               Detail                                                             IP          Country  ISP
+  2026-08-04T18:09:24.574Z  login     login         login_success           google_password                                                    192.0.2.10  US       Example ISP
+  2026-08-04T20:43:56.199Z  drive     access        view                    Q3 Vendor Invoice.pdf                                              192.0.2.10  US       Example ISP
+  2026-08-04T20:44:12.880Z  drive     acl_change    change_user_access      Q3 Vendor Invoice.pdf: none -> writer for ext.user@partner.example.com (shared_externally)  192.0.2.10  US  Example ISP
+  2026-08-04T21:11:29.174Z  login     login         logout                  google_password                                                    192.0.2.10  US       Example ISP
+  2026-08-04T21:11:29.822Z  token     auth          revoke                  Google Chrome (NATIVE_DESKTOP) 1 scopes                            192.0.2.10  US       Example ISP

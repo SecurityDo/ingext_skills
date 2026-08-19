@@ -9,17 +9,12 @@ description: >-
   so the coverage gap stays visible rather than silently shrinking the denominator.
 datatype: MSDefenderAlert
 kql: |
-  // latest snapshot per record: this engine's dynamic schema does not support
-  // arg_max(<col>, *), so take the max timestamp per id and join it back
-  let LatestAlert =
-      MSDefenderAlert
-      | where timestamp > ago(30d)
-      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
+  // latest snapshot per record: the same id is re-emitted on every change, so
+  // reduce to the newest lastUpdateDateTime per id before anything else
   MSDefenderAlert
   | where timestamp > ago(30d)
-  | join kind=inner LatestAlert on $left.id == $right.AlertId
-  | where todatetime(lastUpdateDateTime) == LastUpdate
-  | project-away AlertId, LastUpdate
+  | extend LastUpdate = todatetime(lastUpdateDateTime)
+  | summarize arg_max(LastUpdate, *) by id
   | extend Techniques = iff(array_length(mitreTechniques) == 0, dynamic(["(none)"]), mitreTechniques)
   | mv-expand Technique = Techniques to typeof(string)
   | extend ParentTechnique = tostring(split(Technique, ".")[0])

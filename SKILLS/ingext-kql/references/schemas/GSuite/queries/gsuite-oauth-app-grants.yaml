@@ -1,0 +1,56 @@
+description: >-
+  Third-party OAuth applications users have granted access to, from the token
+  report, ranked by how sensitive the granted scopes are. This is the consent-
+  phishing and shadow-SaaS view: an application nobody has approved that
+  suddenly appears with a handful of users and a mailbox or full-Drive scope is
+  the pattern to chase. Scopes are classified into families (directory admin,
+  mailbox read vs write, full Drive, Apps Script external egress) — narrow
+  scopes such as .readonly, userinfo.* and *.addons.execute deliberately fall
+  into 'other' and produce no risk count. Grants and Revokes are counted with
+  dcount over id.uniqueQualifier so the mv-expand over scopes does not inflate
+  them — a six-scope grant is one grant, not six. Group by ClientId, not
+  AppName — the display name is attacker-controlled.
+datatype: GSuite
+kql: |
+  GSuite
+  | where timestamp > ago(30d)
+  | where tostring(event.type) == "auth"
+  | extend EventName = tostring(event.name), P = event.parameters
+  | where EventName in ("authorize", "revoke")
+  | extend
+      AppName = tostring(P.app_name),
+      ClientId = tostring(P.client_id),
+      ClientType = tostring(P.client_type),
+      Actor = tostring(actor.email),
+      UQ = tostring(id.uniqueQualifier)
+  | mv-expand Scope = P.scope to typeof(string)
+  | extend Family = case(
+      Scope has "admin.directory",                                          "directory-admin",
+      Scope has "gmail" and Scope endswith ".readonly",                     "mailbox-read",
+      Scope has "gmail" and not(Scope has "addons"),                        "mailbox-write",
+      Scope endswith "/auth/drive" or Scope endswith "/auth/drive.readonly", "drive-full",
+      Scope has "script.external_request",                                  "script-egress",
+      Scope has "cloud-platform" or Scope has "apps.groups",                "platform",
+      "other")
+  | summarize
+      Grants = dcountif(UQ, EventName == "authorize"),
+      Revokes = dcountif(UQ, EventName == "revoke"),
+      Users = dcount(Actor),
+      SampleUsers = make_set_if(Actor, EventName == "authorize", 10),
+      RiskyScopes = make_set_if(Scope, Family != "other", 20),
+      Families = make_set_if(Family, Family != "other"),
+      TotalScopes = dcount(Scope),
+      FirstSeen = min(timestamp),
+      LastSeen = max(timestamp)
+      by AppName, ClientId, ClientType
+  | extend RiskyScopeCount = array_length(RiskyScopes)
+  | project AppName, ClientId, ClientType, Grants, Revokes, Users, RiskyScopeCount, Families, RiskyScopes, TotalScopes, SampleUsers, FirstSeen, LastSeen
+  | order by RiskyScopeCount desc, Users desc, Grants desc
+tags: [gsuite, google-workspace, oauth, consent, third-party-apps, security]
+expected_output: |
+  Consented OAuth applications ranked by scope sensitivity (sanitized).
+
+  AppName                    ClientId                                                            ClientType      Grants  Revokes  Users  RiskyScopeCount  Families                          TotalScopes  FirstSeen                 LastSeen
+  Example Mail Assistant     000000000001-bbbb....apps.googleusercontent.com                     WEB             3       0        3      2                ["mailbox-write","drive-full"]    5            2026-07-28T13:02:44Z      2026-08-02T10:19:07Z
+  Example Workspace Add-on   000000000000-aaaa....apps.googleusercontent.com                     WEB             12      0        12     1                ["script-egress"]                 6            2026-07-11T08:40:12Z      2026-08-04T21:26:02Z
+  Google Chrome              77185425430.apps.googleusercontent.com                              NATIVE_DESKTOP  0       9        7      0                []                                1            2026-07-09T15:22:31Z      2026-08-04T21:11:29Z

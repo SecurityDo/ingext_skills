@@ -1,0 +1,39 @@
+description: >-
+  Google Workspace audit feed overview: counts records by application, event
+  type and event name over the selected range. Run it first — which Reports API
+  reports are actually enabled varies per tenant, and a detection written for
+  the admin or user_accounts report returns nothing if only login/token/drive/
+  calendar are being collected. The WithIp column is diagnostic rather than
+  descriptive: it shows what fraction of each event kind carries a client IP,
+  which tells you up front whether a geo- or IP-based detection is even
+  possible for that event name (server-side Drive and Calendar activity has
+  none).
+datatype: GSuite
+kql: |
+  GSuite
+  | where timestamp > ago(1d)
+  | extend
+      App = tostring(id.applicationName),
+      EventType = tostring(event.type),
+      EventName = tostring(event.name)
+  | summarize
+      Events = count(),
+      Actors = dcount(tostring(actor.email)),
+      WithIp = countif(isnotempty(tostring(ipAddress))),
+      LastSeen = max(timestamp)
+      by App, EventType, EventName
+  | order by Events desc
+tags: [gsuite, google-workspace, overview, coverage, audit]
+expected_output: |
+  Audit volume by report and action, with IP coverage (sanitized).
+
+  App       EventType     EventName               Events  Actors  WithIp  LastSeen
+  drive     access        view                    18422   96      12180   2026-08-04T21:59:41Z
+  drive     acl_change    change_user_access      4310    88      1904    2026-08-04T21:58:02Z
+  login     login         login_success           1204    112     1204    2026-08-04T21:57:13Z
+  calendar  notification  notification_triggered  902     74      902     2026-08-04T21:44:55Z
+  calendar  event_change  change_event            488     61      0       2026-08-04T21:39:10Z
+  drive     access        access_url              310     9       0       2026-08-04T21:12:34Z
+  login     login         logout                  266     84      266     2026-08-04T21:11:29Z
+  token     auth          authorize               31      22      31      2026-08-04T21:26:02Z
+  token     auth          revoke                  12      10      12      2026-08-04T21:11:29Z

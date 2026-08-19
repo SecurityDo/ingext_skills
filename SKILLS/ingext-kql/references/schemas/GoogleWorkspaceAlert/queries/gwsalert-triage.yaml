@@ -1,0 +1,64 @@
+description: >-
+  The open Alert Center queue, collapsed to one row per alert. Three corrections
+  are applied that a straight `where metadata.status == "NOT_STARTED"` misses:
+  the repeated emissions of an alert are reduced to their newest state, the
+  message-expanded records are folded back into a single row per alertId (so
+  Messages and Recipients describe the campaign instead of inflating the queue),
+  and the service-announcement sources are dropped because outage and MSA alerts
+  carry no severity and would otherwise sit at the top of an age-sorted list
+  forever. Subject/Sender are populated for Gmail alerts and User for the
+  identity/device families, so one row reads the same way whatever the payload.
+  AgeHours against an empty Assignee is the SLA finding; the Url column is the
+  Security Investigation Tool deep link with the scheme Google omits prepended.
+datatype: GoogleWorkspaceAlert
+kql: |
+  GoogleWorkspaceAlert
+  | where timestamp > ago(30d)
+  | extend LastUpdate = todatetime(updateTime)
+  | summarize arg_max(LastUpdate, *) by alertId, messageIndex
+  | where tobool(coalesce(deleted, false)) == false
+  | where tostring(metadata.status) in ("NOT_STARTED", "IN_PROGRESS")
+  | where tostring(source) !in ("Apps outage", "Google Operations", "Google Mandatory Service Announcement")
+  // every field in the by-clause is constant across an alert's message records
+  | summarize
+      Messages = count(),
+      Recipients = make_set_if(tostring(message.recipient), isnotempty(tostring(message.recipient)), 8),
+      Subjects = make_set_if(tostring(message.subjectText), isnotempty(tostring(message.subjectText)), 3)
+      by
+      alertId,
+      Created = todatetime(createTime),
+      Started = todatetime(startTime),
+      Severity = tostring(metadata.severity),
+      Status = tostring(metadata.status),
+      Assignee = tostring(metadata.assignee),
+      Source = tostring(source),
+      Type = tostring(type),
+      CampaignSize = toint(coalesce(messageCount, 1)),
+      Sender = tostring(data.maliciousEntity.fromHeader),
+      User = tostring(data.email),
+      Link = tostring(securityInvestigationToolLink)
+  | extend Sev = case(Severity == "HIGH", 3, Severity == "MEDIUM", 2, Severity == "LOW", 1, 0)
+  | extend
+      AgeHours = round((now() - Created) / 1h, 1),
+      DetectLagMin = round((Created - Started) / 1m, 1),
+      Subject = tostring(Subjects[0]),
+      Partial = iff(CampaignSize > Messages, strcat(Messages, "/", CampaignSize), "")
+  | project
+      Created, Severity, Type, Source,
+      Subject, Sender, User,
+      CampaignSize, Recipients,
+      DetectLagMin, AgeHours,
+      Status, Assignee,
+      Partial,
+      Url = strcat("https://", Link),
+      alertId
+  | order by Sev desc, Created desc
+tags: [google-workspace, alert-center, triage, queue, incident-response, security]
+expected_output: |
+  Untriaged and in-progress alerts, one row per alert (sanitized).
+
+  Created                     Severity  Type                      Source            Subject                                    Sender                 User                     CampaignSize  Recipients                                            DetectLagMin  AgeHours  Status       Assignee  Partial  alertId
+  2026-07-28T13:52:29.976Z    HIGH      User reported spam spike  Gmail phishing    Benefit Plan Designation - ACTION REQUIRED  billing@fabrikam.com                            15            ["adele.vance@contoso.com","sam.cole@contoso.com"]     112.8         26.4      NOT_STARTED                     00000000-0000-0000-0000-000000000001
+  2026-07-28T11:02:44.117Z    HIGH      Suspicious login          Google identity                                                                     megan.bowen@contoso.com  1             []                                                     4.2           28.9      IN_PROGRESS  admin@contoso.com          00000000-0000-0000-0000-000000000004
+  2026-07-28T08:31:57.402Z    MEDIUM    Data Loss Prevention      Data Loss Prevention                                                                                         1             []                                                     0.9           31.4      NOT_STARTED                     00000000-0000-0000-0000-000000000007
+  2026-07-25T19:07:29.881Z    HIGH      Device compromised        Mobile device management                                                            alex.wilber@contoso.com  1             []                                                     15.0          92.8      NOT_STARTED                     00000000-0000-0000-0000-000000000011

@@ -1,0 +1,44 @@
+description: >-
+  Alert Center feed overview: what Google is actually raising for this tenant,
+  broken out by source, alert type and payload class. Run it first — which alert
+  types appear depends on the tenant's licensing (DLP, Security Center rules and
+  Context-Aware alerts need Enterprise/Frontline tiers) and on which Admin
+  console notifications are switched on, so a detection written for an alert type
+  the tenant never produces returns nothing forever. The two count columns are
+  the point of the query: Records is rows and Alerts is dcount(alertId), and
+  RecordsPerAlert shows the message fan-out described in trap 1 — a Gmail
+  phishing row with RecordsPerAlert 15 means one alert occupies fifteen records,
+  which is exactly how a naive count() overstates the alert volume. Payload is
+  the field to pin before reaching into `data`.
+datatype: GoogleWorkspaceAlert
+kql: |
+  GoogleWorkspaceAlert
+  | where timestamp > ago(30d)
+  // one alert can be re-emitted when its triage state changes: keep the newest
+  | extend LastUpdate = todatetime(updateTime)
+  | summarize arg_max(LastUpdate, *) by alertId, messageIndex
+  | extend Payload = tostring(split(tostring(data["@type"]), "alertcenter.type.")[1])
+  | summarize
+      Alerts = dcount(alertId),
+      Records = count(),
+      High = dcountif(alertId, tostring(metadata.severity) == "HIGH"),
+      Open = dcountif(alertId, tostring(metadata.status) in ("NOT_STARTED", "IN_PROGRESS")),
+      Unrated = dcountif(alertId, isempty(tostring(metadata.severity))),
+      LastSeen = max(timestamp)
+      by Source = tostring(source), Type = tostring(type), Payload
+  | extend RecordsPerAlert = round(todouble(Records) / todouble(Alerts), 1)
+  | project Source, Type, Payload, Alerts, Records, RecordsPerAlert, High, Open, Unrated, LastSeen
+  | order by Alerts desc
+tags: [google-workspace, alert-center, overview, coverage, triage, security]
+expected_output: |
+  Alert volume by source, type and payload class, with the message fan-out factor (sanitized).
+
+  Source                       Type                        Payload                    Alerts  Records  RecordsPerAlert  High  Open  Unrated  LastSeen
+  Gmail phishing               User reported spam spike    MailPhishing               34      412      12.1             34    21    0        2026-07-28T13:52:29Z
+  Gmail phishing               User reported phishing      MailPhishing               28      96       3.4              6     11    0        2026-07-28T09:14:02Z
+  Google identity              Suspicious login            AccountWarning             19      19       1.0              19    4     0        2026-07-28T11:02:44Z
+  Apps outage                  Apps outage                 AppsOutage                 12      12       1.0              0     12    12       2026-07-27T22:18:03Z
+  Google identity              Leaked password             AccountWarning             7       7        1.0              7     2     0        2026-07-26T16:40:11Z
+  Data Loss Prevention         Data Loss Prevention        dlp.DlpRuleViolation       6       6        1.0              2     6     0        2026-07-28T08:31:57Z
+  Mobile device management     Device compromised          DeviceCompromised          3       3        1.0              3     1     0        2026-07-25T19:07:29Z
+  Sensitive Admin Action       SSO profile updated         SensitiveAdminAction       1       1        1.0              1     0     0        2026-07-24T13:11:06Z

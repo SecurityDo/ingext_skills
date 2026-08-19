@@ -1,0 +1,72 @@
+description: >-
+  Gmail phishing campaigns, rebuilt from the message-expanded records: one row
+  per alert with the sender, the subject, every recipient it reached and the two
+  timings that decide the response. DwellHours is createTime minus the earliest
+  message.sentTime — how long the mail was in mailboxes before Google said
+  anything — and SpreadMin is how long the campaign took to land. Internal is the
+  column to read first: a MailPhishing alert with data.isInternal true is a
+  compromised-account investigation, not a mail-filtering one, and the sender is
+  one of your own users. Delivered/Removed comes from data.systemActionType, so a
+  campaign showing NO_OPERATION still has live mail sitting in the recipients'
+  inboxes. Grouping by md5HashSubject instead of alertId (commented below) merges
+  waves that Google raised as separate alerts.
+datatype: GoogleWorkspaceAlert
+kql: |
+  GoogleWorkspaceAlert
+  | where timestamp > ago(30d)
+  | where tostring(data["@type"]) endswith "MailPhishing"
+  | extend LastUpdate = todatetime(updateTime)
+  | summarize arg_max(LastUpdate, *) by alertId, messageIndex
+  | summarize
+      Messages = count(),
+      Recipients = dcount(tostring(message.recipient)),
+      Targets = make_set(tostring(message.recipient), 20),
+      FirstSent = min(todatetime(message.sentTime)),
+      FirstLanded = min(todatetime(message.date)),
+      LastLanded = max(todatetime(message.date)),
+      SubjectHashes = dcount(tostring(message.md5HashSubject)),
+      // attachmentsSha256Hash is an array per message; sum its lengths for a
+      // volume figure and use gwsalert-phishing-iocs for the distinct hashes
+      HashedParts = sum(array_length(message.attachmentsSha256Hash))
+      by
+      alertId,
+      Created = todatetime(createTime),
+      Type = tostring(type),
+      Severity = tostring(metadata.severity),
+      Status = tostring(metadata.status),
+      Sender = tostring(data.maliciousEntity.fromHeader),
+      SenderName = tostring(data.maliciousEntity.displayName),
+      ResolvedActor = tostring(data.maliciousEntity.entity.emailAddress),
+      Tenant = tostring(data.domainId.customerPrimaryDomain),
+      Internal = tobool(coalesce(data.isInternal, false)),
+      SystemAction = tostring(data.systemActionType),
+      CampaignSize = toint(coalesce(messageCount, 1))
+  | extend
+      DwellHours = round((Created - FirstSent) / 1h, 1),
+      SpreadMin = round((LastLanded - FirstLanded) / 1m, 1),
+      SenderDomain = tostring(split(Sender, "@")[1]),
+      Removed = iff(SystemAction == "REMOVED_FROM_INBOX", "yes", "")
+  | project
+      Created, Severity, Type,
+      Sender, SenderName, SenderDomain, Internal, ResolvedActor,
+      CampaignSize, Messages, Recipients, Targets,
+      FirstSent, DwellHours, SpreadMin,
+      HashedParts, SubjectHashes,
+      Removed, Status, alertId
+  | order by Recipients desc, Created desc
+  //
+  // To merge separate alerts that carried the same mail — Google raises a user
+  // report and a post-delivery reclassification as different alertIds —
+  // replace the summarize above with:
+  //   | summarize Alerts = dcount(alertId), Recipients = dcount(tostring(message.recipient)),
+  //               Senders = make_set(tostring(data.maliciousEntity.fromHeader), 10),
+  //               Types = make_set(tostring(type), 5)
+  //       by SubjectHash = tostring(message.md5HashSubject)
+tags: [google-workspace, alert-center, phishing, gmail, email, campaign, security]
+expected_output: |
+  Gmail phishing alerts rolled up to one row per campaign (sanitized).
+
+  Created                   Severity  Type                        Sender                  SenderName    SenderDomain   Internal  ResolvedActor            CampaignSize  Messages  Recipients  Targets                                             FirstSent                 DwellHours  SpreadMin  HashedParts  SubjectHashes  Removed  Status
+  2026-07-28T13:52:29.976Z  HIGH      User reported spam spike    billing@fabrikam.com                  fabrikam.com   false                              15            15        15          ["adele.vance@contoso.com","sam.cole@contoso.com"]  2026-07-27T20:01:42Z      17.8        14.6       1            1                       NOT_STARTED
+  2026-07-26T09:41:03.220Z  HIGH      Phishing reclassification   hr-notice@fabrikam.com  HR Helpdesk   fabrikam.com   false                              9             9         9           ["megan.bowen@contoso.com","alex.wilber@contoso.com"]  2026-07-26T06:12:55Z   3.5         2.1        0            1              yes      CLOSED
+  2026-07-24T15:22:47.001Z  HIGH      User reported phishing      sam.cole@contoso.com                  contoso.com    true      sam.cole@contoso.com     4             4         4           ["adele.vance@contoso.com"]                         2026-07-24T14:58:10Z      0.4         0.8                 1            1                       IN_PROGRESS

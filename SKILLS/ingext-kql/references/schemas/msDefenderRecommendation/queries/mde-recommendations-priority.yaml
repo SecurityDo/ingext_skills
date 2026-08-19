@@ -1,0 +1,40 @@
+description: >-
+  The Defender Vulnerability Management remediation queue, ranked: active
+  recommendations weighted by known-exploitable weaknesses, active alerts,
+  internet-facing exposure, the number of devices affected and the number of those
+  that are business-critical. The two scoring fields are reported per kind — 'sca-'
+  configuration recommendations carry configScoreImpact, 'va-' update
+  recommendations carry exposureImpact with configScoreImpact 0 — so Impact below
+  takes whichever is populated and the RecType column keeps the two comparable
+  populations visible. hasUnpatchableCve marks items that cannot be fully closed by
+  patching.
+datatype: msDefenderRecommendation
+kql: |
+  msDefenderRecommendation
+  | where status =~ "Active"
+  | extend
+      RecType     = iff(id startswith "sca-", "configuration", "software-update"),
+      Impact      = todouble(iff(configScoreImpact > 0, configScoreImpact, exposureImpact)),
+      Threats     = array_length(associatedThreats),
+      InternetFacing = tags has "internetFacing",
+      UserImpact  = tags has "UserImpactAssessment",
+      ExposedPct  = round(100.0 * exposedMachinesCount / totalMachineCount, 1)
+  | extend Multiplier = 1
+        + iff(publicExploit == true, 2, 0)
+        + iff(activeAlert == true, 2, 0)
+        + iff(InternetFacing, 1, 0)
+  | extend Priority = round(Impact * Multiplier * (1 + log10(1.0 + exposedMachinesCount)), 2)
+  | project
+      Priority, RecType, recommendationName, relatedComponent, remediationType,
+      exposedMachinesCount, totalMachineCount, ExposedPct, exposedCriticalDevices,
+      weaknesses, publicExploit, activeAlert, hasUnpatchableCve, Threats,
+      InternetFacing, UserImpact, severityScore, Impact, id
+  | order by Priority desc
+tags: [microsoft, defender, mde, mdvm, recommendations, remediation, prioritization, secure-score, security]
+expected_output: |
+  Active recommendations in remediation order (sanitized).
+
+  Priority  RecType          recommendationName                                              relatedComponent     remediationType      exposedMachinesCount  totalMachineCount  ExposedPct  exposedCriticalDevices  weaknesses  publicExploit  activeAlert  hasUnpatchableCve  Threats  InternetFacing  UserImpact  severityScore  Impact  id
+  29.4      configuration    Block Adobe Reader from creating child processes                 Windows Server 2022  ConfigurationChange  193                   261                73.9        22                      1           false          false        false              8        false           true        9              8.97    sca-_-scid-2513
+  11.4      software-update  Update Microsoft Edge Chromium-based to version 127.0.2651.74    Edge Chromium-based  Update               193                   261                73.9        116                     762         true           false        false              1        true            false       0              1.17    va-_-microsoft-_-edge_chromium-based
+  6.8       configuration    Turn on Microsoft Defender Antivirus real-time protection        Windows 10           ConfigurationChange  24                    259                9.3         3                       1           false          true         false              4        false           false       9              4.10    sca-_-scid-2000

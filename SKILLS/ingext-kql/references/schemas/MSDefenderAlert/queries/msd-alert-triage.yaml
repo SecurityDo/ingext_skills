@@ -1,7 +1,7 @@
 description: >-
   Open Microsoft Defender XDR alert triage queue for the last 7 days. Collapses
-  the repeated emissions of each alert to its current state (max
-  lastUpdateDateTime per id, joined back), keeps only untriaged/in-progress alerts,
+  the repeated emissions of each alert to its current state (arg_max on
+  lastUpdateDateTime per id), keeps only untriaged/in-progress alerts,
   drops the informational noise that Defender Antivirus generates for
   already-blocked malware, and rolls the evidence[] array up into the affected
   users, hosts and IPs plus a count of entities Defender itself called malicious.
@@ -9,17 +9,12 @@ description: >-
   newest first, with the portal deep link for pivoting.
 datatype: MSDefenderAlert
 kql: |
-  // latest snapshot per record: this engine's dynamic schema does not support
-  // arg_max(<col>, *), so take the max timestamp per id and join it back
-  let LatestAlert =
-      MSDefenderAlert
-      | where timestamp > ago(7d)
-      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
+  // latest snapshot per record: the same id is re-emitted on every change, so
+  // reduce to the newest lastUpdateDateTime per id before anything else
   MSDefenderAlert
   | where timestamp > ago(7d)
-  | join kind=inner LatestAlert on $left.id == $right.AlertId
-  | where todatetime(lastUpdateDateTime) == LastUpdate
-  | project-away AlertId, LastUpdate
+  | extend LastUpdate = todatetime(lastUpdateDateTime)
+  | summarize arg_max(LastUpdate, *) by id
   | where status in ("new", "inProgress")
   | where severity != "informational"
   | extend Sev = case(severity == "high", 4, severity == "medium", 3, severity == "low", 2, 1)

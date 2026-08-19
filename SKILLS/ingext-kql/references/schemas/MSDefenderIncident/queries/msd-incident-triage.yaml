@@ -12,22 +12,15 @@ description: >-
   priorityScore within the band, then by alert count.
 datatype: MSDefenderIncident
 kql: |
-  // latest snapshot per record: this engine's dynamic schema does not support
-  // arg_max(<col>, *), so take the max timestamp per id and join it back
+  // latest snapshot per record: the same id is re-emitted on every change, so
+  // reduce to the newest lastUpdateDateTime per id before anything else
   let LatestAlert =
       MSDefenderAlert
       | where timestamp > ago(30d)
-      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
-  let LatestIncident =
-      MSDefenderIncident
-      | where timestamp > ago(30d)
-      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by IncId = id;
+      | extend LastUpdate = todatetime(lastUpdateDateTime)
+      | summarize arg_max(LastUpdate, *) by id;
   let AlertRollup =
-      MSDefenderAlert
-      | where timestamp > ago(30d)
-      | join kind=inner LatestAlert on $left.id == $right.AlertId
-      | where todatetime(lastUpdateDateTime) == LastUpdate
-      | project-away AlertId, LastUpdate
+      LatestAlert
       | mv-apply ev = evidence on (
           summarize
               UserSet = make_set_if(tostring(ev.userAccount.userPrincipalName), isnotempty(tostring(ev.userAccount.userPrincipalName))),
@@ -48,9 +41,8 @@ kql: |
         by incidentId;
   MSDefenderIncident
   | where timestamp > ago(30d)
-  | join kind=inner LatestIncident on $left.id == $right.IncId
-  | where todatetime(lastUpdateDateTime) == LastUpdate
-  | project-away IncId, LastUpdate
+  | extend LastUpdate = todatetime(lastUpdateDateTime)
+  | summarize arg_max(LastUpdate, *) by id
   | where isempty(tostring(redirectIncidentId)) and status !in ("redirected", "resolved")
   | extend Sev = case(severity == "high", 4, severity == "medium", 3, severity == "low", 2, 1)
   | join kind=leftouter AlertRollup on $left.id == $right.incidentId

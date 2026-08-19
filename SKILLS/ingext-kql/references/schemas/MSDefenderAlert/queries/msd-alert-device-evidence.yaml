@@ -7,24 +7,14 @@ description: >-
   risk score, asset criticality tag, last internal/external IP, and the Azure/Arc
   resource the machine maps to. mdeDeviceId is the join key to the rest of the
   endpoint telemetry.
-
-  This is the runnable version. msd-alert-device-evidence-argmax.yaml is the same
-  query with the latest-snapshot reduction written as 'arg_max(lastUpdateDateTime,
-  *) by id', kept for the day the engine supports wildcard arg_max over a dynamic
-  schema; the two differ only in those opening lines.
 datatype: MSDefenderAlert
 kql: |
-  // latest snapshot per record: this engine's dynamic schema does not support
-  // arg_max(<col>, *), so take the max timestamp per id and join it back
-  let LatestAlert =
-      MSDefenderAlert
-      | where timestamp > ago(7d)
-      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
+  // latest snapshot per record: the same id is re-emitted on every change, so
+  // reduce to the newest lastUpdateDateTime per id before anything else
   MSDefenderAlert
   | where timestamp > ago(7d)
-  | join kind=inner LatestAlert on $left.id == $right.AlertId
-  | where todatetime(lastUpdateDateTime) == LastUpdate
-  | project-away AlertId, LastUpdate
+  | extend LastUpdate = todatetime(lastUpdateDateTime)
+  | summarize arg_max(LastUpdate, *) by id
   | extend Sev = case(severity == "high", 4, severity == "medium", 3, severity == "low", 2, 1)
   | mv-expand ev = evidence
   | where tostring(ev["@odata.type"]) == "#microsoft.graph.security.deviceEvidence"

@@ -28,23 +28,19 @@ description: >-
        ordering or de-duplicating by timestamp does not work; lastUpdateDateTime is
        the only field that distinguishes them.
 
-       This engine does not support arg_max(<column>, *), because '*' cannot be
-       expanded against a dynamic schema. Take the max per id and join it back:
+       This engine supports arg_max(<column>, *) over the dynamic schema, so the
+       reduction is the standard Kusto one-liner:
 
-         let LatestIncident =
-             MSDefenderIncident
-             | where timestamp > ago(30d)
-             | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by IncId = id;
          MSDefenderIncident
          | where timestamp > ago(30d)
-         | join kind=inner LatestIncident on $left.id == $right.IncId
-         | where todatetime(lastUpdateDateTime) == LastUpdate
-         | project-away IncId, LastUpdate
+         | extend LastUpdate = todatetime(lastUpdateDateTime)
+         | summarize arg_max(LastUpdate, *) by id
 
-       Naming the right-hand key (IncId) avoids depending on how the engine renames
-       a duplicated join key, and the two time windows must match. Every query
-       sample in queries/ opens with this block — except msd-incident-history.yaml,
-       which keeps the snapshots on purpose.
+       Parse lastUpdateDateTime with todatetime() in the extend rather than passing
+       the raw string field to arg_max — string ordering only happens to agree with
+       time ordering while the format stays uniform. Every query sample in queries/
+       opens with this block — except msd-incident-history.yaml, which keeps the
+       snapshots on purpose.
 
     2. displayName is not stable. Defender seeds it from the first alert's title
        and renames the incident as alerts are correlated in ("Malware incident on
@@ -188,7 +184,7 @@ fields:
 
   - name: lastUpdateDateTime
     type: DateTime
-    description: "When this snapshot was written — the only field that distinguishes repeated records for one id, and therefore the key to the latest-snapshot join described in the schema description above (arg_max(lastUpdateDateTime, *) is not available on this engine). Equals createdDateTime on the creation snapshot. There is no resolvedDateTime field on incidents (unlike alerts), so the close time of a resolved incident is its final lastUpdateDateTime, and time-to-resolve is 'datetime_diff(\"minute\", lastUpdateDateTime, createdDateTime)' on the snapshot where status == 'resolved'."
+    description: "When this snapshot was written — the only field that distinguishes repeated records for one id, and therefore the key to the latest-snapshot reduction described in the schema description above ('summarize arg_max(todatetime(lastUpdateDateTime), *) by id'). Equals createdDateTime on the creation snapshot. There is no resolvedDateTime field on incidents (unlike alerts), so the close time of a resolved incident is its final lastUpdateDateTime, and time-to-resolve is 'datetime_diff(\"minute\", lastUpdateDateTime, createdDateTime)' on the snapshot where status == 'resolved'."
     sampleValues: ["2026-07-29T22:41:13.01Z"]
 
   # ==========================================

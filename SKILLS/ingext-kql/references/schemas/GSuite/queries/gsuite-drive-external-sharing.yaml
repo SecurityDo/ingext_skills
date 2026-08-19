@@ -1,0 +1,56 @@
+description: >-
+  Drive permission changes that expose a document outside the organization —
+  the primary data-exfiltration view for Workspace. Catches three shapes at
+  once: Google's own verdict (visibility_change == "external"), a resulting
+  visibility of public_on_the_web / people_with_link / shared_externally, and a
+  named grant whose target_user sits in a different domain from the actor.
+  Revocations (new_value ["none"]) are excluded so the result is grants only.
+  Note this query deliberately does NOT filter primary_event == true: on
+  acl_change the per-recipient detail lives on the secondary records, so
+  filtering to primaries would hide exactly the rows that name the external
+  user. Read OldVisibility -> Visibility together with OldRole -> NewRole; a
+  private -> people_with_link transition on a document the actor does not own
+  is the case to escalate first.
+datatype: GSuite
+kql: |
+  GSuite
+  | where timestamp > ago(7d)
+  | where tostring(event.type) == "acl_change"
+  | extend EventName = tostring(event.name), P = event.parameters, Actor = tostring(actor.email)
+  | extend
+      DocId = tostring(P.doc_id),
+      DocTitle = tostring(P.doc_title),
+      DocType = tostring(P.doc_type),
+      Owner = tostring(P.owner),
+      TargetUser = tostring(P.target_user),
+      Visibility = tostring(P.visibility),
+      OldVisibility = tostring(P.old_visibility),
+      VisibilityChange = tostring(P.visibility_change),
+      NewRole = tostring(P.new_value[0]),
+      OldRole = tostring(P.old_value[0])
+  | extend
+      ActorDomain = tostring(split(Actor, "@")[1]),
+      TargetDomain = tostring(split(TargetUser, "@")[1])
+  | where NewRole != "none"
+  | where VisibilityChange == "external"
+      or Visibility in ("public_on_the_web", "people_with_link", "shared_externally")
+      or (isnotempty(TargetDomain) and TargetDomain != ActorDomain)
+  | extend Reason = case(
+      Visibility == "public_on_the_web",                        "public link",
+      Visibility in ("people_with_link", "shared_externally"),  "anyone-with-link / external",
+      isnotempty(TargetDomain) and TargetDomain != ActorDomain, strcat("granted to ", TargetDomain),
+      "visibility_change=external")
+  | project
+      timestamp, Actor, EventName, Reason,
+      DocTitle, DocType, DocId, Owner,
+      TargetUser, OldRole, NewRole,
+      OldVisibility, Visibility, VisibilityChange,
+      IP = tostring(ipAddress), Country = tostring(_ip.countryCode)
+  | order by timestamp desc
+tags: [gsuite, google-workspace, drive, sharing, exfiltration, dlp, security]
+expected_output: |
+  Drive ACL changes that expose documents outside the domain (sanitized).
+
+  timestamp                 Actor                 EventName                   Reason                        DocTitle               DocType    DocId                             Owner                    TargetUser                OldRole  NewRole  OldVisibility     Visibility            VisibilityChange  IP          Country
+  2026-08-04T19:41:07.310Z  sam.cole@contoso.com  change_document_visibility  public link                   Q3 Vendor Invoice.pdf  pdf        10000000000000000000000000000001  alex.wilber@contoso.com                            reader   reader   shared_internally  public_on_the_web     external          192.0.2.10  US
+  2026-08-04T15:08:22.114Z  sam.cole@contoso.com  change_user_access          granted to partner.example.com  Project Plan Draft   document   10000000000000000000000000000002  sam.cole@contoso.com     ext.user@partner.example.com  none  writer   private            shared_externally     external          192.0.2.10  US

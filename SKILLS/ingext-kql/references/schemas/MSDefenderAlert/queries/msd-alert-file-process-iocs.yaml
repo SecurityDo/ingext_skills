@@ -1,0 +1,76 @@
+description: >-
+  Extracts the file and process indicators out of Defender alerts for hunting and
+  blocklisting. processEvidence and fileEvidence carry the same file object under
+  different keys (imageFile vs fileDetails), so the query normalizes them into one
+  set of columns: full path, hashes, publisher/signer, the triggering command line
+  with its parent process, the MDE device the artifact was seen on, and the
+  detection/remediation status. filePath holds only the directory, so it is
+  strcat'ed with fileName. PowerShell -EncodedCommand payloads are decoded — the
+  base64 is UTF-16LE, so the decoded bytes are stripped of the interleaved nulls
+  with a printable-character regex. Ordered by Defender's own verdict so the
+  entities it called malicious come first.
+datatype: MSDefenderAlert
+kql: |
+  // latest snapshot per record: the same id is re-emitted on every change, so
+  // reduce to the newest lastUpdateDateTime per id before anything else
+  MSDefenderAlert
+  | where timestamp > ago(7d)
+  | extend LastUpdate = todatetime(lastUpdateDateTime)
+  | summarize arg_max(LastUpdate, *) by id
+  | mv-expand ev = evidence
+  | extend EvType = tostring(ev["@odata.type"])
+  | where EvType in ("#microsoft.graph.security.processEvidence", "#microsoft.graph.security.fileEvidence")
+  | extend f = iff(EvType endswith "processEvidence", ev.imageFile, ev.fileDetails)
+  | extend
+      FileName = tostring(f.fileName),
+      FilePath = tostring(f.filePath),
+      FileSize = tolong(f.fileSize),
+      Publisher = tostring(f.filePublisher),
+      Signer = tostring(f.signer),
+      Sha256 = tostring(f.sha256),
+      Sha1 = tostring(f.sha1),
+      Md5 = tostring(f.md5),
+      CmdLine = tostring(ev.processCommandLine),
+      ProcessId = toint(ev.processId),
+      ParentImage = tostring(ev.parentProcessImageFile.fileName),
+      RunAs = coalesce(tostring(ev.userAccount.userPrincipalName), tostring(ev.userAccount.accountName)),
+      MdeDeviceId = tostring(ev.mdeDeviceId),
+      DetectionStatus = tostring(ev.detectionStatus),
+      RemediationStatus = tostring(ev.remediationStatus),
+      RemediationDetails = tostring(ev.remediationStatusDetails),
+      Verdict = tostring(ev.verdict)
+  | extend EncodedCommand = extract(@"-Encoded[Cc]ommand\s+([A-Za-z0-9+/=]{20,})", 1, CmdLine)
+  | extend DecodedCommand = iff(isnotempty(EncodedCommand),
+             replace_regex(base64_decode_tostring(EncodedCommand), @"[^\x20-\x7E]", ""), "")
+  | extend IocType = iff(EvType endswith "processEvidence", "process", "file")
+  | project
+      timestamp,
+      Severity = severity,
+      Title = title,
+      ThreatFamily = threatFamilyName,
+      IocType,
+      Verdict,
+      FullPath = iff(isempty(FilePath), FileName, strcat(FilePath, "\\", FileName)),
+      FileSize,
+      Publisher,
+      Sha256,
+      Sha1,
+      Md5,
+      ParentImage,
+      CmdLine,
+      DecodedCommand,
+      RunAs,
+      DetectionStatus,
+      RemediationStatus,
+      RemediationDetails,
+      MdeDeviceId,
+      IncidentId = incidentId,
+      AlertUrl = alertWebUrl
+  | order by Verdict asc, timestamp desc
+tags: [msdefender, defender-xdr, defender-for-endpoint, ioc, hashes, hunting, malware, security]
+expected_output: |
+  Normalized file/process indicators from processEvidence and fileEvidence (sanitized; hashes are placeholders).
+
+  timestamp                 Severity       Title                                IocType  Verdict     FullPath                                                                                     FileSize  Publisher              Sha256                                                            ParentImage                                     CmdLine                                              DecodedCommand                                             RunAs            DetectionStatus  RemediationStatus  RemediationDetails
+  2026-07-29T22:32:54.560Z  informational  'PSWStealer' malware was prevented   file     malicious   C:\ProgramData\Contoso\Collector\Workspace\...\Module 4\Dumping Google Chrome Passwords .py  2065                             5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9                                                                                                                                                                              prevented        prevented          Entity was pre-remediated by Windows Defender
+  2026-07-27T14:32:28.890Z  medium         PowerMad script detected             process  suspicious  C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe                                     454656    Microsoft Corporation  e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  Contoso.HciOrchestratorService.WinSvcHost.exe  "powershell.exe" -Version 5.1 -s -NoLogo -NoProfile  Import-Module 'C:\Agents\Contoso.HciOrchestrator\...'      HciOrchestrator  detected         active

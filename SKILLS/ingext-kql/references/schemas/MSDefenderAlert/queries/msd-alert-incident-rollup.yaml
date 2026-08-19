@@ -9,17 +9,12 @@ description: >-
   firstActivityDateTime / lastActivityDateTime rather than the ingest time.
 datatype: MSDefenderAlert
 kql: |
-  // latest snapshot per record: this engine's dynamic schema does not support
-  // arg_max(<col>, *), so take the max timestamp per id and join it back
-  let LatestAlert =
-      MSDefenderAlert
-      | where timestamp > ago(14d)
-      | summarize LastUpdate = max(todatetime(lastUpdateDateTime)) by AlertId = id;
+  // latest snapshot per record: the same id is re-emitted on every change, so
+  // reduce to the newest lastUpdateDateTime per id before anything else
   MSDefenderAlert
   | where timestamp > ago(14d)
-  | join kind=inner LatestAlert on $left.id == $right.AlertId
-  | where todatetime(lastUpdateDateTime) == LastUpdate
-  | project-away AlertId, LastUpdate
+  | extend LastUpdate = todatetime(lastUpdateDateTime)
+  | summarize arg_max(LastUpdate, *) by id
   | extend Sev = case(severity == "high", 4, severity == "medium", 3, severity == "low", 2, 1)
   | extend FirstActivity = todatetime(firstActivityDateTime), LastActivity = todatetime(lastActivityDateTime)
   | mv-expand ev = evidence
