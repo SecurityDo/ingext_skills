@@ -21,7 +21,7 @@
       ActivityFeed.Read, ActivityFeed.ReadDlp, ServiceHealth.Read
 
   Permission role IDs are resolved at runtime from each resource service principal's
-  AppRoles (matched by Value) — nothing is hardcoded, so the script stays correct even
+  AppRoles (matched by Value) - nothing is hardcoded, so the script stays correct even
   if Microsoft's GUIDs ever change.
 
   On success it prints a single JSON object:  { "tenantId", "clientId", "clientSecret" }
@@ -81,7 +81,7 @@ Write-Host "Connected to tenant $tenantId as $($context.Account)" -ForegroundCol
 function Get-OrAddResourceSp([string] $appId, [string] $label) {
     $sp = Get-MgServicePrincipal -Filter "appId eq '$appId'" -ErrorAction SilentlyContinue
     if (-not $sp) {
-        Write-Host "  $label service principal not found in tenant — creating it..." -ForegroundColor Yellow
+        Write-Host "  $label service principal not found in tenant - creating it..." -ForegroundColor Yellow
         $sp = New-MgServicePrincipal -AppId $appId
     }
     return $sp
@@ -124,7 +124,7 @@ $requiredResourceAccess = @(
 $app = Get-MgApplication -Filter "displayName eq '$AppName'" -ErrorAction SilentlyContinue |
        Select-Object -First 1
 if ($app) {
-    Write-Host "Application '$AppName' already exists (appId $($app.AppId)) — updating permissions." -ForegroundColor Yellow
+    Write-Host "Application '$AppName' already exists (appId $($app.AppId)) - updating permissions." -ForegroundColor Yellow
     Update-MgApplication -ApplicationId $app.Id `
         -RequiredResourceAccess $requiredResourceAccess `
         -SignInAudience "AzureADMyOrg"
@@ -169,7 +169,7 @@ foreach ($role in $allRoles) {
         Write-Host "  = $($role.Value) already granted" -ForegroundColor DarkGray
         continue
     }
-    # A freshly created service principal can lag replication — retry briefly.
+    # A freshly created service principal can lag replication - retry briefly.
     for ($attempt = 1; $attempt -le 6; $attempt++) {
         try {
             New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $appSp.Id `
@@ -194,7 +194,7 @@ $result = [ordered]@{
 
 Write-Host ""
 Write-Host "==================== ingext-audit credentials ====================" -ForegroundColor Cyan
-Write-Host "The client secret is shown ONCE below — copy it now." -ForegroundColor Yellow
+Write-Host "The client secret is shown ONCE below - copy it now." -ForegroundColor Yellow
 Write-Host ""
 $result | ConvertTo-Json
 Write-Host ""
