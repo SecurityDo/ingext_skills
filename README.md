@@ -46,6 +46,7 @@ Alternatively, install a specific skill by name:
 | [customer-onboarding](#customer-onboarding) | Front door for a new customer: menu of applications → route to the right setup skill → verify ingestion |
 | [ingext-kql](#ingext-kql) | Generate a validated KQL query over the datalake |
 | [ingext-promql](#ingext-promql) | Generate / run PromQL for platform metrics |
+| [azure-log-analytics-search](#azure-log-analytics-search) | Search the customer's own Azure Log Analytics / Sentinel workspace live with KQL |
 | [fortigate-bandwidth](#fortigate-bandwidth) | Correct FortiGate bandwidth aggregation rules |
 | [fluency-report](#fluency-report) | Run an existing FPL report → HTML summary |
 | [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
@@ -100,6 +101,20 @@ parse-validates before returning. Use it for any datalake query, even trivial on
 - "using the ingext_kql skill, top 10 users by failed sign-ins yesterday"
 - "using the ingext_kql skill, tell me all the Office365 users and their licenses"
 - "using the ingext_kql skill, write me a KQL query for failed Office365 logins by app"
+
+### azure-log-analytics-search
+
+Searches the customer's **own Azure Log Analytics / Microsoft Sentinel workspace** live
+with KQL — nothing is ingested, every call reaches their Azure tenant. Discovers tables
+and ASIM parsers with `azure_logs_list_tables`, resolves columns with
+`azure_logs_get_schema`, parse-validates, then runs the query. Not the datalake: for
+ingested event data use **ingext-kql**.
+
+**Try:**
+- "search the customer's Sentinel workspace for failed sign-ins in the last hour"
+- "what tables are in their Azure Log Analytics workspace"
+- "which ASIM parsers does the workspace have, and what columns does ASimAuthentication return"
+- "run `SigninLogs | summarize count() by ResultType` against Azure for yesterday"
 
 ### ingext-promql
 
