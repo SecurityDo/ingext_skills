@@ -243,8 +243,10 @@ prove the script on its fixtures, rehearse the mechanics on a scratch tenant, th
 that step is what catches the vendor shapes no sample contains. Wiring is done by
 `assets/ingext-pipe.mjs`, built on the `ingext-api` TypeScript client: it creates the redis
 sink and the pipe with the `priority` and ownership tags an app-installed pipe carries, is
-idempotent, reads back what was stored, and unwires in one call. For installing a vendor
-connector rather than deploying a script, use **add-connector**.
+idempotent, reads back what was stored, and unwires in one call. It also covers publishing a
+plugin binary and the `platform_source_reload` that makes it live, and releasing an object to
+the repo registries with `sync_cli` so it reaches tenants beyond the one it was deployed to.
+For installing a vendor connector rather than deploying a script, use **add-connector**.
 
 **Try:**
 - "deploy Varonis_Behavior to the jet tenant"

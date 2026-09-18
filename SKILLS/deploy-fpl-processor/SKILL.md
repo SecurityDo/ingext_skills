@@ -10,7 +10,11 @@ description: >
   provider and tenant from the grid config, rehearsing on a scratch tenant, validating the
   mapping against the target tenant's own records before wiring anything, creating the pipe
   and sink the CLI cannot create, verifying signals arrive, and rolling back in one call.
-  Trigger for any request that moves an FPL script from a repo onto a tenant.
+  Also covers publishing a plugin binary and the reload that makes it live, and releasing an
+  object to the repo registries with sync_cli so it reaches tenants other than the one it was
+  deployed to ("release the processor", "release the application template", "update the
+  release/dump files"). Trigger for any request that moves an FPL script, a plugin or an
+  application template from a repo onto a tenant.
 ---
 
 # Deploy an FPL processor to a tenant
@@ -341,6 +345,64 @@ Three things worth checking first:
 - **What is in the build.** Build from a clean checkout, not a dirty working
   tree: `git worktree add /tmp/build HEAD`. Confirm with `go tool nm` or
   `strings` that the binary contains what you meant and nothing you did not.
+
+## Releasing to the repo registries
+
+Deploying to a tenant puts an object on **that** tenant. The Scripts repo is how
+it reaches any other one: `ingext import` installs from the repo, and it reads
+the `<resource>_release.json` / `<resource>_dump.json` registries at the repo
+root, not the files on disk. An object committed but never released exists for
+nobody — and a template naming a processor that is not in the registry cannot
+install at all, because the processor never arrives.
+
+`sync_cli` regenerates those registries from the repo:
+
+```bash
+sync_cli release /home/kun/github/Scripts application
+sync_cli release /home/kun/github/Scripts schema
+sync_cli release /home/kun/github/Scripts fplProcessor
+sync_cli release /home/kun/github/Scripts entityinfo
+sync_cli release /home/kun/github/Scripts rule
+```
+
+The resource name is the registry file's prefix, so the same command covers
+`facet`, `filter`, `report`, `fplReport`, `fpl2Report` and `processor` too. Run
+the ones your change touched; running the others is harmless and a no-op.
+
+**Commit first.** Each entry records `contentCommit` and `contentGitHash` from
+git, so releasing a dirty tree pins the entry to the previous commit. The order
+is: write the object and its `meta/` entry → commit → `sync_cli release` →
+commit the registries (the repo's convention for that second commit is the
+single word `release`).
+
+Four things that decide whether an object is picked up at all:
+
+- **It needs a `meta/` entry.** `sync_cli` walks the registered objects, not the
+  directory. A processor whose `.js` exists with no `meta/*.json` is skipped
+  silently — which is also why a repo full of untracked work in progress does
+  not leak into a release.
+- **Its id must already be allocated**, and the registries are where you look to
+  find a free one: take the max across `<resource>_release.json` and
+  `<resource>_dump.json` and go one past it. Not `meta/`, which is only the
+  objects someone happened to write down.
+- **`gitPath` must point at the object's own file.** A meta copied from a
+  sibling keeps the sibling's path and releases the wrong content.
+- **`lastComment` is the whole commit message.** A multi-paragraph message ends
+  up verbatim in the registry JSON, where every neighbouring entry is a short
+  phrase. Keep the subject line of a released commit terse.
+
+Verify before committing: diff the registries against what they were, by entry,
+rather than trusting the totals printed at the end.
+
+```bash
+git diff --stat *_release.json *_dump.json
+```
+
+The expected shape of a release that adds one processor and changes one template
+is exactly three files: `+1` in `fplProcessor_release.json` and
+`fplProcessor_dump.json`, and a changed `contentCommit` on that one template in
+`application_release.json`. Anything else in the diff is something you did not
+mean to release.
 
 ## Step 9 — Rollback
 
