@@ -55,6 +55,7 @@ Alternatively, install a specific skill by name:
 | [o365-activity-report](#o365-activity-report) | Account-wide O365/Exchange activity report (KQL: timechart + tables) |
 | [ingext-health-monitor](#ingext-health-monitor) | Check whether a site is healthy and ingesting |
 | [add-connector](#add-connector) | Install a new application connector |
+| [deploy-fpl-processor](#deploy-fpl-processor) | Deploy an FPL processor to a tenant and wire it into the running pipeline |
 | [setup-aws-cloudtrail-connector](#setup-aws-cloudtrail-connector) | Set up the AWS CloudTrail connector: S3 → SQS notification, cross-account role, real-time import |
 | [create-ingext-audit-app](#create-ingext-audit-app) | Guide an Entra admin to register the `ingext-audit` app (Graph + O365 audit import) |
 | [create-ingext-audit-app-azcli](#create-ingext-audit-app-azcli) | az CLI variant of `create-ingext-audit-app`: cowork can run it directly when the operator is the tenant's Global Admin |
@@ -231,6 +232,25 @@ and deploys the connector instance.
 - "add the CrowdStrike connector"
 - "install the AWS SQS application"
 - "connect Office 365 to Ingext"
+
+### deploy-fpl-processor
+
+Moves an FPL processor from a repo onto a tenant and wires it into the tenant's running
+pipeline, through the provider proxy (`INGEXT_SITE_URL`/`INGEXT_TOKEN` from
+`/etc/fluency_grid_config.json`, then `--gridaccount <tenant>`). The order is the point:
+prove the script on its fixtures, rehearse the mechanics on a scratch tenant, then
+**validate the mapping against the target tenant's own records** before anything is wired —
+that step is what catches the vendor shapes no sample contains. Wiring is done by
+`assets/ingext-pipe.mjs`, built on the `ingext-api` TypeScript client: it creates the redis
+sink and the pipe with the `priority` and ownership tags an app-installed pipe carries, is
+idempotent, reads back what was stored, and unwires in one call. For installing a vendor
+connector rather than deploying a script, use **add-connector**.
+
+**Try:**
+- "deploy Varonis_Behavior to the jet tenant"
+- "push this parser to the customer site and wire it into the pipeline"
+- "add a behavior pipe for the Falcon app on titan"
+- "roll out the new processor, but test it somewhere safe first"
 
 ### setup-aws-cloudtrail-connector
 
