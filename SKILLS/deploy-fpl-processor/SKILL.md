@@ -309,6 +309,39 @@ event is a first occurrence.
 what makes it diagnostic rather than just a sample: *which* buffer an event lands in names the
 branch the processor took.
 
+## Deploying a plugin binary, not a processor
+
+An FPL processor is deployed by `processor add` and takes effect immediately. A
+**plugin** is a published binary, and publishing it is not a deploy:
+
+```bash
+cmd/plugin_<name>/build.sh latest        # go build, then oras push to public.ecr.aws/ingext
+node assets/ingext-pipe.mjs reload --tenant <tenant> --source <Source>
+ingext stream reload-source --source <Source> --gridaccount <tenant>   # the same call
+```
+
+The reload (`platform_source_reload`) restarts the data source, which re-forks
+the plugin; the fork re-resolves the tag's digest and re-downloads when it has
+changed. Without it the source keeps running the binary it started with until
+platform-0 restarts — the image is published and nothing happens, which reads
+exactly like a build that did not work.
+
+Three things worth checking first:
+
+- **Which tag the account resolves.** The pin lives in `plugin_config.json` in
+  the account's `account-config` configmap; an account without one falls back to
+  `latest`. `latest` is not an alias for the newest numbered build and has no
+  rollback target, so it is right for a plugin deployed to exactly one tenant and
+  wrong for a fleet.
+- **Resident or routed.** A stream plugin runs resident (forked in platform-0)
+  unless the account routes it to the cluster plugin service, which needs both an
+  approved integration and a published `:job` build — `oras repo tags` shows
+  whether one exists. A routed plugin picks up a new binary on its next poll pod
+  without any reload; a resident one does not.
+- **What is in the build.** Build from a clean checkout, not a dirty working
+  tree: `git worktree add /tmp/build HEAD`. Confirm with `go tool nm` or
+  `strings` that the binary contains what you meant and nothing you did not.
+
 ## Step 9 — Rollback
 
 ```bash

@@ -10,6 +10,7 @@
 //                               --pipe Varonis-default-Behavior --delete-sink
 //   node ingext-pipe.mjs tail   --tenant jet --router Varonis-default \
 //                               --pipe Varonis-default-Behavior [--status drop] [--limit 5]
+//   node ingext-pipe.mjs reload --tenant jet --source Varonis-default
 //
 // --provider defaults to develop2 and is resolved from /etc/fluency_grid_config.json.
 // Add --dry-run to print what wire/unwire would do without calling the API.
@@ -204,6 +205,25 @@ async function cmdTail(ingext, args) {
   }
 }
 
+// Restart a data source. For a plugin source this re-forks the plugin, which is
+// what makes a newly published binary take effect -- publishing to the registry
+// is not a deploy on its own.
+async function cmdReload(ingext, args) {
+  const ref = args.source;
+  if (!ref) usage("reload needs --source");
+  const cfg = await ingext.platform.listConfigs();
+  const src = (cfg.sources ?? []).find((s) => s && (s.id === ref || s.name === ref));
+  if (!src) {
+    throw new Error(`no data source ${ref}; available: ${(cfg.sources ?? []).map((s) => s.name).join(", ")}`);
+  }
+  if (args["dry-run"]) {
+    console.log(`would reload ${src.name} (${src.id})`);
+    return;
+  }
+  await ingext.platform.sourceReload(src.id);
+  console.log(`reloaded: ${src.name} (${src.id})`);
+}
+
 async function cmdUnwire(ingext, args) {
   const { router: routerRef, pipe: pipeRef } = args;
   if (!routerRef || !pipeRef) usage("unwire needs --router and --pipe");
@@ -238,7 +258,7 @@ async function cmdUnwire(ingext, args) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
-  if (!cmd || args.help) usage(cmd ? null : "a command is required: list | wire | unwire | tail");
+  if (!cmd || args.help) usage(cmd ? null : "a command is required: list | wire | unwire | tail | reload");
   if (!args.tenant) usage("--tenant is required");
 
   const p = provider(args.provider ?? "develop2");
@@ -251,6 +271,7 @@ async function main() {
     else if (cmd === "wire") await cmdWire(ingext, args);
     else if (cmd === "unwire") await cmdUnwire(ingext, args);
     else if (cmd === "tail") await cmdTail(ingext, args);
+    else if (cmd === "reload") await cmdReload(ingext, args);
     else usage(`unknown command ${cmd}`);
   } finally {
     await ingext.close();
