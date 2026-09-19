@@ -56,6 +56,7 @@ Alternatively, install a specific skill by name:
 | [ingext-health-monitor](#ingext-health-monitor) | Check whether a site is healthy and ingesting |
 | [add-connector](#add-connector) | Install a new application connector |
 | [deploy-fpl-processor](#deploy-fpl-processor) | Deploy an FPL processor to a tenant and wire it into the running pipeline |
+| [eventwatch-rule](#eventwatch-rule) | Create, test, threshold and deploy an EventWatch behavior / aggregation rule |
 | [setup-aws-cloudtrail-connector](#setup-aws-cloudtrail-connector) | Set up the AWS CloudTrail connector: S3 → SQS notification, cross-account role, real-time import |
 | [create-ingext-audit-app](#create-ingext-audit-app) | Guide an Entra admin to register the `ingext-audit` app (Graph + O365 audit import) |
 | [create-ingext-audit-app-azcli](#create-ingext-audit-app-azcli) | az CLI variant of `create-ingext-audit-app`: cowork can run it directly when the operator is the tenant's Global Admin |
@@ -253,6 +254,32 @@ For installing a vendor connector rather than deploying a script, use **add-conn
 - "push this parser to the customer site and wire it into the pipeline"
 - "add a behavior pipe for the Falcon app on titan"
 - "roll out the new processor, but test it somewhere safe first"
+
+### eventwatch-rule
+
+Creates, tests and deploys an EventWatch rule — the behavior and aggregation rules that turn
+parsed events into behavior signals. The order is the point: read the tenant's **real** event
+shapes with `datalake search` before writing a selector (`ingext kql` returns no rows for the
+`default` index), then choose the threshold by replaying real history rather than guessing.
+`assets/replay-threshold.py` computes the per-key maximum in a sliding window and the alert
+count at each candidate threshold — which is how you find that `gt 5` against a probe that
+peaked at exactly 5 fires never, and that 89% of your matches are a noise class that should
+be excluded first. Its `--overlap` mode catches the other classic defect: a selector matching
+several stages of one logical action, raising two behavior events per login.
+
+Covers the id rule that cannot be undone — **`id > 0` is global and becomes read-only in the
+tenant** (`update` and `delete` both refused, only `toggle` works), so iterate with `id: 0`
+and ship with the allocated id — plus `sync_cli release <repo> rule` (which
+`release ... fplProcessor` does **not** do), and the sticky disabled flag and flip-not-set
+toggle that decide whether a synced rule actually runs. `assets/check-rule-state.py` asserts
+the content that landed and is pollable while waiting on a sync.
+For deploying the parser that produces the events, use **deploy-fpl-processor**.
+
+**Try:**
+- "create an eventwatch rule to track SSL-VPN logins by user"
+- "add an aggregation rule for multiple failed logins in a few hours"
+- "why is this rule never firing?"
+- "promote the local test rule to the global one on <tenant>"
 
 ### setup-aws-cloudtrail-connector
 
