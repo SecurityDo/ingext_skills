@@ -1,0 +1,27 @@
+// One user's sign-ins with the fields that decide device identity.
+// Read UserAgent, never DeviceDetail.operatingSystem alone -- Azure's OS label
+// and the real UA disagree (label "Ios 26.6.2" against UA "iPhone OS 18_7"),
+// and trusting the label invents a "new device" that is the user's own.
+// Placeholders: {USER} = lower-cased UPN.
+let UserEmail = tolower("{USER}");
+AzureSigninLogs
+| where TimeGenerated > ago(30d)
+| where tolower(UserPrincipalName) == UserEmail
+| extend
+    ResultStatus = iff(ResultType == "0", "Success", "Failure"),
+    ErrorCode = tostring(Status.errorCode),
+    FailureReason = tostring(Status.failureReason),
+    City = tostring(LocationDetails.city),
+    State = tostring(LocationDetails.state),
+    OS = tostring(DeviceDetail.operatingSystem),
+    Browser = tostring(DeviceDetail.browser),
+    DeviceName = tostring(DeviceDetail.displayName),
+    TrustType = tostring(DeviceDetail.trustType),
+    Compliant = tostring(DeviceDetail.isCompliant),
+    Managed = tostring(DeviceDetail.isManaged)
+| project TimeGenerated, IPAddress, Location, State, City, AppDisplayName,
+    ResourceDisplayName, DeviceName, TrustType, Compliant, Managed, OS, Browser,
+    UserAgent, ClientAppUsed, IsInteractive, AuthenticationRequirement,
+    AuthenticationDetails, ConditionalAccessStatus, ResultStatus, ErrorCode,
+    FailureReason, RiskLevelDuringSignIn, RiskState, SessionId, CorrelationId
+| order by TimeGenerated desc

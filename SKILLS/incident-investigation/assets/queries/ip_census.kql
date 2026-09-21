@@ -1,0 +1,11 @@
+// THE decisive check. How many DISTINCT users signed in from each address?
+// An IP shared by dozens of users is corporate egress and is not an anomaly,
+// whatever its GeoIP says. An IP used by exactly one user is worth the next
+// query. Placeholders: {IPS} = quoted, comma-separated list.
+AzureSigninLogs
+| where TimeGenerated > ago(30d)
+| where IPAddress in ({IPS})
+| summarize users = dcount(UserPrincipalName), events = count(),
+            firstSeen = min(TimeGenerated), lastSeen = max(TimeGenerated)
+    by IPAddress
+| order by events desc

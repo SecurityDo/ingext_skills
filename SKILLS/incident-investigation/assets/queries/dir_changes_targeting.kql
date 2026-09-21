@@ -1,0 +1,18 @@
+// Directory changes where the subject was the TARGET -- group and role adds,
+// password resets, security-info changes, device registration. Read
+// modifiedProperties for the group's real name before calling a membership add
+// privilege escalation: a licensing group ("D365 Sales") added from
+// O365AdminPortal for a salesperson is provisioning.
+// Placeholders: {USER} = lower-cased UPN.
+let UserEmail = tolower("{USER}");
+AzureAuditLogs
+| where TimeGenerated > ago(30d)
+| extend InitiatedByUPN = tolower(tostring(InitiatedBy.user.userPrincipalName)),
+         InitiatedIP = tostring(InitiatedBy.user.ipAddress),
+         InitiatedApp = tostring(InitiatedBy.app.displayName),
+         TargetsText = tolower(tostring(TargetResources))
+| where InitiatedByUPN == UserEmail or TargetsText has UserEmail
+| project TimeGenerated, ActivityDisplayName, Category, Result, ResultReason,
+    InitiatedByUPN, InitiatedIP, InitiatedApp, TargetResources,
+    AdditionalDetails, CorrelationId
+| order by TimeGenerated asc

@@ -1,0 +1,8 @@
+// Settle a "UPN / email domain mismatch" finding in one query. A mismatch that
+// 800 of the tenant's users share is the house convention, not an anomaly on
+// this account. Snapshot table -- no time filter.
+office365User
+| extend mailDomain = tolower(tostring(split(mail, "@")[1]))
+| where isnotempty(mailDomain)
+| summarize users = count() by mailDomain
+| order by users desc

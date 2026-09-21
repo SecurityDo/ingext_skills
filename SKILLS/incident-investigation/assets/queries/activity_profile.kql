@@ -1,0 +1,10 @@
+// What the account actually did in the window, by workload and operation. Use
+// it to place the incident: a mass FileDownloaded or FileSyncDownloadedFull run
+// AFTER the event is exfiltration; a Teams session and three file previews is a
+// working day. Placeholders: {USER} = lower-cased UPN.
+Office365
+| where timestamp > ago(14d)
+| where tolower(UserId) == "{USER}"
+| summarize events = count(), firstSeen = min(timestamp), lastSeen = max(timestamp)
+    by Workload, Operation
+| order by events desc

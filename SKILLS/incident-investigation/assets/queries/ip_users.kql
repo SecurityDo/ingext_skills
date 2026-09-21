@@ -1,0 +1,9 @@
+// Who else uses these addresses, and since when. A first-seen date shared by
+// many users on the same day is a network change (new circuit, new VPN), not a
+// relocation. Placeholders: {IPS} = quoted, comma-separated list.
+AzureSigninLogs
+| where TimeGenerated > ago(30d)
+| where IPAddress in ({IPS})
+| summarize events = count(), firstSeen = min(TimeGenerated), lastSeen = max(TimeGenerated)
+    by IPAddress, UserPrincipalName
+| order by IPAddress asc, events desc
