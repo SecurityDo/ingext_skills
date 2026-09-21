@@ -1,19 +1,18 @@
 ---
 name: incident-investigation
 version: 1.0.12
-description: >
+description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
-  evidence. Use this skill whenever the user hands over a behavior incident, an AI-assist
-  ticket, an alert or a risk score and asks what it really is — "investigate this incident",
-  "triage this ticket", "is this a true positive", "the AI assist says actionable, check it",
-  "get the behavior summary for <user>", "why did <user> score 3600", "should we escalate
-  this alert". Covers pulling the behavior summary and the AI-assist verdict out of the
-  eventwatch API, then the four checks that actually decide a verdict — the fleet base rate
-  for the rule that fired, resolving every source IP against the rest of the tenant, reading
-  which device approved the change, and proving what did NOT happen afterwards — plus the
-  timestamp, error-code, user-agent, duplicate-row and geolocation traps that manufacture
-  findings that are not there. Ends in a written closure: benign, escalate or confirmed, with the detection
-  tuning that stops the next eleven copies of the same ticket.
+  evidence. Use this skill whenever the user hands over a behavior incident, an AI-assist ticket,
+  an alert or a risk score and asks what it really is — "investigate this incident", "triage this
+  ticket", "is this a true positive", "the AI assist says actionable, check it", "get the behavior
+  summary for a user", "why did this user score 3600", "should we escalate this alert". Covers
+  pulling the behavior summary and the AI-assist verdict out of the eventwatch API, then the four
+  checks that actually decide a verdict — the fleet base rate for the rule that fired, resolving
+  every source IP against the rest of the tenant, reading which device approved the change, and
+  proving what did NOT happen afterwards — plus the timestamp, error-code, user-agent, duplicate-
+  row and geolocation traps that manufacture findings. Ends in a written closure: benign, escalate
+  or confirmed, with tuning that stops repeats of the same ticket.
 ---
 
 # Investigate a behavior incident

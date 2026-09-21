@@ -1,18 +1,18 @@
 ---
 name: eventwatch-rule
 version: 1.0.0
-description: >
-  Create, test, deploy and release an Ingext EventWatch rule — the behavior and aggregation
-  rules that turn parsed events into behavior signals. Use this skill whenever the user asks
-  to "create an eventwatch rule", "add a behavior rule", "track <activity> by user", "alert on
-  multiple failed logins", "set up an aggregation rule", "write a detection for <vendor>",
-  "tune a rule's threshold", or wants an existing rule enabled, disabled, promoted or rolled
-  back on a tenant. Covers learning the vendor's real event shape before writing a selector,
-  allocating an id from the registries, the first/aggregation rule types, testing with
-  `eventwatch rule_test`, validating thresholds by replaying real history rather than guessing,
-  the global-versus-local id rule that decides whether a deployed rule can ever be edited
-  again, deploying to a tenant, releasing with `sync_cli release <repo> rule`, and the sync
-  and toggle semantics that decide whether a released rule actually runs.
+description: >-
+  Create, test, deploy and release an Ingext EventWatch rule — the behavior and aggregation rules
+  that turn parsed events into behavior signals. Use this skill whenever the user asks to "create
+  an eventwatch rule", "add a behavior rule", "track an activity by user", "alert on multiple
+  failed logins", "set up an aggregation rule", "write a detection for a vendor", "tune a rule's
+  threshold", or wants an existing rule enabled, disabled, promoted or rolled back on a tenant.
+  Covers learning the vendor's real event shape before writing a selector, allocating an id from
+  the registries, the first/aggregation rule types, testing with `eventwatch rule_test`,
+  validating thresholds by replaying real history rather than guessing, the global-versus-local id
+  rule that decides whether a deployed rule can ever be edited again, deploying to a tenant,
+  releasing with `sync_cli release`, and the sync and toggle semantics that decide whether a
+  released rule actually runs.
 ---
 
 # EventWatch rules: create, test, deploy

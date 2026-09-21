@@ -1,20 +1,18 @@
 ---
 name: deploy-fpl-processor
 version: 1.0.0
-description: >
+description: >-
   Deploy an FPL processor to an Ingext tenant through a provider proxy, and wire it into the
-  tenant's running pipeline. Use this skill whenever the user asks to "deploy a processor",
-  "push this parser to <tenant>", "install an FPL script on a customer site", "add a behavior
-  pipe", "wire this processor into the pipeline", "roll out <Vendor>_Behavior", or wants a
-  script that works locally to start running against a tenant's live data. Covers resolving a
-  provider and tenant from the grid config, rehearsing on a scratch tenant, validating the
-  mapping against the target tenant's own records before wiring anything, creating the pipe
-  and sink the CLI cannot create, verifying signals arrive, and rolling back in one call.
-  Also covers publishing a plugin binary and the reload that makes it live, and releasing an
-  object to the repo registries with sync_cli so it reaches tenants other than the one it was
-  deployed to ("release the processor", "release the application template", "update the
-  release/dump files"). Trigger for any request that moves an FPL script, a plugin or an
-  application template from a repo onto a tenant.
+  tenant's running pipeline. Use this skill whenever the user asks to "deploy a processor", "push
+  this parser to a tenant", "install an FPL script on a customer site", "add a behavior pipe",
+  "wire this processor into the pipeline", "roll out a vendor Behavior script", or wants a script
+  that works locally to start running against a tenant's live data. Covers resolving a provider
+  and tenant from the grid config, rehearsing on a scratch tenant, validating the mapping against
+  the target tenant's own records before wiring anything, creating the pipe and sink the CLI
+  cannot create, verifying signals arrive, and rolling back in one call. Also covers publishing a
+  plugin binary and the reload that makes it live, and releasing an object to the repo registries
+  with sync_cli so it reaches other tenants. Trigger for any request that moves an FPL script, a
+  plugin or an application template from a repo onto a tenant.
 ---
 
 # Deploy an FPL processor to a tenant
