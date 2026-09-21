@@ -1,0 +1,61 @@
+description: >-
+  What the suppression rules are hiding. Archived findings are not deleted —
+  GuardDuty keeps returning them and Ingext keeps collecting them, so the lake
+  holds a complete record of everything a suppression rule or an analyst has
+  taken off the queue, which is exactly the blind spot nobody reviews. The
+  query reports archived findings by type rather than individually, because
+  the question is whether a rule is too broad, not whether one finding was
+  dismissed correctly. Read the rightmost columns first: a type where
+  MaxSeverity is 7 or above, or where the principals and accounts touched keep
+  growing, is a suppression rule that has outlived its justification. Types
+  with both archived and open findings are listed with Open alongside, since
+  a partially-matching rule is the most misleading kind.
+datatype: GuardDuty
+kql: |
+  GuardDuty
+  | where timestamp > ago(30d)
+  | extend LastUpdate = todatetime(UpdatedAt)
+  | summarize arg_max(LastUpdate, *) by Id
+  | extend
+      Sev = todouble(Severity),
+      Archived = tobool(coalesce(Service.Archived, false)),
+      Subject = coalesce(
+          tostring(Resource.AccessKeyDetails.UserName),
+          tostring(Resource.InstanceDetails.InstanceId),
+          tostring(Resource.S3BucketDetails[0].Name),
+          tostring(Resource.LambdaDetails.FunctionName),
+          tostring(Resource.RdsDbInstanceDetails.DbInstanceIdentifier))
+  | summarize
+      Suppressed = countif(Archived),
+      Open = countif(Archived == false),
+      MaxSeverity = max(Sev),
+      MaxSuppressedSeverity = maxif(Sev, Archived),
+      Occurrences = sum(toint(coalesce(Service.Count, 1))),
+      Subjects = make_set_if(Subject, Archived and isnotempty(Subject), 10),
+      SubjectCount = dcountif(Subject, Archived and isnotempty(Subject)),
+      Accounts = dcountif(AccountId, Archived),
+      Regions = make_set_if(Region, Archived, 6),
+      FirstSuppressed = minif(todatetime(CreatedAt), Archived),
+      LastSuppressed = maxif(todatetime(CreatedAt), Archived)
+      by Type, ResourceType = tostring(Resource.ResourceType)
+  | where Suppressed > 0
+  | extend Review = case(
+        MaxSuppressedSeverity >= 7.0, "REVIEW - high severity suppressed",
+        Open > 0, "review - rule matches only some of this type",
+        SubjectCount > 5, "review - broad subject coverage",
+        "")
+  | project
+      Review, Type, ResourceType, Suppressed, Open,
+      MaxSuppressedSeverity, MaxSeverity, Occurrences,
+      SubjectCount, Subjects, Accounts, Regions,
+      FirstSuppressed, LastSuppressed
+  | order by MaxSuppressedSeverity desc, Suppressed desc
+tags: [aws, guardduty, suppression, tuning, blind-spots, audit, security]
+expected_output: |
+  Finding types being archived by suppression rules (sanitized).
+  Both collected samples are unarchived, so this query returns no rows against
+  them — the shape below is what it returns once suppression rules are in use.
+
+  Review                             Type                                 ResourceType  Suppressed  Open  MaxSuppressedSeverity  MaxSeverity  Occurrences  SubjectCount  Subjects                                   Accounts  Regions                       FirstSuppressed           LastSuppressed
+  REVIEW - high severity suppressed  UnauthorizedAccess:EC2/SSHBruteForce  Instance      14          2     5                      8            3902         9             ["i-0123456789abcdef1","i-0123..."]        2         ["us-east-1","eu-west-1"]     2026-08-11T06:22:10.000Z  2026-09-01T19:44:51.000Z
+  review - broad subject coverage    Recon:EC2/PortProbeUnprotectedPort    Instance      31          0     2                      2            1177         22            ["i-0123456789abcdef1","i-0123..."]        3         ["us-east-1","eu-west-1","af-south-1"]  2026-08-05T11:03:44.000Z  2026-09-02T04:18:29.000Z

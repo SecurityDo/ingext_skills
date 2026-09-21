@@ -1,0 +1,77 @@
+description: >-
+  The live GuardDuty queue, one row per finding, ranked by how much it actually
+  deserves attention rather than by severity alone. Four corrections are applied
+  that a straight `where Severity >= 4` misses: the repeated collection
+  snapshots of an aggregating finding are reduced to their newest state, the
+  archived (suppression-rule) findings are dropped after that reduction rather
+  than before it, the numeric Severity is turned back into a band, and the
+  subject and remote network are coalesced out of the polymorphic Resource and
+  Service.Action objects so one row reads the same way whether the finding is
+  about an IAM principal, an instance, a bucket or a cluster. Occurrences is the
+  column that makes the low-severity anomaly findings legible — a Low finding
+  sitting at 180 occurrences with an unfamiliar ASN is the interesting one.
+  Quiet is the gap since the activity last occurred, so an analyst can tell a
+  running incident from a finding that has already burned out.
+datatype: GuardDuty
+kql: |
+  GuardDuty
+  | where timestamp > ago(7d)
+  | extend LastUpdate = todatetime(UpdatedAt)
+  | summarize arg_max(LastUpdate, *) by Id
+  | where tobool(coalesce(Service.Archived, false)) == false
+  | extend
+      Sev = todouble(Severity),
+      Tail = tostring(split(Type, ":")[1])
+  | extend
+      SeverityLabel = case(Sev >= 9.0, "CRITICAL", Sev >= 7.0, "HIGH", Sev >= 4.0, "MEDIUM", "LOW"),
+      ThreatPurpose = tostring(split(Type, ":")[0]),
+      ThreatFamily = tostring(split(Tail, "/")[1]),
+      Subject = coalesce(
+          tostring(Resource.AccessKeyDetails.UserName),
+          tostring(Resource.InstanceDetails.InstanceId),
+          tostring(Resource.S3BucketDetails[0].Name),
+          tostring(Resource.KubernetesDetails.KubernetesUserDetails.Username),
+          tostring(Resource.LambdaDetails.FunctionName),
+          tostring(Resource.RdsDbInstanceDetails.DbInstanceIdentifier),
+          tostring(Resource.EksClusterDetails.Name),
+          tostring(Resource.EcsClusterDetails.Name)),
+      RemoteIp = coalesce(
+          tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.IpAddressV4),
+          tostring(Service.Action.NetworkConnectionAction.RemoteIpDetails.IpAddressV4),
+          tostring(Service.Action.KubernetesApiCallAction.RemoteIpDetails.IpAddressV4),
+          tostring(Service.Action.RdsLoginAttemptAction.RemoteIpDetails.IpAddressV4),
+          tostring(Service.Action.PortProbeAction.PortProbeDetails[0].RemoteIpDetails.IpAddressV4),
+          tostring(Service.Action.DnsRequestAction.Domain)),
+      RemoteOrg = coalesce(
+          tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.Organization.AsnOrg),
+          tostring(Service.Action.NetworkConnectionAction.RemoteIpDetails.Organization.AsnOrg),
+          tostring(Service.Action.KubernetesApiCallAction.RemoteIpDetails.Organization.AsnOrg),
+          tostring(Service.Action.RdsLoginAttemptAction.RemoteIpDetails.Organization.AsnOrg),
+          tostring(Service.Action.PortProbeAction.PortProbeDetails[0].RemoteIpDetails.Organization.AsnOrg))
+  | extend
+      Raised = todatetime(CreatedAt),
+      FirstSeen = todatetime(Service.EventFirstSeen),
+      LastSeen = todatetime(Service.EventLastSeen)
+  | extend
+      AgeHours = round((now() - Raised) / 1h, 1),
+      QuietHours = round((now() - LastSeen) / 1h, 1),
+      DetectLagMin = round((Raised - FirstSeen) / 1m, 1),
+      Occurrences = toint(coalesce(Service.Count, 1))
+  | project
+      Raised, SeverityLabel, Sev, Type, ThreatPurpose, ThreatFamily,
+      Subject, ResourceType = tostring(Resource.ResourceType),
+      Role = tostring(Service.ResourceRole),
+      RemoteIp, RemoteOrg,
+      Occurrences, DetectLagMin, AgeHours, QuietHours,
+      Account = AccountId, Region,
+      Source = tostring(Service.FeatureName),
+      Url = strcat("https://", Region, ".console.aws.amazon.com/guardduty/home?region=", Region, "#/findings?macros=current&fId=", Id),
+      Id
+  | order by Sev desc, Occurrences desc, Raised desc
+tags: [aws, guardduty, triage, queue, incident-response, security]
+expected_output: |
+  Unarchived findings in their current state, one row per finding (sanitized).
+
+  Raised                    SeverityLabel  Sev  Type                                  ThreatPurpose   ThreatFamily       Subject   ResourceType  Role    RemoteIp     RemoteOrg              Occurrences  DetectLagMin  AgeHours  QuietHours  Account       Region      Source
+  2026-09-02T15:03:30.978Z  MEDIUM         5    InitialAccess:IAMUser/AnomalousBehavior  InitialAccess  AnomalousBehavior  helpdesk  AccessKey     TARGET  192.0.2.47   EXAMPLE NETWORKS LTD   159          13.5          2.4       2.2         123456789012  af-south-1  CloudTrailManagementEvent
+  2026-09-02T15:03:31.037Z  LOW            2    Discovery:IAMUser/AnomalousBehavior      Discovery      AnomalousBehavior  helpdesk  AccessKey     TARGET  192.0.2.47   EXAMPLE NETWORKS LTD   180          13.6          2.4       2.2         123456789012  af-south-1  CloudTrailManagementEvent

@@ -1,0 +1,55 @@
+description: >-
+  How long GuardDuty takes to notice, and how long its findings then stay
+  alive — the two numbers this data type makes available and the console does
+  not. DetectLagMin is CreatedAt minus Service.EventFirstSeen, which is
+  genuinely GuardDuty's detection latency and runs to roughly thirteen minutes
+  on the CloudTrail anomaly detectors in the collected samples; it is a
+  property of the finding type rather than of your environment, so it belongs
+  in a playbook as the expected delay before an alert can be relied on.
+  ActivityMin is how long the offending activity ran, and RunningHours is how
+  long the finding has been aggregating, which together separate a one-shot
+  event from a campaign. Findings still aggregating with a recent
+  Service.EventLastSeen are the ones an analyst should be looking at right
+  now, so Live is projected first.
+datatype: GuardDuty
+kql: |
+  GuardDuty
+  | where timestamp > ago(30d)
+  | extend LastUpdate = todatetime(UpdatedAt)
+  | summarize arg_max(LastUpdate, *) by Id
+  | where tobool(coalesce(Service.Archived, false)) == false
+  | extend
+      Sev = todouble(Severity),
+      Raised = todatetime(CreatedAt),
+      Touched = todatetime(UpdatedAt),
+      FirstSeen = todatetime(Service.EventFirstSeen),
+      LastSeen = todatetime(Service.EventLastSeen),
+      Occurrences = toint(coalesce(Service.Count, 1))
+  | extend
+      DetectLagMin = round((Raised - FirstSeen) / 1m, 1),
+      ActivityMin = round((LastSeen - FirstSeen) / 1m, 1),
+      RunningHours = round((Touched - Raised) / 1h, 1),
+      QuietHours = round((now() - LastSeen) / 1h, 1)
+  | extend
+      Live = iff(QuietHours <= 1, "LIVE", ""),
+      Rate = iff(ActivityMin > 0, round(Occurrences / ActivityMin, 1), todouble(Occurrences))
+  | project
+      Live, Raised, Sev, Type,
+      Subject = coalesce(
+          tostring(Resource.AccessKeyDetails.UserName),
+          tostring(Resource.InstanceDetails.InstanceId),
+          tostring(Resource.S3BucketDetails[0].Name),
+          tostring(Resource.LambdaDetails.FunctionName)),
+      Occurrences, Rate,
+      DetectLagMin, ActivityMin, RunningHours, QuietHours,
+      FirstSeen, LastSeen,
+      Source = tostring(Service.FeatureName),
+      Account = AccountId, Region, Id
+  | order by Live desc, Rate desc, Sev desc
+tags: [aws, guardduty, detection-latency, sla, metrics, reporting, security]
+expected_output: |
+  Detection latency and finding lifetime, live findings first (sanitized).
+
+  Live  Raised                    Sev  Type                                     Subject   Occurrences  Rate  DetectLagMin  ActivityMin  RunningHours  QuietHours  FirstSeen                 LastSeen                  Source                     Account       Region
+  LIVE  2026-09-02T15:03:31.037Z  2    Discovery:IAMUser/AnomalousBehavior      helpdesk  180          15.7  13.6          11.5         0.2           0.2         2026-09-02T14:49:53.000Z  2026-09-02T15:01:24.000Z  CloudTrailManagementEvent  123456789012  af-south-1
+  LIVE  2026-09-02T15:03:30.978Z  5    InitialAccess:IAMUser/AnomalousBehavior  helpdesk  159          13.9  13.5          11.4         0.2           0.2         2026-09-02T14:49:59.000Z  2026-09-02T15:01:24.000Z  CloudTrailManagementEvent  123456789012  af-south-1

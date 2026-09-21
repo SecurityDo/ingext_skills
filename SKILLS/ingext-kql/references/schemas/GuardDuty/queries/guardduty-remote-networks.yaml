@@ -1,0 +1,80 @@
+description: >-
+  The remote networks behind GuardDuty findings, ranked. The point of this
+  query is the autonomous system rather than the IP or the country: the
+  AnomalousBehavior detectors fire mostly on ASN novelty — the sample findings
+  say so in as many words, "The organization ... has not been previously
+  observed for this account" — so the ASN is the axis GuardDuty itself
+  reasoned on, and a single unfamiliar AS touching several principals across
+  several accounts is the shape of a credential-stuffing or a session-theft
+  campaign. The remote address lives at a different path under every
+  Service.Action.ActionType, so it is coalesced across all five before
+  grouping; DNS findings have no remote address at all and are excluded by
+  the isnotempty guard rather than silently contributing an empty bucket.
+  Group on Country.CountryName, not CountryCode, which is null on this feed.
+datatype: GuardDuty
+kql: |
+  GuardDuty
+  | where timestamp > ago(30d)
+  | extend LastUpdate = todatetime(UpdatedAt)
+  | summarize arg_max(LastUpdate, *) by Id
+  | where tobool(coalesce(Service.Archived, false)) == false
+  | extend
+      Sev = todouble(Severity),
+      RemoteIp = coalesce(
+          tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.IpAddressV4),
+          tostring(Service.Action.NetworkConnectionAction.RemoteIpDetails.IpAddressV4),
+          tostring(Service.Action.KubernetesApiCallAction.RemoteIpDetails.IpAddressV4),
+          tostring(Service.Action.RdsLoginAttemptAction.RemoteIpDetails.IpAddressV4),
+          tostring(Service.Action.PortProbeAction.PortProbeDetails[0].RemoteIpDetails.IpAddressV4)),
+      Asn = coalesce(
+          tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.Organization.Asn),
+          tostring(Service.Action.NetworkConnectionAction.RemoteIpDetails.Organization.Asn),
+          tostring(Service.Action.KubernetesApiCallAction.RemoteIpDetails.Organization.Asn),
+          tostring(Service.Action.RdsLoginAttemptAction.RemoteIpDetails.Organization.Asn),
+          tostring(Service.Action.PortProbeAction.PortProbeDetails[0].RemoteIpDetails.Organization.Asn)),
+      AsnOrg = coalesce(
+          tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.Organization.AsnOrg),
+          tostring(Service.Action.NetworkConnectionAction.RemoteIpDetails.Organization.AsnOrg),
+          tostring(Service.Action.KubernetesApiCallAction.RemoteIpDetails.Organization.AsnOrg),
+          tostring(Service.Action.RdsLoginAttemptAction.RemoteIpDetails.Organization.AsnOrg),
+          tostring(Service.Action.PortProbeAction.PortProbeDetails[0].RemoteIpDetails.Organization.AsnOrg)),
+      Country = coalesce(
+          tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.Country.CountryName),
+          tostring(Service.Action.NetworkConnectionAction.RemoteIpDetails.Country.CountryName),
+          tostring(Service.Action.KubernetesApiCallAction.RemoteIpDetails.Country.CountryName),
+          tostring(Service.Action.RdsLoginAttemptAction.RemoteIpDetails.Country.CountryName),
+          tostring(Service.Action.PortProbeAction.PortProbeDetails[0].RemoteIpDetails.Country.CountryName)),
+      Subject = coalesce(
+          tostring(Resource.AccessKeyDetails.UserName),
+          tostring(Resource.InstanceDetails.InstanceId),
+          tostring(Resource.S3BucketDetails[0].Name),
+          tostring(Resource.LambdaDetails.FunctionName),
+          tostring(Resource.RdsDbInstanceDetails.DbInstanceIdentifier))
+  | where isnotempty(RemoteIp)
+  | summarize
+      Findings = dcount(Id),
+      MaxSeverity = max(Sev),
+      Occurrences = sum(toint(coalesce(Service.Count, 1))),
+      Addresses = dcount(RemoteIp),
+      SampleIps = make_set(RemoteIp, 8),
+      Subjects = make_set_if(Subject, isnotempty(Subject), 8),
+      SubjectCount = dcountif(Subject, isnotempty(Subject)),
+      Accounts = dcount(AccountId),
+      Regions = make_set(Region, 6),
+      Purposes = make_set(tostring(split(Type, ":")[0]), 8),
+      Types = make_set(Type, 8),
+      FirstSeen = min(todatetime(Service.EventFirstSeen)),
+      LastSeen = max(todatetime(Service.EventLastSeen))
+      by Asn, AsnOrg, Country
+  | extend Spread = SubjectCount * Accounts
+  | project
+      AsnOrg, Asn, Country, Findings, MaxSeverity, Occurrences,
+      Addresses, SampleIps, SubjectCount, Subjects, Spread,
+      Accounts, Regions, Purposes, Types, FirstSeen, LastSeen
+  | order by Spread desc, MaxSeverity desc, Findings desc
+tags: [aws, guardduty, network, asn, geolocation, threat-hunting, security]
+expected_output: |
+  Remote autonomous systems behind findings, ranked by spread and severity (sanitized).
+
+  AsnOrg                Asn    Country          Findings  MaxSeverity  Occurrences  Addresses  SampleIps       SubjectCount  Subjects      Spread  Accounts  Regions         Purposes                       FirstSeen                 LastSeen
+  EXAMPLE NETWORKS LTD  64496  Example Country  2         5            339          1          ["192.0.2.47"]  1             ["helpdesk"]  1       1         ["af-south-1"]  ["Discovery","InitialAccess"]  2026-09-02T14:49:53.000Z  2026-09-02T15:01:24.000Z

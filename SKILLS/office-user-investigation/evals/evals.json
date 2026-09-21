@@ -3,7 +3,7 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "Investigate the Office365 user vendor@partner.example.com on Anico for the last 90 days. The FPL sign-in reports aren't deployed there, just use the Office365 table.",
+      "prompt": "Investigate the Office365 user jane.doe@example.com on the target tenant for the last 90 days. The FPL sign-in reports aren't deployed there, just use the Office365 table.",
       "expected_output": "The skill should (1) confirm an Office365 index exists via list_indexes, (2) run the KQL query set (ip_summary, workload, operation, inbox_rules, oauth, timeline) against the Office365 table with rangeFrom/rangeTo covering 90 days, matching UserId case-insensitively, (3) geolocate every source IP offline, and (4) run build_report.py to produce a self-contained HTML report with a GeoIP map, KPI strip, executive summary, high-risk findings, inbox-rule detail, per-country tables, sign-in timeline and recommendations, plus a PDF.",
       "files": [],
       "expectations": [

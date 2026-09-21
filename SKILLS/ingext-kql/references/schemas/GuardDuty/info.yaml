@@ -1,0 +1,925 @@
+schema: GuardDuty
+description: >-
+  Amazon GuardDuty findings collected by Ingext from the GuardDuty detector for
+  an AWS account (the `GetFindings` / EventBridge finding document, SchemaVersion
+  2.0). GuardDuty is AWS's own managed threat-detection service: it continuously
+  reads CloudTrail management and data events, VPC Flow Logs, Route 53 resolver
+  DNS logs, EKS audit logs, RDS login activity, S3 data events, Lambda network
+  activity and the Runtime Monitoring agent, and emits a *finding* when it
+  decides something is suspicious. This is the verdict layer for AWS — use
+  GuardDuty for "what did AWS flag", and CloudTrail for "what actually
+  happened". The two are meant to be used together: a GuardDuty finding names
+  the principal, the IP and the window, and CloudTrail holds the individual API
+  calls inside that window.
+
+  Ingext stores the finding document itself — the transport envelope
+  (@customer / @event_type / @parser / @timestamp) is stripped and the contents
+  of @guardduty become the record, so every field below is addressed from the
+  top level with no prefix (Severity, Resource.AccessKeyDetails.UserName,
+  Service.Action.AwsApiCallAction.RemoteIpDetails.IpAddressV4).
+
+  Every record carries the same small envelope
+
+      Id / Arn / AccountId / Region / Partition / SchemaVersion
+      Type / Title / Description / Severity / Confidence
+      CreatedAt / UpdatedAt
+      Resource.{ResourceType, <OneOf>Details}
+      Service.{Action, AdditionalInfo, Archived, Count, DetectorId,
+               EventFirstSeen, EventLastSeen, Evidence, FeatureName,
+               ResourceRole, Detection, RuntimeDetails, EbsVolumeScanDetails}
+
+  and everything finding-specific lives in two polymorphic objects, each with
+  its own discriminator:
+
+    * Resource.ResourceType selects which one of the eleven `*Details`
+      siblings under `Resource` is populated — "AccessKey" fills
+      Resource.AccessKeyDetails and leaves InstanceDetails, S3BucketDetails,
+      KubernetesDetails and the rest explicitly null. WHAT was involved.
+    * Service.Action.ActionType selects which one of the `*Action` siblings
+      under Service.Action is populated — "AWS_API_CALL" fills
+      Service.Action.AwsApiCallAction and leaves DnsRequestAction,
+      NetworkConnectionAction, PortProbeAction, KubernetesApiCallAction and
+      RdsLoginAttemptAction null. WHAT WAS OBSERVED.
+
+  `Type` is the third, finer discriminator and is a structured string, not a
+  free-form label:
+
+      ThreatPurpose : ResourceTypeAffected / ThreatFamilyName . DetectionMechanism ! Artifact
+
+  so "Discovery:IAMUser/AnomalousBehavior" is the Discovery threat purpose
+  against an IAM user, and "CryptoCurrency:EC2/BitcoinTool.B!DNS" is the
+  CryptoCurrency purpose against EC2, family BitcoinTool, variant B, seen in
+  DNS. Split it rather than matching whole strings (pattern at the end of this
+  file).
+
+  The record is stored as a dynamic JSON document, so nested fields are reached
+  with dot notation (Resource.AccessKeyDetails.UserName) and array fields need
+  mv-expand (Resource.S3BucketDetails, Resource.InstanceDetails.NetworkInterfaces,
+  Service.Action.PortProbeAction.PortProbeDetails).
+
+  Seven traps are worth knowing before writing a query:
+
+    1. `timestamp` IS UpdatedAt, NOT CreatedAt. Ingext derives the time column
+       from the finding's UpdatedAt (confirmed on the collected samples: the
+       envelope's @timestamp 1788361953847 is UpdatedAt 2026-09-02T15:12:33.847Z
+       to the millisecond, while CreatedAt is 15:03:31.037Z nine minutes
+       earlier). So `where timestamp > ago(1d)` means "findings TOUCHED in the
+       last day", which is what you want for a queue but not for "findings
+       raised today" — filter `todatetime(CreatedAt) > ago(1d)` for that. A
+       finding that keeps aggregating keeps moving forward in time while its
+       CreatedAt stays fixed.
+    2. ONE FINDING IS MANY RECORDS. GuardDuty does not raise a new finding for
+       every occurrence — it AGGREGATES into the existing finding, bumping
+       Service.Count and UpdatedAt, and each update is collected as another row
+       with the same Id. The samples sit at Count 180 and 159 from roughly ten
+       minutes of activity. So `count()` counts collection snapshots, not
+       findings: use `dcount(Id)` for "how many findings", Service.Count for
+       "how many occurrences", and reduce to the current state before reporting
+       on anything mutable (Severity, Service.Archived, Service.Count) with
+         | extend LastUpdate = todatetime(UpdatedAt)
+         | summarize arg_max(LastUpdate, *) by Id
+       exactly as the MSDefender data types do.
+    3. Severity IS A NUMBER, NOT A LABEL. There is no "HIGH"/"MEDIUM" string
+       anywhere on the record — Severity is numeric (the samples are 2 and 5,
+       i.e. Low and Medium) and the band has to be derived. Current bands:
+       1.0-3.9 Low, 4.0-6.9 Medium, 7.0-8.9 High, 9.0-10.0 Critical (the
+       Critical band exists only for the Extended Threat Detection
+       AttackSequence findings). Wrap it in todouble() before comparing — it
+       arrives as a JSON integer when whole and a double otherwise.
+    4. THE FULL API LIST IS NOT IN Service.Action. For an AnomalousBehavior
+       finding, Service.Action.AwsApiCallAction.Api holds ONE representative
+       API ("DescribeInstances") even though the finding covers sixteen across
+       four services. The complete list lives in Service.AdditionalInfo.Value —
+       which is a JSON document encoded as a *string*, so it needs parse_json()
+       before you can reach anomalies.anomalousAPIs. Same for the user agent:
+       AwsApiCallAction.UserAgent is null on both samples and the real one is
+       at AdditionalInfo.Value's userAgent.fullUserAgent.
+    5. THE REMOTE IP MOVES WITH ActionType. There is no top-level IP field and
+       therefore no `_ip` GeoIP enrichment on this data type. Each action type
+       carries its own RemoteIpDetails at a different path, and PortProbeAction
+       buries it inside an array. Build one column with coalesce across the
+       paths before you group on it (pattern at the end of this file). The good
+       news is that GuardDuty ships its own geo and ASN inside RemoteIpDetails,
+       so the enrichment is not needed — but note Country.CountryCode is null
+       on the collected samples while Country.CountryName is populated, so
+       group on CountryName (or coalesce the two), not on the code.
+    6. Service.Archived IS THE SUPPRESSION FLAG AND IT IS MUTABLE. A
+       suppression rule auto-archives matching findings and an analyst can
+       archive by hand; archived findings keep being returned by the API and so
+       keep arriving. Any operational queue needs
+       `where tobool(coalesce(Service.Archived, false)) == false` applied AFTER
+       the arg_max reduction in trap 2, or a finding archived an hour ago
+       reappears from its older snapshot.
+    7. Service.ResourceRole SAYS WHICH WAY ROUND IT IS. "TARGET" means the
+       resource in `Resource` was acted upon; "ACTOR" means it did the acting.
+       The same finding type reads completely differently under the two — an
+       EC2 instance as ACTOR in a NetworkConnection finding is your instance
+       calling out to a known-bad host (probably compromised), as TARGET it is
+       something on the internet reaching in (probably just noise). Never
+       aggregate the two together.
+
+  A note on coverage: the collected samples are two CloudTrail-sourced
+  IAMUser/AnomalousBehavior findings, so the AccessKey resource shape, the
+  AWS_API_CALL action shape and the anomalous-behavior AdditionalInfo payload
+  are confirmed against this tenant's data. Everything else below (the EC2,
+  S3, EKS, ECS, Lambda, RDS and container resource shapes, the DNS / network /
+  port-probe / Kubernetes / RDS-login action shapes, Runtime Monitoring,
+  Malware Protection and the Extended Threat Detection sequence block) is
+  documented from the GuardDuty API reference so that a query can be written
+  against it, but the field set has NOT been confirmed here — run
+  `summarize count() by tostring(Resource.ResourceType), tostring(Service.Action.ActionType)`
+  first, then `project bag_keys(Resource)` / `project bag_keys(Service.Action)`
+  for the shape you care about, before relying on any field marked
+  "not present in the collected samples".
+
+  Fields that exist on every record carry no applicability list. Fields under
+  `Resource` carry applicableResourceTypes (the Resource.ResourceType values
+  that populate them) and fields under `Service.Action` carry
+  applicableActionTypes (the Service.Action.ActionType values that populate
+  them).
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Event timestamp (UTC), normalized to epoch milliseconds, converted from UpdatedAt — when GuardDuty last TOUCHED the finding, not when it raised it and not when the activity happened. Primary time column for range filters (e.g. where timestamp > ago(7d)), and the right one for an operational queue because an aggregating finding stays current. For 'findings raised in this window' filter todatetime(CreatedAt); for 'activity that happened in this window' filter todatetime(Service.EventFirstSeen) / Service.EventLastSeen."
+    sampleValues: ["2026-09-02T15:12:33.847Z"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  # ==========================================
+  # ENRICHMENT (Added by Ingext)
+  # ==========================================
+  - name: _behaviors
+    type: DynamicArray
+    description: "A list of behavior rule names that this event triggered. Each element is a string. Use mv-expand to flatten before grouping, e.g. `mv-expand _behaviors | summarize count() by Behavior = tostring(_behaviors)`."
+
+  # NOTE: there is no _ip enrichment on this data type. A GuardDuty finding has
+  # no top-level IP field — every address is nested under the action-specific
+  # RemoteIpDetails/LocalIpDetails objects, which the GeoIP enrichment does not
+  # reach. It is not needed: GuardDuty resolves city, country, lat/lon, ASN and
+  # ISP itself inside RemoteIpDetails. See the "UNIFIED REMOTE IP" pattern at
+  # the end of this file for collapsing the per-action paths into one column.
+
+  # ==========================================
+  # FINDING IDENTITY
+  # ==========================================
+  - name: Id
+    type: String
+    description: "The finding ID — a 32-character lowercase hex string, unique within the detector and STABLE for the life of the finding. The primary grouping key for this whole data type: GuardDuty aggregates repeat activity into an existing finding rather than raising a new one, so the same Id is collected over and over with a rising Service.Count and UpdatedAt (trap 2). `dcount(Id)` is how you count findings; `summarize arg_max(todatetime(UpdatedAt), *) by Id` is how you get their current state. Also the last path segment of Arn and the value the archive/feedback API calls take."
+    sampleValues: ["00000000000000000000000000000011"]
+
+  - name: Arn
+    type: String
+    description: "The finding's full ARN, arn:aws:guardduty:<region>:<account>:detector/<detectorId>/finding/<findingId>. Redundant with Region / AccountId / Service.DetectorId / Id but convenient as a single unique key, and the string to hand an operator for the AWS CLI. Note the console deep link is not in the record — build it as strcat(\"https://\", Region, \".console.aws.amazon.com/guardduty/home?region=\", Region, \"#/findings?fId=\", Id)."
+    sampleValues: ["arn:aws:guardduty:af-south-1:123456789012:detector/00000000000000000000000000000001/finding/00000000000000000000000000000011"]
+
+  - name: AccountId
+    type: String
+    description: "The 12-digit AWS account the finding was generated for — the account owning the affected resource, not necessarily the account the GuardDuty administrator is logged into. In a delegated-administrator / Organizations setup one detector reports for many member accounts, so this is the field to split a multi-account estate on. Joins to CloudTrail.recipientAccountId."
+    sampleValues: ["123456789012"]
+
+  - name: Region
+    type: String
+    description: "AWS region of the detector that produced the finding, which is the region the activity was observed in. GuardDuty is regional — a finding only ever covers its own region, and a detector must be enabled per region, so an unexpected region here (or a region with no findings at all) is itself worth checking. Global-service calls (IAM, STS) surface in the region the caller hit, typically us-east-1."
+    sampleValues: ["af-south-1", "us-east-1", "eu-west-1"]
+
+  - name: Partition
+    type: String
+    description: "AWS partition — \"aws\" for the commercial regions, \"aws-cn\" for China, \"aws-us-gov\" for GovCloud. Effectively constant in a single-partition estate."
+    sampleValues: ["aws"]
+
+  - name: SchemaVersion
+    type: String
+    description: "Version of the GuardDuty finding schema, as a string. \"2.0\" is current and is what everything in this file describes. Worth a `summarize count() by SchemaVersion` before a large hunt — a mixed-version lake means some fields documented here are absent on the older rows."
+    sampleValues: ["2.0"]
+
+  - name: Service.DetectorId
+    type: String
+    description: "The 32-character hex ID of the GuardDuty detector that produced the finding — one per account per region. Constant for a given (AccountId, Region) pair, so mainly useful for spotting a second detector or for building API calls. Not a security signal by itself."
+    sampleValues: ["00000000000000000000000000000001"]
+
+  - name: Service.ServiceName
+    type: String
+    description: "Always the literal \"guardduty\" on a finding record. Present for parity with other AWS security products; no filtering value."
+    sampleValues: ["guardduty"]
+
+  # ==========================================
+  # CLASSIFICATION
+  # ==========================================
+  - name: Type
+    type: String
+    description: >-
+      The finding type, and the single most important field on the record. It is
+      a STRUCTURED string, not a label:
+
+          ThreatPurpose:ResourceTypeAffected/ThreatFamilyName.DetectionMechanism!Artifact
+
+      with only the first three segments always present. Examples:
+      "Discovery:IAMUser/AnomalousBehavior", "InitialAccess:IAMUser/AnomalousBehavior",
+      "UnauthorizedAccess:EC2/SSHBruteForce", "CryptoCurrency:EC2/BitcoinTool.B!DNS",
+      "Backdoor:EC2/C&CActivity.B!DNS", "Impact:S3/MaliciousIPCaller",
+      "Policy:S3/BucketBlockPublicAccessDisabled",
+      "Execution:Runtime/NewBinaryExecuted", "AttackSequence:IAM/CompromisedCredentials".
+
+      Do not match whole strings — split it, because the threat purpose is the
+      ATT&CK-tactic-shaped axis you actually want to slice on and the affected
+      resource type is the second. See the "PARSING Type" pattern at the end of
+      this file. Note ThreatFamilyName can legitimately contain "&" (C&CActivity)
+      and "." (BitcoinTool.B), so split on "/" and take everything after it
+      rather than splitting on "." blindly. Full catalogue of threat purposes
+      and affected-resource values at the end of this file.
+    sampleValues: ["Discovery:IAMUser/AnomalousBehavior", "InitialAccess:IAMUser/AnomalousBehavior", "UnauthorizedAccess:EC2/SSHBruteForce", "CryptoCurrency:EC2/BitcoinTool.B!DNS", "Policy:S3/BucketBlockPublicAccessDisabled"]
+
+  - name: Title
+    type: String
+    description: "One-line human summary of the finding, generated by GuardDuty and already carrying the principal or resource name inline (\"The user IAMUser : helpdesk is anomalously invoking APIs commonly used in Discovery tactics.\"). Good as a display column, bad as a filter — it is templated per Type with the entity interpolated, so it is high-cardinality and changes wording between GuardDuty releases. Filter on Type and display Title."
+    sampleValues: ["The user IAMUser : helpdesk is anomalously invoking APIs commonly used in Discovery tactics."]
+
+  - name: Description
+    type: String
+    description: "The long-form explanation, multi-line (embedded \\n) and often the most information-dense field on the record: for an AnomalousBehavior finding it enumerates the APIs per service, names the source IP with its country and ASN, and then states WHY GuardDuty considered it suspicious (\"The organization ... has not been previously observed for this account\"). Worth projecting into an analyst-facing report verbatim. Use `has` / `contains` for free-text hunting across it; do not try to parse it — the structured form of the same content is in Service.AdditionalInfo.Value."
+
+  - name: Severity
+    type: Float
+    description: >-
+      Numeric severity, 1.0 to 10.0. THERE IS NO SEVERITY LABEL ON THE RECORD —
+      the bands have to be derived:
+
+          1.0 - 3.9   Low
+          4.0 - 6.9   Medium
+          7.0 - 8.9   High
+          9.0 - 10.0  Critical   (Extended Threat Detection AttackSequence only)
+
+      It arrives as a JSON integer when whole (the samples are 2 and 5) and a
+      double otherwise, so always wrap it: `where todouble(Severity) >= 7`.
+      Severity is per finding TYPE and is mostly fixed by it, so it is a coarse
+      triage axis, not a risk score — an aggregating Low finding with a
+      Service.Count in the hundreds and an unusual ASN (the samples) deserves
+      more attention than its 2 suggests. Severity is mutable in principle
+      (GuardDuty can revise it as a finding aggregates), so read it from the
+      arg_max-reduced row.
+    sampleValues: ["2", "5", "8"]
+
+  - name: Confidence
+    type: Float
+    description: "GuardDuty's confidence in the finding. NULL on both collected samples and on most finding types — GuardDuty populates it only for a few families, so do not filter on it and do not present it as a column unless a `summarize count() by Confidence` over your own data shows it is populated. Not the same thing as Severity."
+
+  # ==========================================
+  # LIFECYCLE / AGGREGATION
+  # ==========================================
+  - name: CreatedAt
+    type: String
+    description: "ISO-8601 UTC time GuardDuty RAISED the finding — fixed for the life of the finding. This is the detection time, and `CreatedAt - Service.EventFirstSeen` is GuardDuty's detection latency (about 13.5 minutes on the samples, which is typical for the CloudTrail-based anomaly detectors). Use todatetime(CreatedAt) for 'new findings' queries; the `timestamp` column is UpdatedAt, not this (trap 1)."
+    sampleValues: ["2026-09-02T15:03:31.037Z"]
+
+  - name: UpdatedAt
+    type: String
+    description: "ISO-8601 UTC time the finding was last updated — bumped every time GuardDuty aggregates another occurrence into it, and also by an archive or a feedback submission. The source of the `timestamp` column, and the ordering key for the arg_max reduction in trap 2: `extend LastUpdate = todatetime(UpdatedAt) | summarize arg_max(LastUpdate, *) by Id`. `UpdatedAt - CreatedAt` is how long the finding has been live and still accumulating."
+    sampleValues: ["2026-09-02T15:12:33.847Z"]
+
+  - name: Service.EventFirstSeen
+    type: String
+    description: "ISO-8601 UTC time of the FIRST occurrence of the activity the finding describes. The real start of the incident — earlier than CreatedAt, because GuardDuty needs to observe before it decides. This is the timestamp to carry into a CloudTrail pivot as the lower bound."
+    sampleValues: ["2026-09-02T14:49:53.000Z"]
+
+  - name: Service.EventLastSeen
+    type: String
+    description: "ISO-8601 UTC time of the MOST RECENT occurrence of the activity, advancing as the finding aggregates. `EventLastSeen - EventFirstSeen` is the activity window to pivot on in CloudTrail, and `now() - EventLastSeen` says whether the activity is still going. Note the window can close while the finding keeps being collected — a finding whose EventLastSeen is hours old has gone quiet even though it is still being returned by the API."
+    sampleValues: ["2026-09-02T15:01:24.000Z"]
+
+  - name: Service.Count
+    type: Integer
+    description: "The number of occurrences GuardDuty has aggregated into this finding — 180 and 159 on the samples, from roughly eleven minutes of activity. This is the volume signal, and it is what makes a Low-severity anomaly finding interesting; a finding that climbs from 5 to 500 between two collection snapshots is an active, escalating one. Mutable, so read it from the arg_max-reduced row, and use max(Service.Count) rather than sum() if you ever group without reducing first (summing would multiply-count the snapshots)."
+    sampleValues: ["180", "159", "1"]
+
+  - name: Service.Archived
+    type: Boolean
+    description: "True when the finding has been archived — either by an analyst in the console or automatically by a GuardDuty suppression rule matching it. Archived findings are NOT deleted: they keep being returned and keep being collected, so this is a suppression flag, not an absence (trap 6). Guard an operational queue with `where tobool(coalesce(Service.Archived, false)) == false` applied after the arg_max reduction, and query `Service.Archived == true` deliberately to audit what the suppression rules are hiding — a suppression rule that silently swallows a real finding type is a classic blind spot."
+    sampleValues: ["false", "true"]
+
+  - name: Service.UserFeedback
+    type: String
+    description: "Analyst feedback submitted in the GuardDuty console for this finding (\"USEFUL\" / \"NOT_USEFUL\"). Null on both collected samples and on the large majority of findings — most teams never submit it. Useful only as a tuning signal when your team does use it."
+
+  - name: Service.FeatureName
+    type: String
+    description: >-
+      The GuardDuty data source / protection feature that produced the finding,
+      and the fastest way to tell a CloudTrail-derived finding from a
+      network-derived or runtime-derived one. Confirmed on the collected
+      samples: "CloudTrailManagementEvent". Other values to expect, depending on
+      which protection plans are enabled: CloudTrailDataEvent / S3DataEvents
+      (S3 object-level), DnsLogs (Route 53 resolver), FlowLogs (VPC Flow Logs),
+      EksAudit (EKS control plane), RuntimeMonitoring (the EC2/ECS/EKS agent),
+      Lambda (Lambda network activity), RdsLoginActivity, EbsVolumes (Malware
+      Protection scan). Run `summarize dcount(Id) by tostring(Service.FeatureName)`
+      over your own data first — the exact spellings vary with the GuardDuty
+      release and with which plans your account has on, and a feature with zero
+      findings usually means the plan is simply not enabled rather than that
+      nothing was found.
+    sampleValues: ["CloudTrailManagementEvent", "DnsLogs", "FlowLogs", "EksAudit", "RuntimeMonitoring"]
+
+  - name: Service.ResourceRole
+    type: String
+    description: "Which side of the activity the resource in `Resource` was on — \"TARGET\" (the resource was acted upon) or \"ACTOR\" (the resource initiated the activity). Trap 7: this inverts the meaning of the finding and must never be aggregated across. For an EC2 NetworkConnection finding, ACTOR is your instance calling a known-bad destination — treat as compromised — while TARGET is an internet host reaching in, which for an internet-facing instance is background noise. Both samples are TARGET (the IAM user's credentials were the thing being used)."
+    sampleValues: ["TARGET", "ACTOR"]
+
+  # ==========================================
+  # RESOURCE (what was involved) — polymorphic, keyed by Resource.ResourceType
+  # ==========================================
+  - name: Resource.ResourceType
+    type: String
+    description: >-
+      THE FIRST DISCRIMINATOR. Selects which one of the sibling `*Details`
+      objects under `Resource` is populated; every other sibling is present but
+      explicitly null, so `isnotnull(Resource.InstanceDetails)` is a valid test
+      but pinning ResourceType is clearer and cheaper. Values: "AccessKey" (an
+      IAM principal's credentials — Resource.AccessKeyDetails), "Instance" (EC2
+      — Resource.InstanceDetails), "S3Bucket" (Resource.S3BucketDetails, an
+      ARRAY), "EKSCluster", "ECSCluster", "KubernetesCluster", "Container",
+      "RDSDBInstance", "RDSLimitlessDB", "Lambda", "EBSVolume". Both collected
+      samples are "AccessKey". Confirm the set in your own lake with
+      `summarize dcount(Id) by tostring(Resource.ResourceType)` before writing
+      a per-resource report.
+    sampleValues: ["AccessKey", "Instance", "S3Bucket", "EKSCluster", "Container"]
+
+  # ----- AccessKey (IAM principal) — CONFIRMED on the collected samples -----
+  - name: Resource.AccessKeyDetails.UserName
+    type: String
+    description: "The name of the IAM principal whose credentials were used — an IAM user name for UserType IAMUser, a ROLE name for AssumedRole (not the session name), \"root\" for the account root user, or an AWS service name. The primary 'who' column for credential-abuse findings and the field to group a compromised-credential report on. Joins to CloudTrail: coalesce(userIdentity.sessionContext.sessionIssuer.userName, userIdentity.userName)."
+    applicableResourceTypes: ["AccessKey"]
+    sampleValues: ["helpdesk", "contoso-prod-ec2-role", "root"]
+
+  - name: Resource.AccessKeyDetails.UserType
+    type: String
+    description: "The kind of IAM principal: \"IAMUser\" (a long-lived user — the highest-signal value, because a human IAM user calling from an unusual network is rarely legitimate in an estate that uses SSO), \"AssumedRole\" (a temporary STS session, by far the most common), \"Root\", \"FederatedUser\", \"AWSService\". Mirrors CloudTrail's userIdentity.type."
+    applicableResourceTypes: ["AccessKey"]
+    sampleValues: ["IAMUser", "AssumedRole", "Root", "FederatedUser", "AWSService"]
+
+  - name: Resource.AccessKeyDetails.AccessKeyId
+    type: String
+    description: "The access key ID used to make the calls — AKIA... for a long-lived IAM user key, ASIA... for a temporary STS session credential. The join key into CloudTrail (userIdentity.accessKeyId) for pulling the individual API calls behind the finding, and the value to hand an incident responder for the actual containment action (deactivate the key, or revoke the role's sessions issued before now). NOTE the two samples share one principal but carry DIFFERENT ASIA keys — a temporary credential is re-issued per session, so group an investigation on PrincipalId or UserName, not on AccessKeyId."
+    applicableResourceTypes: ["AccessKey"]
+    sampleValues: ["ASIAEXAMPLEKEY000001", "ASIAEXAMPLEKEY000002"]
+
+  - name: Resource.AccessKeyDetails.PrincipalId
+    type: String
+    description: "The unique IAM principal ID — AIDA... for a user, AROA... for a role (and 'AROA...:<sessionName>' in CloudTrail, though GuardDuty reports the bare principal). STABLE across sessions and across key rotations, unlike AccessKeyId, and stable across a user rename, unlike UserName — so this is the correct key for correlating every finding that touches one identity. Both samples carry the same PrincipalId, which is what ties the Discovery and InitialAccess findings together into one incident."
+    applicableResourceTypes: ["AccessKey"]
+    sampleValues: ["AIDAEXAMPLEPRINCIPAL1"]
+
+  # ----- Instance (EC2) — documented from the API reference, not in the collected samples -----
+  - name: Resource.InstanceDetails.InstanceId
+    type: String
+    description: "EC2 instance ID of the affected instance. The primary key for EC2 findings and the join into CloudTrail (requestParameters/responseElements instancesSet) and into any asset inventory. Not present in the collected samples."
+    applicableResourceTypes: ["Instance"]
+    sampleValues: ["i-0123456789abcdef0"]
+
+  - name: Resource.InstanceDetails.InstanceType
+    type: String
+    description: "EC2 instance type. Worth projecting on CryptoCurrency findings specifically — a sudden GPU or high-CPU type in a CryptoCurrency:EC2/* finding is the mining workload itself. Not present in the collected samples."
+    applicableResourceTypes: ["Instance"]
+    sampleValues: ["t3.micro", "p3.2xlarge"]
+
+  - name: Resource.InstanceDetails.InstanceState
+    type: String
+    description: "Lifecycle state of the instance at the time of the finding (\"running\", \"stopped\", \"terminated\"). A finding against a terminated instance is history, not an incident. Not present in the collected samples."
+    applicableResourceTypes: ["Instance"]
+    sampleValues: ["running", "stopped", "terminated"]
+
+  - name: Resource.InstanceDetails.LaunchTime
+    type: String
+    description: "When the instance was launched. `CreatedAt - LaunchTime` under a minute is the signature of an attacker-launched instance (the CryptoCurrency and ResourceConsumption families), as opposed to a long-lived instance that was compromised later. Not present in the collected samples."
+    applicableResourceTypes: ["Instance"]
+
+  - name: Resource.InstanceDetails.AvailabilityZone
+    type: String
+    description: "Availability zone of the instance. Not present in the collected samples."
+    applicableResourceTypes: ["Instance"]
+    sampleValues: ["us-east-1a"]
+
+  - name: Resource.InstanceDetails.Platform
+    type: String
+    description: "Instance platform — \"windows\", or null/absent for Linux (AWS reports Linux as the absence of a value, not as a string). Test with isempty(), not equality. Not present in the collected samples."
+    applicableResourceTypes: ["Instance"]
+    sampleValues: ["windows"]
+
+  - name: Resource.InstanceDetails.ImageId
+    type: String
+    description: "AMI ID the instance was launched from; ImageDescription alongside it carries the AMI description text. An unrecognised public AMI in a CryptoCurrency finding is worth pivoting on. Not present in the collected samples."
+    applicableResourceTypes: ["Instance"]
+    sampleValues: ["ami-0123456789abcdef0"]
+
+  - name: Resource.InstanceDetails.IamInstanceProfile.Arn
+    type: String
+    description: "ARN of the instance profile attached to the instance — i.e. the role whose credentials an attacker on this instance can reach through IMDS. The single most important field when triaging a compromised EC2 instance, because it says what the blast radius is, and the role name in it is what to look for next as Resource.AccessKeyDetails.UserName on a separate AccessKey finding. Not present in the collected samples."
+    applicableResourceTypes: ["Instance"]
+
+  - name: Resource.InstanceDetails.NetworkInterfaces
+    type: DynamicArray
+    description: "ARRAY of the instance's network interfaces — mv-expand before reaching in. Each element carries NetworkInterfaceId, PrivateIpAddress, PrivateDnsName, PublicIp, PublicDnsName, Ipv6Addresses[], SubnetId, VpcId and SecurityGroups[] ({GroupId, GroupName}). This is where the instance's own addressing lives; a PortProbe or NetworkConnection finding's LocalIpDetails should match one of these PrivateIpAddress values. The SecurityGroups list is what answers 'was it exposed' — the presence of PublicIp plus a permissive group is the exposure story. Not present in the collected samples."
+    applicableResourceTypes: ["Instance"]
+
+  - name: Resource.InstanceDetails.Tags
+    type: DynamicArray
+    description: "ARRAY of the instance's EC2 tags as {Key, Value} pairs — mv-expand, then filter on Key. The route to ownership and environment for an EC2 finding (the record has no other notion of who owns the resource), so `mv-apply` out the \"Owner\" / \"Environment\" / \"Application\" tags into columns when building a report someone has to action. Not present in the collected samples."
+    applicableResourceTypes: ["Instance"]
+
+  # ----- S3 -----
+  - name: Resource.S3BucketDetails
+    type: DynamicArray
+    description: "AN ARRAY of the affected buckets — one finding can name several, so mv-expand it; treating it as an object silently returns nothing. Each element carries Name, Arn, Type (\"Destination\" / \"Source\"), CreatedAt, Owner.Id, Tags[], DefaultServerSideEncryption ({EncryptionType, KmsMasterKeyArn}) and PublicAccess ({EffectivePermission — \"PUBLIC\" / \"NOT_PUBLIC\", PermissionConfiguration.{BucketLevelPermissions, AccountLevelPermissions}}). For a Policy:S3/* or Discovery:S3/* finding, PublicAccess.EffectivePermission is the fact that matters and DefaultServerSideEncryption.EncryptionType is the second. Not present in the collected samples."
+    applicableResourceTypes: ["S3Bucket"]
+
+  # ----- Kubernetes / EKS / ECS / containers -----
+  - name: Resource.EksClusterDetails
+    type: Dynamic
+    description: "The affected EKS cluster — {Name, Arn, VpcId, Status, CreatedAt, Tags[]}. Pairs with Resource.KubernetesDetails (the principal and workload inside the cluster) and with Service.Action.KubernetesApiCallAction (what they called). Not present in the collected samples."
+    applicableResourceTypes: ["EKSCluster", "KubernetesCluster"]
+
+  - name: Resource.KubernetesDetails
+    type: Dynamic
+    description: >-
+      The Kubernetes-level actor and workload, in two sub-objects.
+      KubernetesUserDetails = {Username, Uid, Groups[], SessionName[],
+      ImpersonatedUser} — the RBAC subject; `Username` values beginning
+      "system:anonymous" or Groups containing "system:unauthenticated" are the
+      anonymous-access findings and are always worth surfacing.
+      KubernetesWorkloadDetails = {Name, Type, Uid, Namespace, HostNetwork,
+      HostIPC, HostPID, ServiceAccountName, Containers[], Volumes[]} — the pod
+      or workload; HostNetwork/HostPID/HostIPC true, or a hostPath entry in
+      Volumes[], is the container-escape posture that the Privilege Escalation
+      findings are about. Containers[] and Volumes[] are arrays — mv-expand.
+      Not present in the collected samples.
+    applicableResourceTypes: ["EKSCluster", "KubernetesCluster", "Container"]
+
+  - name: Resource.EcsClusterDetails
+    type: Dynamic
+    description: "The affected ECS cluster — {Name, Arn, Status, ActiveServicesCount, RegisteredContainerInstancesCount, RunningTasksCount, Tags[], TaskDetails}. TaskDetails carries the specific task ({Arn, DefinitionArn, Version, TaskCreatedAt, StartedAt, StartedBy, Group, Containers[]}), which is where the offending container is named. Not present in the collected samples."
+    applicableResourceTypes: ["ECSCluster"]
+
+  - name: Resource.ContainerDetails
+    type: Dynamic
+    description: "The specific container involved — {ContainerRuntime, Id, Name, Image, ImagePrefix, VolumeMounts[], SecurityContext.Privileged}. `Image` is the field to pivot on for a compromised-image story (and to check against your registry), and SecurityContext.Privileged true is the escalation precondition. Not present in the collected samples."
+    applicableResourceTypes: ["Container", "ECSCluster", "EKSCluster"]
+
+  # ----- Lambda / RDS / EBS -----
+  - name: Resource.LambdaDetails
+    type: Dynamic
+    description: "The affected Lambda function — {FunctionArn, FunctionName, FunctionVersion, Description, LastModifiedAt, RevisionId, Role, VpcConfig, Tags[]}. Populated by the Lambda Protection network-activity findings; `Role` is the blast radius, as IamInstanceProfile is for EC2. Not present in the collected samples."
+    applicableResourceTypes: ["Lambda"]
+
+  - name: Resource.RdsDbInstanceDetails
+    type: Dynamic
+    description: "The affected RDS instance — {DbInstanceIdentifier, DbInstanceArn, Engine, EngineVersion, DbClusterIdentifier, Tags[]}. Populated by the RDS Protection login-activity findings, alongside Resource.RdsDbUserDetails and Service.Action.RdsLoginAttemptAction. Not present in the collected samples."
+    applicableResourceTypes: ["RDSDBInstance", "RDSLimitlessDB"]
+
+  - name: Resource.RdsDbUserDetails
+    type: Dynamic
+    description: "The database user behind an RDS login finding — {User, Application, Database, Ssl, AuthMethod}. This is the DATABASE-level identity, entirely separate from the IAM identity in AccessKeyDetails; a brute-force finding names the database user here and the source IP in Service.Action.RdsLoginAttemptAction.RemoteIpDetails. Not present in the collected samples."
+    applicableResourceTypes: ["RDSDBInstance", "RDSLimitlessDB"]
+
+  - name: Resource.EbsVolumeDetails
+    type: Dynamic
+    description: "EBS volumes covered by a Malware Protection scan — {ScannedVolumeDetails[], SkippedVolumeDetails[]}, each element {VolumeArn, VolumeType, DeviceName, VolumeSizeInGB, EncryptionType, SnapshotArn, KmsKeyArn}. Read together with Service.EbsVolumeScanDetails, which holds the scan verdict. A non-empty SkippedVolumeDetails[] means part of the instance was NOT scanned — a clean result over a partial scan is not a clean instance. Not present in the collected samples."
+    applicableResourceTypes: ["EBSVolume", "Instance"]
+
+  # ==========================================
+  # ACTION (what was observed) — polymorphic, keyed by Service.Action.ActionType
+  # ==========================================
+  - name: Service.Action.ActionType
+    type: String
+    description: >-
+      THE SECOND DISCRIMINATOR. Selects which one of the sibling `*Action`
+      objects under Service.Action is populated; the others are present and
+      explicitly null. Values: "AWS_API_CALL" (a control-plane or data-plane
+      API call seen in CloudTrail — Service.Action.AwsApiCallAction),
+      "DNS_REQUEST" (Route 53 resolver query — DnsRequestAction),
+      "NETWORK_CONNECTION" (a VPC Flow Logs connection — NetworkConnectionAction),
+      "PORT_PROBE" (inbound scanning — PortProbeAction),
+      "KUBERNETES_API_CALL" (EKS audit log — KubernetesApiCallAction),
+      "RDS_LOGIN_ATTEMPT" (RdsLoginAttemptAction), plus the Kubernetes RBAC
+      variants "KUBERNETES_PERMISSION_CHECKED", "KUBERNETES_ROLE_BINDING" and
+      "KUBERNETES_ROLE_CREATED" which fill the corresponding
+      Service.Action.Kubernetes*Details objects. Both collected samples are
+      "AWS_API_CALL". This is the field that decides where the remote IP lives
+      (trap 5), so pin it — or coalesce — before touching any address.
+    sampleValues: ["AWS_API_CALL", "DNS_REQUEST", "NETWORK_CONNECTION", "PORT_PROBE", "KUBERNETES_API_CALL", "RDS_LOGIN_ATTEMPT"]
+
+  # ----- AWS_API_CALL — CONFIRMED on the collected samples -----
+  - name: Service.Action.AwsApiCallAction.Api
+    type: String
+    description: "The API operation observed. TRAP 4: for an AnomalousBehavior finding this is ONE REPRESENTATIVE call (\"DescribeInstances\" on a finding whose Description lists sixteen APIs across four services) — it is not a summary and counting it undercounts badly. The full list is in Service.AdditionalInfo.Value under anomalies.anomalousAPIs. For the non-anomaly finding types (MaliciousIPCaller, TorIPCaller, the Policy family) this field IS the whole story. Joins to CloudTrail.eventName."
+    applicableActionTypes: ["AWS_API_CALL"]
+    sampleValues: ["DescribeInstances", "StartSession", "PutBucketPolicy", "CreateUser"]
+
+  - name: Service.Action.AwsApiCallAction.ServiceName
+    type: String
+    description: "The AWS service endpoint the call went to, in '<service>.amazonaws.com' form. Same caveat as Api — on an anomaly finding it names only the service of the representative call. Joins to CloudTrail.eventSource."
+    applicableActionTypes: ["AWS_API_CALL"]
+    sampleValues: ["ec2.amazonaws.com", "ssm.amazonaws.com", "s3.amazonaws.com"]
+
+  - name: Service.Action.AwsApiCallAction.CallerType
+    type: String
+    description: "How the caller was identified — \"Remote IP\" (an address, so RemoteIpDetails is populated and DomainDetails is null) or \"Domain\" (an AWS-internal or service caller identified by DNS name, so DomainDetails.Domain is populated and RemoteIpDetails is null). Check this before reaching for the IP, or half your rows come back empty for no visible reason."
+    applicableActionTypes: ["AWS_API_CALL"]
+    sampleValues: ["Remote IP", "Domain"]
+
+  - name: Service.Action.AwsApiCallAction.DomainDetails
+    type: Dynamic
+    description: "{Domain} — the DNS name of the caller, populated only when CallerType is \"Domain\" (typically an AWS service calling on your behalf, e.g. cloudformation.amazonaws.com). Null on both samples."
+    applicableActionTypes: ["AWS_API_CALL"]
+
+  - name: Service.Action.AwsApiCallAction.ErrorCode
+    type: String
+    description: "The AWS error code if the representative call failed (\"AccessDenied\", \"UnauthorizedOperation\", \"Client.UnauthorizedOperation\"), null if it succeeded — null on both samples, which is itself the finding: the anomalous Discovery calls all SUCCEEDED. Errors change the reading of a finding: an enumeration burst that is entirely AccessDenied is a failed attempt, the same burst with no errors is a successful one. Joins to CloudTrail.errorCode; note the per-call success/failure for an anomaly finding is in Service.AdditionalInfo.Value's anomalousAPIs (each entry is suffixed \":success\" or \":error\")."
+    applicableActionTypes: ["AWS_API_CALL"]
+    sampleValues: ["AccessDenied", "UnauthorizedOperation"]
+
+  - name: Service.Action.AwsApiCallAction.UserAgent
+    type: String
+    description: "User agent of the caller. TRAP 4: NULL on both collected AnomalousBehavior samples even though the finding does know the user agent — the real value is at Service.AdditionalInfo.Value's userAgent.fullUserAgent (\"Mozilla/5.0 ... Chrome/151.0.0.0 ...\", categorised as \"browser\"). Coalesce the two before reporting. When populated here it is the same string CloudTrail.userAgent carries, and a browser UA on a programmatic API is a strong console-session signal."
+    applicableActionTypes: ["AWS_API_CALL"]
+
+  - name: Service.Action.AwsApiCallAction.RemoteAccountDetails
+    type: Dynamic
+    description: "{AccountId, Affiliated} — the AWS account the call came FROM, when the caller was another AWS account. `Affiliated` is the field that matters: false means the calling account is outside your organization, which on a cross-account data-access finding is the whole story. Null on both samples (the calls came from a remote IP, not another account)."
+    applicableActionTypes: ["AWS_API_CALL"]
+
+  - name: Service.Action.AwsApiCallAction.AffectedResources
+    type: Dynamic
+    description: "A free-form OBJECT (not an array) keyed by AWS resource type, e.g. {\"AWS::S3::Bucket\": \"my-bucket\"}. Empty ({}) on both samples, as it is for most API-call findings. Enumerate with bag_keys() rather than assuming a key; it is populated mainly for the S3 and IAM families."
+    applicableActionTypes: ["AWS_API_CALL"]
+
+  # ----- The RemoteIpDetails shape, shared by every action type -----
+  - name: Service.Action.AwsApiCallAction.RemoteIpDetails
+    type: Dynamic
+    description: >-
+      The remote address and GuardDuty's own geo/ASN resolution of it — the
+      single richest object on the record and the reason this data type needs
+      no _ip enrichment. Shape (identical wherever RemoteIpDetails appears,
+      under any action type):
+
+        IpAddressV4        the address (the field you almost always want)
+        IpAddressV6        null unless the call came over IPv6
+        City.CityName
+        Country.CountryName    populated
+        Country.CountryCode    NULL on the collected samples — do not group on it
+        GeoLocation.Lat / .Lon
+        Organization.Asn       the AS number, delivered as a STRING ("64496")
+        Organization.AsnOrg    the AS organisation name
+        Organization.Isp / .Org
+
+      Organization.AsnOrg is the highest-signal element for the
+      AnomalousBehavior family, because the "why" in the Description is usually
+      exactly "this ASN has not been previously observed for this account" —
+      so the ASN, not the country, is what GuardDuty actually reacted to.
+      Group on Organization.Asn for network-level correlation and on
+      Country.CountryName (never CountryCode) for geography, and remember Asn
+      is a string so it sorts lexically unless you toint() it.
+    applicableActionTypes: ["AWS_API_CALL"]
+
+  - name: Service.Action.AwsApiCallAction.RemoteIpDetails.IpAddressV4
+    type: String
+    description: "The remote IPv4 address the API calls came from. The pivot key into CloudTrail (sourceIPAddress), into Zscaler/Fortigate egress logs, and into threat intel. On the collected samples both findings name the same address, which is what makes them one incident rather than two."
+    applicableActionTypes: ["AWS_API_CALL"]
+    sampleValues: ["192.0.2.47"]
+
+  - name: Service.Action.AwsApiCallAction.RemoteIpDetails.Organization.Asn
+    type: String
+    description: "AS number of the remote address, delivered as a STRING. The grouping key GuardDuty's own anomaly logic uses — see Service.AdditionalInfo.Value's unusualASNsAccountProfiling, which on both samples names exactly this ASN as the reason the finding fired. toint() it before any numeric comparison or ordering."
+    applicableActionTypes: ["AWS_API_CALL"]
+    sampleValues: ["64496"]
+
+  - name: Service.Action.AwsApiCallAction.RemoteIpDetails.Organization.AsnOrg
+    type: String
+    description: "Name of the organisation owning the AS. The human-readable form of the anomaly — a residential ISP or a hosting/VPN provider here, on an account whose profiled ASNs are all cloud providers, is the finding in one column."
+    applicableActionTypes: ["AWS_API_CALL"]
+    sampleValues: ["EXAMPLE NETWORKS LTD"]
+
+  - name: Service.Action.AwsApiCallAction.RemoteIpDetails.Country.CountryName
+    type: String
+    description: "Country of the remote address, as a name. Use this rather than Country.CountryCode, which is NULL on the collected samples despite CountryName being populated (trap 5)."
+    applicableActionTypes: ["AWS_API_CALL"]
+    sampleValues: ["Example Country"]
+
+  - name: Service.Action.AwsApiCallAction.RemoteIpDetails.City.CityName
+    type: String
+    description: "City of the remote address. Combine with GeoLocation.Lat/.Lon for an impossible-travel check against the same principal's other findings or against its GSuite/Office365 sign-ins."
+    applicableActionTypes: ["AWS_API_CALL"]
+    sampleValues: ["Example City"]
+
+  # ----- DNS_REQUEST -----
+  - name: Service.Action.DnsRequestAction
+    type: Dynamic
+    description: "{Domain, DomainWithSuffix, Protocol, Blocked} — a DNS query made by a resource in your VPC, from the Route 53 resolver logs. `Domain` is the queried name and is the IOC; `DomainWithSuffix` is the effective second-level domain, which is the better grouping key for DGA and tunnelling families. `Blocked` says whether a DNS firewall rule stopped it — a blocked C&C lookup is contained, an unblocked one is not, and that distinction belongs in any report. There is NO RemoteIpDetails under this action type: the remote party is a domain, so the unified-IP pattern yields nothing here and the domain is the pivot instead. Backs the Backdoor:EC2/C&CActivity.B!DNS, Trojan:EC2/DNSDataExfiltration, CryptoCurrency:EC2/BitcoinTool.B!DNS and Impact:EC2/MaliciousDomainRequest.Reputation families. Not present in the collected samples."
+    applicableActionTypes: ["DNS_REQUEST"]
+
+  # ----- NETWORK_CONNECTION -----
+  - name: Service.Action.NetworkConnectionAction
+    type: Dynamic
+    description: >-
+      A network connection observed in VPC Flow Logs —
+      {ConnectionDirection, Blocked, Protocol, LocalIpDetails.IpAddressV4,
+      LocalPortDetails.{Port, PortName}, LocalNetworkInterface,
+      RemoteIpDetails (the full shape documented above),
+      RemotePortDetails.{Port, PortName}}. Read ConnectionDirection
+      ("OUTBOUND" / "INBOUND" / "UNKNOWN") together with
+      Service.ResourceRole (trap 7): OUTBOUND + ACTOR is your instance talking
+      to a known-bad host and is the serious case; INBOUND + TARGET is the
+      internet knocking. `Blocked` tells you whether a security group or NACL
+      already stopped it. LocalIpDetails.IpAddressV4 should match one of the
+      instance's Resource.InstanceDetails.NetworkInterfaces entries.
+      Not present in the collected samples.
+    applicableActionTypes: ["NETWORK_CONNECTION"]
+
+  # ----- PORT_PROBE -----
+  - name: Service.Action.PortProbeAction
+    type: Dynamic
+    description: "{Blocked, PortProbeDetails[]} — inbound scanning against an instance. PortProbeDetails IS AN ARRAY (one element per probed port), each element {LocalPortDetails.{Port, PortName}, LocalIpDetails.IpAddressV4, RemoteIpDetails}, so the remote address is two levels inside an array and needs mv-expand before it can be reached — this is the path the unified-IP pattern at the end of this file has to special-case. array_length(Service.Action.PortProbeAction.PortProbeDetails) is the breadth of the scan and is a better severity signal than the finding's own Severity. Backs Recon:EC2/PortProbeUnprotectedPort and Recon:EC2/PortProbeEMRUnprotectedPort. Not present in the collected samples."
+    applicableActionTypes: ["PORT_PROBE"]
+
+  # ----- KUBERNETES_API_CALL -----
+  - name: Service.Action.KubernetesApiCallAction
+    type: Dynamic
+    description: "An EKS control-plane call from the audit log — {RequestUri, Verb, Resource, ResourceName, Namespace, Subresource, SourceIps[], UserAgent, StatusCode, Parameters, RemoteIpDetails}. `Verb` + `Resource` is the operation (\"create\" on \"pods\"), `StatusCode` 403 versus 200 separates a blocked attempt from a successful one, and SourceIps[] IS AN ARRAY (the X-Forwarded-For chain) — mv-expand it, and prefer RemoteIpDetails when present. The acting RBAC subject is in Resource.KubernetesDetails.KubernetesUserDetails, not here. Not present in the collected samples."
+    applicableActionTypes: ["KUBERNETES_API_CALL"]
+
+  # ----- RDS_LOGIN_ATTEMPT -----
+  - name: Service.Action.RdsLoginAttemptAction
+    type: Dynamic
+    description: "{RemoteIpDetails, LoginAttributes[]} — an RDS Protection login finding. LoginAttributes IS AN ARRAY, each element {User, Application, FailedLoginAttempts, SuccessfulLoginAttempts}; mv-expand it and read the two counters together, because a brute force with FailedLoginAttempts in the hundreds and SuccessfulLoginAttempts 0 is an attempt while the same row with SuccessfulLoginAttempts 1 is a breach. Not present in the collected samples."
+    applicableActionTypes: ["RDS_LOGIN_ATTEMPT"]
+
+  # ----- Kubernetes RBAC variants -----
+  - name: Service.Action.KubernetesPermissionCheckedDetails
+    type: Dynamic
+    description: "{Verb, Resource, Namespace, Allowed} — a SelfSubjectAccessReview / permission probe inside a cluster, i.e. a principal asking what it is allowed to do. Backs the Discovery:Kubernetes/SuccessfulAnonymousAccess family. Not present in the collected samples."
+    applicableActionTypes: ["KUBERNETES_PERMISSION_CHECKED"]
+
+  - name: Service.Action.KubernetesRoleBindingDetails
+    type: Dynamic
+    description: "{Kind, Name, Uid, RoleRefName, RoleRefKind} — a RoleBinding or ClusterRoleBinding that was created. A binding whose RoleRefName is \"cluster-admin\" is the privilege-escalation finding. Not present in the collected samples."
+    applicableActionTypes: ["KUBERNETES_ROLE_BINDING"]
+
+  - name: Service.Action.KubernetesRoleDetails
+    type: Dynamic
+    description: "{Kind, Name, Uid} — a Role or ClusterRole that was created or modified. Read with KubernetesRoleBindingDetails to reconstruct the escalation. Not present in the collected samples."
+    applicableActionTypes: ["KUBERNETES_ROLE_CREATED"]
+
+  # ==========================================
+  # ADDITIONAL INFO — the anomaly explanation, as a JSON *string*
+  # ==========================================
+  - name: Service.AdditionalInfo.Type
+    type: String
+    description: "The shape of the AdditionalInfo payload. \"default\" on both collected samples, which is the anomalous-behavior shape documented below. Other values GuardDuty emits for other families include \"THREAT_INTELLIGENCE\" and \"MALWARE_SCAN\" style payloads whose Value carries a different key set entirely, so branch on this before parsing rather than assuming the anomaly keys exist."
+    sampleValues: ["default"]
+
+  - name: Service.AdditionalInfo.Value
+    type: String
+    description: >-
+      TRAP 4, and the most valuable field on an AnomalousBehavior finding. It is
+      a JSON document delivered as a *STRING* (note the escaped quotes in the
+      raw sample), so it must be wrapped before it can be addressed:
+
+          | extend Info = parse_json(tostring(Service.AdditionalInfo.Value))
+
+      Once parsed, the "default" payload has four top-level sections:
+
+        Info.anomalies.anomalousAPIs
+            THE COMPLETE LIST OF APIS BEHIND THE FINDING, which
+            Service.Action.AwsApiCallAction.Api only samples one of. Format is
+            a single flat string, not an array:
+              "ec2.amazonaws.com:[DescribeInstances:success , DescribeAddresses:success] , ssm.amazonaws.com:[...]"
+            with each API suffixed ":success" or ":error". Treat it as text —
+            array_length(split(<it>, ",")) counts the APIs because every entry
+            is comma-separated, `has "DescribeInstances"` hunts for one API
+            across findings, and `has ":error"` finds the bursts that were at
+            least partly denied.
+        Info.profiledBehavior.*
+            GuardDuty's LEARNED BASELINE for the account and for this identity —
+            what normal looks like. Keys come in a matrix of
+            {frequent|infrequent|rare}Profiled{APIs|ASNs|UserAgents|UserNames|UserTypes}{Account|UserIdentity}Profiling.
+            This is what makes the finding explainable in a report: putting
+            frequentProfiledASNsAccountProfiling ("Amazon.com, Inc.",
+            "Microsoft Corporation") next to the unusual ASN shows an analyst
+            why the call stood out, without them opening the console. Empty
+            strings are normal and mean "nothing in that bucket"; the
+            ...UserIdentityProfiling keys being empty means GuardDuty has no
+            history for this principal, which is itself a signal.
+        Info.unusualBehavior.*
+            WHY THE FINDING FIRED — the same matrix, holding only the values
+            that deviated. On both samples only
+            unusualASNsAccountProfiling / unusualASNsUserIdentityProfiling are
+            populated ("asnNumber: 64496 asnOrg: EXAMPLE NETWORKS LTD"), which
+            says the network was the anomaly and the APIs themselves were not.
+            isUnusualUserIdentity is a STRING "true"/"false", not a boolean.
+        Info.userAgent.{fullUserAgent, userAgentCategory}
+            The real user agent, which Service.Action.AwsApiCallAction.UserAgent
+            leaves null. userAgentCategory is the bucketed form ("browser",
+            "aws-cli", "aws-sdk-go", "AWS Internal", "OTHER") and is what the
+            profiledUserAgents keys are expressed in — so "browser" here
+            against a frequentProfiledUserAgents list that does not contain it
+            is a second anomaly the Title never mentions.
+
+      The ASN strings are formatted "asnNumber: <n> asnOrg: <name>" and several
+      are concatenated without a separator, so parse them with extract_all
+      rather than split.
+
+  # ==========================================
+  # EVIDENCE / RUNTIME / MALWARE / EXTENDED THREAT DETECTION
+  # ==========================================
+  - name: Service.Evidence
+    type: Dynamic
+    description: "{ThreatIntelligenceDetails[]} — populated when the finding was raised because an entity matched a threat list rather than because of anomaly detection. Each element is {ThreatListName, ThreatNames[], ThreatFileSha256}. ThreatListName says WHICH list matched: \"ProofPoint\" / \"CrowdStrike\" and other AWS-curated lists, or the name of a custom threat list you uploaded — and that distinction matters, because a hit on your own list is a policy match while a hit on an AWS list is intelligence. Null on both collected samples (they are anomaly findings, not intel matches). Both the outer object and ThreatNames[] need mv-expand."
+
+  - name: Service.RuntimeDetails
+    type: Dynamic
+    description: >-
+      The Runtime Monitoring agent's process-level evidence, present only on the
+      Execution:Runtime/* , PrivilegeEscalation:Runtime/* , DefenseEvasion:Runtime/*
+      and Impact:Runtime/* families — {Process, Context}.
+      Process = {Name, ExecutablePath, ExecutableSha256, Pid, Pwd, StartTime,
+      Uuid, ParentUuid, User, Euid, Lineage[]} — Lineage IS AN ARRAY of
+      ancestor processes and is the field that turns a finding into a story
+      (mv-expand it to render the chain). Context = {ModifyingProcess,
+      ModifiedAt, ScriptPath, LibraryPath, ThreatFilePath, ...} — what was
+      touched. ExecutableSha256 is the hash to pivot into CrowdStrike,
+      SentinelOne or MSDefender for the same binary on other hosts.
+      Not present in the collected samples.
+
+  - name: Service.EbsVolumeScanDetails
+    type: Dynamic
+    description: "The Malware Protection scan result — {ScanId, ScanStartedAt, ScanCompletedAt, TriggerFindingId, Sources[], ScanDetections}. ScanDetections = {ScannedItemCount, ThreatsDetectedItemCount, HighestSeverityThreatDetails, ThreatDetectedByName.{ItemCount, UniqueThreatNameCount, Shortened, ThreatNames[]}}. TriggerFindingId is the Id of the GuardDuty finding that CAUSED the scan, so it self-joins this data type: `join kind=leftouter (GuardDuty | project TriggerId = Id, TriggerType = Type) on $left.Service.EbsVolumeScanDetails.TriggerFindingId == $right.TriggerId`. ThreatDetectedByName.Shortened true means ThreatNames[] is a truncated list, not the whole set. Not present in the collected samples."
+
+  - name: Service.Detection
+    type: Dynamic
+    description: >-
+      The Extended Threat Detection payload, present only on the
+      AttackSequence:* finding types (the Critical-severity findings GuardDuty
+      raises when it correlates several individually-lower-severity signals into
+      one attack). Structure is Detection.Sequence = {Uid, Description,
+      Actors[], Resources[], Endpoints[], Signals[], SequenceIndicators[],
+      AdditionalSequenceTypes[]}, where Signals[] IS THE IMPORTANT ARRAY: each
+      element is a constituent signal {Uid, Type ("finding" or "cloudTrail"),
+      Name, Description, CreatedAt, UpdatedAt, FirstSeenAt, LastSeenAt, Count,
+      Severity, ResourceUids[], ActorIds[], EndpointIds[], SignalIndicators[]}.
+      A Signal of Type "finding" carries the Id of another GuardDuty finding, so
+      Signals[].Uid self-joins this data type and is how you expand an attack
+      sequence into its members. Null on both collected samples — they are
+      ordinary per-signal findings, and in fact exactly the kind of pair
+      (Discovery + InitialAccess on one principal from one ASN) that Extended
+      Threat Detection would fold into a sequence if it were enabled here.
+      Not present in the collected samples; verify with
+      `where Type startswith "AttackSequence" | project bag_keys(Service.Detection)`.
+
+# ==========================================
+# SEVERITY BANDS
+# ==========================================
+#   1.0 - 3.9   Low        routine / policy / low-confidence anomaly
+#   4.0 - 6.9   Medium     credible suspicious activity
+#   7.0 - 8.9   High       likely compromise, act now
+#   9.0 - 10.0  Critical   Extended Threat Detection AttackSequence findings only
+#
+# There is no label field — derive it:
+#   | extend SeverityLabel = case(
+#         todouble(Severity) >= 9.0, "CRITICAL",
+#         todouble(Severity) >= 7.0, "HIGH",
+#         todouble(Severity) >= 4.0, "MEDIUM",
+#         "LOW")
+#
+# Severity is largely a property of `Type`, so it does NOT reflect volume,
+# blast radius or how long the activity has been running. Rank a real queue on
+# Severity together with Service.Count and the age of Service.EventLastSeen.
+#
+# ==========================================
+# PARSING Type
+# ==========================================
+# Type is ThreatPurpose:ResourceTypeAffected/ThreatFamilyName.DetectionMechanism!Artifact
+#
+#   | extend Tail            = tostring(split(Type, ":")[1])
+#   | extend ThreatPurpose   = tostring(split(Type, ":")[0]),
+#            AffectedResource = tostring(split(Tail, "/")[0]),
+#            ThreatFamily     = tostring(split(Tail, "/")[1])
+#
+# Do not split ThreatFamily on "." or "!" unless you mean to — "C&CActivity.B!DNS"
+# is one family (C&CActivity), one variant (B) and one detection source (DNS),
+# and the family alone is usually the right grouping key.
+#
+# ThreatPurpose (the ATT&CK-tactic-shaped axis):
+#   Backdoor, Behavior, CredentialAccess, CryptoCurrency, DefenseEvasion,
+#   Discovery, Execution, Exfiltration, Impact, InitialAccess, PenTest,
+#   Persistence, Policy, PrivilegeEscalation, Recon, ResourceConsumption,
+#   Stealth, Trojan, UnauthorizedAccess, plus AttackSequence for the Extended
+#   Threat Detection correlations.
+#
+# ResourceTypeAffected (note it is NOT spelled the same as Resource.ResourceType):
+#   EC2, IAMUser, S3, Kubernetes, ECS, Container, RDS, Lambda, Runtime,
+#   EKSCluster, IAM (AttackSequence only), Malware.
+#   In particular Type "...:IAMUser/..." pairs with Resource.ResourceType
+#   "AccessKey", and "...:EC2/..." pairs with "Instance".
+#
+# Families worth knowing:
+#   *:IAMUser/AnomalousBehavior          the CloudTrail anomaly detectors — one
+#                                        per threat purpose, so a single
+#                                        compromised principal commonly raises
+#                                        several at once (the collected samples
+#                                        are Discovery + InitialAccess on the
+#                                        same PrincipalId, minutes apart).
+#                                        Correlate them by PrincipalId.
+#   UnauthorizedAccess:IAMUser/*         MaliciousIPCaller, TorIPCaller,
+#                                        ConsoleLoginSuccess.B, InstanceCredentialExfiltration
+#   Recon:EC2/PortProbe*                 inbound scanning
+#   UnauthorizedAccess:EC2/SSHBruteForce / RDPBruteForce
+#   CryptoCurrency:EC2/BitcoinTool.B!DNS mining
+#   Backdoor:EC2/C&CActivity.B!DNS       command and control
+#   Trojan:EC2/DNSDataExfiltration       DNS tunnelling
+#   Policy:S3/*, Policy:IAMUser/RootCredentialUsage   posture, not intrusion
+#   Impact:S3/*, Exfiltration:S3/*       data access from bad networks
+#   Execution:Runtime/*, PrivilegeEscalation:Runtime/*   Runtime Monitoring agent
+#   AttackSequence:IAM/CompromisedCredentials, AttackSequence:S3/CompromisedData
+#
+# ==========================================
+# COMMON PATTERNS
+# ==========================================
+# CURRENT STATE OF EACH FINDING (always do this first — trap 2)
+#   GuardDuty
+#   | where timestamp > ago(7d)
+#   | extend LastUpdate = todatetime(UpdatedAt)
+#   | summarize arg_max(LastUpdate, *) by Id
+#   | where tobool(coalesce(Service.Archived, false)) == false
+#
+# UNIFIED REMOTE IP ACROSS ACTION TYPES (trap 5)
+# PortProbeAction hides its address inside an array, so it needs the [0] reach
+# (or an mv-expand when you want every probed port):
+#   | extend RemoteIp = coalesce(
+#         tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.IpAddressV4),
+#         tostring(Service.Action.NetworkConnectionAction.RemoteIpDetails.IpAddressV4),
+#         tostring(Service.Action.KubernetesApiCallAction.RemoteIpDetails.IpAddressV4),
+#         tostring(Service.Action.RdsLoginAttemptAction.RemoteIpDetails.IpAddressV4),
+#         tostring(Service.Action.PortProbeAction.PortProbeDetails[0].RemoteIpDetails.IpAddressV4))
+#   | extend RemoteAsnOrg = coalesce(
+#         tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.Organization.AsnOrg),
+#         tostring(Service.Action.NetworkConnectionAction.RemoteIpDetails.Organization.AsnOrg),
+#         tostring(Service.Action.KubernetesApiCallAction.RemoteIpDetails.Organization.AsnOrg),
+#         tostring(Service.Action.RdsLoginAttemptAction.RemoteIpDetails.Organization.AsnOrg),
+#         tostring(Service.Action.PortProbeAction.PortProbeDetails[0].RemoteIpDetails.Organization.AsnOrg))
+# DNS_REQUEST findings have no remote IP at all — the remote party is
+# Service.Action.DnsRequestAction.Domain. Coalesce it in as a display value
+# when you want one "remote party" column.
+#
+# UNIFIED SUBJECT ACROSS RESOURCE TYPES
+#   | extend Subject = coalesce(
+#         tostring(Resource.AccessKeyDetails.UserName),
+#         tostring(Resource.InstanceDetails.InstanceId),
+#         tostring(Resource.S3BucketDetails[0].Name),
+#         tostring(Resource.KubernetesDetails.KubernetesUserDetails.Username),
+#         tostring(Resource.LambdaDetails.FunctionName),
+#         tostring(Resource.RdsDbInstanceDetails.DbInstanceIdentifier),
+#         tostring(Resource.EksClusterDetails.Name),
+#         tostring(Resource.EcsClusterDetails.Name))
+#
+# UNPACKING THE ANOMALY EXPLANATION (trap 4)
+#   | extend Info = parse_json(tostring(Service.AdditionalInfo.Value))
+#   | extend AnomalousApis = tostring(Info.anomalies.anomalousAPIs),
+#            UnusualAsn    = tostring(Info.unusualBehavior.unusualASNsAccountProfiling),
+#            UserAgent     = tostring(Info.userAgent.fullUserAgent),
+#            UaCategory    = tostring(Info.userAgent.userAgentCategory),
+#            BaselineAsns  = tostring(Info.profiledBehavior.frequentProfiledASNsAccountProfiling)
+#   | extend ApiCount = array_length(split(AnomalousApis, ","))   // one entry per API
+#
+# CONSOLE DEEP LINK (not carried on the record)
+#   | extend Url = strcat("https://", Region, ".console.aws.amazon.com/guardduty/home?region=",
+#                         Region, "#/findings?macros=current&fId=", Id)
+#
+# ==========================================
+# RELATED DATA TYPES
+# ==========================================
+#   CloudTrail        The verification layer, and the pivot that matters most.
+#                     A GuardDuty finding says an identity behaved anomalously;
+#                     CloudTrail holds the individual calls. Join on
+#                     Resource.AccessKeyDetails.AccessKeyId ->
+#                     userIdentity.accessKeyId, or on
+#                     Resource.AccessKeyDetails.UserName ->
+#                     coalesce(userIdentity.sessionContext.sessionIssuer.userName,
+#                     userIdentity.userName), and bound the CloudTrail side by
+#                     Service.EventFirstSeen .. Service.EventLastSeen. Also
+#                     AccountId -> recipientAccountId, Region -> awsRegion, and
+#                     Service.Action.AwsApiCallAction.RemoteIpDetails.IpAddressV4
+#                     -> sourceIPAddress.
+#   Office365 /       Where the AWS console is reached through an external IdP,
+#   AzureAudit        the same source IP and the same person appear in the IdP's
+#                     sign-in log. Pivot on the remote IP to find the interactive
+#                     sign-in that preceded the anomalous API calls.
+#   Zscaler / Fortigate
+#                     Egress logs for the corporate side of the same IP, when
+#                     the question is whether the traffic came from a managed
+#                     device or from somewhere else entirely.
+#   MSDefender /      Endpoint context for a source IP that turns out to belong
+#   CrowdStrike       to a managed device, and the sha256 pivot for a
+#                     Service.RuntimeDetails.Process.ExecutableSha256.
