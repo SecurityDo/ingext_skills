@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.0.12
+version: 1.1.0
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use this skill whenever the user hands over a behavior incident, an AI-assist ticket,
@@ -42,6 +42,28 @@ windows hide the baseline the whole procedure is measured against.
 
 ## Step 0 — Point at the right tenant, and prove it
 
+**Prefer the MCP tools.** The platform exposes this investigation as MCP tools on
+every tenant's `/mcp` endpoint, and on the provider's grid server. They remove the
+whole class of targeting bug described below, return structured JSON instead of a
+parsed log, and need no binary installed.
+
+| Need | MCP tool | Replaces |
+|---|---|---|
+| The incident rows | `behavior_summary_search` | `eventwatch search_summary` |
+| The events behind one | `behavior_event_search` | — |
+| Query the datalake | `kql_search`, `validate_kql` | `ingext kql` |
+| Raw documents | `lake_search` | `ingext datalake search` |
+| Which indexes exist | `lake_search_list_index`, `list_data_tables` | `datalake list-index` |
+| Read a rule | `eventwatch_rule_list`, `eventwatch_rule_get` | `eventwatch rule_list/rule_get` |
+| Test a rule | `eventwatch_rule_test` | `eventwatch rule_test` |
+
+**Targeting is per call, so there is nothing to prove and nothing to restore.** On a
+tenant's own endpoint the account *is* the endpoint. On the grid server every tool
+takes an `account` argument — `list_accounts` enumerates them. Two sessions can work
+different tenants at the same time without touching each other.
+
+### If you must use the CLI
+
 `ingext` takes its target from the active profile **only**. The `--cluster` and
 `-n/--namespace` flags are accepted and ignored; if you rely on them you will read
 another tenant and never be told.
@@ -54,12 +76,9 @@ ingext config use <cluster>:acc-<tenant>     # e.g. msp1:contoso -> useast1:acc-
 **`ingext config use` is a global mutation, not a session-local one.**
 `~/.ingext/config.yaml` is shared by every session on the machine, so switching
 tenants changes the target for anyone else working at the same time — and *their*
-switch changes yours, mid-run, with nothing in the output to say so. Two sessions
-triaging different tenants on the same afternoon will silently swap targets under
-each other.
+switch changes yours, mid-run, with nothing in the output to say so.
 
-So do not prove the tenant with `config view`. Prove it **per call**, from the call's
-own debug log, and assert it:
+So do not prove the tenant with `config view`. Prove it **per call** and assert it:
 
 ```bash
 python3 scripts/ingext_json.py kql out.json query.kql --expect <tenant>
@@ -71,55 +90,53 @@ beats reading `config view` before and after, because a flip and flip-back insid
 one call passes both reads while the call itself went elsewhere.
 
 **Spend the attribution effort where it buys something.** Datalake reads are
-self-attributing: the rows carry tenant identifiers, and a query that lands on the
-wrong cluster returns *nothing* rather than something plausible. The dangerous calls
-are the **server-side evaluations** — `ingext eventwatch rule_test` and
-`ingext processor test` — which execute on whatever profile is current and return a
-confident answer with nothing in it naming the cluster. If two clusters run different
-platform versions, such a result is not wrong, it is unattributed.
+self-attributing: a query that lands on the wrong cluster returns *nothing* rather
+than something plausible. The dangerous calls are the **server-side evaluations** —
+`eventwatch rule_test`, `processor test` — which execute on whatever profile is
+current and return a confident answer with nothing in it naming the cluster.
 
-Those calls print the siteURL too, so attribute them the same way — **with `-l info`,
-not `-l debug`**:
+Attribute those with `-l info`, **not `-l debug`**:
 
 ```bash
 ingext -l info eventwatch rule_test --content @rule.json --event ev.json 2>&1 \
   | grep -a siteURL
 ```
 
-**`-l debug` dumps the `Authorization: Bearer` header.** It writes the tenant's API
-token into whatever captures the output — a transcript, a pipeline, a log file on
-disk. `siteURL` is logged at **INFO**, so attribution never needs debug. Reach for
-`-l debug` only when you need the response body, which is the one thing INFO does not
-carry, and redact the credential before the output is stored: `ingext_json.py`'s `run`
-mode does exactly that, while its `kql` mode uses `-l info` because `--output` already
-supplies the body.
+**`-l debug` dumps the `Authorization: Bearer` header** into whatever captures the
+output. `siteURL` is logged at INFO, so attribution never needs debug.
 
-Restore the profile when you finish, and say which tenant you left it on if anyone
-else is working. If no direct profile exists, reach the tenant through its provider
-with `--gridaccount <tenant>` — and note that an unknown account name does not error,
-it silently serves the manager account.
+Two CLI quirks that cost time: `rule_get` writes its JSON to **stderr**, so
+`> rule.json` yields an empty file — capture with `2>`. And an unknown
+`--gridaccount` name does not error, it silently serves the manager account.
+
+Restore the profile when you finish, and say which tenant you left it on.
 
 ## Step 1 — Pull the summary and the AI-assist verdict
 
-```bash
-python3 scripts/ingext_json.py run summary.json -- \
-    eventwatch search_summary --query '<entity>' --from <ms> --to <ms>
-
-python3 scripts/summary_digest.py summary.json <entity> --ai
+```json
+behavior_summary_search {
+  "searchStr": "\"user@example.com\"",
+  "rangeFrom": <ms>, "rangeTo": <ms>, "limit": 30
+}
 ```
 
-Two things about this API cost time if you don't know them:
+The reply carries `total`, the matching `documents` with their stored `_source`, and
+— when you ask for them — facet counts over the **whole** match set. Feed the
+documents to `summary_digest.py` for the daily history and the AI verdict, or read
+them directly.
 
-- **`eventwatch search_summary` prints almost nothing.** The CLI writes a
-  `Key: …, RiskScore: …` line per hit to stderr and discards the document. The full
-  body exists only in the `-l debug` log, pretty-printed inside a Go slog `msg="…"`
-  field. `ingext_json.py` runs the command and digs it back out. (`ingext kql` is the
-  exception — it has `--output`.)
-- **`--query` is free text, not a key filter.** Searching one username on a
-  single-domain tenant returns most of the tenant: one search for one user came back
-  with 69 summaries across 40 accounts. `summary_digest.py` filters on `key`.
+Three things about this index cost time if you don't know them:
 
-What to take from the digest:
+- **`searchStr` is a Lucene query over the summary document, not a key filter.**
+  A bare email address is split on `@` and `.` and matches the wrong rows — quote it
+  (`"\"user@example.com\""`). Searching one username on a single-domain tenant still
+  returns most of the tenant: one search came back with 69 summaries across 40
+  accounts. Filter on `key`, or add `mustFilters: [{"field":"key","terms":[…]}]`.
+- **The time filter runs on `from`,** and sorting defaults to `riskScore` descending.
+  Sort on `to` for most-recent-first.
+- **Neither `from` nor `to` is an event time** — see step 6.
+
+What to take from it:
 
 - the **daily history**. One spike against 26 quiet days is a different animal from a
   score that has been climbing for a week.
@@ -128,9 +145,23 @@ What to take from the digest:
   has been the dominant one, and the rule's own severity a minority share.
 - the **AI-assist verdict** from `comments[]` (`username: "AI-Assistant"`, content is a
   JSON string). Read its `keyQuestions` as a to-do list, not as findings.
-- **no time in the summary is the event time.** The document brackets the truth and
-  hits it on neither side, so re-derive every timestamp from the raw index before
-  writing a timeline — see "Neither summary timestamp is the event time" in step 6.
+- the **`behaviorRules` list** — the names to hand to `eventwatch_rule_get` in step 7.
+
+Use `behavior_event_search` for the individual events behind a summary row; those
+carry true `timestamp` values rather than bucket labels.
+
+<details><summary>CLI equivalent</summary>
+
+```bash
+python3 scripts/ingext_json.py run summary.json -- \
+    eventwatch search_summary --query '<entity>' --from <ms> --to <ms>
+python3 scripts/summary_digest.py summary.json <entity> --ai
+```
+
+`eventwatch search_summary` prints only a `Key: …, RiskScore: …` line per hit to
+stderr and discards the document; the body exists only in the `-l debug` log, which
+is why `ingext_json.py` exists.
+</details>
 
 ### How a riskScore is actually built
 
@@ -496,6 +527,38 @@ State plainly where you disagree with the AI-assist verdict and why. That workfl
 skipped exactly three checks — the base rate, the IP resolution and the approving
 device — and each one is a single query.
 
+### Proving a tuning change before you propose it
+
+A verdict that ends "suppress this rule" is a claim about a rule you have probably
+not read. Three calls, no CLI:
+
+```
+eventwatch_rule_list {"nameContains": "Add_Authentication"}   -> id, group, enabled
+eventwatch_rule_get  {"name": "<exact name>"}                 -> the whole selector
+eventwatch_rule_test {"rule": <that rule>, "event": <a real event>}
+```
+
+Take the event from `lake_search` and pass its `source` verbatim. `hit` tells you
+whether the selector matches; for a behavior rule that hits, `behaviorEvent` is the
+rendered row.
+
+Three things this catches that reading the rule does not:
+
+- **The rule may not watch the index you think.** `AzureAD_User_Add_Authentication_Method`
+  selects on `@azureDirectoryAudit.*` and matches nothing in `Office365` — feeding it
+  Office365 documents returns a perfectly correct `hit: false` that looks like a
+  broken rule. Check which envelope the `mustFilters` name before choosing events.
+- **`mustNotFilters` do most of the work.** In one window six `operationType: Add`
+  events reached that rule and four were excluded by name; only the remaining two fired.
+  A "noisy rule" is often a rule whose exclusion list is one value short.
+- **A rule with no `name` panics the endpoint** rather than reporting an error. The
+  MCP tool refuses it before the wire; the CLI does not.
+
+Testing a rule does not deploy it, and the engine forces `disabled: false` for the
+test — so a rule disabled on the tenant still evaluates. Write the suppression itself
+with the **`eventwatch-rule`** skill.
+
+
 ## Assets
 
 | Path | What it does |
@@ -503,6 +566,11 @@ device — and each one is a single query.
 | `scripts/ingext_json.py` | Runs an `ingext` command and recovers the JSON body from the debug log; prints the resolved `siteURL` |
 | `scripts/summary_digest.py` | Daily history for one entity, the AI-assist verdict, and the `--rule` base-rate census |
 | `scripts/kql_rows.py` | Reads `ingext kql --output` JSON, dedupes, `--count` a column |
+
+The three scripts exist for the CLI path. On the MCP path `behavior_summary_search`
+returns the documents directly, so only `summary_digest.py` still earns its place —
+feed it the `documents` array. `ingext_json.py` is unnecessary there: it exists solely
+to recover a JSON body from a debug log, and MCP returns one.
 | `assets/queries/*.kql` | The twelve queries above, placeholder-substituted and parse-validated |
 
 Queries use `{USER}` (lower-cased UPN), `{TARGET}` (the UPN as `ObjectId` spells it),
@@ -510,10 +578,33 @@ Queries use `{USER}` (lower-cased UPN), `{TARGET}` (the UPN as `ObjectId` spells
 `ingext kql validate @<file>` after substituting — it parses in under a second and
 catches a wrong column name before a 20-second scan does.
 
-**Which index a query form works against matters.** These queries target *schema'd*
-indexes. `ingext kql` returns no rows against the `default` index, whose raw document
-shape does not resolve a column projection over `@`-prefixed fields — read that one
-with `ingext datalake search` instead.
+**A KQL field reference that starts with `@` silently returns null.** This is the
+single most dangerous syntax trap here, because it never errors:
+
+```
+| where @fields.Operation == "Send"      // count 0      <- WRONG, and silent
+| where Operation == "Send"              // count 8806
+```
+
+Null compared to anything is false, so every row is filtered out and the query
+"succeeds" with a confident zero. A `summarize ... by op=@fields.Operation` collapses
+the whole result into one bucket keyed `null`.
+
+The rule is about the leading `@`, not about dots — `Item.Subject`, `_ip.country` and
+`AppAccessContext.AADSessionId` all resolve unquoted. Bracket-quoting fixes it
+(`['@fields.Operation']`, `['@timestamp']`, `['@source']` all resolve), but the
+documented interface is the **flat schema name**, so use that:
+
+| Tool | Field spelling | Why |
+|---|---|---|
+| `kql_search` | `Operation`, `UserId`, `_ip.country` | the datalake projects `@fields.*` up to top-level KQL columns |
+| `lake_search` `searchStr` | `@fields.Operation:Send` | Lucene over the raw `_source`, which has no such projection |
+
+The column list is not in any MCP tool — `list_data_tables` returns names and
+descriptions only. It lives in the **`ingext-kql` skill**, at
+`references/schemas/<Table>/info.yaml`: 66 documented columns for `Office365`, none
+of them `@`-prefixed, plus ten canned queries. Note `Item.Subject` works but is not
+documented there.
 
 **Two matching traps on Office365 `Operation` values.** The credential operation is
 spelled `Update application – Certificates and secrets management ` — with an **en
