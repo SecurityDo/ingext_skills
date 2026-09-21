@@ -39,6 +39,30 @@ Alternatively, install a specific skill by name:
 
 > "Install the fluency-report skill from github.com/SecurityDo/ingext_skills"
 
+## Editing skills
+
+Skill frontmatter is validated before it can be committed. Two rules bite most often:
+`description` must be at most **1024 characters** (the folded YAML value, not the raw
+block) and it must contain **no XML-style tags** — write `a tenant`, not `<tenant>`.
+
+Enable the hook once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Run it by hand, or in CI, against the working tree:
+
+```bash
+python3 scripts/validate_skills.py --worktree
+```
+
+With no flag it validates the **staged** content, which is what the pre-commit hook uses.
+
+Note that `cowork/*.skill` packages embed their own copy of `SKILL.md`. Editing
+`SKILLS/<name>/SKILL.md` alone leaves the package failing at install time, so rebuild the
+package in the same change — the validator checks inside the archives and will catch it.
+
 ## Skills at a glance
 
 | Skill | What it does |
