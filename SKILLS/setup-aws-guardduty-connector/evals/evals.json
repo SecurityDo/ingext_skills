@@ -1,0 +1,58 @@
+{
+  "skill_name": "setup-aws-guardduty-connector",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We want GuardDuty findings imported into Ingext. Can you set up the Amazon GuardDuty connector? We'd rather not hand over an access key. Region is us-east-1.",
+      "expected_output": "The skill walks the six-step runbook: call get_account_podrole for the tenant pod role ARN; have the customer run IngextSaasPodRole.yaml to create the trust-only role ingextAssumeRole trusting that ARN; run GuardDutyRole.yaml with IAMRole overridden to ingextAssumeRole (not its fluencyplatform_instancerole default) to attach the GuardDuty read policy; confirm a GuardDuty detector actually exists in us-east-1 because the connector cannot create one; register the role with add_assumed_role and prove it with test_assumed_role; then install Amazon GuardDuty via create_connector passing Regions and AWS_Role (the registered displayName) with IAM_AccessKey/IAM_AccessSecret left empty.",
+      "files": [],
+      "expectations": [
+        "Explains this is an API poll, with no bucket, no SQS queue and no prefix, unlike the S3-notification connectors",
+        "Calls get_account_podrole first and uses its arn as the PodRoleARN the customer role trusts",
+        "Directs the customer to run both CloudFormation templates in their own AWS account (Claude cannot run them)",
+        "Explicitly overrides GuardDutyRole.yaml's IAMRole default of fluencyplatform_instancerole to the step-2 role",
+        "Requires confirming a GuardDuty detector exists in every polled region, and explains that a region without one yields an empty index while the poll still succeeds",
+        "Registers the role with add_assumed_role and runs test_assumed_role before installing",
+        "Installs with AWS_Role set to the registered displayName and leaves IAM_AccessKey/IAM_AccessSecret empty because auth is mutually exclusive"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I installed the GuardDuty connector yesterday and the GuardDuty index is still completely empty. Nothing is erroring. What's wrong?",
+      "expected_output": "Distinguishes the two causes rather than guessing: either no GuardDuty detector exists in the polled region (aws guardduty list-detectors returns nothing, so the poll succeeds against nothing and no error is raised anywhere), or the account is simply quiet and has produced no findings, which is normal. Settles it with aws guardduty create-sample-findings, then re-queries the index after the next poll. Also checks test_assumed_role and that the read policy is attached to the same role that was registered.",
+      "files": [],
+      "expectations": [
+        "States that an empty index does not by itself indicate a fault, because a healthy GuardDuty in a quiet account produces no findings for days",
+        "Checks for a detector in the polled region with list-detectors as the first cause",
+        "Uses create-sample-findings to prove the role, permissions, poll and sink end to end",
+        "Does not recommend verifying by waiting for real findings to appear",
+        "Checks that the GuardDuty managed policy is attached to the same role that was registered with add_assumed_role"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Before I enable GuardDuty in the six other regions for this connector, what should I know about the cost?",
+      "expected_output": "Names the volume-based drivers: CloudTrail management events, VPC flow logs, DNS logs, and optionally S3 data events and EKS audit logs, with flow-log GB being the usual surprise since GuardDuty ingests flow logs from the VPC whether or not the account stores them. Warns that a new detector enables EBS_MALWARE_PROTECTION by default and that it should be disabled deliberately. Explains the free-trial catch-22: get-remaining-free-trial-days needs a detector id, so asking starts the meter, and the trial is per account per region. Points at get-usage-statistics SUM_BY_DATA_SOURCE for GuardDuty's own figures, noting it returns an empty array for the first few hours.",
+      "files": [],
+      "expectations": [
+        "Lists the per-volume data sources GuardDuty bills on, not a flat per-region price",
+        "Warns that EBS_MALWARE_PROTECTION is enabled by default on a new detector and is expensive with node churn",
+        "Explains that the free trial is per account per region and cannot be checked without enabling",
+        "Recommends get-usage-statistics SUM_BY_DATA_SOURCE and notes it is empty for the first few hours",
+        "Notes GuardDuty analyses VPC flow logs regardless of whether flow logs are stored"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "We already set up the CloudTrail S3 connector for this account, so ingextAssumeRole exists. Do I need another role for GuardDuty?",
+      "expected_output": "No. Step 2 is skipped: ingextAssumeRole is created once per account and shared across Ingext AWS integrations. Only GuardDutyRole.yaml needs to run, with IAMRole set to the existing ingextAssumeRole, which attaches the GuardDuty read policy alongside whatever the CloudTrail setup already attached. The existing registered AWS Role can be reused as well, checked with list_assumed_role, so add_assumed_role may also be unnecessary.",
+      "files": [],
+      "expectations": [
+        "Says the trust-only role is shared per account and step 2 should be skipped",
+        "Runs only GuardDutyRole.yaml with IAMRole pointing at the existing ingextAssumeRole",
+        "Checks list_assumed_role for an existing registration before adding a duplicate",
+        "Notes the GuardDuty policy is region-independent so one deployment covers every polled region"
+      ]
+    }
+  ]
+}
