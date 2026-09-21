@@ -1,3 +1,5 @@
 .claude
 /custom_skills
 .DS_Store
+__pycache__/
+*.pyc

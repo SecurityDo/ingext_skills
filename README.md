@@ -53,9 +53,13 @@ Alternatively, install a specific skill by name:
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
 | [office-user-investigation](#office-user-investigation) | Investigate an M365 mailbox user (KQL + GeoIP) |
 | [o365-activity-report](#o365-activity-report) | Account-wide O365/Exchange activity report (KQL: timechart + tables) |
+| [incident-investigation](#incident-investigation) | Triage an escalated behavior incident / AI-assist ticket to a verdict |
 | [ingext-health-monitor](#ingext-health-monitor) | Check whether a site is healthy and ingesting |
 | [add-connector](#add-connector) | Install a new application connector |
+| [deploy-fpl-processor](#deploy-fpl-processor) | Deploy an FPL processor to a tenant and wire it into the running pipeline |
+| [eventwatch-rule](#eventwatch-rule) | Create, test, threshold and deploy an EventWatch behavior / aggregation rule |
 | [setup-aws-cloudtrail-connector](#setup-aws-cloudtrail-connector) | Set up the AWS CloudTrail connector: S3 → SQS notification, cross-account role, real-time import |
+| [setup-aws-guardduty-connector](#setup-aws-guardduty-connector) | Set up the Amazon GuardDuty connector: assume-role, per-region detector check, API poll |
 | [create-ingext-audit-app](#create-ingext-audit-app) | Guide an Entra admin to register the `ingext-audit` app (Graph + O365 audit import) |
 | [create-ingext-audit-app-azcli](#create-ingext-audit-app-azcli) | az CLI variant of `create-ingext-audit-app`: cowork can run it directly when the operator is the tenant's Global Admin |
 | [create-ingext-defender-app](#create-ingext-defender-app) | Guide an Entra admin to register the `ingext-defender` app (Graph Security incidents + alerts) |
@@ -207,6 +211,29 @@ shows an explicit "no data" panel; numbers are never synthesized.
 - "MailItemsAccessed activity report for the account"
 - "account-wide O365 activity timechart by workload today"
 
+### incident-investigation
+
+Takes an escalated Fluency behavior incident — a risk score, an alert, an AI-assist ticket
+marked actionable — and works it to a verdict. Pulls the behavior summary and the AI-assist
+result out of the eventwatch API, then runs the four checks that actually decide the answer:
+the **fleet base rate** for the rule that fired (a rule firing for 33 users in a week is a
+rollout, not an attack), every source IP **resolved against the rest of the tenant**, the
+device that **approved** the change read out of `StrongAuthenticationPhoneAppDetail`, and the
+negatives — inbox rules, forwarding, OAuth grants, removed MFA factors — that a benign
+verdict rests on. Carries the error-code, user-agent, duplicate-row and GeoIP traps that
+manufacture findings that are not there. Ends in a written closure with the detection tuning
+that stops the next eleven copies of the same ticket.
+
+For the whole mailbox rather than one incident, use **office-user-investigation**; to write
+the suppression the base-rate check calls for, use **eventwatch-rule**.
+
+**Try:**
+- "investigate this incident on <tenant>"
+- "the AI assist says actionable — check it"
+- "get the behavior summary for <user> and tell me if it's real"
+- "why did <user> score 3600?"
+- "should we escalate this alert?"
+
 ---
 
 ## Platform operations
@@ -232,6 +259,53 @@ and deploys the connector instance.
 - "install the AWS SQS application"
 - "connect Office 365 to Ingext"
 
+### deploy-fpl-processor
+
+Moves an FPL processor from a repo onto a tenant and wires it into the tenant's running
+pipeline, through the provider proxy (`INGEXT_SITE_URL`/`INGEXT_TOKEN` from
+`/etc/fluency_grid_config.json`, then `--gridaccount <tenant>`). The order is the point:
+prove the script on its fixtures, rehearse the mechanics on a scratch tenant, then
+**validate the mapping against the target tenant's own records** before anything is wired —
+that step is what catches the vendor shapes no sample contains. Wiring is done by
+`assets/ingext-pipe.mjs`, built on the `ingext-api` TypeScript client: it creates the redis
+sink and the pipe with the `priority` and ownership tags an app-installed pipe carries, is
+idempotent, reads back what was stored, and unwires in one call. It also covers publishing a
+plugin binary and the `platform_source_reload` that makes it live, and releasing an object to
+the repo registries with `sync_cli` so it reaches tenants beyond the one it was deployed to.
+For installing a vendor connector rather than deploying a script, use **add-connector**.
+
+**Try:**
+- "deploy Varonis_Behavior to the acme tenant"
+- "push this parser to the customer site and wire it into the pipeline"
+- "add a behavior pipe for the Falcon app on fabrikam"
+- "roll out the new processor, but test it somewhere safe first"
+
+### eventwatch-rule
+
+Creates, tests and deploys an EventWatch rule — the behavior and aggregation rules that turn
+parsed events into behavior signals. The order is the point: read the tenant's **real** event
+shapes with `datalake search` before writing a selector (`ingext kql` returns no rows for the
+`default` index), then choose the threshold by replaying real history rather than guessing.
+`assets/replay-threshold.py` computes the per-key maximum in a sliding window and the alert
+count at each candidate threshold — which is how you find that `gt 5` against a probe that
+peaked at exactly 5 fires never, and that 89% of your matches are a noise class that should
+be excluded first. Its `--overlap` mode catches the other classic defect: a selector matching
+several stages of one logical action, raising two behavior events per login.
+
+Covers the id rule that cannot be undone — **`id > 0` is global and becomes read-only in the
+tenant** (`update` and `delete` both refused, only `toggle` works), so iterate with `id: 0`
+and ship with the allocated id — plus `sync_cli release <repo> rule` (which
+`release ... fplProcessor` does **not** do), and the sticky disabled flag and flip-not-set
+toggle that decide whether a synced rule actually runs. `assets/check-rule-state.py` asserts
+the content that landed and is pollable while waiting on a sync.
+For deploying the parser that produces the events, use **deploy-fpl-processor**.
+
+**Try:**
+- "create an eventwatch rule to track SSL-VPN logins by user"
+- "add an aggregation rule for multiple failed logins in a few hours"
+- "why is this rule never firing?"
+- "promote the local test rule to the global one on <tenant>"
+
 ### setup-aws-cloudtrail-connector
 
 End-to-end setup of the **AWS CloudTrail** connector for **real-time** import from an existing
@@ -250,6 +324,26 @@ plumbing, use **add-connector**.
 - "import CloudTrail from our S3 bucket into Ingext in real time"
 - "connect CloudTrail via SQS to Fluency"
 - "how do I register the IAM role and verify it before installing the CloudTrail connector?"
+
+### setup-aws-guardduty-connector
+
+End-to-end setup of the **Amazon GuardDuty** connector, using an STS **assume-role** rather than an
+access key. GuardDuty is an **API poll**, not an S3 delivery — there is no bucket, no SQS queue and
+no prefix, which is the main thing to unlearn if you arrive from **setup-aws-cloudtrail-connector**.
+It drives the six-step runbook — `get_account_podrole` for the tenant pod role ARN → the customer
+runs the `IngextSaasPodRole` and `GuardDutyRole` CloudFormation templates (bundled in `assets/`),
+overriding `GuardDutyRole`'s `IAMRole` default → confirm a GuardDuty **detector actually exists** in
+every region to be polled → `add_assumed_role` plus `test_assumed_role` → `create_connector` with
+Regions and AWS Role. The step with no analogue elsewhere is the detector check: a region with
+GuardDuty switched off returns no findings and the poll still succeeds, so the failure is a silent
+empty index. Verification uses `create-sample-findings` rather than waiting for real ones, because a
+healthy GuardDuty in a quiet account produces none for days.
+
+**Try:**
+- "set up the GuardDuty connector for us-east-1, without an access key"
+- "import GuardDuty findings into Ingext"
+- "the GuardDuty index is empty and nothing is erroring"
+- "what will GuardDuty cost before I enable the other regions?"
 
 ### create-ingext-audit-app
 
