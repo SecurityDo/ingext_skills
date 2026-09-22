@@ -1,18 +1,19 @@
 ---
 name: incident-investigation
-version: 1.1.0
+version: 1.1.1
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
-  evidence. Use this skill whenever the user hands over a behavior incident, an AI-assist ticket,
+  evidence. Use whenever the user hands over a behavior incident, an AI-assist ticket,
   an alert or a risk score and asks what it really is — "investigate this incident", "triage this
-  ticket", "is this a true positive", "the AI assist says actionable, check it", "get the behavior
-  summary for a user", "why did this user score 3600", "should we escalate this alert". Covers
+  ticket", "is this a true positive", "the AI assist says actionable, check it", "why did this user
+  score 3600", "should we escalate this alert". Covers
   pulling the behavior summary and the AI-assist verdict out of the eventwatch API, then the four
-  checks that actually decide a verdict — the fleet base rate for the rule that fired, resolving
+  checks that actually decide a verdict — the in-tenant base rate for the rule that fired, resolving
   every source IP against the rest of the tenant, reading which device approved the change, and
   proving what did NOT happen afterwards — plus the timestamp, error-code, user-agent, duplicate-
   row and geolocation traps that manufacture findings. Ends in a written closure: benign, escalate
-  or confirmed, with tuning that stops repeats of the same ticket.
+  or confirmed, with tuning that stops repeats of the same ticket. Queries only the incident's own
+  tenant account.
 ---
 
 # Investigate a behavior incident
@@ -29,16 +30,52 @@ base rate has closed more tickets here than everything after it combined.
 **Never write a verdict from the summary alone.** The behavior summary tells you what
 fired, never whether it matters.
 
+## Hard rule — one incident, one account
+
+**Every call in this investigation targets the incident's own tenant account and no
+other.** An MSSP grid connector exposes many customers behind one endpoint, and every
+tool takes an `account` argument. That makes a cross-tenant query one keystroke away —
+and querying another customer's data to "compare" or "get a base rate" is a
+data-segregation breach, however useful the comparison looks. It is never part of this
+procedure.
+
+- **Lock the account in step 0 and never change it.** Write it down as `ACCOUNT=<name>`
+  and pass exactly that value to every tool call. The only other tenant-scoped call
+  allowed is `list_accounts`, once, to confirm the name exists.
+- **If the requested account is not found, do not investigate at all.** When
+  `list_accounts` on the named connector has no entry matching the account the user
+  asked for, stop before any other call. Do not guess a close match, do not try other
+  connectors or accounts to locate it, and do not run any search, query or rule call.
+  Tell the user the account was not found on that connector and ask them to confirm
+  the name or connector.
+- **"Base rate", "census", "fleet", "campaign", "how common is this" all mean
+  *within this account*.** Other entities in the same tenant, never other tenants.
+- **No exceptions for research value.** Not to check whether a vendor rollout hit
+  other customers, not to validate a rule, not to compare scores, not "just a count".
+  If a verdict would genuinely benefit from cross-tenant context, **stop and ask the
+  user** — say what you would query and why — and proceed only on an explicit yes
+  naming the accounts. A request that names one account is not permission for others.
+- **Other connectors count too.** If the session has several MCP connectors
+  (`mcp__<Connector>__*`), use only the one the user named. Same tool name on a
+  different connector is a different provider's data.
+- **Before every call, check the `account` argument equals `ACCOUNT`.** If a call went
+  to the wrong account, stop, discard its result entirely (do not cite it, summarise it
+  or let it shape the verdict), and tell the user plainly which account was queried and
+  what was run.
+- **The closure states the boundary.** End the write-up with one line naming the
+  connector and account every finding came from.
+
 ## Required inputs
 
 | Argument | Meaning | Example |
 |---|---|---|
-| target | `provider:tenant`, or the cluster profile | `msp1:contoso` |
+| target | the connector **and** the single tenant account — the only account this run may touch | `Develop` / `contoso` |
 | entity | the key the incident is on — username, asset or IP | `user@corp.com` |
 | window | epoch ms; default the last 30 days | `--from 1787246734000` |
 
-If the entity is missing, ask for it. If the window is missing, use 30 days — shorter
-windows hide the baseline the whole procedure is measured against.
+If the target account or connector is missing or ambiguous, ask — never pick one, and
+never fan out across accounts to find where the entity lives. If the entity is missing,
+ask for it. If the window is missing, use 30 days — shorter windows hide the baseline the whole procedure is measured against.
 
 ## Step 0 — Point at the right tenant, and prove it
 
@@ -57,10 +94,14 @@ parsed log, and need no binary installed.
 | Read a rule | `eventwatch_rule_list`, `eventwatch_rule_get` | `eventwatch rule_list/rule_get` |
 | Test a rule | `eventwatch_rule_test` | `eventwatch rule_test` |
 
-**Targeting is per call, so there is nothing to prove and nothing to restore.** On a
-tenant's own endpoint the account *is* the endpoint. On the grid server every tool
-takes an `account` argument — `list_accounts` enumerates them. Two sessions can work
-different tenants at the same time without touching each other.
+**Targeting is per call, so there is nothing to restore — but everything to check.**
+On a tenant's own endpoint the account *is* the endpoint. On the grid server every
+tool takes an `account` argument; call `list_accounts` once to confirm the target
+account's exact name — if it is not in the list, stop here and run nothing (see the
+hard rule) — set `ACCOUNT`, and pass that one value to every call for the
+rest of the run (see "Hard rule — one incident, one account"). `list_accounts` shows
+you the other customers on the connector; that list is for confirming a name, not a
+menu of tenants to query.
 
 ### If you must use the CLI
 
@@ -131,7 +172,7 @@ Three things about this index cost time if you don't know them:
   A bare email address is split on `@` and `.` and matches the wrong rows — quote it
   (`"\"user@example.com\""`). Searching one username on a single-domain tenant still
   returns most of the tenant: one search came back with 69 summaries across 40
-  accounts. Filter on `key`, or add `mustFilters: [{"field":"key","terms":[…]}]`.
+  user accounts in that one tenant. Filter on `key`, or add `mustFilters: [{"field":"key","terms":[…]}]`.
 - **The time filter runs on `from`,** and sorting defaults to `riskScore` descending.
   Sort on `to` for most-recent-first.
 - **Neither `from` nor `to` is an event time** — see step 6.
@@ -226,8 +267,12 @@ Three consequences that change what you recommend:
 
 ## Step 2 — The base rate (run this before anything else)
 
-The single most valuable query in this skill. How many other entities fired the same
-rule in the same week?
+The single most valuable query in this skill. How many other entities **in this same
+tenant account** fired the same rule in the same week? The base rate is always
+intra-tenant: run it with `account: ACCOUNT` only. Never measure it by querying other
+customers on the connector, even when the suspected cause (a Microsoft rollout, a
+vendor release) would plausibly show up there too — that is a cross-tenant query and
+is off-limits unless the user explicitly authorises named accounts.
 
 ```bash
 python3 scripts/ingext_json.py run wave.json -- \
@@ -242,11 +287,15 @@ More than a handful of distinct entities means the incident is one instance of a
 campaign — a rollout, an admin push, a policy change, a vendor release — and the
 verdict is about the campaign, not the user. In the worked case: 33 distinct users
 fired the rule in seven days, **12 of them raised incidents with the byte-identical
-risk signature**, and 55+ accounts registered passkeys across five days. The ticket
+risk signature**, and 55+ users in the tenant registered passkeys across five days. The ticket
 was the twelfth copy of one IT project. Nothing downstream could have overturned that,
 and everything downstream was cheaper to interpret once it was known.
 
-A base rate of one does not prove an attack. It only means you keep going.
+A base rate of one does not prove an attack. It only means you keep going. When the
+entity is a single tenant-wide actor (a service principal, a Microsoft first-party
+service), the useful in-tenant base rate is that actor's own 30-day history and the
+directory audit around the event — look for a Microsoft-managed initiator such as
+`Microsoft Managed Policy Manager` at the same instant — not other tenants.
 
 **Know which side of the emission boundary your number came from.** The dedup that
 collapses concurrent events runs at behavior-event *emission*, before the event is
@@ -390,7 +439,7 @@ escalation, and it will read as a regression to anyone watching score trends.
 labels**, not event times: the eventwatch engine buffers on a 2-minute window, and the
 document carries the start of the bucket the event fell into. Every `from`/`to` value is
 an exact multiple of 120,000 ms — zero seconds, even minute, no exceptions across 210
-values from two tenants. So the stamp runs **early** by up to two minutes (03:06:00 for
+values checked. So the stamp runs **early** by up to two minutes (03:06:00 for
 an event at 03:06:16; 06:54:00 for one at 06:55:15), while `incidentDetectionTime` runs
 **late** by minutes (07:05:00 for that same 06:55:15 event), and the AI-assist summary
 quotes the late one. Two consequences:
@@ -522,6 +571,14 @@ The closure carries five things:
    is a good idea is not authorisation, and the failure mode where each one treats the
    other's agreement as a mandate is how a triage ticket turns into a platform change
    nobody approved.
+
+**Tuning evidence is intra-tenant too.** Facet a proposed filter over this account's
+hits only. A claim like "this fires the same way for other customers" is not something
+this skill measures; if it matters, say it is unverified and name who could check it.
+
+**Close with the data boundary.** The last line of the closure names the connector and
+the single account every finding came from, e.g. "All findings: Develop / contoso
+only."
 
 State plainly where you disagree with the AI-assist verdict and why. That workflow
 skipped exactly three checks — the base rate, the IP resolution and the approving
