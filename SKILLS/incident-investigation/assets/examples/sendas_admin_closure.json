@@ -1,0 +1,75 @@
+{
+  "eyebrow": "Incident closure · Tier 3 review",
+  "title": "SendAs grants by a tenant identity administrator",
+  "lede": "An AI-assist workflow escalated four days of activity on this account, citing privileged admin actions, a SendAs delegation, and missing sign-in telemetry. All three grounds were tested against the tenant's own data. None of them survive.",
+  "verdict": {"outcome": "benign", "text": "Routine identity administration by the person whose job it is. No containment action required; the rule that produced these incidents needs tuning."},
+  "meta": [
+    {"label": "Subject", "value": "admin.user@example.com"},
+    {"label": "Tenant", "value": "Example Staffing"},
+    {"label": "Window", "value": "2026-08-23 → 2026-09-22"},
+    {"label": "Incident days", "value": "09-14, 09-17, 09-21, 09-22"},
+    {"label": "Peak riskScore", "value": "6800 (2026-09-17)"},
+    {"label": "AI-assist verdict", "value": "Actionable — escalate"}
+  ],
+  "grounds": {
+    "intro": "Each claim below is quoted from the AI-assist workflow, followed by what the tenant's data actually shows.",
+    "items": [
+      {"claim": "No sign-in telemetry to validate origin.",
+       "finding": "This is a **tenant-wide collection gap**, not a property of this account. `AzureSigninLogs` returns **0 rows** over 30 days, while `Office365` holds **2,922,289** and `AzureAuditLogs` **17,543**. The absence applies identically to every user on the tenant, including every benign one, so it carries no discriminating power at all."},
+      {"claim": "A confirmed SendAs permission grant.",
+       "finding": "The tenant recorded **14** `Add-RecipientPermission` events in 30 days. **12 were hers**, spread across **8 separate days** from 08-25 to 09-22, every one of them `AccessRights: SendAs` on internal tenant objects. One grant every two to three days, sustained for a month, is a standing pattern — the shape of a staffing firm delegating branch mailboxes — not an event."},
+      {"claim": "250–324 directory actions by a Global Administrator.",
+       "finding": "That is her baseline. Identity-admin volume runs **5 to 93 operations every working day** for the full month: 150 `Update user.`, 117 `AddedToGroup`, 86 group removals, 76 password resets, 68 `Set-Mailbox`. The flagged days are **not spikes** — see below."}
+    ]
+  },
+  "score_table": {
+    "title": "The score does not follow the activity",
+    "intro": "If the incidents tracked what she did, the two columns would rise together. They do not. 09-21 scored 5800 on *fewer* operations than 09-09 scored 600 on.",
+    "activity_label": "Admin ops",
+    "rows": [
+      {"day": "08-31", "activity": 5,  "score": 400},
+      {"day": "09-01", "activity": 37, "score": 400},
+      {"day": "09-02", "activity": 20, "score": 400},
+      {"day": "09-03", "activity": 34, "score": 700},
+      {"day": "09-08", "activity": 23, "score": 600},
+      {"day": "09-09", "activity": 41, "score": 600},
+      {"day": "09-10", "activity": 7,  "score": 500},
+      {"day": "09-14", "activity": 93, "score": 4000, "incident": true},
+      {"day": "09-15", "activity": 20, "score": 1200},
+      {"day": "09-17", "activity": 66, "score": 6800, "incident": true},
+      {"day": "09-21", "activity": 34, "score": 5800, "incident": true},
+      {"day": "09-22", "activity": 21, "score": 3400, "incident": true}
+    ],
+    "callout": {"title": "What is actually driving the score",
+      "body": "Every one of these summaries carries `ML_NEW_USER` — the first-seen term. The rule fires on the novelty of the *target* user, not on the risk of the action. An administrator whose job is touching users she has not touched before will trip it indefinitely."}
+  },
+  "base_rate": {
+    "title": "She is not an outlier among her peers",
+    "intro": "The same rules fire for a small cohort of administrators on this tenant. The highest score in the window belongs to someone else.",
+    "caption": "Base rate across the 30-day window, by rule.",
+    "columns": ["Rule", "Summaries", "Distinct admins", "Highest scorer"],
+    "rows": [
+      ["RecipientPermission_SendAs", "8", "2", "peer.admin — 13400"],
+      ["AzureAD_Add_Member_To_Group", "15", "4", "peer.admin — 13400"],
+      ["Fluency_O365_User_Disabled", "11", "3", "peer.admin — 13400"],
+      ["Exchange_Add-MailboxPermission", "4", "3", "peer.admin — 13400"]
+    ]
+  },
+  "negatives": {
+    "items": [
+      {"title": "No inbox rules.", "body": "Zero by this account, against 31 `Set-InboxRule` and 14 `New-InboxRule` elsewhere on the tenant."},
+      {"title": "No mail forwarding or transport rules.", "body": "Zero."},
+      {"title": "No OAuth consents or service principals.", "body": "Zero, against 11 consents and 7 service principals elsewhere."},
+      {"title": "No unusual access.", "body": "192 sign-ins from a single stable IPv4 spanning the entire month, plus one IPv6 /64 with rotating privacy suffixes. No new geography, no new ISP."}
+    ],
+    "callouts": [
+      {"title": "On the “ISP discrepancy”",
+       "body": "The Microsoft-owned addresses the workflow flagged appear on *cmdlet* records, not on her sign-ins. Exchange Online writes its own service infrastructure as the client address when an administrative cmdlet runs. Her interactive sessions carry her own connection throughout, and every event is `ExternalAccess: false`."}
+    ]
+  },
+  "recommendation": [
+    "Close benign, with no containment. The finding worth acting on is the detection, not the account: these rules raise an incident every time an administrator touches a user for the first time, which for this cohort is continuous. Tune the `ML_NEW_USER` contribution on admin-operation rules rather than the operations themselves.",
+    "Separately, `AzureSigninLogs` is empty tenant-wide. That is a real gap and worth fixing on its own merits — but it is an ingestion issue, not evidence about any user."
+  ],
+  "footer": {"date": "2026-09-22", "evidence": "Office365 (2.92M rows), AzureAuditLogs (17.5K), behavior summaries (127 hits)"}
+}

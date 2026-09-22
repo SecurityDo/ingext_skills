@@ -1,19 +1,19 @@
 ---
 name: incident-investigation
-version: 1.1.1
+version: 1.1.2
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident, an AI-assist ticket,
   an alert or a risk score and asks what it really is — "investigate this incident", "triage this
   ticket", "is this a true positive", "the AI assist says actionable, check it", "why did this user
   score 3600", "should we escalate this alert". Covers
-  pulling the behavior summary and the AI-assist verdict out of the eventwatch API, then the four
-  checks that actually decide a verdict — the in-tenant base rate for the rule that fired, resolving
+  pulling the behavior summary and AI-assist verdict from eventwatch, then the four
+  checks that decide a verdict — the in-tenant base rate for the rule that fired, resolving
   every source IP against the rest of the tenant, reading which device approved the change, and
   proving what did NOT happen afterwards — plus the timestamp, error-code, user-agent, duplicate-
-  row and geolocation traps that manufacture findings. Ends in a written closure: benign, escalate
-  or confirmed, with tuning that stops repeats of the same ticket. Queries only the incident's own
-  tenant account.
+  row and geolocation traps that manufacture findings. Ends in a closure (benign, escalate or
+  confirmed) with tuning, and a Fluency-branded HTML closure report on request. Queries only the
+  incident's own tenant account.
 ---
 
 # Investigate a behavior incident
@@ -616,6 +616,81 @@ test — so a rule disabled on the tenant still evaluates. Write the suppression
 with the **`eventwatch-rule`** skill.
 
 
+## Step 8 — The closure report (only when asked)
+
+The investigation **stops at the verdict**: the step-7 closure in chat is the default
+deliverable. End it with a one-line offer to render the HTML closure report. Build the
+report only when the user or the customer asks for one — "write it up", "send the
+customer a report", "give me the HTML".
+
+**How it is built.** The report is rendered from a JSON file by
+`scripts/render_closure.py`; never hand-write it as free-form HTML. Fields are
+documented in `assets/closure_schema.md`. Start from the example that matches the
+incident's shape (both are anonymised):
+
+- `assets/examples/sendas_admin_closure.json` — a multi-day incident with a score
+  history (`score_table`, `base_rate`).
+- `assets/examples/credential_policy_closure.json` — a single event or transaction
+  (`timeline`).
+
+```bash
+python3 scripts/render_closure.py closure.json \
+    -o <account>-<entity>-<YYYY-MM-DD>-closure.html
+```
+
+The script refuses JSON missing a required section (`title`, `lede`, `verdict`, `meta`,
+`grounds`, `negatives`, `recommendation`, `footer`) or with a `verdict.outcome` other than
+`benign`, `escalate` or `confirmed`. Fluency branding (navy header with the embedded
+logo, a `Confidential · <Tenant> · Incident Closure` tag, the Fluency palette and a
+"Powered by Fluency" footer) is applied on every run — never post-process the HTML.
+Always put `Subject` and `Tenant` in `meta`; the header and footer are built from them.
+**The logo is replaceable:** pass `--logo <image>` (PNG, JPEG, SVG, WebP or GIF), or set
+`"logo": "<path relative to the JSON>"` in the closure JSON; `--logo` wins. Without
+either, the bundled `assets/fluency_logo.png` is used. A logo path that cannot be read
+stops the render rather than silently falling back to the wrong brand.
+If `scripts/render_closure.py` is not present (an install that carries only SKILL.md),
+say so and offer to fetch the skill package from `cowork/incident-investigation.skill`
+in the `SecurityDo/ingext_skills` repo; do not hand-write a substitute report.
+
+**Section order**, fixed by the renderer, each mapped to a step above: title + lede →
+verdict card (step 7) → metadata grid (step 1) → "N grounds for escalation, tested"
+(steps 1, 3, 6) → timeline for a single event **or** score-vs-activity bars for a
+multi-day incident (step 6 / step 1) → base-rate table when the base rate is above one
+(step 2) → what did not happen (step 5) → callouts → recommendation (step 7) → footer.
+
+**Fill rules.**
+
+- **Every number is one you measured in this run, on `ACCOUNT` only.** The base-rate
+  table, the peer cohort and every control count are intra-tenant. A report is the
+  place a cross-tenant number would do the most damage, so the hard rule applies with
+  extra force: if a figure did not come from this account, it does not appear.
+- **Name the tenant by its display name, and never name the connector.** The report
+  goes to the customer; the MCP connector is internal plumbing. Use the `displayName`
+  that `list_accounts` returned for `ACCOUNT` (e.g. `Contoso Ltd`, not `contoso`, and
+  never `<connector> : contoso`) for `Tenant` in `meta` — which also feeds the header tag and footer —
+  and wherever the tenant is named in the title, lede, captions and findings. Fall back
+  to the account name only when no display name exists.
+- **Section titles state findings.** "The score does not follow the activity", not
+  "Risk score analysis". If the evidence does not support a one-line claim, leave the
+  section out.
+- **Quote the ticket, then test it.** Each ground's `claim` is the AI-assist text
+  verbatim, including any number it got wrong; the `finding` names the index each
+  number came from.
+- **No zero without a control.** Each negative states its zero next to the count of the
+  same operation elsewhere on the tenant. A check that could not be run is written as
+  a gap ("not verified — no Gmail logs ingested"), never as a pass.
+- Timeline times come from the raw index (step 6), never from summary buckets.
+- `footer.evidence` lists every index or API consulted with its row or hit count and
+  ends with the data-boundary line using the display name: "All findings: `<display
+  name>` only." (The chat closure in step 7 still names connector and account; the
+  report does not.)
+
+**Deliver it.** Render into the working directory, open it once (or take a screenshot)
+to check the layout, then send the file with the session's file tool; when a folder of
+the user's is connected, save it there. The page loads Google Fonts when online and
+falls back to system fonts offline, so it still works when emailed. Keep the chat reply
+to the verdict and the one action — do not paste the report back into chat.
+
 ## Assets
 
 | Path | What it does |
@@ -623,6 +698,10 @@ with the **`eventwatch-rule`** skill.
 | `scripts/ingext_json.py` | Runs an `ingext` command and recovers the JSON body from the debug log; prints the resolved `siteURL` |
 | `scripts/summary_digest.py` | Daily history for one entity, the AI-assist verdict, and the `--rule` base-rate census |
 | `scripts/kql_rows.py` | Reads `ingext kql --output` JSON, dedupes, `--count` a column |
+| `scripts/render_closure.py` | Step 8: renders a closure JSON into the Fluency-branded HTML report; validates required sections |
+| `assets/closure_schema.md` | Step 8: field reference for the closure JSON |
+| `assets/examples/*.json` | Step 8: anonymised worked closures (multi-day admin, single event) |
+| `assets/fluency_logo.png` | Embedded into the report header as a data URI |
 
 The three scripts exist for the CLI path. On the MCP path `behavior_summary_search`
 returns the documents directly, so only `summary_digest.py` still earns its place —

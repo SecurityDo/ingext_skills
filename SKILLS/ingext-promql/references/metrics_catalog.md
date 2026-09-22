@@ -28,7 +28,7 @@ Aggregate across series with `sum`, and break out by label with `sum by (<label>
 
 ## Scope rule — reject anything not in this catalog
 
-This catalog is an **allowlist**. There are exactly **six counter families** (seventeen counters) plus
+This catalog is an **allowlist**. There are exactly **seven counter families** (nineteen counters) plus
 **one gauge** (`ingext_queue_length`). If a request names a counter, gauge, or label that does not
 appear in this file, **reject it** —
 **even if it is a real, valid counter on the instance.** Many live counters exist only for internal
@@ -281,12 +281,56 @@ topk(10, ingext_queue_length)
 
 ---
 
+## 8. fluency_import — per-source import metrics
+
+Per-source ingest metrics recorded where Fluency/Ingext receives data from an individual configured
+import source (syslog listener, forwarder, agent, etc.). This is a finer-grained, source-level
+cousin of `platform_component_bytes{component="datasource"}` (§1) — broken out by the originating
+device/source rather than by datasource component ID. Unlike `lake_ingress_*` / `lake_search_*`,
+these series carry **no `account` label** — scoping to a tenant is done by which tenant's MCP
+connector/account you query against (`prom_query`'s `account` argument), not by a label filter.
+
+| Counter | Description |
+|---|---|
+| `fluency_import_count` | events received from an import source |
+| `fluency_import_bytes` | bytes received from an import source |
+
+| Label | Description | Sample values |
+|---|---|---|
+| `importSource` | name of the configured import source (syslog listener, forwarder, etc.) | `EDGE_FW1`, `CORP-SCCM01`, `Syslog - 192.168.1.200` |
+| `syslogSender` | source IP address the events arrived from | `10.0.1.130`, `192.168.1.92` |
+| `deviceType` | detected device/source type | `FortiGate NGFW`, `Windows Server`, `Application Server`, `Syslog Sender` |
+| `eventType` | parsed event type | `FortiGateNGFW`, `WindowsNXLog`, `Linux`, `Syslog` |
+| `customer` | customer/tenant label | `default` |
+| `app` | producing application | `import` |
+| `namespace` | metrics namespace | `fluency` |
+
+```promql
+# Bytes received per second by import source, last 5 minutes.
+sum by (importSource) (rate(fluency_import_bytes[5m]))
+# Total bytes imported by device type over the last hour.
+sum by (deviceType) (increase(fluency_import_bytes[1h]))
+# Total events imported over the last day, across all sources.
+sum (increase(fluency_import_count[1d]))
+# Top 10 import sources by bytes ingested over the last hour.
+topk(10, sum by (importSource) (increase(fluency_import_bytes[1h])))
+# Total bytes imported right now (point-in-time cumulative counter value).
+sum (fluency_import_bytes)
+```
+
+---
+
 ## Tenant note
 
-The schema also defines `fluency_import_*` and `lake_import_*`, which were **not observed** on the
-live tenant. `lake_import_*` is the schema's older name for what production emits as
-**`lake_ingress_*`** (§4) — same shape (`account`, full `index`). Treat the `lake_ingress_*` names
-as authoritative for querying.
+`lake_import_*` is the schema's older name for what production emits as **`lake_ingress_*`** (§4)
+— same shape (`account`, full `index`). Treat the `lake_ingress_*` names as authoritative for that
+family.
+
+`fluency_import_*` (§8) **is** observed on live tenants — it is a distinct, per-source import
+counter family (labels `importSource`, `syslogSender`, `deviceType`, `eventType`, `customer`,
+`app`, `namespace`, no `account` label). It is **not** an alias for `lake_ingress_*` or
+`platform_component_bytes` — query it directly when the user asks about import volume by source,
+sender, or device type.
 
 ---
 
@@ -304,6 +348,7 @@ as authoritative for querying.
 | Lake ingress | `lake_ingress_count` | `lake_ingress_bytes` | `account`, `index` (full) |
 | Lake search | `lake_search_count` | `lake_search_bytes` | `account`, `index` (full), `provider` |
 | Lake realtime search | `lake_realtime_search_count` | `lake_realtime_search_bytes` | `account`, `index` (full), `provider` |
+| Fluency import (per-source) | `fluency_import_count` | `fluency_import_bytes` | `importSource`, `syslogSender`, `deviceType`, `eventType`, `customer`, `app`, `namespace` |
 
 **Search cost counters** (SaaS on-demand search only, same labels as `lake_search_*`):
 `lake_search_pod_seconds`, `lake_search_core_seconds` (= 1.5 × pod-seconds),

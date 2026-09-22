@@ -1,6 +1,6 @@
 ---
 name: ingext-promql
-version: 1.0.3
+version: 1.0.4
 description: >
   Generate and run PromQL / MetricsQL queries for the Fluency / Ingext platform metrics store
   (VictoriaMetrics). Use this skill whenever the user asks about platform throughput, ingest,
@@ -27,7 +27,7 @@ is the complete, authoritative list.
 
 ## Scope
 
-The metrics store contains exactly **seventeen counters across six families**, plus the one gauge
+The metrics store contains exactly **nineteen counters across seven families**, plus the one gauge
 `ingext_queue_length` (queue depth). Answer only questions about these platform metrics.
 Internal/operational metrics (component-level compressed-byte counters, datalake merge, rule-action
 counts, runtime profiling, buffer gauges) are out of scope — do not surface or query them. Note
