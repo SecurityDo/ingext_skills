@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.1.2
+version: 1.2.0
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident, an AI-assist ticket,
@@ -91,6 +91,7 @@ parsed log, and need no binary installed.
 | Query the datalake | `kql_search`, `validate_kql` | `ingext kql` |
 | Raw documents | `lake_search` | `ingext datalake search` |
 | Which indexes exist | `lake_search_list_index`, `list_data_tables` | `datalake list-index` |
+| Who the subject IS | `get_azure_user_record` | — |
 | Read a rule | `eventwatch_rule_list`, `eventwatch_rule_get` | `eventwatch rule_list/rule_get` |
 | Test a rule | `eventwatch_rule_test` | `eventwatch rule_test` |
 
@@ -264,6 +265,54 @@ Three consequences that change what you recommend:
   contribution *and* collapses the multiplier. Masking the severity zeroes the score
   instead. Use a `RiskFilter` with `riskMask` — it reaches `RuleHits[].Risks` as well
   as the top-level risks.
+
+### Who is the subject? Read the directory record, not the audit log
+
+Before judging what an account did, establish what it **is**. For any Microsoft 365
+subject call `get_azure_user_record` with the UPN:
+
+```json
+get_azure_user_record { "username": "user@example.com" }
+```
+
+It resolves the user through Microsoft Graph and returns `displayName`, `userType`
+(Member/Guest), `createdDateTime`, and — the part that decides how you read everything
+else — the `roles` map of assigned Azure AD directory roles. A subject with
+`Global Administrator` is *expected* to assign licences, reset passwords and manage
+group membership; the same actions from an account with no roles are a different
+ticket entirely. Run it on the **target** too: a privileged actor touching another
+privileged account is worth more than one touching a Member.
+
+**Never infer privilege from the absence of role-assignment events.** Searching the
+audit index for `Add member to role.` over the investigation window and finding none
+does not mean the subject holds no role — it means the role was granted *before the
+window*. Directory roles are usually assigned when an account is created and never
+touched again, so a long-standing Global Administrator leaves no role event at all in
+a 30-day search. This is the "zero against a large scan" trap pointed at the wrong
+question: the audit index answers *what changed*, the directory record answers *what
+is*. Only the second one establishes privilege.
+
+Resolve **groups** the same way, and by id rather than name. A summary reports a group
+by `displayName`, and display names are not unique: one tenant carried three separate
+groups called `Custodial` — a pure security group, a distribution list, and a
+security-enabled Microsoft 365 group. The membership events carry
+`ModifiedPropertiesFieldsOld.Group_ObjectID`; look that id up in `office365Group` and
+read `securityEnabled`:
+
+```
+office365Group | where id in ("<guid>") 
+| project displayName, id, securityEnabled, mailEnabled, groupTypes, description
+```
+
+`securityEnabled: false` is a mailing list, and removing people from it costs them
+mail. `securityEnabled: true` gates access, and removing people from it costs them
+whatever it grants. Deciding which one a bulk membership change touched is the
+difference between a housekeeping note and an access-loss incident — and the group's
+name will not tell you.
+
+The record also carries roles the incident never mentions — a compliance or Purview
+role alongside Global Administrator changes what data the account could reach, and the
+behavior summary will not tell you about it.
 
 ## Step 2 — The base rate (run this before anything else)
 
