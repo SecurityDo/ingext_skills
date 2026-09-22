@@ -100,6 +100,7 @@ parse-validates before returning. Use it for any datalake query, even trivial on
 - "using the ingext_kql skill, top 10 users by failed sign-ins yesterday"
 - "using the ingext_kql skill, tell me all the Office365 users and their licenses"
 - "using the ingext_kql skill, write me a KQL query for failed Office365 logins by app"
+- "using the ingext_kql skill, how many assets do we have by category and provider"
 
 ### ingext-promql
 

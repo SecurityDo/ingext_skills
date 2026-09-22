@@ -1,0 +1,20 @@
+description: >-
+  Asset inventory overview: counts distinct assets by category, machine type, and
+  contributing provider, with the set of statuses observed in each group. Good
+  starting point for "what do we have" / "how many hosts of type X" questions, and
+  for spotting which provider(s) are actually populating the inventory. `providers`
+  is a dynamic array (an asset can be reconciled from more than one provider), so it
+  is mv-expanded before grouping.
+datatype: ASSET
+kql: |
+  ASSET
+  | mv-expand provider = providers
+  | extend Provider = tostring(provider)
+  | summarize AssetCount = dcount(id), Statuses = make_set(status) by category, machineType, Provider
+  | order by AssetCount desc
+tags: [asset, asset-inventory, hosts, devices, inventory, system-table]
+expected_output: |
+  One row per category/machineType/provider combination, most populous first (sanitized).
+
+  category            machineType      Provider  AssetCount  Statuses
+  Application Server  Windows Server   FPL        2          []

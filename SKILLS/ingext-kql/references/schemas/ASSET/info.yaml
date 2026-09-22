@@ -1,0 +1,181 @@
+schema: ASSET
+description: >-
+  Fixed, built-in system table exposing the platform's global asset inventory via KQL —
+  the same merged device/host records the `asset_search` MCP tool returns (endpoint
+  agents, directory syncs, cloud inventories, and log-derived hosts, reconciled into
+  one record per asset). Unlike the tables above, this one is NOT returned by
+  `list_data_tables` and has NO entry in `manifest.json` (which is auto-generated from
+  the `ingext_schema` repo) — it was confirmed to exist by direct query
+  (`ASSET | take 10`) against the `contoso` and `fabrikam` tenants on 2026-09-18. Treat it
+  as always available, exactly like a resourceTable: one row per asset, current state,
+  no time filter or dedup needed.
+  KNOWN GAP: on the `fabrikam` tenant, `ASSET` returned 0 rows for a query spanning all of
+  2025-2026, while `asset_search` returned 6 assets for the same tenant at the same time.
+  This suggests the KQL-side table can lag or diverge from the `asset_search` index for
+  some tenants — if `ASSET` comes back empty for a tenant you know has assets, say so
+  explicitly and suggest `asset_search` as a fallback rather than reporting "no assets."
+fields:
+
+  # ==========================================
+  # IDENTITY
+  # ==========================================
+  - name: id
+    type: String
+    description: "Unique identifier for the asset record."
+
+  - name: name
+    type: String
+    description: "Asset display name."
+    sampleValues: ["HOST01", "AZ-EAST1-DC1"]
+
+  - name: fqdn
+    type: String
+    description: "Fully qualified domain name of the asset."
+    sampleValues: ["HOST01.contoso.com"]
+
+  - name: description
+    type: String
+    description: "Free-text description; observed populated with an IP address on some records."
+    sampleValues: ["10.0.0.7", "203.0.113.16"]
+
+  - name: uuid
+    type: Dynamic
+    description: "Hardware/OS UUID of the asset, when known by a contributing provider."
+
+  - name: serialNumber
+    type: Dynamic
+    description: "Hardware serial number, when known by a contributing provider."
+
+  # ==========================================
+  # CLASSIFICATION
+  # ==========================================
+  - name: category
+    type: String
+    description: "High-level asset category."
+    sampleValues: ["Application Server", "Unknown"]
+
+  - name: machineType
+    type: String
+    description: "Asset/machine type."
+    sampleValues: ["Windows Server", "Syslog Sender"]
+
+  - name: model
+    type: Dynamic
+    description: "Hardware model, when known by a contributing provider."
+
+  - name: platform
+    type: Dynamic
+    description: "Platform identifier, when known by a contributing provider."
+
+  - name: os
+    type: Dynamic
+    description: "Operating system name, when known by a contributing provider."
+
+  - name: osVersion
+    type: Dynamic
+    description: "Operating system version, when known by a contributing provider."
+
+  - name: vendor
+    type: Dynamic
+    description: "Hardware/device vendor, when known by a contributing provider."
+
+  # ==========================================
+  # NETWORK
+  # ==========================================
+  - name: publicIP
+    type: Dynamic
+    description: "Public IP address(es) of the asset, when known."
+
+  - name: privateIP
+    type: Dynamic
+    description: "Private IP address(es) of the asset, when known."
+
+  - name: location
+    type: Dynamic
+    description: "Physical/network location of the asset, when known."
+
+  # ==========================================
+  # AGENT / IDENTITY LINKAGE
+  # ==========================================
+  - name: agentID
+    type: Dynamic
+    description: "Identifier assigned by a contributing endpoint-agent provider (e.g. EDR agent ID)."
+
+  - name: lastLoggedInUser
+    type: Dynamic
+    description: "Most recently observed logged-in user on the asset."
+
+  - name: profileType
+    type: Dynamic
+    description: "Provider-specific device profile type. Meaning not yet confirmed against a real sample — inspect a populated record before filtering on it."
+
+  - name: trustType
+    type: Dynamic
+    description: "Device trust type (e.g. an Entra ID device join state). Meaning not yet confirmed against a real sample — inspect a populated record before filtering on it."
+
+  - name: username
+    type: Dynamic
+    description: "Associated username, when the asset is user-scoped rather than host-scoped."
+
+  # ==========================================
+  # CLOUD
+  # ==========================================
+  - name: region
+    type: Dynamic
+    description: "Cloud region, for cloud-sourced assets."
+
+  - name: vpc
+    type: Dynamic
+    description: "Cloud VPC/network identifier, for cloud-sourced assets."
+
+  - name: cloudAccount
+    type: Dynamic
+    description: "Cloud account identifier, for cloud-sourced assets. Note: this is the KQL field name for what the `asset_search` MCP tool documents as 'account'."
+
+  - name: instanceID
+    type: Dynamic
+    description: "Cloud instance ID, for cloud-sourced assets."
+
+  # ==========================================
+  # STATUS & LIFECYCLE
+  # ==========================================
+  - name: status
+    type: Dynamic
+    description: "Asset status. Per the `asset_search` tool, 'on' indicates an active asset."
+
+  - name: createdOn
+    type: Dynamic
+    description: "When the asset record was first created."
+
+  - name: updatedOn
+    type: Dynamic
+    description: "When the asset record was last refreshed by any contributing provider. Primary field to sort/filter on for recency, but this table is a current-state snapshot — do not add a mandatory time filter the way you would for a stream table."
+
+  # ==========================================
+  # GROUPING & PROVENANCE
+  # ==========================================
+  - name: groups
+    type: DynamicArray
+    description: "Groups the asset belongs to. Use mv-expand to flatten before grouping/filtering on individual group names."
+    sampleValues: ["[\"FPL-detect: Windows via (NXLog)\"]", "[\"FPL-detect: Generic Syslog Sender\"]"]
+
+  - name: flags
+    type: Dynamic
+    description: "Provider- or platform-assigned flags on the asset."
+
+  - name: site
+    type: Dynamic
+    description: "Site/location grouping for the asset, when configured."
+
+  - name: tags
+    type: Dynamic
+    description: "User- or provider-assigned tags on the asset."
+
+  - name: infos
+    type: Dynamic
+    description: "Additional provider-supplied metadata bag. Meaning not yet confirmed against a real sample — inspect a populated record before relying on its shape."
+
+  - name: providers
+    type: DynamicArray
+    description: "Which provider(s) contributed to this reconciled asset record. Use mv-expand to flatten before grouping/filtering by provider."
+    sampleValues: ["[\"FPL\"]", "[\"Admin\"]"]

@@ -1,6 +1,6 @@
 ---
 name: ingext-kql
-version: 1.0.5
+version: 1.0.6
 description: >
   Generate a validated KQL query for the Ingext datalake from a natural-language description.
   Use this skill whenever the user asks to query, search, count, aggregate, or report on data
@@ -75,6 +75,19 @@ python3 scripts/sync_schemas.py --repo /path/to/ingext_schema
 
 ---
 
+## Fixed system tables (not returned by `list_data_tables`)
+
+A small number of tables are always queryable even though `list_data_tables` never
+lists them and they have no entry in `manifest.json` (which is auto-generated from
+the `ingext_schema` repo — don't add these by hand there). Check this list *in
+addition to* `list_data_tables` when picking a table (Workflow step 1).
+
+| Table | What it is |
+|---|---|
+| `ASSET` | The platform's global asset inventory — the same merged device/host records the `asset_search` MCP tool returns, reconciled from every asset provider (endpoint agents, directory syncs, cloud inventories, log-derived hosts). Behaves like a resource/snapshot table: one row per asset, current state, no time filter or dedup needed. Schema: `references/schemas/ASSET/info.yaml`. **Known gap:** on at least one tenant (`fabrikam`), `ASSET` returned 0 rows via KQL while `asset_search` returned 6 assets for the same tenant — the KQL-side table can lag or diverge from the `asset_search` index. If `ASSET` comes back empty for a tenant you believe has assets, say so explicitly and suggest `asset_search` as a fallback rather than reporting "no assets." |
+
+---
+
 ## Tools
 
 These tools are available via the connected Ingext MCP connector. Use them on demand — never answer from memory alone.
@@ -95,10 +108,10 @@ Schema columns and example queries come from the **embedded KB** (`references/sc
 Follow these steps in order. Do not skip steps or answer from memory.
 
 ### 1. Pick the table
-Call `list_data_tables`. Choose the table whose name/description best matches the request — from **either** `streamTables` (event logs) **or** `resourceTables` (entity snapshots); both are queryable with KQL. If nothing matches, return the empty contract and say what tables do exist.
+Call `list_data_tables`. Choose the table whose name/description best matches the request — from **either** `streamTables` (event logs) **or** `resourceTables` (entity snapshots); both are queryable with KQL. Also check the **Fixed system tables** list above (e.g. `ASSET` for host/device/asset-inventory questions) — these are valid KQL tables even though `list_data_tables` won't surface them. If nothing matches, return the empty contract and say what tables do exist.
 
 ### 2. Load the schema from the embedded KB (mandatory)
-This step is required for **every** query, including trivial `project`/`take` lookups — never skip it and never infer field names. Open `references/schemas/manifest.json` and look up the table name you picked.
+This step is required for **every** query, including trivial `project`/`take` lookups — never skip it and never infer field names. For a **fixed system table** (see the list above), its schema doc is always at `references/schemas/<TableName>/info.yaml` — open it directly, no manifest lookup needed, since these tables have no manifest entry. Otherwise, open `references/schemas/manifest.json` and look up the table name you picked.
 - **If it has an entry:** read its `info` file (`references/schemas/<TableName>/info.yaml`) to get the exact field names, types, and sample values. Pay attention to:
   - **The primary time column** — `TimeGenerated` for stream tables (use `where TimeGenerated > ago(<duration>)` to time-bound). The schema doc tells you which field it is.
   - **Snapshot tables** (resource tables): these already hold one current row per entity — query them directly, with **no** time filter and **no** dedup step.
