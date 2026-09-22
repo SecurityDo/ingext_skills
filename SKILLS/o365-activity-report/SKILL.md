@@ -2,23 +2,17 @@
 name: o365-activity-report
 version: 1.0.0
 description: >-
-  Produce an **account-wide** (whole-tenant, NOT a single user) Microsoft 365 /
-  Office 365 activity report by querying the Ingext/Fluency **Office365 datalake
-  table directly with KQL** and rendering a self-contained HTML report of
-  **tables + a timechart**. Three focuses: `all` (every workload), `exchange`
-  (Exchange mailbox activity), and `mailitemsaccessed` (a drill-down into the
-  MailItemsAccessed operation — who accessed which mailboxes, external vs owner,
-  from where). USE THIS SKILL when the user wants an O365/Exchange **activity
-  report for a whole account/tenant over a time window** — e.g. "report on
-  Office365 Exchange activity in the last 24 hours", "MailItemsAccessed activity
-  report", "what O365 operations spiked today", "timechart of Exchange events" —
-  and explicitly wants KQL (a table / timechart), NOT an FPL report. This is the
-  KQL, account-wide counterpart of the FPL-based `fluency-report`. DO NOT use it
-  when the focus is a single named mailbox/user (use `office-user-investigation`)
-  or when the user asked to run a saved FPL report (use `fluency-report`).
-  Triggers: "office365 exchange activity report", "o365 activity last 24h",
-  "MailItemsAccessed report", "account-wide mailbox activity", "timechart of
-  O365 events by workload/operation".
+  Produce an account-wide (whole-tenant, NOT a single user) Microsoft 365 / Office 365 activity
+  report by querying the Ingext/Fluency Office365 datalake table directly with KQL, rendering a
+  self-contained HTML report of tables plus a timechart. Three focuses: `all` (every workload),
+  `exchange` (Exchange mailbox activity), and `mailitemsaccessed` (who accessed which mailboxes,
+  external vs owner, from where). USE THIS SKILL when the user wants an O365/Exchange activity
+  report for a whole account over a time window and explicitly wants KQL, NOT an FPL report. This
+  is the KQL, account-wide counterpart of `fluency-report`. DO NOT use it when the focus is a
+  single named mailbox or user (use `office-user-investigation`) or when the user asked to run a
+  saved FPL report (use `fluency-report`). Triggers: "office365 exchange activity report", "o365
+  activity last 24h", "MailItemsAccessed report", "account-wide mailbox activity", "timechart of
+  O365 events by workload".
 ---
 
 # O365 Activity Report (KQL, account-wide)

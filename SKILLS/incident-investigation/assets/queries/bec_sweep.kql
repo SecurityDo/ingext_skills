@@ -1,0 +1,17 @@
+// The negative that closes a ticket: no follow-on action. Thirty days of the
+// operations an actor performs AFTER taking an account -- inbox rules, mail
+// forwarding, delegated mailbox access, transport rules, OAuth consent. Zero
+// hits across all of them is strong evidence; run it before writing "benign".
+// Placeholders: {USER} = lower-cased UPN, {TARGET} = the UPN as ObjectId spells it.
+Office365
+| where timestamp > ago(30d)
+| where Operation has_any ("New-InboxRule", "Set-InboxRule", "UpdateInboxRules",
+    "Set-Mailbox", "Add-MailboxPermission", "Add-RecipientPermission",
+    "Add-MailboxFolderPermission", "Consent to application",
+    "Add service principal", "Add app role assignment grant to user",
+    "Add delegated permission grant", "Add OAuth2PermissionGrant",
+    "New-TransportRule", "Set-TransportRule", "Update user")
+| where tolower(UserId) == "{USER}" or tostring(ObjectId) contains "{TARGET}"
+| project timestamp, Operation, Workload, UserId, ObjectId, ClientIP,
+    ResultStatus, ModifiedProperties
+| order by timestamp desc

@@ -1,0 +1,64 @@
+description: >-
+  The AnomalousBehavior findings with their explanation unpacked. These are
+  GuardDuty's CloudTrail anomaly detectors and they are the findings an analyst
+  most often dismisses, because Service.Action.AwsApiCallAction.Api shows a
+  single harmless-looking Describe call and the user agent is null — the whole
+  case is buried in Service.AdditionalInfo.Value, which is a JSON document
+  delivered as a string and therefore invisible until parse_json() is applied.
+  This query pulls out the four things that matter: the complete API list the
+  finding actually covers, what GuardDuty considered unusual (usually the ASN,
+  not the APIs), the real user agent, and the learned baseline to compare it
+  against. UaAnomaly flags the second anomaly the Title never mentions — a
+  browser user agent driving API calls on an account whose baseline is SDKs.
+datatype: GuardDuty
+kql: |
+  GuardDuty
+  | where timestamp > ago(7d)
+  | where Type has "AnomalousBehavior"
+  | extend LastUpdate = todatetime(UpdatedAt)
+  | summarize arg_max(LastUpdate, *) by Id
+  | where tobool(coalesce(Service.Archived, false)) == false
+  | extend Info = parse_json(tostring(Service.AdditionalInfo.Value))
+  | extend
+      AnomalousApis = tostring(Info.anomalies.anomalousAPIs),
+      UnusualAsn = tostring(Info.unusualBehavior.unusualASNsAccountProfiling),
+      UnusualApis = tostring(Info.unusualBehavior.unusualAPIsAccountProfiling),
+      UnusualUserName = tostring(Info.unusualBehavior.unusualUserNamesAccountProfiling),
+      UnusualIdentity = tostring(Info.unusualBehavior.isUnusualUserIdentity),
+      UserAgent = tostring(Info.userAgent.fullUserAgent),
+      UaCategory = tostring(Info.userAgent.userAgentCategory),
+      BaselineUas = tostring(Info.profiledBehavior.frequentProfiledUserAgentsAccountProfiling),
+      BaselineAsns = tostring(Info.profiledBehavior.frequentProfiledASNsAccountProfiling)
+  | extend
+      ApiCount = array_length(split(AnomalousApis, ",")),
+      Services = array_length(split(AnomalousApis, "amazonaws.com:[")) - 1,
+      FailedCalls = iff(AnomalousApis has ":error", "some denied", "all succeeded"),
+      UaAnomaly = iff(isnotempty(UaCategory) and not(BaselineUas has UaCategory), "new UA class", "")
+  | project
+      Raised = todatetime(CreatedAt),
+      Severity = todouble(Severity),
+      Type,
+      Principal = tostring(Resource.AccessKeyDetails.UserName),
+      PrincipalId = tostring(Resource.AccessKeyDetails.PrincipalId),
+      UserType = tostring(Resource.AccessKeyDetails.UserType),
+      RemoteIp = tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.IpAddressV4),
+      RemoteOrg = tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.Organization.AsnOrg),
+      Country = tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.Country.CountryName),
+      ApiCount, Services, FailedCalls,
+      Occurrences = toint(coalesce(Service.Count, 1)),
+      UnusualAsn, UnusualApis, UnusualUserName, UnusualIdentity,
+      UserAgent, UaCategory, UaAnomaly,
+      BaselineAsns,
+      AnomalousApis,
+      Id
+  | order by Severity desc, Occurrences desc
+tags: [aws, guardduty, anomaly, cloudtrail, credential-abuse, investigation, security]
+expected_output: |
+  Anomalous-behavior findings with the AdditionalInfo payload unpacked (sanitized, columns wrapped).
+
+  Raised                    Severity  Type                                     Principal  PrincipalId            UserType  RemoteIp    RemoteOrg             Country          ApiCount  Services  FailedCalls    Occurrences  UnusualAsn                                    UaCategory  UaAnomaly     Id
+  2026-09-02T15:03:30.978Z  5         InitialAccess:IAMUser/AnomalousBehavior  helpdesk   AIDAEXAMPLEPRINCIPAL1  IAMUser   192.0.2.47  EXAMPLE NETWORKS LTD  Example Country  15        5         all succeeded  159          asnNumber: 64496 asnOrg: EXAMPLE NETWORKS LTD  browser                   00000000000000000000000000000012
+  2026-09-02T15:03:31.037Z  2         Discovery:IAMUser/AnomalousBehavior      helpdesk   AIDAEXAMPLEPRINCIPAL1  IAMUser   192.0.2.47  EXAMPLE NETWORKS LTD  Example Country  16        4         all succeeded  180          asnNumber: 64496 asnOrg: EXAMPLE NETWORKS LTD  browser                   00000000000000000000000000000011
+
+  AnomalousApis (first row, truncated):
+    compute-optimizer.amazonaws.com:[GetEC2InstanceRecommendations:success , GetEnrollmentStatus:success] , notifications.amazonaws.com:[ListNotificationHubs:success] , ...

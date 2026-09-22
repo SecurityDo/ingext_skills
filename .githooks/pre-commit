@@ -1,0 +1,4 @@
+#!/bin/sh
+# Validate skill frontmatter against the staged content.
+# Enable in a fresh clone with:  git config core.hooksPath .githooks
+exec python3 "$(git rev-parse --show-toplevel)/scripts/validate_skills.py"

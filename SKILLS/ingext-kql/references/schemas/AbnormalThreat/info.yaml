@@ -115,4 +115,4 @@ fields:
           - messages.receivedTime — when the mailbox received it (best field for
             actual delivery time).
           - messages.remediationTimestamp — when Abnormal remediated it.
-    sampleValues: ["Spam", "Phishing: Credential", "Unknown Sender", "sender@phish.example.com", "You have the openings, we have the candidates"]
+    sampleValues: ["Spam", "Phishing: Credential", "Unknown Sender", "maggie@example.com", "You have the openings, we have the candidates"]

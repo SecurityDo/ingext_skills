@@ -1,0 +1,68 @@
+description: >-
+  Findings collapsed onto the IAM principal they name, which is how a
+  credential-compromise incident actually presents: GuardDuty runs one
+  anomaly detector per threat purpose, so a single misused identity raises
+  several separate findings within minutes of each other — the collected
+  samples are a Discovery and an InitialAccess finding on the same
+  PrincipalId, thirty seconds apart, and neither alone tells the story.
+  Grouping is on PrincipalId rather than UserName or AccessKeyId because the
+  principal ID survives a rename and a key rotation while the two samples
+  already show different ASIA session keys for the same identity. Purposes is
+  the field to read first: one threat purpose is usually noise, three or more
+  on one principal is an attack chain. The Keys column is the containment
+  list — those are the credentials to deactivate or revoke.
+datatype: GuardDuty
+kql: |
+  GuardDuty
+  | where timestamp > ago(14d)
+  | where tostring(Resource.ResourceType) == "AccessKey"
+  | extend LastUpdate = todatetime(UpdatedAt)
+  | summarize arg_max(LastUpdate, *) by Id
+  | where tobool(coalesce(Service.Archived, false)) == false
+  | extend
+      Sev = todouble(Severity),
+      Principal = tostring(Resource.AccessKeyDetails.UserName),
+      PrincipalId = tostring(Resource.AccessKeyDetails.PrincipalId),
+      UserType = tostring(Resource.AccessKeyDetails.UserType),
+      ThreatPurpose = tostring(split(Type, ":")[0]),
+      RemoteIp = tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.IpAddressV4),
+      RemoteOrg = tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.Organization.AsnOrg),
+      Country = tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.Country.CountryName)
+  | summarize
+      Findings = dcount(Id),
+      MaxSeverity = max(Sev),
+      Occurrences = sum(toint(coalesce(Service.Count, 1))),
+      Purposes = make_set(ThreatPurpose, 10),
+      Types = make_set(Type, 10),
+      SourceIps = make_set_if(RemoteIp, isnotempty(RemoteIp), 10),
+      Networks = make_set_if(RemoteOrg, isnotempty(RemoteOrg), 10),
+      Countries = make_set_if(Country, isnotempty(Country), 10),
+      Keys = make_set_if(tostring(Resource.AccessKeyDetails.AccessKeyId), isnotempty(tostring(Resource.AccessKeyDetails.AccessKeyId)), 10),
+      Apis = make_set_if(tostring(Service.Action.AwsApiCallAction.Api), isnotempty(tostring(Service.Action.AwsApiCallAction.Api)), 10),
+      Accounts = make_set(AccountId, 5),
+      Regions = make_set(Region, 5),
+      FirstActivity = min(todatetime(Service.EventFirstSeen)),
+      LastActivity = max(todatetime(Service.EventLastSeen)),
+      FindingIds = make_set(Id, 20)
+      by Principal, PrincipalId, UserType
+  | extend
+      PurposeCount = array_length(Purposes),
+      NetworkCount = array_length(Networks),
+      WindowMin = round((LastActivity - FirstActivity) / 1m, 1),
+      QuietHours = round((now() - LastActivity) / 1h, 1)
+  | project
+      Principal, UserType, PurposeCount, Findings, MaxSeverity, Occurrences,
+      Purposes, Types, SourceIps, Networks, Countries, NetworkCount,
+      Apis, WindowMin, QuietHours, FirstActivity, LastActivity,
+      Keys, Accounts, Regions, PrincipalId, FindingIds
+  | order by PurposeCount desc, MaxSeverity desc, Occurrences desc
+tags: [aws, guardduty, iam, credential-compromise, correlation, incident-response, security]
+expected_output: |
+  IAM principals with GuardDuty findings against them, correlated (sanitized, columns wrapped).
+
+  Principal  UserType  PurposeCount  Findings  MaxSeverity  Occurrences  Purposes                        Types                                                                              SourceIps       Networks                  Countries            NetworkCount  Apis                               WindowMin  QuietHours
+  helpdesk   IAMUser   2             2         5            339          ["Discovery","InitialAccess"]   ["Discovery:IAMUser/AnomalousBehavior","InitialAccess:IAMUser/AnomalousBehavior"]  ["192.0.2.47"]  ["EXAMPLE NETWORKS LTD"]  ["Example Country"]  1             ["DescribeInstances","StartSession"]  11.5       2.2
+
+  Keys:        ["ASIAEXAMPLEKEY000001","ASIAEXAMPLEKEY000002"]
+  PrincipalId: AIDAEXAMPLEPRINCIPAL1
+  FindingIds:  ["00000000000000000000000000000011","00000000000000000000000000000012"]

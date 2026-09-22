@@ -1,0 +1,13 @@
+// The tenant-wide view of the activity class the incident belongs to. If the
+// same directory activity is running across dozens of accounts in the same
+// week, the incident is one instance of a campaign -- a rollout, an admin push,
+// a vendor change -- and the verdict is about the campaign, not the user.
+// Adjust the has_any list to the activity the rule fired on.
+AzureAuditLogs
+| where TimeGenerated > ago(30d)
+| where ActivityDisplayName has_any ("security info", "authentication method", "Passkey")
+| extend InitiatedByUPN = tolower(tostring(InitiatedBy.user.userPrincipalName)),
+         InitiatedIP = tostring(InitiatedBy.user.ipAddress)
+| project TimeGenerated, ActivityDisplayName, Result, ResultReason,
+    InitiatedByUPN, InitiatedIP, Category
+| order by TimeGenerated asc

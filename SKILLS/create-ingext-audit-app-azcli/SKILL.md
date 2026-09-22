@@ -3,20 +3,16 @@ name: create-ingext-audit-app-azcli
 version: 1.0.0
 description: >-
   Azure CLI (az / Bash) variant for creating the "ingext-audit" Entra app registration that
-  Fluency / Ingext uses to import Office 365 Management audit events, Azure AD / Entra audit
-  events, and Azure AD resources (users, groups, devices, applications). Registers a
-  customer-owned, app-only (client-credentials) app, adds nine APPLICATION permissions across
-  Microsoft Graph and the Office 365 Management APIs, grants admin consent, creates a client
-  secret, and returns three fields — tenantId, clientId, clientSecret — for the downstream
-  install-application stage. Supports two modes: MODE A — the cowork operator is themselves the
-  tenant's Global Admin, so cowork runs the bundled az CLI script directly (after the user's
-  interactive `az login` and per-command permission approval); MODE B — guiding a third-party
-  customer admin who runs the script (or the portal walkthrough) in their own tenant. Prefer this
-  skill over the PowerShell one when the admin uses az CLI / Linux / macOS, or when the operator
-  wants cowork to run the setup for them. Triggers: "install/register the ingext-audit Azure app
-  with az CLI", "I'm the Global Admin, run the Ingext Entra app setup for me", "onboard our tenant
-  to Ingext using the Azure CLI". Do NOT use for the hosted OAuth consent flow (multi-tenant app +
-  adminConsentEmail) — that's the add-connector skill's Office365 / AzureAudit connectors.
+  Fluency / Ingext uses to import Office 365 Management audit events, Entra audit events, and
+  Azure AD resources. Registers a customer-owned, app-only app, adds nine APPLICATION permissions
+  across Microsoft Graph and the Office 365 Management APIs, grants admin consent, creates a
+  client secret, and returns tenantId, clientId and clientSecret for the downstream install-
+  application stage. Two modes: MODE A — the operator is the tenant's Global Admin and cowork runs
+  the bundled az script directly; MODE B — guiding a third-party customer admin who runs it in
+  their own tenant. Prefer this over the PowerShell skill when the admin uses az CLI, Linux or
+  macOS. Triggers: "register the ingext-audit Azure app with az CLI", "I'm the Global Admin, run
+  the Ingext Entra app setup for me", "onboard our tenant to Ingext using the Azure CLI". Do NOT
+  use for the hosted OAuth consent flow — that is add-connector.
 ---
 
 # Create the `ingext-audit` Entra Application (az CLI)

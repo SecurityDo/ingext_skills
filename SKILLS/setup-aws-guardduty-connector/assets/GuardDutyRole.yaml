@@ -1,0 +1,26 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Fluency GuardDuty Setup
+Parameters:
+  IAMRole:
+    Type: String
+    Default: fluencyplatform_instancerole
+
+Resources:            
+  GuardDutyPolicy: 
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - guardduty:GetFindings
+              - guardduty:ListDetectors
+              - guardduty:ListFindings
+              - guardduty:GetDetector
+              - guardduty:ListBucketMultipartUploads
+            Resource:
+              - "*"
+      Roles:
+        - !Ref IAMRole
+

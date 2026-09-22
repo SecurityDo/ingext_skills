@@ -1,0 +1,12 @@
+// The fact that decides an MFA / passkey registration case, and the one neither
+// the behavior summary nor the sign-in log contains: WHICH DEVICE APPROVED IT.
+// StrongAuthenticationPhoneAppDetail carries the registered authenticator list;
+// compare its OldValue against NewValue. A device already present in OldValue
+// means an enrolled factor approved the change and the account was not taken
+// over. SearchableDeviceKey carries the FIDO key that was written.
+// Placeholders: {TARGET} = the UPN as ObjectId spells it, {FROM}/{TO} = epoch ms.
+Office365
+| where timestamp between (unixtime_milliseconds_todatetime({FROM}) .. unixtime_milliseconds_todatetime({TO}))
+| where tostring(ObjectId) contains "{TARGET}"
+| project timestamp, Operation, UserId, ObjectId, ModifiedProperties
+| order by timestamp asc

@@ -1,0 +1,11 @@
+// Before calling a proxy address "attacker infrastructure", check whether other
+// users in the same tenant sit behind the same provider. Three unrelated
+// employees on one Cloudflare /32 with Apple user-agents is iCloud Private
+// Relay, not C2. Placeholders: {PREFIX} = e.g. "2a09:bac2:", {UA} = e.g. "iPad".
+AzureSigninLogs
+| where TimeGenerated > ago(30d)
+| where IPAddress startswith "{PREFIX}" or UserAgent contains "{UA}"
+| extend City = tostring(LocationDetails.city)
+| project TimeGenerated, UserPrincipalName, IPAddress, City, AppDisplayName,
+    UserAgent, ResultType, IsInteractive, AuthenticationRequirement
+| order by TimeGenerated asc

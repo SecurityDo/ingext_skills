@@ -1,0 +1,14 @@
+// Decompose "N failed logins" by error code and origin before calling it a
+// brute force. Only 50126 is a credential failure; 50074 is a strong-auth
+// interrupt inside a normal flow and 70044 is an expired session. Where the
+// failure came from settles it: failures on the user's own compliant,
+// Entra-joined device from the corporate egress, followed by success seconds
+// later, are a typo. Placeholders: {USER} = lower-cased UPN.
+Office365
+| where timestamp > ago(30d)
+| where tolower(UserId) == "{USER}"
+| where Operation in ("UserLoginFailed", "UserLoggedIn")
+| project timestamp, Operation, ClientIP, ErrorNumber, ["_ip.isp"], ["_ip.city"],
+    ["DevicePropertiesFields.OS"], ["DevicePropertiesFields.BrowserType"],
+    ["ExtendedPropertiesFields.RequestType"], ApplicationId, ResultStatus
+| order by timestamp asc

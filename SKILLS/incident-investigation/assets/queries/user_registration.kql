@@ -1,0 +1,17 @@
+// What the account looks like NOW. The question is never only "what was added"
+// but "what was removed or demoted": persistence deletes or downgrades factors,
+// a rollout adds one alongside the rest. Check authMethods, the preferred
+// secondary method, roles, and the OAuth applications list for a grant nobody
+// recognises. Snapshot table -- no time filter, no dedup.
+// Placeholders: {USER} = lower-cased UPN.
+office365User
+| where tolower(userPrincipalName) == "{USER}"
+| project userPrincipalName, mail, displayName, jobTitle, department,
+    officeLocation, createdDateTime, accountEnabled, userType, roles, roleIDs,
+    authMethodCount, authMethods,
+    ["userRegistration.isAdmin"], ["userRegistration.isMfaRegistered"],
+    ["userRegistration.isPasswordlessCapable"],
+    ["userRegistration.methodsRegistered"],
+    ["userRegistration.lastUpdatedDateTime"],
+    ["userRegistration.userPreferredMethodForSecondaryAuthentication"],
+    oauth2Applications, groups

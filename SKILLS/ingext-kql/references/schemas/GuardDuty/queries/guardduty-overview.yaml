@@ -1,0 +1,45 @@
+description: >-
+  Thirty-day GuardDuty posture for the estate, one row per threat purpose and
+  affected resource type, which is the axis the structured `Type` string was
+  designed to be sliced on and the one the console does not offer. Counts are
+  dcount(Id) because a single finding is collected many times as it aggregates,
+  and Occurrences sums the per-finding Service.Count so the volume behind the
+  findings is visible next to the number of findings. The Accounts and Regions
+  columns turn this into a coverage check as much as a threat summary: a
+  purpose that appears in one account and nowhere else usually means a detector
+  is switched off rather than that only one account is being attacked.
+datatype: GuardDuty
+kql: |
+  GuardDuty
+  | where timestamp > ago(30d)
+  | extend LastUpdate = todatetime(UpdatedAt)
+  | summarize arg_max(LastUpdate, *) by Id
+  | extend
+      Sev = todouble(Severity),
+      Tail = tostring(split(Type, ":")[1])
+  | extend
+      ThreatPurpose = tostring(split(Type, ":")[0]),
+      AffectedResource = tostring(split(Tail, "/")[0]),
+      Archived = tobool(coalesce(Service.Archived, false))
+  | summarize
+      Findings = dcount(Id),
+      Critical = countif(Sev >= 9.0),
+      High = countif(Sev >= 7.0 and Sev < 9.0),
+      Medium = countif(Sev >= 4.0 and Sev < 7.0),
+      Low = countif(Sev < 4.0),
+      Suppressed = countif(Archived),
+      Occurrences = sum(toint(coalesce(Service.Count, 1))),
+      Accounts = dcount(AccountId),
+      Regions = make_set(Region, 6),
+      Sources = make_set(tostring(Service.FeatureName), 6),
+      TopTypes = make_set(Type, 6),
+      LastRaised = max(todatetime(CreatedAt))
+      by ThreatPurpose, AffectedResource
+  | order by Critical desc, High desc, Medium desc, Findings desc
+tags: [aws, guardduty, overview, reporting, posture, security]
+expected_output: |
+  Findings by threat purpose and affected resource over 30 days (sanitized).
+
+  ThreatPurpose  AffectedResource  Findings  Critical  High  Medium  Low  Suppressed  Occurrences  Accounts  Regions           Sources                       TopTypes                                   LastRaised
+  InitialAccess  IAMUser           1         0         0     1       0    0           159          1         ["af-south-1"]    ["CloudTrailManagementEvent"]  ["InitialAccess:IAMUser/AnomalousBehavior"]  2026-09-02T15:03:30.978Z
+  Discovery      IAMUser           1         0         0     0       1    0           180          1         ["af-south-1"]    ["CloudTrailManagementEvent"]  ["Discovery:IAMUser/AnomalousBehavior"]      2026-09-02T15:03:31.037Z

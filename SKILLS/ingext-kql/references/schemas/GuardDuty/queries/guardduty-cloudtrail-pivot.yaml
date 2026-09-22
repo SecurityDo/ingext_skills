@@ -1,0 +1,78 @@
+description: >-
+  The pivot GuardDuty is built to be used with. A finding names an identity, a
+  source IP and a window but deliberately carries only ONE representative API
+  call, so the answer to "what did they actually do" is always in CloudTrail.
+  This joins each open AccessKey finding to every CloudTrail event from the
+  same access key and bounds the CloudTrail side by the finding's own activity
+  window plus a thirty-minute tail, so the result is the real call log behind
+  the alert rather than the principal's whole day. The columns are ordered for
+  triage: Mutating and Denied separate reconnaissance from action and success
+  from failure, and MutatingOps is the list to read first, because the
+  Describe/List calls are what the finding already told you about and the
+  Create/Put/Delete calls are what it did not.
+datatype: GuardDuty
+kql: |
+  let Findings =
+      GuardDuty
+      | where timestamp > ago(7d)
+      | where tostring(Resource.ResourceType) == "AccessKey"
+      | extend LastUpdate = todatetime(UpdatedAt)
+      | summarize arg_max(LastUpdate, *) by Id
+      | where tobool(coalesce(Service.Archived, false)) == false
+      | project
+          FindingId = Id,
+          FindingType = Type,
+          Severity = todouble(Severity),
+          Raised = todatetime(CreatedAt),
+          WindowStart = todatetime(Service.EventFirstSeen),
+          WindowEnd = todatetime(Service.EventLastSeen),
+          Principal = tostring(Resource.AccessKeyDetails.UserName),
+          AccessKey = tostring(Resource.AccessKeyDetails.AccessKeyId),
+          FindingIp = tostring(Service.Action.AwsApiCallAction.RemoteIpDetails.IpAddressV4),
+          Account = AccountId;
+  let CallLog =
+      CloudTrail
+      | where timestamp > ago(7d)
+      | where isnotempty(tostring(userIdentity.accessKeyId))
+      | project
+          CallTime = timestamp,
+          AccessKey = tostring(userIdentity.accessKeyId),
+          eventSource, eventName, awsRegion, sourceIPAddress, userAgent,
+          errorCode = tostring(errorCode),
+          readOnly = tobool(readOnly);
+  Findings
+  | join kind=inner CallLog on AccessKey
+  | where CallTime >= WindowStart - 5m and CallTime <= WindowEnd + 30m
+  | extend Op = strcat(tostring(split(eventSource, ".")[0]), ":", eventName)
+  | summarize
+      Calls = count(),
+      Mutating = countif(readOnly == false),
+      Denied = countif(isnotempty(errorCode)),
+      FromFindingIp = countif(sourceIPAddress == FindingIp),
+      Ops = dcount(Op),
+      MutatingOps = make_set_if(Op, readOnly == false, 15),
+      DeniedOps = make_set_if(Op, isnotempty(errorCode), 10),
+      TopOps = make_set(Op, 15),
+      CallIps = make_set(sourceIPAddress, 8),
+      UserAgents = make_set(userAgent, 5),
+      FirstCall = min(CallTime),
+      LastCall = max(CallTime)
+      by FindingId, FindingType, Severity, Raised, Principal, AccessKey, FindingIp, Account
+  | extend IpMatch = iff(FromFindingIp == Calls, "all", iff(FromFindingIp > 0, "partial", "NONE"))
+  | project
+      Raised, Severity, FindingType, Principal, Account,
+      Calls, Mutating, Denied, Ops, FromFindingIp,
+      MutatingOps, DeniedOps, TopOps,
+      FindingIp, CallIps, IpMatch, UserAgents,
+      FirstCall, LastCall, AccessKey, FindingId
+  | order by Mutating desc, Severity desc, Calls desc
+tags: [aws, guardduty, cloudtrail, correlation, investigation, incident-response, security]
+expected_output: |
+  Each open credential finding with the CloudTrail calls made inside its window (sanitized, columns wrapped).
+
+  Raised                    Severity  FindingType                              Principal  Account       Calls  Mutating  Denied  Ops  FromFindingIp  MutatingOps           DeniedOps  FindingIp   CallIps         IpMatch  FirstCall                 LastCall
+  2026-09-02T15:03:30.978Z  5         InitialAccess:IAMUser/AnomalousBehavior  helpdesk   123456789012  164    1         0       15   164            ["ssm:StartSession"]  []         192.0.2.47  ["192.0.2.47"]  all      2026-09-02T14:49:59.000Z  2026-09-02T15:04:11.000Z
+  2026-09-02T15:03:31.037Z  2         Discovery:IAMUser/AnomalousBehavior      helpdesk   123456789012  181    0         0       16   181            []                    []         192.0.2.47  ["192.0.2.47"]  all      2026-09-02T14:49:53.000Z  2026-09-02T15:03:58.000Z
+
+  TopOps (second row, truncated):
+    ["ec2:DescribeInstances","ec2:DescribeAddresses","ec2:DescribeImages","ssm:DescribeInstanceInformation", ...]

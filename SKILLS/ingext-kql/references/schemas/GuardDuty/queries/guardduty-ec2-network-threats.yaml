@@ -1,0 +1,81 @@
+description: >-
+  The network-derived findings — DNS requests, VPC Flow Log connections and
+  inbound port probes — with the two facts that decide how urgent each one is
+  brought to the front. The first is Service.ResourceRole: an OUTBOUND
+  connection or a C&C domain lookup where the instance is the ACTOR means your
+  workload is calling the bad thing and is very likely compromised, while the
+  same finding type with the instance as TARGET is the internet knocking on an
+  exposed port and is usually background. The second is whether the traffic was
+  actually blocked — a C&C lookup that a DNS firewall or security group stopped
+  is contained, and one that was not is live. Remote party is coalesced across
+  the three action shapes because a DNS finding has a domain and no address at
+  all, while a port probe hides its address two levels inside an array.
+datatype: GuardDuty
+kql: |
+  GuardDuty
+  | where timestamp > ago(7d)
+  | where tostring(Service.Action.ActionType) in ("DNS_REQUEST", "NETWORK_CONNECTION", "PORT_PROBE")
+  | extend LastUpdate = todatetime(UpdatedAt)
+  | summarize arg_max(LastUpdate, *) by Id
+  | where tobool(coalesce(Service.Archived, false)) == false
+  | extend
+      Sev = todouble(Severity),
+      ActionType = tostring(Service.Action.ActionType),
+      Role = tostring(Service.ResourceRole),
+      Instance = tostring(Resource.InstanceDetails.InstanceId),
+      InstanceType = tostring(Resource.InstanceDetails.InstanceType),
+      InstanceState = tostring(Resource.InstanceDetails.InstanceState),
+      Profile = tostring(Resource.InstanceDetails.IamInstanceProfile.Arn)
+  | extend
+      RemoteParty = coalesce(
+          tostring(Service.Action.DnsRequestAction.Domain),
+          tostring(Service.Action.NetworkConnectionAction.RemoteIpDetails.IpAddressV4),
+          tostring(Service.Action.PortProbeAction.PortProbeDetails[0].RemoteIpDetails.IpAddressV4)),
+      RemoteOrg = coalesce(
+          tostring(Service.Action.NetworkConnectionAction.RemoteIpDetails.Organization.AsnOrg),
+          tostring(Service.Action.PortProbeAction.PortProbeDetails[0].RemoteIpDetails.Organization.AsnOrg)),
+      RemoteCountry = coalesce(
+          tostring(Service.Action.NetworkConnectionAction.RemoteIpDetails.Country.CountryName),
+          tostring(Service.Action.PortProbeAction.PortProbeDetails[0].RemoteIpDetails.Country.CountryName)),
+      Direction = coalesce(
+          tostring(Service.Action.NetworkConnectionAction.ConnectionDirection),
+          iff(ActionType == "PORT_PROBE", "INBOUND", ""),
+          iff(ActionType == "DNS_REQUEST", "OUTBOUND", "")),
+      Blocked = coalesce(
+          tobool(Service.Action.DnsRequestAction.Blocked),
+          tobool(Service.Action.NetworkConnectionAction.Blocked),
+          tobool(Service.Action.PortProbeAction.Blocked)),
+      Port = coalesce(
+          toint(Service.Action.NetworkConnectionAction.RemotePortDetails.Port),
+          toint(Service.Action.PortProbeAction.PortProbeDetails[0].LocalPortDetails.Port)),
+      PortsProbed = array_length(Service.Action.PortProbeAction.PortProbeDetails),
+      LocalIp = coalesce(
+          tostring(Service.Action.NetworkConnectionAction.LocalIpDetails.IpAddressV4),
+          tostring(Service.Action.PortProbeAction.PortProbeDetails[0].LocalIpDetails.IpAddressV4)),
+      ThreatLists = tostring(Service.Evidence.ThreatIntelligenceDetails[0].ThreatListName)
+  | extend
+      Urgency = case(
+          Role == "ACTOR" and Blocked == true, "outbound, blocked",
+          Role == "ACTOR", "OUTBOUND, NOT BLOCKED",
+          Blocked == true, "inbound, blocked",
+          "inbound, not blocked")
+  | project
+      Raised = todatetime(CreatedAt),
+      Sev, Type, Urgency, Role, Direction, Blocked,
+      Instance, InstanceType, InstanceState, LocalIp,
+      RemoteParty, RemoteOrg, RemoteCountry, Port, PortsProbed,
+      ThreatLists, Profile,
+      Occurrences = toint(coalesce(Service.Count, 1)),
+      LastSeen = todatetime(Service.EventLastSeen),
+      Account = AccountId, Region, Id
+  | order by Sev desc, Occurrences desc, Raised desc
+tags: [aws, guardduty, ec2, dns, network, port-probe, threat-hunting, security]
+expected_output: |
+  Network and DNS findings with direction, containment and instance context (sanitized).
+  No network-derived findings are present in the collected samples — this shape
+  is what the query returns once DNS, Flow Log or Runtime data sources are on.
+
+  Raised                    Sev  Type                                    Urgency                Role    Direction  Blocked  Instance             InstanceType  InstanceState  LocalIp      RemoteParty            RemoteOrg          RemoteCountry  Port   PortsProbed  ThreatLists  Occurrences
+  2026-09-03T02:14:08.000Z  8    Backdoor:EC2/C&CActivity.B!DNS          OUTBOUND, NOT BLOCKED  ACTOR   OUTBOUND   false    i-0123456789abcdef0  t3.medium     running        10.0.2.31    bad.example.com                                          0      0                         42
+  2026-09-03T01:52:40.000Z  5    UnauthorizedAccess:EC2/SSHBruteForce    inbound, not blocked   TARGET  INBOUND    false    i-0123456789abcdef1  t3.micro      running        10.0.4.12    198.51.100.7           Example Hosting    Example Land   22     0                         311
+  2026-09-02T23:10:05.000Z  2    Recon:EC2/PortProbeUnprotectedPort      inbound, not blocked   TARGET  INBOUND    false    i-0123456789abcdef1  t3.micro      running        10.0.4.12    198.51.100.7           Example Hosting    Example Land   3389   6                         58
