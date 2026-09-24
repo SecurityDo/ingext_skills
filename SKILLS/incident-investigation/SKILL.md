@@ -90,9 +90,14 @@ bend:
 |---|---|---|
 | **`ingext-get-profile`** | step 1 | what the subject (and any target account, group or device) IS: identity system, admin flags, directory roles, MFA state, status, group type; for a host — OS, last user, join/compliance state, EDR coverage and health, threat and exposure level |
 
-Invoke it rather than re-implementing its lookups here. If it is not installed, say so
-and offer to fetch `cowork/ingext-get-profile.skill` from the `SecurityDo/ingext_skills`
-repo; do not fall back to guessing privilege from the audit log.
+Invoke it rather than re-implementing its lookups here. **If it is not installed,
+improvise the profile** with whatever the tenant offers — `list_data_tables` for the
+inventories, a direct query on the entity, `get_azure_user_record` for a Microsoft 365
+user, the endpoint agent's live record or `asset_search` for a device — and carry on.
+Label the profile *improvised — ingext-get-profile not installed* in the closure, record
+what it could not establish as gaps, and offer to fetch `cowork/ingext-get-profile.skill`
+from the `SecurityDo/ingext_skills` repo. The non-negotiables still apply: an empty
+inventory lookup is a gap until something shows the table is readable.
 
 ## Required inputs
 
