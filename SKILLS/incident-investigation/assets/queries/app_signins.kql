@@ -1,0 +1,14 @@
+// Has anyone signed in TO the application? A just-registered app that requests delegated
+// permissions is used through user sign-ins, and those land here keyed on its appId.
+// AzureSigninLogs holds USER (interactive/delegated) sign-ins only: a client-credentials
+// sign-in with the app's own secret or certificate is a service-principal sign-in and is
+// NOT in this table. Zero rows here therefore says "no user has signed in to it", never
+// "the secret has not been used" -- see the workflow's app-activity check.
+// Placeholders: {APPID} = lower-cased appId.
+AzureSigninLogs
+| where TimeGenerated > ago(30d)
+| where tolower(AppId) == "{APPID}"
+| project TimeGenerated, UserPrincipalName, AppDisplayName, AppId, IPAddress,
+    ResultType, ResultDescription, ClientAppUsed, UserAgent, ResourceDisplayName,
+    ConditionalAccessStatus, AuthenticationRequirement, CorrelationId
+| order by TimeGenerated asc

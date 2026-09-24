@@ -1,0 +1,14 @@
+// Microsoft 365 / Entra ID group. Snapshot table -- no time filter, no dedup.
+// Resolve by OBJECT ID whenever you have one: display names are not unique (one tenant
+// carried three groups named "Custodial" -- a security group, a distribution list and
+// a security-enabled M365 group). A display-name match can return several rows:
+// report all of them, never pick one.
+// securityEnabled true = it gates access; false = it is a mailing list.
+// Placeholders: {ENTITY} = lower-cased object id, group email or display name.
+office365Group
+| where tolower(id) == "{ENTITY}"
+    or tolower(mail) == "{ENTITY}"
+    or tolower(displayName) == "{ENTITY}"
+| project displayName, id, mail, description, securityEnabled, mailEnabled, groupTypes,
+    isAssignableToRole, visibility, membershipRule, memberCount = array_length(members),
+    createdDateTime, deletedDateTime, onPremisesSyncEnabled

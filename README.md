@@ -78,6 +78,7 @@ package in the same change — the validator checks inside the archives and will
 | [office-user-investigation](#office-user-investigation) | Investigate an M365 mailbox user (KQL + GeoIP) |
 | [o365-activity-report](#o365-activity-report) | Account-wide O365/Exchange activity report (KQL: timechart + tables) |
 | [incident-investigation](#incident-investigation) | Triage an escalated behavior incident / AI-assist ticket to a verdict |
+| [ingext-get-profile](#ingext-get-profile) | Resolve a user, group or device to its profile: admin, roles, MFA, status; OS, last user, join state, EDR health |
 | [ingext-health-monitor](#ingext-health-monitor) | Check whether a site is healthy and ingesting |
 | [add-connector](#add-connector) | Install a new application connector |
 | [deploy-fpl-processor](#deploy-fpl-processor) | Deploy an FPL processor to a tenant and wire it into the running pipeline |
@@ -249,6 +250,7 @@ verdict rests on. Carries the error-code, user-agent, duplicate-row and GeoIP tr
 manufacture findings that are not there. Ends in a written closure with the detection tuning
 that stops the next eleven copies of the same ticket.
 
+Depends on **ingext-get-profile** for step 1 (what the subject and every target IS).
 For the whole mailbox rather than one incident, use **office-user-investigation**; to write
 the suppression the base-rate check calls for, use **eventwatch-rule**.
 
@@ -258,6 +260,29 @@ the suppression the base-rate check calls for, use **eventwatch-rule**.
 - "get the behavior summary for <user> and tell me if it's real"
 - "why did <user> score 3600?"
 - "should we escalate this alert?"
+
+### ingext-get-profile
+
+Resolves one entity — a user, a group or a device — on one tenant account and returns
+what it **is**. Reads the account's resource tables from `list_data_tables` to decide whether the
+entity is a Google Workspace user (`gsuiteUser`), a Microsoft 365 user (`office365User`),
+both or neither, queries every directory present (matching aliases, UPNs, guest mail
+addresses and object ids), and for Microsoft users also reads the live Graph record. Returns
+a normalized profile — status, admin flags and full role list, MFA / 2-Step Verification
+state, aliases, recovery contacts, group type — plus the tables it checked and any gaps.
+For a device it checks Defender, Entra/Intune, SentinelOne, CrowdStrike and Qualys (whichever
+the account has) and returns OS, last user, IPs, join and compliance state, and each EDR
+agent's health, plus Defender risk and exposure. It accepts a behavior-summary id such as
+`asset_<host>_<date>` directly. A sub-skill of **incident-investigation**; also usable on its
+own.
+
+**Try:**
+- "get the profile for <user> on <tenant>"
+- "is <user> a Google or Office 365 user?"
+- "is this account an admin?"
+- "look up the group <object id>"
+- "what is asset_<host>_<date>?"
+- "profile the host <hostname>"
 
 ---
 

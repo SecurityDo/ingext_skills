@@ -1,0 +1,14 @@
+// Google Workspace directory group. Snapshot of the last poll (timestamp is the poll
+// time, not the creation time) -- no time filter, no dedup.
+// Matches the group email, any alias, the directory id, or the display name.
+// A display-name match can return several groups: report all of them, never pick one.
+// directMembersCount is a STRING in this table.
+// Placeholders: {ENTITY} = lower-cased group email, id or display name.
+gsuiteGroup
+| extend _addrs = tolower(strcat(tostring(email), " ", tostring(aliases), " ", tostring(nonEditableAliases)))
+| where tolower(email) == "{ENTITY}"
+    or _addrs contains "\"{ENTITY}\""
+    or id == "{ENTITY}"
+    or tolower(name) == "{ENTITY}"
+| project email, id, name, description, adminCreated, aliases, nonEditableAliases,
+    directMembersCount = tolong(directMembersCount), members, timestamp

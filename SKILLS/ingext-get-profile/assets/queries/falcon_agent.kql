@@ -1,0 +1,14 @@
+// CrowdStrike Falcon host. Snapshot of the last poll -- no time filter, no dedup.
+// Matches the host name or the Falcon agent id (AID, device_id).
+// status "normal" = not network-contained; "contained" means an analyst isolated it.
+// Placeholders: {ENTITY} = lower-cased host name or AID.
+falconAgent
+| extend _host = tolower(hostname)
+| where _host == "{ENTITY}"
+    or _host startswith "{ENTITY}."
+    or tolower(device_id) == "{ENTITY}"
+| project hostname, device_id, machine_domain, ou, site_name, platform_name,
+    os_product_name, os_build, product_type_desc, chassis_type_desc, system_manufacturer,
+    system_product_name, serial_number, local_ip, external_ip, mac_address, agent_version,
+    provision_status, status, reduced_functionality_mode, criticality, tags,
+    last_login_user, last_login_timestamp, first_seen, last_seen, last_reboot

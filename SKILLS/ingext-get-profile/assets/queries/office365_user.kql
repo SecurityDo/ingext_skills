@@ -1,0 +1,22 @@
+// Microsoft 365 / Entra ID directory user. Snapshot table -- no time filter, no dedup.
+// Matches the UPN, the primary SMTP address or the object id (GUID). A guest's UPN
+// is rewritten (alice_contoso.com#EXT#@tenant.onmicrosoft.com), so for guests the
+// mail match is the one that hits.
+// roles / roleIDs here are the SNAPSHOT; get_azure_user_record is the live record
+// and wins when the two disagree.
+// Placeholders: {ENTITY} = lower-cased UPN, email address or object id.
+office365User
+| where tolower(userPrincipalName) == "{ENTITY}"
+    or tolower(mail) == "{ENTITY}"
+    or tolower(id) == "{ENTITY}"
+| project userPrincipalName, mail, id, displayName, userType, accountEnabled,
+    createdDateTime, jobTitle, department, companyName, officeLocation, usageLocation,
+    roles, roleIDs, groups, groupIDs, authMethodCount, authMethods,
+    isAdmin = tobool(['userRegistration.isAdmin']),
+    isMfaRegistered = tobool(['userRegistration.isMfaRegistered']),
+    isMfaCapable = tobool(['userRegistration.isMfaCapable']),
+    isPasswordlessCapable = tobool(['userRegistration.isPasswordlessCapable']),
+    methodsRegistered = ['userRegistration.methodsRegistered'],
+    preferredSecondaryMethod = tostring(['userRegistration.userPreferredMethodForSecondaryAuthentication']),
+    registrationUpdated = ['userRegistration.lastUpdatedDateTime'],
+    oauth2Applications, assignedLicenses, identities, mobilePhone, passwordPolicies
