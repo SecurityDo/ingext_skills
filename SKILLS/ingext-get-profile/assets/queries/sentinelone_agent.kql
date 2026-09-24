@@ -1,0 +1,23 @@
+// SentinelOne endpoint agent. Snapshot of the last poll -- no time filter, no dedup.
+// Matches the host name, the agent uuid or the numeric agent id.
+// isActive and networkStatus are different signals: networkStatus "connected" means not
+// network-isolated, isActive false means the agent has not checked in recently. Read
+// lastActiveDate / offSecond for how long it has been quiet.
+// lastLoggedInUserName is a bare OS account (e.g. "avance"); adLastUserDN carries the
+// person's AD name when the endpoint is domain-joined.
+// Placeholders: {ENTITY} = lower-cased host name or id.
+sentinelOneAgent
+| extend _host = tolower(computerName)
+| where _host == "{ENTITY}"
+    or _host startswith "{ENTITY}."
+    or tolower(uuid) == "{ENTITY}"
+    or id == "{ENTITY}"
+| project computerName, uuid, id, lastLoggedInUserName, siteName, groupName, machineType,
+    osName, osRevision, domain, modelName, externalIp, lastIpToMgmt, networkStatus,
+    agentVersion,
+    isActive = tobool(isActive), isUpToDate = tobool(isUpToDate),
+    isDecommissioned = tobool(isDecommissioned), isUninstalled = tobool(isUninstalled),
+    infected = tobool(infected), activeThreats, mitigationMode, scanStatus,
+    appsVulnerabilityStatus, lastActiveDate, offSecond,
+    adComputerDN = tostring(['activeDirectory.computerDistinguishedName']),
+    adLastUserDN = tostring(['activeDirectory.lastUserDistinguishedName'])

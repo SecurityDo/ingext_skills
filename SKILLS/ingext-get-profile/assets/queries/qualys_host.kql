@@ -1,0 +1,16 @@
+// Qualys host asset. Snapshot table -- no time filter, no dedup.
+// Matches the asset name / FQDN / DNS / NetBIOS name, the short name as an FQDN prefix,
+// or the primary address.
+// lastVulnScan tells you whether the vulnerability picture is current; a months-old
+// scan is a gap, not a clean bill of health.
+// Placeholders: {ENTITY} = lower-cased host name, FQDN or IP.
+qualysHost
+| where tolower(name) == "{ENTITY}" or tolower(fqdn) == "{ENTITY}"
+    or tolower(dnsHostName) == "{ENTITY}" or tolower(netbiosName) == "{ENTITY}"
+    or tolower(fqdn) startswith "{ENTITY}." or address == "{ENTITY}"
+| project name, id, fqdn, netbiosName, domain, address, os, manufacturer, model,
+    trackingMethod, lastLoggedOnUser, lastVulnScan, lastComplianceScan, lastSystemBoot,
+    agentStatus = tostring(['agentInfo.status']),
+    agentLastCheckedIn = tostring(['agentInfo.lastCheckedIn']),
+    agentConnectedFrom = tostring(['agentInfo.connectedFrom']),
+    created, modified

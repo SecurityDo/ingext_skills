@@ -1,0 +1,11 @@
+// Actions the application took in Microsoft 365 as itself. The unified audit log writes
+// an app-only actor as UserId "ServicePrincipal_<servicePrincipalId>".
+// Match it with exact equality: `has "<guid>"` on that value returned 0 rows where the
+// equality returned 119 for the same principal.
+// Placeholders: {SPID} = lower-cased service-principal object id.
+Office365
+| where timestamp > ago(30d)
+| where tolower(UserId) == "serviceprincipal_{SPID}"
+| project timestamp, Workload, Operation, UserId, ObjectId, ClientIP,
+    ResultStatus, ModifiedProperties
+| order by timestamp asc

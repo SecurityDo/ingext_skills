@@ -1,0 +1,10 @@
+// Run ONLY when a match query returned zero rows. It tells "not in this table" apart from
+// "this table cannot be read on this account" -- which look identical as an empty result.
+//   rows == 0                 -> table is empty on this account        -> gap
+//   readable == 0, rows > 0   -> rows exist but key columns are empty  -> gap
+//   readable > 0              -> table is readable; not found is real
+// Placeholders: {TABLE} = the resource table; {KEY1}, {KEY2} = its key columns (see the
+// table in SKILL.md step 2).
+{TABLE}
+| summarize rows = count(),
+    readable = countif(isnotempty(tostring({KEY1})) or isnotempty(tostring({KEY2})))

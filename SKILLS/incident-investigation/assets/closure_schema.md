@@ -24,10 +24,10 @@ is escaped.
 | `timeline` | – | `{title, intro, rows[{time, actor, event, highlight}], callout}` | Use for single-event or single-transaction incidents. Times come from the **raw audit log**, never from summary `from`/`to`. Set `highlight` on the rows the rule fired on. |
 | `score_table` | – | `{title, intro, activity_label, rows[{day, activity, score, incident}], callout}` | Use for multi-day incidents. Put the entity's real daily activity next to the daily riskScore. Bars are scaled per column. Put the risk term that actually drives the score in `callout`. |
 | `base_rate` | – | `{title, intro, caption, columns[], rows[[…]]}` | The Step 2 census **within this one account**: one row per rule, with the number of distinct entities and the highest scorer. Never another tenant's numbers. |
-| `negatives.items[]` | ✓ | `{title, body}` | One item per Step 5 negative. Each `body` gives the zero **and its control**, meaning the count of the same operation elsewhere on the tenant. |
+| `negatives.items[]` | ✓ | `{title, body}` | One item per negative from the Step 3 workflow. Each `body` gives the zero **and its control**, meaning the count of the same operation elsewhere on the tenant. |
 | `negatives.callouts[]` | – | `{title, body}` | Use one callout for each red herring the ticket raised, such as an "ISP discrepancy" or "impossible travel". |
 | `callouts[]` | – | `{title, body}` | Standalone callouts rendered before the Recommendation section. |
-| `recommendation` | ✓ | string or string[] | The first paragraph gives the disposition and the tuning lever, stating which lever it is (see Step 7). Later paragraphs cover gaps found along the way, such as collection or ingestion problems, kept separate from the verdict. |
+| `recommendation` | ✓ | string or string[] | The first paragraph gives the disposition and the tuning lever, stating which lever it is (see Step 5). Later paragraphs cover gaps found along the way, such as collection or ingestion problems, kept separate from the verdict. |
 | `footer.date` | ✓ | string | The review date. |
 | `footer.evidence` | ✓ | string | Every index or API consulted, each with its row or hit count, ending with the data-boundary line "All findings: <tenant display name> only." |
 

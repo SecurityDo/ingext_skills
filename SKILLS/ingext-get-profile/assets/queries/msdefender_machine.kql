@@ -1,0 +1,17 @@
+// Microsoft Defender for Endpoint device. Snapshot table -- no time filter, no dedup.
+// Matches the short host name, the FQDN (computerDnsName is usually lower-case FQDN,
+// e.g. host.corp.local), the 40-hex MDE id, or the Entra device id.
+// aadDeviceId here equals office365Device.deviceId -- use it to join the two records.
+// riskScore = active threat activity; exposureLevel = vulnerability/misconfig exposure.
+// They are different axes: a Medium risk with High exposure is two separate facts.
+// Placeholders: {ENTITY} = lower-cased short host name, FQDN or id.
+msDefenderMachine
+| extend _host = tolower(computerDnsName)
+| where _host == "{ENTITY}"
+    or _host startswith "{ENTITY}."
+    or id == "{ENTITY}"
+    or tolower(aadDeviceId) == "{ENTITY}"
+| project computerDnsName, id, aadDeviceId, isAadJoined, osPlatform, version, osBuild,
+    onboardingStatus, healthStatus, agentVersion, riskScore, exposureLevel, deviceValue,
+    machineTags, lastIpAddress, lastExternalIpAddress, managedBy, rbacGroupName,
+    firstSeen, lastSeen, isPotentialDuplication, mergedIntoMachineId, isExcluded

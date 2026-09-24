@@ -1,0 +1,23 @@
+// Google Workspace directory user. Snapshot table -- no time filter, no dedup.
+// Matches the primary address, any alias (emails[], nonEditableAliases[]) or the
+// numeric directory id. Aliases are matched quote-bounded against the JSON text of
+// the arrays, so "bob@x.com" does not match "jimbob@x.com".
+// Absent booleans mean false in this table (isAdmin is only present when set), so
+// every flag is coalesced -- a raw projection returns null, not false.
+// lastLoginTime of 1970-01-01T00:00:00.000Z means the account has never signed in.
+// Placeholders: {ENTITY} = lower-cased email address or directory id.
+gsuiteUser
+| extend _addrs = tolower(strcat(tostring(primaryEmail), " ", tostring(emails), " ", tostring(nonEditableAliases)))
+| where tolower(primaryEmail) == "{ENTITY}"
+    or _addrs contains "\"{ENTITY}\""
+    or id == "{ENTITY}"
+| project primaryEmail, id, fullName = tostring(name.fullName), orgUnitPath,
+    emails, nonEditableAliases,
+    isAdmin = tobool(coalesce(isAdmin, false)),
+    isDelegatedAdmin = tobool(coalesce(isDelegatedAdmin, false)),
+    suspended = tobool(coalesce(suspended, false)),
+    archived = tobool(coalesce(archived, false)),
+    isEnrolledIn2Sv = tobool(coalesce(isEnrolledIn2Sv, false)),
+    isEnforcedIn2Sv = tobool(coalesce(isEnforcedIn2Sv, false)),
+    changePasswordAtNextLogin = tobool(coalesce(changePasswordAtNextLogin, false)),
+    creationTime, lastLoginTime, recoveryEmail, recoveryPhone, customerId

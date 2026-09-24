@@ -1,0 +1,18 @@
+// Microsoft 365 / Entra ID device object. Snapshot table -- no time filter, no dedup.
+// Matches the host name (displayName, usually upper-case NetBIOS name), the deviceId
+// (the GUID shared with Intune and Defender's aadDeviceId) or the directory object id.
+// username can be the literal string "None" rather than null -- treat it as empty.
+// trustType: AzureAd = Entra joined, ServerAd = hybrid joined to on-prem AD,
+// Workplace = registered (BYOD). isCompliant / isManaged come from Intune.
+// Placeholders: {ENTITY} = lower-cased host name or id.
+office365Device
+| extend _host = tolower(displayName)
+| where _host == "{ENTITY}"
+    or _host startswith "{ENTITY}."
+    or tolower(deviceId) == "{ENTITY}"
+    or tolower(id) == "{ENTITY}"
+| project displayName, id, deviceId, username, operatingSystem, operatingSystemVersion,
+    manufacturer, model, accountEnabled, trustType, profileType, deviceOwnership,
+    isCompliant, isManaged, isRooted, managementType, enrollmentType, domainName,
+    onPremisesSyncEnabled, createdDateTime, registrationDateTime,
+    approximateLastSignInDateTime, deletedDateTime

@@ -1,0 +1,15 @@
+// The application the subject acted on, as REGISTERED in this tenant (the app object).
+// Snapshot table -- no time filter, no dedup. Match on the appId (client id) from the
+// audit event; the object id also works. A just-created app may not be in the snapshot
+// yet -- zero rows is then a timing gap, not proof the app does not exist; say so and
+// read the creating audit event instead.
+// Read: who owns/created it (createdByAppId), when, which credentials it carries
+// (passwordCredentials = secrets, keyCredentials = certificates), which API
+// permissions it requests (requiredResourceAccess), and where tokens go (web redirectUris).
+// Placeholders: {APPID} = lower-cased appId or object id.
+office365Application
+| where tolower(appId) == "{APPID}" or tolower(id) == "{APPID}"
+| project displayName, appId, id, createdDateTime, deletedDateTime, publisherDomain,
+    signInAudience, createdByAppId, isDisabled, passwordCredentials, keyCredentials,
+    requiredResourceAccess, identifierUris, web, tags, notes, description,
+    verifiedPublisher

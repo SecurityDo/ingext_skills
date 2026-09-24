@@ -1,0 +1,12 @@
+// The same application as an ENTERPRISE APP (service principal) in this tenant -- the
+// instance that actually signs in and holds consented permissions. Snapshot table.
+// Read: whether it is enabled, who owns the app (appOwnerOrganizationId = this tenant
+// for an in-house app, another tenant for a vendor's), SSO mode, credentials, tags
+// (HideApp hides it from users' My Apps; it is not by itself suspicious), reply URLs.
+// Placeholders: {APPID} = lower-cased appId or service-principal object id.
+office365InstalledApp
+| where tolower(appId) == "{APPID}" or tolower(id) == "{APPID}"
+| project displayName, appId, id, createdDateTime, deletedDateTime, servicePrincipalType,
+    appOwnerOrganizationId, accountEnabled, appRoleAssignmentRequired,
+    preferredSingleSignOnMode, passwordCredentials, keyCredentials, tags, replyUrls,
+    notificationEmailAddresses, verifiedPublisher, notes

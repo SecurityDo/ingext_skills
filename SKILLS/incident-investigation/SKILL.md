@@ -1,19 +1,19 @@
 ---
 name: incident-investigation
-version: 1.2.0
+version: 1.2.1
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
-  evidence. Use whenever the user hands over a behavior incident, an AI-assist ticket,
-  an alert or a risk score and asks what it really is — "investigate this incident", "triage this
-  ticket", "is this a true positive", "the AI assist says actionable, check it", "why did this user
-  score 3600", "should we escalate this alert". Covers
-  pulling the behavior summary and AI-assist verdict from eventwatch, then the four
-  checks that decide a verdict — the in-tenant base rate for the rule that fired, resolving
-  every source IP against the rest of the tenant, reading which device approved the change, and
-  proving what did NOT happen afterwards — plus the timestamp, error-code, user-agent, duplicate-
-  row and geolocation traps that manufacture findings. Ends in a closure (benign, escalate or
-  confirmed) with tuning, and a Fluency-branded HTML closure report on request. Queries only the
-  incident's own tenant account.
+  evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
+  ticket, an alert or a risk score and asks what it really is — "investigate this incident",
+  "triage this ticket", "is this a true positive", "the AI assist says actionable, check it",
+  "why did this user score 3600", "should we escalate this alert". Pulls the ticket and the
+  AI-assist verdict, profiles the subject, measures the in-tenant base rate for the rule that
+  fired, then runs the workflow for the incident type (Office365 today: resolve every source
+  IP against the tenant, read which device approved the change, prove what did NOT happen)
+  and re-derives every number against the timestamp, error-code, user-agent, duplicate-row
+  and GeoIP traps that manufacture findings. Ends in a closure (benign, escalate or
+  confirmed) with tuning, and a Fluency-branded HTML closure report on request. Queries only
+  the incident's own tenant account.
 ---
 
 # Investigate a behavior incident
@@ -65,16 +65,50 @@ procedure.
 - **The closure states the boundary.** End the write-up with one line naming the
   connector and account every finding came from.
 
+## Non-negotiables — everything else is guidance
+
+This skill is guidance for an investigator, not a script. The steps, the workflows, the
+bundled queries and the example calls are what settled past tickets and a sensible
+order to work in; add checks, reorder them or skip one when the evidence points
+elsewhere, and say in the closure what you skipped and why. Only these rules do not
+bend:
+
+1. **One incident, one account** — every call on `ACCOUNT` only (the hard rule above).
+2. **No zero without a control** — a negative is reported next to a search that shows
+   the same query can return something; otherwise it is a gap, not a pass.
+3. **Raw time, never bucket labels** — event times come from the raw index, not the
+   summary's `from` / `to` (step 4).
+4. **Bundled queries are not altered** — run them unmodified and read their whole
+   output (see "Assets"). Writing your own queries alongside them is expected.
+5. **Quote before testing** — the ticket's claims are quoted verbatim before they are
+   judged, and every number in the closure is one measured in this run.
+6. **No customer identifiers in skill files** — examples use placeholders (`contoso`).
+
+## Depends on
+
+| Sub-skill | Used in | For |
+|---|---|---|
+| **`ingext-get-profile`** | step 1 | what the subject (and any target account, group or device) IS: identity system, admin flags, directory roles, MFA state, status, group type; for a host — OS, last user, join/compliance state, EDR coverage and health, threat and exposure level |
+
+Invoke it rather than re-implementing its lookups here. **If it is not installed,
+improvise the profile** with whatever the tenant offers — `list_data_tables` for the
+inventories, a direct query on the entity, `get_azure_user_record` for a Microsoft 365
+user, the endpoint agent's live record or `asset_search` for a device — and carry on.
+Label the profile *improvised — ingext-get-profile not installed* in the closure, record
+what it could not establish as gaps, and offer to fetch `cowork/ingext-get-profile.skill`
+from the `SecurityDo/ingext_skills` repo. The non-negotiables still apply: an empty
+inventory lookup is a gap until something shows the table is readable.
+
 ## Required inputs
 
 | Argument | Meaning | Example |
 |---|---|---|
 | target | the connector **and** the single tenant account — the only account this run may touch | `Develop` / `contoso` |
-| entity | the key the incident is on — username, asset or IP | `user@corp.com` |
+| ticket **or** entity | a behavior-summary id (step 1, case 1) or the key the incident is on — username, asset or IP (case 2) | `asset_corp-ws101_20260924`, `user@corp.com` |
 | window | epoch ms; default the last 30 days | `--from 1787246734000` |
 
 If the target account or connector is missing or ambiguous, ask — never pick one, and
-never fan out across accounts to find where the entity lives. If the entity is missing,
+never fan out across accounts to find where the entity lives. If neither a ticket id nor an entity is given,
 ask for it. If the window is missing, use 30 days — shorter windows hide the baseline the whole procedure is measured against.
 
 ## Step 0 — Point at the right tenant, and prove it
@@ -91,7 +125,7 @@ parsed log, and need no binary installed.
 | Query the datalake | `kql_search`, `validate_kql` | `ingext kql` |
 | Raw documents | `lake_search` | `ingext datalake search` |
 | Which indexes exist | `lake_search_list_index`, `list_data_tables` | `datalake list-index` |
-| Who the subject IS | `get_azure_user_record` | — |
+| Who the subject IS | the **`ingext-get-profile`** skill (`list_data_tables` → `kql_search` → `get_azure_user_record`) | — |
 | Read a rule | `eventwatch_rule_list`, `eventwatch_rule_get` | `eventwatch rule_list/rule_get` |
 | Test a rule | `eventwatch_rule_test` | `eventwatch rule_test` |
 
@@ -155,28 +189,126 @@ Restore the profile when you finish, and say which tenant you left it on.
 
 ## Step 1 — Pull the summary and the AI-assist verdict
 
+Two ways in, depending on what the user handed you. Decide which **before** the first
+call — they use different search mechanisms, and mixing them up is how a ticket lookup
+returns most of the tenant.
+
+### Case 1 — a ticket id was given
+
+A behavior-summary id is `<keyType>_<key>_<YYYYMMDD>`, e.g.
+`asset_corp-ws101_20260924` or `username_adele.vance@contoso.com_20260924`. Fetch
+exactly that document with a free-text `id:` query:
+
 ```json
 behavior_summary_search {
-  "searchStr": "\"user@example.com\"",
-  "rangeFrom": <ms>, "rangeTo": <ms>, "limit": 30
+  "searchStr": "id:\"username_adele.vance@contoso.com_20260924\"",
+  "rangeFrom": <ms>, "rangeTo": <ms>, "limit": 1
 }
 ```
 
-The reply carries `total`, the matching `documents` with their stored `_source`, and
-— when you ask for them — facet counts over the **whole** match set. Feed the
-documents to `summary_digest.py` for the daily history and the AI verdict, or read
-them directly.
+- **Always double-quote the id.** An id with an email in it is split on `@` and `.`
+  if left bare; a quoted id works for every key type, so quote it every time.
+- **Expect `total: 1`.** Zero means the id is wrong or the window does not cover it —
+  the window filters on `from`, so it must include the date in the id. Widen the
+  window to that day before concluding the ticket does not exist.
+- The document's `key` and `keyType` are the entity for the rest of the procedure;
+  read them from the result, not by re-parsing the id.
+- A case-1 fetch returns exactly one document and nothing about the entity's other
+  tickets — run the **subject history** call below next. It is not optional.
 
-Three things about this index cost time if you don't know them:
+### Case 2 — only an entity was given
 
-- **`searchStr` is a Lucene query over the summary document, not a key filter.**
-  A bare email address is split on `@` and `.` and matches the wrong rows — quote it
-  (`"\"user@example.com\""`). Searching one username on a single-domain tenant still
-  returns most of the tenant: one search came back with 69 summaries across 40
-  user accounts in that one tenant. Filter on `key`, or add `mustFilters: [{"field":"key","terms":[…]}]`.
+`adele.vance@contoso.com`, `corp-ws101`: there is no single ticket yet, so list the
+entity's tickets by **term-filtering the `key` field**, sorted newest first — the one
+document returned is the **latest ticket**, and the facets carry the rest:
+
+```json
+behavior_summary_search {
+  "mustFilters": [
+    { "field": "key",      "terms": ["<key, lower-cased>"] },
+    { "field": "incident", "terms": ["true"] }
+  ],
+  "rangeFrom": <ms>, "rangeTo": <ms>,
+  "sortField": "to", "sortOrder": "desc", "limit": 1,
+  "facets": ["id", "dayIndex", "behaviorRules", "status", "classification"],
+  "facetSize": 50
+}
+```
+
+- **Lower-case the key.** `key` is stored lower-case and the filter is an exact term
+  match: `CORP-WS101` returns 0, `corp-ws101` returns the ticket. The raw events
+  spell the same host `CORP-WS101` and the same user in mixed case, so never copy
+  the case from an event.
+- **Do not use `searchStr` for an entity.** It is a Lucene query over the whole summary
+  document, not a key filter: one search for a single username returned 69 summaries
+  across 40 user accounts.
+- **Size the facets to the window.** `facetSize` defaults to 20; a 30-day window has up to
+  31 daily ids, and the default silently drops the oldest. Use 50 — it covers a full
+  30-day window with headroom, and a wider window needs a larger value.
+- **Sort on `to`, descending.** The default sort is `riskScore`, so without it the one
+  document returned is the highest-scoring ticket, not the latest — and the latest is
+  the one to investigate unless the user names another.
+- **Filter `incident: true`.** Summaries exist for every day the entity did anything,
+  and most are not tickets: on one entity the newest summary was a zero-score sign-in
+  day with `incident: false`, while its newest ticket was the day before. Without the
+  filter, "latest" means latest activity, not latest ticket. Drop it only when you want
+  the full daily baseline in the facets (e.g. which rules fire every day) — then pick
+  the ticket from the `id` facet yourself.
+- **Keep `limit` at 1.** `limit: 0` is not honoured — it returns the default 20 full
+  documents, and a busy entity's 20 summaries run to ~150 KB.
+- **Facet order is not time order.** Facet buckets sort by count, then by value, so the
+  first `id` bucket is often the *oldest* ticket. Take "latest" from the sorted document,
+  never from the top of a facet.
+- The returned document is the ticket; there is no second fetch. Use case 1 only if the
+  user points at a different id from the `id` facet.
+
+### Subject history — required in both cases
+
+The ticket is one day of the entity's record. Before judging it, list the entity's
+**other tickets in the last 30 days**. Nothing else in this procedure looks backward at
+the subject: the case-1 fetch returns one document, and step 2's base rate counts
+*other entities* per rule. A precursor on an earlier day (a tenant-wide consent, a role
+grant, a mailbox permission, an authentication-method change) is invisible from
+today's ticket alone.
+
+```json
+behavior_summary_search {
+  "mustFilters": [
+    { "field": "key",      "terms": ["<key, lower-cased>"] },
+    { "field": "incident", "terms": ["true"] }
+  ],
+  "mustNotFilters": [{ "field": "id", "terms": ["<this ticket's id>"] }],
+  "rangeFrom": <ms − 30 days>, "rangeTo": <ms>,
+  "sortField": "to", "sortOrder": "desc", "limit": 1,
+  "facets": ["id", "behaviorRules", "status", "classification"],
+  "facetSize": 50
+}
+```
+
+- **Exclude the current ticket** with `mustNotFilters` on `id`, so the one document
+  returned is the most recent *earlier* ticket rather than a second copy of this one.
+- **In case 2 the entity call already carries these facets** — read them there instead
+  of repeating the call; only the exclusion differs.
+- **Read, don't just count.** For each earlier `id`, note its rules and how it was
+  closed. Re-read (case-1 fetch) any earlier ticket whose rules are a precursor or a
+  sibling of today's — consent to application, role add, mailbox permission,
+  authentication-method or credential change, an app or service-principal change —
+  and any that the AI assist closed on its own. What it shows goes into the closure:
+  as context for today's verdict when it is related, as a side finding when it is not.
+- The AI-assist comment often names earlier high-scoring ticket ids in
+  `high_risk_activity_raw_json_row`. Treat that as a pointer, not as the history —
+  it lists only tickets above its own score threshold.
+
+Case 1 or case 2, one call yields the ticket. The reply carries
+`total`, the matching `documents` with their stored `_source`, and facet counts over the
+**whole** match set; feed documents to `summary_digest.py` for the daily history and the
+AI verdict, or read them directly.
+
+Two things about this index regardless of case:
+
 - **The time filter runs on `from`,** and sorting defaults to `riskScore` descending.
   Sort on `to` for most-recent-first.
-- **Neither `from` nor `to` is an event time** — see step 6.
+- **Neither `from` nor `to` is an event time** — see step 4.
 
 What to take from it:
 
@@ -187,7 +319,7 @@ What to take from it:
   has been the dominant one, and the rule's own severity a minority share.
 - the **AI-assist verdict** from `comments[]` (`username: "AI-Assistant"`, content is a
   JSON string). Read its `keyQuestions` as a to-do list, not as findings.
-- the **`behaviorRules` list** — the names to hand to `eventwatch_rule_get` in step 7.
+- the **`behaviorRules` list** — the names to hand to `eventwatch_rule_get` in step 5, and the key to step 3's workflow choice.
 
 Use `behavior_event_search` for the individual events behind a summary row; those
 carry true `timestamp` values rather than bucket labels.
@@ -266,53 +398,39 @@ Three consequences that change what you recommend:
   instead. Use a `RiskFilter` with `riskMask` — it reaches `RuleHits[].Risks` as well
   as the top-level risks.
 
-### Who is the subject? Read the directory record, not the audit log
+### Who is the subject? Get the profile before judging the actions
 
-Before judging what an account did, establish what it **is**. For any Microsoft 365
-subject call `get_azure_user_record` with the UPN:
+Before judging what an account did, establish what it **is** — run the
+**`ingext-get-profile`** skill with `ACCOUNT` and the incident's entity. It reads the
+account's resource tables from `list_data_tables` to decide whether the subject is a
+Google Workspace user, a Microsoft 365 user, both or neither, queries each directory
+that exists, and for a Microsoft 365 user reads the live directory record with
+`get_azure_user_record`. It returns a normalized profile: status, admin flags, the full
+directory role list, MFA / 2-Step Verification state, aliases and recovery contacts,
+plus the tables it checked and any gaps.
 
-```json
-get_azure_user_record { "username": "user@example.com" }
-```
+For an `asset_…` incident the subject is a device: pass the summary id or the host name and the profile comes back with OS, last user, IPs, join and compliance state, and each EDR agent's own health and last-seen time. Run it on the **target** too — every account, group or device the incident acted on. A
+privileged actor touching another privileged account is worth more than one touching a
+Member, and a bulk change to a group reads completely differently depending on whether
+the group gates access (`groupType: security`) or is a mailing list
+(`distribution`). Pass the group's **object id** when the event carries one
+(`ModifiedPropertiesFieldsOld.Group_ObjectID`); display names are not unique.
 
-It resolves the user through Microsoft Graph and returns `displayName`, `userType`
-(Member/Guest), `createdDateTime`, and — the part that decides how you read everything
-else — the `roles` map of assigned Azure AD directory roles. A subject with
-`Global Administrator` is *expected* to assign licences, reset passwords and manage
-group membership; the same actions from an account with no roles are a different
-ticket entirely. Run it on the **target** too: a privileged actor touching another
-privileged account is worth more than one touching a Member.
+What to carry from the profile into the rest of the procedure:
 
-**Never infer privilege from the absence of role-assignment events.** Searching the
-audit index for `Add member to role.` over the investigation window and finding none
-does not mean the subject holds no role — it means the role was granted *before the
-window*. Directory roles are usually assigned when an account is created and never
-touched again, so a long-standing Global Administrator leaves no role event at all in
-a 30-day search. This is the "zero against a large scan" trap pointed at the wrong
-question: the audit index answers *what changed*, the directory record answers *what
-is*. Only the second one establishes privilege.
-
-Resolve **groups** the same way, and by id rather than name. A summary reports a group
-by `displayName`, and display names are not unique: one tenant carried three separate
-groups called `Custodial` — a pure security group, a distribution list, and a
-security-enabled Microsoft 365 group. The membership events carry
-`ModifiedPropertiesFieldsOld.Group_ObjectID`; look that id up in `office365Group` and
-read `securityEnabled`:
-
-```
-office365Group | where id in ("<guid>") 
-| project displayName, id, securityEnabled, mailEnabled, groupTypes, description
-```
-
-`securityEnabled: false` is a mailing list, and removing people from it costs them
-mail. `securityEnabled: true` gates access, and removing people from it costs them
-whatever it grants. Deciding which one a bulk membership change touched is the
-difference between a housekeeping note and an access-loss incident — and the group's
-name will not tell you.
-
-The record also carries roles the incident never mentions — a compliance or Purview
-role alongside Global Administrator changes what data the account could reach, and the
-behavior summary will not tell you about it.
+- **`privilege`** decides whether the actions the step-3 workflow finds are expected. A Global
+  Administrator assigning licences is routine; an unroled Member doing it is not.
+- **`found: false` or a non-empty `gaps`** is a finding in its own right, stated in the
+  closure. Never replace it with a privilege inferred from the absence of
+  role-assignment events — the audit index answers *what changed*, the profile answers
+  *what is*.
+- **Read `gaps` before `found`.** The profile only reports `found: false` for a kind when
+  a table for that kind passed its readability probe. A gap such as
+  `"gsuiteGroup has 98 rows but no readable key fields"` means that kind is **unknown** on
+  this account: the subject may or may not be a group, and nothing downstream may treat
+  it as "not a group". Carry each gap into the closure as "not verified — <reason>".
+- **`recovery`** contacts and **`aliases`** feed the step-3 workflow (addresses to resolve,
+  sharing and forwarding checks).
 
 ## Step 2 — The base rate (run this before anything else)
 
@@ -323,11 +441,45 @@ customers on the connector, even when the suspected cause (a Microsoft rollout, 
 vendor release) would plausibly show up there too — that is a cross-tenant query and
 is off-limits unless the user explicitly authorises named accounts.
 
+**Run it once per rule on the ticket.** The ticket's `behaviorRules` list can carry
+several rules, and a multi-value filter matches *any* of them — so one combined search
+counts every entity that fired any of the rules and blurs them into one number. On one
+app-registration ticket the combined search said 2 entities; per rule it was 0 other
+entities for "Add application" and 1 for the credential update (an unrelated sync
+service principal). One call per rule keeps each count about one rule:
+
+```json
+behavior_summary_search {
+  "mustFilters": [{ "field": "behaviorRules", "terms": ["<one rule name>"] }],
+  "mustNotFilters": [{ "field": "id", "terms": ["<this ticket's id>"] }],
+  "rangeFrom": <ms − 7 days>, "rangeTo": <ms>,
+  "limit": 1,
+  "facets": ["key", "dayIndex", "status", "classification"],
+  "facetSize": 50
+}
+```
+
+What this searches: the **behavior summaries on `ACCOUNT` from the last 7 days whose
+rule list contains that rule** — every entity's daily summary, ticket or not, so no
+`incident` filter. Exclude the ticket itself with `mustNotFilters` on its `id`:
+with `limit: 1` the one document returned is otherwise the ticket you already hold,
+re-sent in full once per rule (about 15 KB each on an Office365 ticket); excluded, it
+is another entity's summary, which is the useful one to read. The exclusion removes
+only that one daily document — the subject's other days still count. What to read: the
+`key` facet is the set of distinct entities that fired the rule — the base rate is its
+length, not counting the subject if its key appears from another day — `dayIndex` shows whether they cluster on
+one day, and `status` / `classification` show how earlier copies were closed. Skip
+`O365_AzureAD_UserLoggedIn`-style background rules that fire for everyone every day;
+their base rate is the whole tenant and says nothing.
+
+<details><summary>CLI equivalent</summary>
+
 ```bash
 python3 scripts/ingext_json.py run wave.json -- \
     eventwatch search_summary --query '<BehaviorRuleName>' --from <ms-7d> --to <ms>
 python3 scripts/summary_digest.py wave.json --rule <BehaviorRuleName>
 ```
+</details>
 
 Then widen it to the underlying directory activity with
 `assets/queries/campaign_census.kql`.
@@ -355,74 +507,35 @@ cross-check every count — you need to know which kind you are holding. A raw-s
 census (the directory audit for an activity class, an object's full history) is
 already immune; a `search_summary` count is not.
 
-## Step 3 — Resolve every address against the rest of the tenant
+## Step 3 — Run the workflow for the incident type
 
-An IP is not suspicious because it is unfamiliar to one user. Run
-`assets/queries/ip_census.kql` over every address in the incident, then
-`ip_users.kql` on whatever is left.
+Steps 1, 2 and 4 are the same for every incident. What you check in between depends on
+**what kind of incident it is**, so step 3 is a workflow chosen by type. Read the type
+off the ticket's `behaviorRules` (already in hand from step 1) and open the matching
+workflow file:
 
-| Shape | Reading |
-|---|---|
-| Dozens of users, hundreds of events | Corporate egress / VPN NAT. Not an anomaly, whatever the GeoIP city says. |
-| Many users first seen on the same day | A network change — new circuit, new VPN, office move. |
-| A handful of users, recent | A site, an event, a travelling group. Corroborate in step 5. |
-| Exactly one user, one event | Keep going — but run `ip_prefix_sweep.kql` first. |
+| `behaviorRules` prefix | Incident type | Workflow |
+|---|---|---|
+| `O365_`, `AzureAD_`, `Fluency_O365_` | Office365 / Entra ID | `references/workflows/office365.md` — 3a resolve every address, 3b the approving device (auth incidents only), 3c prove what did not happen |
+| `SentinelOne:` | SentinelOne EDR alert | `references/workflows/sentinelone.md` — S1 pull each alert whole, S2 running or at rest, S3 agent time and ownership, S4 hash prevalence and origin, S5 prove what did not run, S6 reconcile counts, S7 score, tuning and side findings |
+| anything else (`GoogleWorkspace_`, …) | no dedicated workflow yet | `references/workflows/generic.md` — G1 read the raw events, G2 how common the artifact is, G3 resolve every indicator, G4 raw timeline, G5 prove what did not happen, G6 side findings |
 
-`ip_prefix_sweep.kql` is the one that saves you. Before calling a single-user proxy
-address attacker infrastructure, check the provider's prefix across the whole tenant.
-In the worked case the "unknown Cloudflare IPv6" shared a `/32` with two unrelated
-employees on Apple devices through *Apple Internet Accounts* — iCloud Private Relay,
-which egresses through Cloudflare. One query turned the strongest-looking indicator
-into a consumer privacy feature.
+- **A ticket can carry more than one type.** Run every matching workflow and keep their
+  findings apart in the closure.
+- **When the prefix is ambiguous**, look the rule up with `eventwatch_rule_list`
+  (`nameContains`) and use its `group` (`Office365`, `AzureAD`, `SentinelOne`,
+  `GSuites`, …).
+- **When no dedicated workflow exists, run the generic one.** Say so at the top of the
+  closure and label each of its checks *generic workflow — improvised* with the index it
+  came from. Do not borrow another type's queries: Office365 negatives prove nothing
+  about an endpoint alert — the generic workflow says which kind of negative fits.
+- **Every workflow ends in negatives with controls.** Whatever the type, the workflow's
+  last part is "prove what did not happen", and each zero it reports is paired with a
+  count showing the same search can return something (step 4's first trap).
 
-GeoIP is a hypothesis too. Private Relay, VPN and corporate NAT all move the pin, and
-a "impossible travel" finding built on an unverified city is manufactured.
+## Step 4 — Re-derive every number the ticket asserts
 
-## Step 4 — Read the device that approved the change
-
-For any incident about authentication, MFA, passkeys or credentials, this is the fact
-that decides it, and **neither the behavior summary nor the sign-in log contains it**.
-
-`assets/queries/auth_method_changes.kql` over a tight window around the event returns
-`ModifiedProperties`. Two properties matter:
-
-- **`StrongAuthenticationPhoneAppDetail`** — the registered authenticator list, with
-  `OldValue` and `NewValue`. Diff them. If the device that authenticated is already in
-  `OldValue`, an enrolled factor approved the change and the account was not taken
-  over. In the worked case an `iPad Pro (12.9-inch) (5th generation)` had been enrolled
-  since two weeks before, authenticated 52 seconds before the registration, and its
-  user-agent matched the registration session. An attacker would have needed the
-  user's own iPad.
-- **`SearchableDeviceKey`** — the FIDO credential written, with `Usage=FIDO`,
-  `KeyIdentifier` and `CreationTime`.
-
-Also read `AuthenticationDetails` on the sign-in: `"Previously satisfied"` means the
-session carried MFA from an earlier authentication, so find that one.
-
-## Step 5 — Prove what did not happen
-
-A benign verdict rests on negatives, and they have to be collected, not assumed.
-
-- `assets/queries/user_registration.kql` — the account as it stands now. The question
-  is never only what was added but **what was removed or demoted**: persistence deletes
-  or downgrades factors; a rollout adds one alongside the rest. Check `authMethods`,
-  the preferred secondary method, `roles`, and `oauth2Applications` for a grant nobody
-  recognises.
-- `assets/queries/bec_sweep.kql` — 30 days of what an actor does *after* taking an
-  account: inbox rules, forwarding, delegated mailbox access, transport rules, OAuth
-  consent. Zero hits across all of them is strong evidence and takes one query.
-- `assets/queries/activity_profile.kql` — place the incident in the account's real
-  work. A mass `FileDownloaded` run after the event is exfiltration; a Teams session
-  and three file previews is a Thursday.
-- `assets/queries/dir_changes_targeting.kql` — who else changed this account. Read
-  `modifiedProperties` for the group's real name before calling a membership add a
-  privilege escalation: a licensing group added from `O365AdminPortal` for a
-  salesperson is provisioning, and the same query usually explains the geography
-  (a Teams group named for an off-site event placed the user in the right city).
-
-## Step 6 — Re-derive every number the ticket asserts
-
-Summaries round, merge and mislabel. Seven traps:
+Summaries round, merge and mislabel. The traps:
 
 **A zero against a large scan is a predicate bug until proven otherwise.** The result
 count and the scan total sit next to each other in every response, and only one of
@@ -461,6 +574,16 @@ Before reporting any absence, prove the query can return something: drop the fil
 and count, or run it against a window you know holds data. An absence is a claim, and
 it is the one kind of result that looks identical whether it is true or broken.
 
+**An empty snapshot lookup is not an empty directory.** Resource tables (`office365User`,
+`office365Group`, `gsuiteUser`, `gsuiteGroup`, the device inventories) have no time
+column to get wrong, so their failure is different: the table's shape on an account can
+differ from the schema, every field except `_key` comes back null, and a lookup by
+address or id returns **zero rows** — which reads exactly like "not in the directory".
+One tenant's `gsuiteGroup` held 98 groups with nothing readable in any of them. The
+control is `ingext-get-profile`'s readability probe (`assets/queries/readability_probe.kql`
+in that skill): count the rows and how many carry a non-empty key column. `readable > 0`
+makes the absence real; anything else is a gap, and the closure says "not verified".
+
 **A summary's `count` can be lower than the number of real events.** The engine
 dedupes behavior events on a key built from `Key`, `KeyType`, `BehaviorRule` **and
 every attribute value joined together**; a second event with the same key inside the
@@ -476,7 +599,7 @@ This is how one tenant's credential-rule gap was found: the lake held **two**
 while the summary said `count: 1`. The sibling rule on the same day counted 3 of 3,
 because it carried the target as an attribute and the credential rule did not. The
 score confirms it independently — 8400 only closes with one append; two would give
-8800. Which leads to the rule in step 7: **attributes are not cosmetic.**
+8800. Which leads to the rule in step 5: **attributes are not cosmetic.**
 
 Two corollaries. A **base rate of 1 may be a collapse rather than a lone event**, so
 verify it against raw counts before concluding anything from it. And a correctness
@@ -530,7 +653,7 @@ rows is inflated. `kql_rows.py` dedupes and reports how many it dropped.
 sounds like an indicator until `domain_census.kql` shows 808 of the tenant's users
 share it. Any finding phrased as "unusual for this account" gets one census query.
 
-## Step 7 — Write the verdict
+## Step 5 — Write the verdict
 
 Three outcomes, and say which:
 
@@ -665,7 +788,7 @@ test — so a rule disabled on the tenant still evaluates. Write the suppression
 with the **`eventwatch-rule`** skill.
 
 
-## Step 8 — The closure report (only when asked)
+## Step 6 — The closure report (only when asked)
 
 The investigation **stops at the verdict**: the step-7 closure in chat is the default
 deliverable. End it with a one-line offer to render the HTML closure report. Build the
@@ -702,10 +825,10 @@ say so and offer to fetch the skill package from `cowork/incident-investigation.
 in the `SecurityDo/ingext_skills` repo; do not hand-write a substitute report.
 
 **Section order**, fixed by the renderer, each mapped to a step above: title + lede →
-verdict card (step 7) → metadata grid (step 1) → "N grounds for escalation, tested"
-(steps 1, 3, 6) → timeline for a single event **or** score-vs-activity bars for a
-multi-day incident (step 6 / step 1) → base-rate table when the base rate is above one
-(step 2) → what did not happen (step 5) → callouts → recommendation (step 7) → footer.
+verdict card (step 5) → metadata grid (step 1) → "N grounds for escalation, tested"
+(steps 1, 3, 4) → timeline for a single event **or** score-vs-activity bars for a
+multi-day incident (step 4 / step 1) → base-rate table when the base rate is above one
+(step 2) → what did not happen (the step-3 workflow's negatives) → callouts → recommendation (step 5) → footer.
 
 **Fill rules.**
 
@@ -727,11 +850,15 @@ multi-day incident (step 6 / step 1) → base-rate table when the base rate is a
   number came from.
 - **No zero without a control.** Each negative states its zero next to the count of the
   same operation elsewhere on the tenant. A check that could not be run is written as
-  a gap ("not verified — no Gmail logs ingested"), never as a pass.
-- Timeline times come from the raw index (step 6), never from summary buckets.
+  a gap ("not verified — no Gmail logs ingested"), never as a pass. Every entry in the
+  step-1 profile's `gaps` becomes one of these (e.g. "not verified — the Google group
+  table on this tenant has no readable fields"), and a directory lookup's zero cites its
+  readability probe as the control ("0 matches in `office365Group`; 1,204 of 1,204 rows
+  readable").
+- Timeline times come from the raw index (step 4), never from summary buckets.
 - `footer.evidence` lists every index or API consulted with its row or hit count and
   ends with the data-boundary line using the display name: "All findings: `<display
-  name>` only." (The chat closure in step 7 still names connector and account; the
+  name>` only." (The chat closure in step 5 still names connector and account; the
   report does not.)
 
 **Deliver it.** Render into the working directory, open it once (or take a screenshot)
@@ -747,19 +874,29 @@ to the verdict and the one action — do not paste the report back into chat.
 | `scripts/ingext_json.py` | Runs an `ingext` command and recovers the JSON body from the debug log; prints the resolved `siteURL` |
 | `scripts/summary_digest.py` | Daily history for one entity, the AI-assist verdict, and the `--rule` base-rate census |
 | `scripts/kql_rows.py` | Reads `ingext kql --output` JSON, dedupes, `--count` a column |
-| `scripts/render_closure.py` | Step 8: renders a closure JSON into the Fluency-branded HTML report; validates required sections |
-| `assets/closure_schema.md` | Step 8: field reference for the closure JSON |
-| `assets/examples/*.json` | Step 8: anonymised worked closures (multi-day admin, single event) |
+| `scripts/render_closure.py` | Step 6: renders a closure JSON into the Fluency-branded HTML report; validates required sections |
+| `assets/closure_schema.md` | Step 6: field reference for the closure JSON |
+| `assets/examples/*.json` | Step 6: anonymised worked closures (multi-day admin, single event) |
 | `assets/fluency_logo.png` | Embedded into the report header as a data URI |
 
 The three scripts exist for the CLI path. On the MCP path `behavior_summary_search`
 returns the documents directly, so only `summary_digest.py` still earns its place —
 feed it the `documents` array. `ingext_json.py` is unnecessary there: it exists solely
 to recover a JSON body from a debug log, and MCP returns one.
-| `assets/queries/*.kql` | The twelve queries above, placeholder-substituted and parse-validated |
+| `assets/queries/*.kql` | The queries the workflows and steps name, placeholder-substituted and parse-validated |
+| `references/workflows/*.md` | Step 3: `office365.md` for Office365 / Entra ID incidents, `sentinelone.md` for SentinelOne alerts, `generic.md` for every other type |
+
+**Don't modify a bundled query or trim its output.** Run it unmodified — do not wrap it
+in a `summarize`, drop columns or filter out rows to make the output shorter — and write
+your own queries freely alongside it, labelled as your own in the closure. Rows that look like noise are often the
+evidence another check needs — the Azure MFA service's "Update user" rows in
+`bec_sweep` are the authenticator diffs 3b reads — and a summarised directory audit
+loses what was changed (`TargetResources`), the result, and the `CorrelationId` that ties
+one action's events together. When a result is too large to return inline it is saved
+to a file; read it there (e.g. with `jq`) instead of rewriting the query.
 
 Queries use `{USER}` (lower-cased UPN), `{TARGET}` (the UPN as `ObjectId` spells it),
-`{IPS}`, `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms). Run
+`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}`, `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms). Run
 `ingext kql validate @<file>` after substituting — it parses in under a second and
 catches a wrong column name before a 20-second scan does.
 
@@ -804,18 +941,16 @@ while the facet shows the event exists). Through `ingext kql` all of these work:
 | where Operation endswith "secrets management "          // note the trailing space
 ```
 
-Tables used: `AzureSigninLogs`, `AzureAuditLogs`, `Office365`, `office365User`. Check
-they exist on the tenant with `ingext datalake list-index --datalake managed` — a
-tenant without `AzureSigninLogs` needs the Office365-only path, and
-`office-user-investigation` covers it.
+Tables each workflow reads are listed at the top of its file in `references/workflows/`.
 
 ## Related skills
 
+- **`ingext-get-profile`** — the step-1 dependency: who the subject and every target IS.
 - **`office-user-investigation`** — a full mailbox investigation with a GeoIP map, for
   when the subject is the mailbox rather than one incident.
 - **`azure-user-signin-investigation`** — sign-in and directory-change history via the
   three FPL reports, where they are deployed.
 - **`eventwatch-rule`** — once step 2 says the rule is noisy, this is how the
   suppression is written, tested against real history and released.
-- **`ingext-kql`** — any query beyond the twelve here; never hand-write KQL from
+- **`ingext-kql`** — any query beyond the bundled ones; never hand-write KQL from
   memory against an unverified schema.

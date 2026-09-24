@@ -1,0 +1,15 @@
+// Directory changes the application made AS ITSELF -- the audit trail of its secret or
+// certificate being used against Entra ID. InitiatedBy.app usually carries only the
+// servicePrincipalId (appId is often empty), so match both.
+// Placeholders: {APPID} = lower-cased appId, {SPID} = lower-cased service-principal
+// object id (the target id of the "Add service principal" audit event).
+AzureAuditLogs
+| where TimeGenerated > ago(30d)
+| extend InitiatedAppId = tolower(tostring(InitiatedBy.app.appId)),
+         InitiatedSpId = tolower(tostring(InitiatedBy.app.servicePrincipalId)),
+         InitiatedApp = tostring(InitiatedBy.app.displayName)
+| where InitiatedAppId == "{APPID}" or InitiatedSpId == "{SPID}"
+| project TimeGenerated, ActivityDisplayName, Category, Result, ResultReason,
+    InitiatedApp, InitiatedAppId, InitiatedSpId, TargetResources,
+    AdditionalDetails, CorrelationId
+| order by TimeGenerated asc
