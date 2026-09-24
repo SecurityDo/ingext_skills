@@ -10,7 +10,7 @@ description: >-
   entity type from the resource tables list_data_tables reports for the account, then
   queries only those. A dependency of incident-investigation (step 1). Triggers: "get the
   profile for user@corp.com", "who is this user", "is this account an admin", "is X a
-  Google or Office 365 user", "look up this host", "what is asset_<host>_<date>", "look up
+  Google or Office 365 user", "look up this host", "what is asset_corp-ws101_20260924", "look up
   this group". Reads directory and inventory state only, not activity; for what the entity
   did, use incident-investigation, office-user-investigation or ingext-kql.
 ---

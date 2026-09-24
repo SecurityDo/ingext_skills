@@ -2,13 +2,19 @@
 
 Run this when the ticket is an **Office365 / Entra ID** incident — its `behaviorRules`
 start with `O365_`, `AzureAD_` or `Fluency_O365_` (see the routing table in SKILL.md
-step 3). It is three checks, in order; each one's result goes into the step-5 closure
-with the index it came from.
+step 3). It is three checks, usually run in this order; each one's result goes into the
+step-5 closure with the index it came from.
+
+> **Guidance, not a script.** These are the checks that settled past tickets of this type
+> and a sensible order to run them in. Add, reorder or skip any of them when the evidence
+> points elsewhere, and say in the closure what you skipped and why. The non-negotiables
+> in SKILL.md still apply.
 
 Every query below lives in `assets/queries/` of the incident-investigation skill, uses
 the placeholders listed in SKILL.md "Assets", and is run with `validate_kql` then
-`kql_search` on `ACCOUNT` only. **Run each one as written** — do not aggregate it or drop
-columns to shorten the output (see SKILL.md "Assets").
+`kql_search` on `ACCOUNT` only. **Don't modify a bundled query or trim its output** — no
+aggregating, no dropped columns (see SKILL.md "Assets") — and add your own queries
+alongside them whenever the ticket needs something they do not cover.
 
 Tables used: `AzureSigninLogs`, `AzureAuditLogs`, `Office365`, `office365User`. Check they
 exist with `list_data_tables` first — a tenant without `AzureSigninLogs` needs the

@@ -65,6 +65,25 @@ procedure.
 - **The closure states the boundary.** End the write-up with one line naming the
   connector and account every finding came from.
 
+## Non-negotiables — everything else is guidance
+
+This skill is guidance for an investigator, not a script. The steps, the workflows, the
+bundled queries and the example calls are what settled past tickets and a sensible
+order to work in; add checks, reorder them or skip one when the evidence points
+elsewhere, and say in the closure what you skipped and why. Only these rules do not
+bend:
+
+1. **One incident, one account** — every call on `ACCOUNT` only (the hard rule above).
+2. **No zero without a control** — a negative is reported next to a search that shows
+   the same query can return something; otherwise it is a gap, not a pass.
+3. **Raw time, never bucket labels** — event times come from the raw index, not the
+   summary's `from` / `to` (step 4).
+4. **Bundled queries are not altered** — run them unmodified and read their whole
+   output (see "Assets"). Writing your own queries alongside them is expected.
+5. **Quote before testing** — the ticket's claims are quoted verbatim before they are
+   judged, and every number in the closure is one measured in this run.
+6. **No customer identifiers in skill files** — examples use placeholders (`contoso`).
+
 ## Depends on
 
 | Sub-skill | Used in | For |
@@ -862,8 +881,9 @@ to recover a JSON body from a debug log, and MCP returns one.
 | `assets/queries/*.kql` | The queries the workflows and steps name, placeholder-substituted and parse-validated |
 | `references/workflows/*.md` | Step 3: `office365.md` for Office365 / Entra ID incidents, `sentinelone.md` for SentinelOne alerts, `generic.md` for every other type |
 
-**Run bundled queries as written.** Do not wrap them in a `summarize`, drop columns or
-filter out rows to make the output shorter. Rows that look like noise are often the
+**Don't modify a bundled query or trim its output.** Run it unmodified — do not wrap it
+in a `summarize`, drop columns or filter out rows to make the output shorter — and write
+your own queries freely alongside it, labelled as your own in the closure. Rows that look like noise are often the
 evidence another check needs — the Azure MFA service's "Update user" rows in
 `bec_sweep` are the authenticator diffs 3b reads — and a summarised directory audit
 loses what was changed (`TargetResources`), the result, and the `CorrelationId` that ties

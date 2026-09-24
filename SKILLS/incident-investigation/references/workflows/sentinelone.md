@@ -2,8 +2,16 @@
 
 Run this when the ticket is a **SentinelOne** alert — its `behaviorRules` start with
 `SentinelOne:` (see the routing table in SKILL.md step 3). It replaces the generic
-workflow for this type. Seven parts, in order; each result goes into the step-5 closure
-with the index or tool it came from.
+workflow for this type. Seven parts, usually run in this order; each result goes into the
+step-5 closure with the index or tool it came from.
+
+> **Guidance, not a script.** These are the checks that settled past tickets of this type
+> and a sensible order to run them in. Add, reorder or skip any of them when the evidence
+> points elsewhere, and say in the closure what you skipped and why. The non-negotiables
+> in SKILL.md still apply.
+>
+> The JSON calls below are **templates to adapt** — change the facets, window or filters
+> to fit the ticket, or search another way when a ticket does not fit the pattern.
 
 Sources used: the `investigate_sentinelone_alert` tool, the raw **SentinelOne** index
 through `lake_search`, and the `sentinelOneAgent` / `sentinelOneApplication` inventories.
@@ -178,6 +186,9 @@ summary is a relay gap. Name each mismatch in the closure as a collection gap.
   recommendation to open their own tickets, and do not change this ticket's verdict.
 
 ## Verdict shapes seen so far
+
+Examples from past tickets, not a lookup table: reason from what S2–S5 actually showed,
+and expect tickets that fit none of these rows.
 
 | What S2–S5 show | Verdict |
 |---|---|

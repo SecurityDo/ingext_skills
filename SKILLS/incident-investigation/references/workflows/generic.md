@@ -5,6 +5,11 @@ SKILL.md step 3) — an EDR alert, a firewall event, a Google Workspace login, a
 alert Fluency relays, anything new. It is not a query list. It is the order of questions
 a dedicated workflow answers, with the tools that answer them on any data source.
 
+> **Guidance, not a script.** These are the questions that settled past tickets with no
+> dedicated workflow, in a sensible order. Add, reorder or skip any of them when the evidence
+> points elsewhere, and say in the closure what you skipped and why. The non-negotiables
+> in SKILL.md still apply.
+
 Label every check in the closure **"generic workflow — improvised"** with the index or
 table it came from, so a reader knows no vetted query set stood behind it. Everything
 below runs on `ACCOUNT` only.
