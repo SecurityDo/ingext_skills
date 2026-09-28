@@ -11,4 +11,20 @@ AzureSigninLogs
 | project TimeGenerated, UserPrincipalName, AppDisplayName, AppId, IPAddress,
     ResultType, ResultDescription, ClientAppUsed, UserAgent, ResourceDisplayName,
     ConditionalAccessStatus, AuthenticationRequirement, CorrelationId
+// Dedup: the datalake returns the same event two or more times (one 30-day
+// audit pull: 981 rows, 35 distinct). dups = how many copies each row had.
+| extend UserPrincipalName = tostring(UserPrincipalName),
+    AppDisplayName = tostring(AppDisplayName), AppId = tostring(AppId),
+    IPAddress = tostring(IPAddress), ResultType = tostring(ResultType),
+    ResultDescription = tostring(ResultDescription),
+    ClientAppUsed = tostring(ClientAppUsed), UserAgent = tostring(UserAgent),
+    ResourceDisplayName = tostring(ResourceDisplayName),
+    ConditionalAccessStatus = tostring(ConditionalAccessStatus),
+    AuthenticationRequirement = tostring(AuthenticationRequirement),
+    CorrelationId = tostring(CorrelationId)
+| summarize dups = count() by TimeGenerated, UserPrincipalName, AppDisplayName,
+    AppId, IPAddress, ResultType, ResultDescription, ClientAppUsed, UserAgent,
+    ResourceDisplayName, ConditionalAccessStatus, AuthenticationRequirement,
+    CorrelationId
+| top 1000 by TimeGenerated desc
 | order by TimeGenerated asc

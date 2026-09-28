@@ -8,3 +8,4 @@ Office365
 | summarize events = count(), firstSeen = min(timestamp), lastSeen = max(timestamp)
     by Workload, Operation
 | order by events desc
+| take 1000

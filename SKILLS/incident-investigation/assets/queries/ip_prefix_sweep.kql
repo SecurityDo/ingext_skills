@@ -8,4 +8,14 @@ AzureSigninLogs
 | extend City = tostring(LocationDetails.city)
 | project TimeGenerated, UserPrincipalName, IPAddress, City, AppDisplayName,
     UserAgent, ResultType, IsInteractive, AuthenticationRequirement
+// Dedup: the datalake returns the same event two or more times (one 30-day
+// audit pull: 981 rows, 35 distinct). dups = how many copies each row had.
+| extend UserPrincipalName = tostring(UserPrincipalName),
+    IPAddress = tostring(IPAddress), City = tostring(City),
+    AppDisplayName = tostring(AppDisplayName), UserAgent = tostring(UserAgent),
+    ResultType = tostring(ResultType), IsInteractive = tostring(IsInteractive),
+    AuthenticationRequirement = tostring(AuthenticationRequirement)
+| summarize dups = count() by TimeGenerated, UserPrincipalName, IPAddress, City,
+    AppDisplayName, UserAgent, ResultType, IsInteractive, AuthenticationRequirement
+| top 1000 by TimeGenerated desc
 | order by TimeGenerated asc

@@ -13,3 +13,4 @@ office365Application
     signInAudience, createdByAppId, isDisabled, passwordCredentials, keyCredentials,
     requiredResourceAccess, identifierUris, web, tags, notes, description,
     verifiedPublisher
+| take 1000

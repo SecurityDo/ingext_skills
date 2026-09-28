@@ -9,3 +9,4 @@ AzureSigninLogs
             firstSeen = min(TimeGenerated), lastSeen = max(TimeGenerated)
     by IPAddress
 | order by events desc
+| take 1000

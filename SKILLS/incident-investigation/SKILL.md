@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.1
+version: 1.2.2
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -83,6 +83,10 @@ bend:
 5. **Quote before testing** — the ticket's claims are quoted verbatim before they are
    judged, and every number in the closure is one measured in this run.
 6. **No customer identifiers in skill files** — examples use placeholders (`contoso`).
+7. **Every query is bounded** — at most the last **30 days** and **1,000 rows**, raw rows
+   deduplicated in the query, before anything reaches you. The bundled queries already
+   are; your own must be too (see "Bounded queries"). A result that hit a bound is
+   partial: say so, and narrow the window rather than widen it.
 
 ## Depends on
 
@@ -109,7 +113,7 @@ inventory lookup is a gap until something shows the table is readable.
 
 If the target account or connector is missing or ambiguous, ask — never pick one, and
 never fan out across accounts to find where the entity lives. If neither a ticket id nor an entity is given,
-ask for it. If the window is missing, use 30 days — shorter windows hide the baseline the whole procedure is measured against.
+ask for it. If the window is missing, use 30 days — shorter windows hide the baseline the whole procedure is measured against. Never use more than 30 days.
 
 ## Step 0 — Point at the right tenant, and prove it
 
@@ -645,9 +649,12 @@ real `UserAgent` disagree — a device labelled `Ios 26.6.2` whose UA says
 `iPhone OS 18_7`. Trust the label and you invent a "new device" that is the user's own
 phone. `signin_detail.kql` projects both.
 
-**Rows are duplicated.** The same event comes back two or three times with identical
-values; on one 30-day sign-in pull, 224 rows deduped to 175. Any hand count off raw
-rows is inflated. `kql_rows.py` dedupes and reports how many it dropped.
+**Rows are duplicated.** The same event comes back several times with identical
+values: one 30-day sign-in pull deduped 224 rows to 175, and one 30-day directory-audit
+pull 981 rows to 35. The bundled raw-row queries dedupe in the query and report each
+row's copy count in `dups`; count events, not `dups`. A `summarize count()` over raw rows
+anywhere else is still inflated. On the CLI path `kql_rows.py` dedupes and reports how
+many it dropped.
 
 **A tenant-wide convention is not an account anomaly.** "UPN/email domain mismatch"
 sounds like an indicator until `domain_census.kql` shows 808 of the tenant's users
@@ -892,8 +899,46 @@ your own queries freely alongside it, labelled as your own in the closure. Rows 
 evidence another check needs — the Azure MFA service's "Update user" rows in
 `bec_sweep` are the authenticator diffs 3b reads — and a summarised directory audit
 loses what was changed (`TargetResources`), the result, and the `CorrelationId` that ties
-one action's events together. When a result is too large to return inline it is saved
-to a file; read it there (e.g. with `jq`) instead of rewriting the query.
+one action's events together. The bundled queries are already bounded and deduped
+(below), which keeps every column; that is the only reduction they need.
+
+### Bounded queries
+
+Every query — bundled or your own — returns at most the last **30 days** and at most
+**1,000 rows**, with raw rows deduplicated in the query. A tool result is truncated at
+about 25,000 tokens (`[OUTPUT TRUNCATED - exceeded 25000 token limit]`), and several
+large results in one turn overflow the conversation for good ("Prompt is too long").
+It is not saved to a file. An unbounded 30-day directory audit for one admin returned
+981 rows, about 2 MB.
+
+- **Time.** `where <time> > ago(30d)`, or `between ({FROM} .. {TO})` with a window no
+  wider than 30 days. Anchor a narrower window on the incident when you can.
+- **Rows.** End raw-row queries with `| top 1000 by <time> desc` — the newest 1,000 —
+  then `| order by <time> asc` if you want them in time order. `take 1000` after an
+  ascending sort keeps the *oldest* 1,000. Aggregates end with `| take 1000`.
+- **Dedup raw rows, keeping every column.** Turn every non-time column into a string,
+  then group by all of them:
+
+  ```
+  | project TimeGenerated, ActivityDisplayName, Result, TargetResources, CorrelationId
+  | extend ActivityDisplayName = tostring(ActivityDisplayName), Result = tostring(Result),
+      TargetResources = tostring(TargetResources), CorrelationId = tostring(CorrelationId)
+  | summarize dups = count() by TimeGenerated, ActivityDisplayName, Result,
+      TargetResources, CorrelationId
+  | top 1000 by TimeGenerated desc
+  ```
+
+  This engine rejects `distinct *` and `take_any(*)`, and **`arg_max(TimeGenerated, *)`
+  silently drops every column except the group keys and the time**. It parses, it
+  returns rows, and `TargetResources` is gone. Don't use it to dedupe.
+- **No rows after a dedup is `"data": null`**, not an empty table. It is still a zero,
+  and still needs its control.
+- **Hit a bound?** 1,000 rows back, or the truncation notice, means the result is
+  partial. Say so in the closure and narrow the window around the incident, or
+  `summarize` to the question, and run it again. Never widen the window or the cap.
+- **Don't fan out wide queries.** Raw-row queries that return nested columns
+  (`TargetResources`, `ModifiedProperties`, `AuthenticationDetails`) can reach the
+  truncation limit on their own. Run them one or two at a time, not all together.
 
 Queries use `{USER}` (lower-cased UPN), `{TARGET}` (the UPN as `ObjectId` spells it),
 `{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}`, `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms). Run

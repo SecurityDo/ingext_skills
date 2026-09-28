@@ -15,4 +15,17 @@ AzureAuditLogs
 | project TimeGenerated, ActivityDisplayName, Category, Result, ResultReason,
     InitiatedByUPN, InitiatedIP, InitiatedApp, TargetResources,
     AdditionalDetails, CorrelationId
+// Dedup: the datalake returns the same event two or more times (one 30-day
+// audit pull: 981 rows, 35 distinct). dups = how many copies each row had.
+| extend ActivityDisplayName = tostring(ActivityDisplayName),
+    Category = tostring(Category), Result = tostring(Result),
+    ResultReason = tostring(ResultReason), InitiatedByUPN = tostring(InitiatedByUPN),
+    InitiatedIP = tostring(InitiatedIP), InitiatedApp = tostring(InitiatedApp),
+    TargetResources = tostring(TargetResources),
+    AdditionalDetails = tostring(AdditionalDetails),
+    CorrelationId = tostring(CorrelationId)
+| summarize dups = count() by TimeGenerated, ActivityDisplayName, Category, Result,
+    ResultReason, InitiatedByUPN, InitiatedIP, InitiatedApp, TargetResources,
+    AdditionalDetails, CorrelationId
+| top 1000 by TimeGenerated desc
 | order by TimeGenerated asc

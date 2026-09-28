@@ -15,3 +15,4 @@ office365User
     ["userRegistration.lastUpdatedDateTime"],
     ["userRegistration.userPreferredMethodForSecondaryAuthentication"],
     oauth2Applications, groups
+| take 1000

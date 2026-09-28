@@ -9,4 +9,11 @@ Office365
 | where timestamp between (unixtime_milliseconds_todatetime({FROM}) .. unixtime_milliseconds_todatetime({TO}))
 | where tostring(ObjectId) contains "{TARGET}"
 | project timestamp, Operation, UserId, ObjectId, ModifiedProperties
+// Dedup: the datalake returns the same event two or more times (one 30-day
+// audit pull: 981 rows, 35 distinct). dups = how many copies each row had.
+| extend Operation = tostring(Operation), UserId = tostring(UserId),
+    ObjectId = tostring(ObjectId), ModifiedProperties = tostring(ModifiedProperties)
+| summarize dups = count() by timestamp, Operation, UserId, ObjectId,
+    ModifiedProperties
+| top 1000 by timestamp desc
 | order by timestamp asc

@@ -7,3 +7,4 @@ AzureSigninLogs
 | summarize events = count(), firstSeen = min(TimeGenerated), lastSeen = max(TimeGenerated)
     by IPAddress, UserPrincipalName
 | order by IPAddress asc, events desc
+| take 1000

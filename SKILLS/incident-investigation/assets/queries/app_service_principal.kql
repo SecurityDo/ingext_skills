@@ -10,3 +10,4 @@ office365InstalledApp
     appOwnerOrganizationId, accountEnabled, appRoleAssignmentRequired,
     preferredSingleSignOnMode, passwordCredentials, keyCredentials, tags, replyUrls,
     notificationEmailAddresses, verifiedPublisher, notes
+| take 1000

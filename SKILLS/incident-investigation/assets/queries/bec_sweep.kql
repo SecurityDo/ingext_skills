@@ -14,4 +14,13 @@ Office365
 | where tolower(UserId) == "{USER}" or tostring(ObjectId) contains "{TARGET}"
 | project timestamp, Operation, Workload, UserId, ObjectId, ClientIP,
     ResultStatus, ModifiedProperties
+// Dedup: the datalake returns the same event two or more times (one 30-day
+// audit pull: 981 rows, 35 distinct). dups = how many copies each row had.
+| extend Operation = tostring(Operation), Workload = tostring(Workload),
+    UserId = tostring(UserId), ObjectId = tostring(ObjectId),
+    ClientIP = tostring(ClientIP), ResultStatus = tostring(ResultStatus),
+    ModifiedProperties = tostring(ModifiedProperties)
+| summarize dups = count() by timestamp, Operation, Workload, UserId, ObjectId,
+    ClientIP, ResultStatus, ModifiedProperties
 | order by timestamp desc
+| take 1000

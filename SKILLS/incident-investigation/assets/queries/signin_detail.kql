@@ -24,4 +24,28 @@ AzureSigninLogs
     UserAgent, ClientAppUsed, IsInteractive, AuthenticationRequirement,
     AuthenticationDetails, ConditionalAccessStatus, ResultStatus, ErrorCode,
     FailureReason, RiskLevelDuringSignIn, RiskState, SessionId, CorrelationId
+// Dedup: the datalake returns the same event two or more times (one 30-day
+// audit pull: 981 rows, 35 distinct). dups = how many copies each row had.
+| extend IPAddress = tostring(IPAddress), Location = tostring(Location),
+    State = tostring(State), City = tostring(City),
+    AppDisplayName = tostring(AppDisplayName),
+    ResourceDisplayName = tostring(ResourceDisplayName),
+    DeviceName = tostring(DeviceName), TrustType = tostring(TrustType),
+    Compliant = tostring(Compliant), Managed = tostring(Managed), OS = tostring(OS),
+    Browser = tostring(Browser), UserAgent = tostring(UserAgent),
+    ClientAppUsed = tostring(ClientAppUsed), IsInteractive = tostring(IsInteractive),
+    AuthenticationRequirement = tostring(AuthenticationRequirement),
+    AuthenticationDetails = tostring(AuthenticationDetails),
+    ConditionalAccessStatus = tostring(ConditionalAccessStatus),
+    ResultStatus = tostring(ResultStatus), ErrorCode = tostring(ErrorCode),
+    FailureReason = tostring(FailureReason),
+    RiskLevelDuringSignIn = tostring(RiskLevelDuringSignIn),
+    RiskState = tostring(RiskState), SessionId = tostring(SessionId),
+    CorrelationId = tostring(CorrelationId)
+| summarize dups = count() by TimeGenerated, IPAddress, Location, State, City,
+    AppDisplayName, ResourceDisplayName, DeviceName, TrustType, Compliant, Managed,
+    OS, Browser, UserAgent, ClientAppUsed, IsInteractive, AuthenticationRequirement,
+    AuthenticationDetails, ConditionalAccessStatus, ResultStatus, ErrorCode,
+    FailureReason, RiskLevelDuringSignIn, RiskState, SessionId, CorrelationId
 | order by TimeGenerated desc
+| take 1000

@@ -6,3 +6,4 @@ office365User
 | where isnotempty(mailDomain)
 | summarize users = count() by mailDomain
 | order by users desc
+| take 1000

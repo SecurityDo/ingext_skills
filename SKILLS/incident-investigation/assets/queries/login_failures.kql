@@ -11,4 +11,18 @@ Office365
 | project timestamp, Operation, ClientIP, ErrorNumber, ["_ip.isp"], ["_ip.city"],
     ["DevicePropertiesFields.OS"], ["DevicePropertiesFields.BrowserType"],
     ["ExtendedPropertiesFields.RequestType"], ApplicationId, ResultStatus
+// Dedup: the datalake returns the same event two or more times (one 30-day
+// audit pull: 981 rows, 35 distinct). dups = how many copies each row had.
+| extend Operation = tostring(Operation), ClientIP = tostring(ClientIP),
+    ErrorNumber = tostring(ErrorNumber), ["_ip.isp"] = tostring(["_ip.isp"]),
+    ["_ip.city"] = tostring(["_ip.city"]),
+    ["DevicePropertiesFields.OS"] = tostring(["DevicePropertiesFields.OS"]),
+    ["DevicePropertiesFields.BrowserType"] = tostring(["DevicePropertiesFields.BrowserType"]),
+    ["ExtendedPropertiesFields.RequestType"] = tostring(["ExtendedPropertiesFields.RequestType"]),
+    ApplicationId = tostring(ApplicationId), ResultStatus = tostring(ResultStatus)
+| summarize dups = count() by timestamp, Operation, ClientIP, ErrorNumber,
+    ["_ip.isp"], ["_ip.city"], ["DevicePropertiesFields.OS"],
+    ["DevicePropertiesFields.BrowserType"], ["ExtendedPropertiesFields.RequestType"],
+    ApplicationId, ResultStatus
+| top 1000 by timestamp desc
 | order by timestamp asc
