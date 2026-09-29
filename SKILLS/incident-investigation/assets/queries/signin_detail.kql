@@ -1,51 +1,44 @@
-// One user's sign-ins with the fields that decide device identity.
+// One user's sign-ins AROUND THE INCIDENT, with the fields that decide device
+// identity -- run signin_summary.kql first for the 30-day profile.
+// Window: {WFROM}..{WTO} = the incident time +-24h (ISO-8601 UTC). Widen it only to
+// reach a specific event, never to "get more context": 30 days of one busy user's
+// sign-ins was ~279k tokens.
 // Read UserAgent, never DeviceDetail.operatingSystem alone -- Azure's OS label
 // and the real UA disagree (label "Ios 26.6.2" against UA "iPhone OS 18_7"),
 // and trusting the label invents a "new device" that is the user's own.
-// Placeholders: {USER} = lower-cased UPN.
+// Methods lists each AuthenticationDetails step as "method: result detail", with
+// "(failed)" when it did not succeed -- "Previously satisfied" means the session
+// carried MFA from an earlier sign-in, so find that one. The raw
+// AuthenticationDetails JSON is left out (it was most of the bytes).
+// One row per sign-in SHAPE -- the same IP, device, user agent, app, client,
+// result and methods -- with how many sign-ins it covers (signins), first/last
+// time and distinct sessions. Token refreshes repeat one shape hundreds of times;
+// every distinct shape and when it occurred is kept, only the repetition goes.
+// Placeholders: {USER} = lower-cased UPN, {WFROM}/{WTO} = ISO-8601 UTC.
 let UserEmail = tolower("{USER}");
 AzureSigninLogs
-| where TimeGenerated > ago(30d)
+| where TimeGenerated between (datetime("{WFROM}") .. datetime("{WTO}"))
 | where tolower(UserPrincipalName) == UserEmail
-| extend
-    ResultStatus = iff(ResultType == "0", "Success", "Failure"),
-    ErrorCode = tostring(Status.errorCode),
-    FailureReason = tostring(Status.failureReason),
-    City = tostring(LocationDetails.city),
-    State = tostring(LocationDetails.state),
-    OS = tostring(DeviceDetail.operatingSystem),
-    Browser = tostring(DeviceDetail.browser),
-    DeviceName = tostring(DeviceDetail.displayName),
-    TrustType = tostring(DeviceDetail.trustType),
-    Compliant = tostring(DeviceDetail.isCompliant),
-    Managed = tostring(DeviceDetail.isManaged)
-| project TimeGenerated, IPAddress, Location, State, City, AppDisplayName,
-    ResourceDisplayName, DeviceName, TrustType, Compliant, Managed, OS, Browser,
-    UserAgent, ClientAppUsed, IsInteractive, AuthenticationRequirement,
-    AuthenticationDetails, ConditionalAccessStatus, ResultStatus, ErrorCode,
-    FailureReason, RiskLevelDuringSignIn, RiskState, SessionId, CorrelationId
-// Dedup: the datalake returns the same event two or more times (one 30-day
-// audit pull: 981 rows, 35 distinct). dups = how many copies each row had.
-| extend IPAddress = tostring(IPAddress), Location = tostring(Location),
-    State = tostring(State), City = tostring(City),
-    AppDisplayName = tostring(AppDisplayName),
-    ResourceDisplayName = tostring(ResourceDisplayName),
-    DeviceName = tostring(DeviceName), TrustType = tostring(TrustType),
-    Compliant = tostring(Compliant), Managed = tostring(Managed), OS = tostring(OS),
-    Browser = tostring(Browser), UserAgent = tostring(UserAgent),
-    ClientAppUsed = tostring(ClientAppUsed), IsInteractive = tostring(IsInteractive),
-    AuthenticationRequirement = tostring(AuthenticationRequirement),
-    AuthenticationDetails = tostring(AuthenticationDetails),
-    ConditionalAccessStatus = tostring(ConditionalAccessStatus),
-    ResultStatus = tostring(ResultStatus), ErrorCode = tostring(ErrorCode),
-    FailureReason = tostring(FailureReason),
-    RiskLevelDuringSignIn = tostring(RiskLevelDuringSignIn),
-    RiskState = tostring(RiskState), SessionId = tostring(SessionId),
-    CorrelationId = tostring(CorrelationId)
-| summarize dups = count() by TimeGenerated, IPAddress, Location, State, City,
-    AppDisplayName, ResourceDisplayName, DeviceName, TrustType, Compliant, Managed,
-    OS, Browser, UserAgent, ClientAppUsed, IsInteractive, AuthenticationRequirement,
-    AuthenticationDetails, ConditionalAccessStatus, ResultStatus, ErrorCode,
-    FailureReason, RiskLevelDuringSignIn, RiskState, SessionId, CorrelationId
-| order by TimeGenerated desc
-| take 1000
+| mv-expand ad = parse_json(tostring(AuthenticationDetails))
+| extend Method = iff(tostring(ad.authenticationMethod) == "", "",
+    strcat(tostring(ad.authenticationMethod), ": ", tostring(ad.authenticationStepResultDetail),
+           iff(tostring(ad.succeeded) == "false", " (failed)", "")))
+| summarize Methods = make_set(Method)
+    by TimeGenerated, IPAddress = tostring(IPAddress), City = tostring(LocationDetails.city),
+       State = tostring(LocationDetails.state), App = tostring(AppDisplayName),
+       Resource = tostring(ResourceDisplayName), Client = tostring(ClientAppUsed),
+       OS = tostring(DeviceDetail.operatingSystem), Browser = tostring(DeviceDetail.browser),
+       Device = tostring(DeviceDetail.displayName), TrustType = tostring(DeviceDetail.trustType),
+       Compliant = tostring(DeviceDetail.isCompliant), Managed = tostring(DeviceDetail.isManaged),
+       UserAgent = tostring(UserAgent), Interactive = tostring(IsInteractive),
+       AuthRequirement = tostring(AuthenticationRequirement), CA = tostring(ConditionalAccessStatus),
+       Result = tostring(ResultType), FailureReason = tostring(Status.failureReason),
+       Risk = tostring(RiskLevelDuringSignIn), SessionId = tostring(SessionId),
+       CorrelationId = tostring(CorrelationId)
+| extend Methods = tostring(Methods)
+| summarize signins = dcount(CorrelationId), first = min(TimeGenerated), last = max(TimeGenerated),
+    sessions = dcount(SessionId)
+    by IPAddress, City, State, App, Resource, Client, OS, Browser, Device, TrustType, Compliant,
+       Managed, UserAgent, Interactive, AuthRequirement, CA, Result, FailureReason, Risk, Methods
+| top 1000 by last desc
+| order by first asc

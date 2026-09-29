@@ -34,6 +34,20 @@ more: the IP the flagged action actually came from in the raw audit event (it ca
 from the sign-in IPs the summary lists), the subject's other sign-in IPs around the event,
 and any address a 3c negative turns up. Say which extra addresses you resolved and why.
 
+**The subject's own sign-ins, in two steps — summary first.**
+
+1. `assets/queries/signin_summary.kql` — 30 days as counts per IP × city × country × OS ×
+   browser × device × interactive: which addresses, devices and places are normal for
+   this user.
+2. `assets/queries/signin_detail.kql` — the sign-ins around the incident, `{WFROM}`..`{WTO}`
+   = the incident time ±24h (ISO-8601 UTC). One row per sign-in *shape* (IP, device, user
+   agent, app, client, result, authentication methods) with its count, first/last time
+   and sessions: token refreshes collapse, every distinct shape stays. Read the device
+   from `UserAgent`, and `Methods` for how MFA was satisfied.
+
+Never pull 30 days of raw sign-ins: for one busy user that was ~279k tokens and hit the
+row cap, so it was both incomplete and most of an investigation's cost.
+
 | Shape | Reading |
 |---|---|
 | Dozens of users, hundreds of events | Corporate egress / VPN NAT. Not an anomaly, whatever the GeoIP city says. |

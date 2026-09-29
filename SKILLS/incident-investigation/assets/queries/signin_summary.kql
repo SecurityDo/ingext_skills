@@ -1,0 +1,21 @@
+// The subject's sign-in profile over 30 days, as counts -- run it first. One row per
+// IP x city x country x OS x browser x device x interactive, with distinct sign-ins
+// (CorrelationIds), failures, apps and first/last seen: which addresses, devices and
+// places are normal for this user, in a few dozen rows whatever the volume (one busy
+// user: 30 days of raw sign-ins ~279k tokens, this summary ~3k). signin_detail.kql
+// then lists the sign-ins around the incident.
+// The OS here is Azure's label; confirm a device by its UserAgent in signin_detail.
+// Placeholders: {USER} = lower-cased UPN.
+let UserEmail = tolower("{USER}");
+AzureSigninLogs
+| where TimeGenerated > ago(30d)
+| where tolower(UserPrincipalName) == UserEmail
+| extend City = tostring(LocationDetails.city), Country = tostring(LocationDetails.countryOrRegion),
+         OS = tostring(DeviceDetail.operatingSystem), Browser = tostring(DeviceDetail.browser),
+         DeviceName = tostring(DeviceDetail.displayName), Interactive = tostring(IsInteractive),
+         Failed = iff(tostring(ResultType) != "0", 1, 0)
+| summarize signins = dcount(CorrelationId), failures = sum(Failed), apps = dcount(AppDisplayName),
+    first = min(TimeGenerated), last = max(TimeGenerated)
+    by IPAddress = tostring(IPAddress), City, Country, OS, Browser, DeviceName, Interactive
+| order by signins desc
+| take 1000

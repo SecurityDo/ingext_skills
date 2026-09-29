@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.5
+version: 1.2.6
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -96,7 +96,8 @@ bend:
 7. **Every query is bounded** — at most the last **30 days** and **1,000 rows**, raw rows
    deduplicated in the query, before anything reaches you. The bundled queries already
    are; your own must be too (see "Bounded queries"). A result that hit a bound is
-   partial: say so, and narrow the window rather than widen it.
+   partial: say so, and narrow the window rather than widen it. A query not scoped to the
+   subject (tenant-wide, a prefix, a user-agent pattern) returns counts, never raw rows.
 
 ## Depends on
 
@@ -958,12 +959,22 @@ It is not saved to a file. An unbounded 30-day directory audit for one admin ret
   role and group changes made *to* the admin all survived. Slim columns keep what changed
   (property, old, new) and drop bulk (`AdditionalDetails`, object ids); the detail query
   brings the bulk back for one operation.
+- **A query not scoped to the subject returns counts, never raw rows.** Tenant-wide, an IP
+  prefix, a user-agent pattern, a campaign: `summarize` by the fields that answer the
+  question (users, IPs, first/last seen). A sweep of every iPhone sign-in in a tenant
+  returned 1,000 raw rows (~76k tokens, capped, so also incomplete) where the question
+  needed a count of users per prefix. Raw rows are for the subject, or one address, in
+  a narrow window.
+- **Time literals are quoted.** `TimeGenerated between (datetime("2026-09-28T12:40:00Z") ..
+  datetime("..."))` — this engine rejects an unquoted `datetime(2026-...)`. `timestamp`
+  is epoch ms on `Office365` but empty on `AzureSigninLogs`; use `TimeGenerated` there.
+  `IsInteractive` is a string (`"true"`).
 - **Don't fan out wide queries.** Raw-row queries that return nested columns
   (`TargetResources`, `ModifiedProperties`, `AuthenticationDetails`) can reach the
   truncation limit on their own. Run them one or two at a time, not all together.
 
 Queries use `{USER}` (lower-cased UPN), `{TARGET}` (the UPN as `ObjectId` spells it),
-`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}`, `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{CID}` (one operation's `CorrelationId`). Run
+`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}`, `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`), `{CID}` (one operation's `CorrelationId`). Run
 `ingext kql validate @<file>` after substituting — it parses in under a second and
 catches a wrong column name before a 20-second scan does.
 
