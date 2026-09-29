@@ -127,8 +127,23 @@ A benign verdict rests on negatives, and they have to be collected, not assumed.
   secret itself is **not established**, a gap, never "unused".
   Also compare timing: activity that starts minutes after the credential was added, from
   an address 3a did not resolve to the tenant, is the finding this check exists for.
-- `assets/queries/dir_changes_targeting.kql` — who else changed this account. Read
-  `modifiedProperties` for the group's real name before calling a membership add a
-  privilege escalation: a licensing group added from `O365AdminPortal` for a
-  salesperson is provisioning, and the same query usually explains the geography
-  (a Teams group named for an off-site event placed the user in the right city).
+- **Directory changes, in three steps — summary first.**
+  1. `assets/queries/dir_changes_summary.kql` — every change touching the account, both
+     directions, as counts per activity × initiator × result. "by subject" is what the
+     subject did; for an IT admin that is most of the audit log (user updates, licences,
+     group adds) and it is ordinary work, not a finding. "on subject" is what the next
+     query lists.
+  2. `assets/queries/dir_changes_targeting.kql` — who else changed this account, one row
+     per operation, with `Changes` as "property: old -> new" (values cut to 80
+     characters; a removal carries the group or role in the old value). Read the group's
+     real name before calling a membership add a privilege escalation: a licensing group
+     added from `O365AdminPortal` for a salesperson is provisioning, and the same query
+     usually explains the geography (a Teams group named for an off-site event placed the
+     user in the right city).
+  3. `assets/queries/dir_changes_detail.kql` — one operation in full (`{CID}` = its
+     `CorrelationId`), when a change needs its complete `TargetResources` or
+     `AdditionalDetails`. One at a time; never loop it over the list.
+
+  An action the subject took that matters (a role granted to someone else, a
+  conditional-access or app change) is found in the summary's "by subject" rows; pull
+  its operations with the detail query rather than listing all of them.

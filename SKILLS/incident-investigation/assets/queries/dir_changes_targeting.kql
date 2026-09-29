@@ -1,31 +1,33 @@
-// Directory changes where the subject was the TARGET -- group and role adds,
-// password resets, security-info changes, device registration. Read
-// modifiedProperties for the group's real name before calling a membership add
-// privilege escalation: a licensing group ("D365 Sales") added from
-// O365AdminPortal for a salesperson is provisioning.
+// Directory changes made TO the subject by someone else -- group and role adds,
+// PIM activations, password resets, security-info changes, device registration.
+// The subject's own actions are in dir_changes_summary.kql (counts); pull one of
+// them in full with dir_changes_detail.kql.
+// One row per operation. Changes lists every modified property as
+// "name: old -> new", each value cut to 80 characters: a removal carries the
+// group or role in the OLD value. Read the group's real name before calling a
+// membership add privilege escalation: a licensing group ("D365 Sales") added
+// from O365AdminPortal for a salesperson is provisioning.
+// AdditionalDetails and the full TargetResources are left out (they were 94% of
+// the bytes on an admin); dir_changes_detail.kql returns them for one operation.
+// Object-id and template-id properties are dropped from Changes: the display
+// names beside them carry the meaning, and the ids are half the bytes.
 // Placeholders: {USER} = lower-cased UPN.
 let UserEmail = tolower("{USER}");
 AzureAuditLogs
 | where TimeGenerated > ago(30d)
 | extend InitiatedByUPN = tolower(tostring(InitiatedBy.user.userPrincipalName)),
          InitiatedIP = tostring(InitiatedBy.user.ipAddress),
-         InitiatedApp = tostring(InitiatedBy.app.displayName),
-         TargetsText = tolower(tostring(TargetResources))
-| where InitiatedByUPN == UserEmail or TargetsText has UserEmail
-| project TimeGenerated, ActivityDisplayName, Category, Result, ResultReason,
-    InitiatedByUPN, InitiatedIP, InitiatedApp, TargetResources,
-    AdditionalDetails, CorrelationId
-// Dedup: the datalake returns the same event two or more times (one 30-day
-// audit pull: 981 rows, 35 distinct). dups = how many copies each row had.
-| extend ActivityDisplayName = tostring(ActivityDisplayName),
-    Category = tostring(Category), Result = tostring(Result),
-    ResultReason = tostring(ResultReason), InitiatedByUPN = tostring(InitiatedByUPN),
-    InitiatedIP = tostring(InitiatedIP), InitiatedApp = tostring(InitiatedApp),
-    TargetResources = tostring(TargetResources),
-    AdditionalDetails = tostring(AdditionalDetails),
-    CorrelationId = tostring(CorrelationId)
-| summarize dups = count() by TimeGenerated, ActivityDisplayName, Category, Result,
-    ResultReason, InitiatedByUPN, InitiatedIP, InitiatedApp, TargetResources,
-    AdditionalDetails, CorrelationId
+         InitiatedApp = tostring(InitiatedBy.app.displayName)
+| where tolower(tostring(TargetResources)) has UserEmail and InitiatedByUPN != UserEmail
+| mv-expand tr = TargetResources
+| mv-expand mp = tr.modifiedProperties
+| extend Target = coalesce(tostring(tr.userPrincipalName), tostring(tr.displayName)),
+         Change = iff(tostring(mp.displayName) == "" or tostring(mp.displayName) endswith "ObjectID"
+                      or tostring(mp.displayName) endswith "TemplateId" or tostring(mp.displayName) endswith "objectId", "",
+             strcat(tostring(mp.displayName), ": ", substring(tostring(mp.oldValue), 0, 80),
+                    " -> ", substring(tostring(mp.newValue), 0, 80)))
+| summarize Targets = make_set(Target), Changes = make_set(Change)
+    by TimeGenerated, ActivityDisplayName, Category, Result, ResultReason,
+       InitiatedByUPN, InitiatedIP, InitiatedApp, CorrelationId
 | top 1000 by TimeGenerated desc
 | order by TimeGenerated asc

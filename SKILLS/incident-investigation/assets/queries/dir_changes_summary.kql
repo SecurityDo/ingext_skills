@@ -1,0 +1,25 @@
+// Every directory change touching the subject, in both directions, as counts --
+// run it first. "by subject" is what the subject did (an IT admin's daily work
+// lands here: user updates, licences, group adds); "on subject" is what was done
+// TO the subject, which dir_changes_targeting.kql then lists. One row per
+// direction x activity x initiator x result, so an admin with 1,500 audit rows
+// comes back as a few dozen lines.
+// operations = distinct CorrelationIds (the datalake repeats rows, so count the
+// operations, not the rows). targets = distinct first-target identities.
+// Placeholders: {USER} = lower-cased UPN.
+let UserEmail = tolower("{USER}");
+AzureAuditLogs
+| where TimeGenerated > ago(30d)
+| extend InitiatedByUPN = tolower(tostring(InitiatedBy.user.userPrincipalName)),
+         InitiatedApp = tostring(InitiatedBy.app.displayName),
+         InitiatedIP = tostring(InitiatedBy.user.ipAddress),
+         TargetsText = tolower(tostring(TargetResources))
+| where InitiatedByUPN == UserEmail or TargetsText has UserEmail
+| extend Direction = iff(InitiatedByUPN == UserEmail, "by subject", "on subject"),
+         Initiator = iff(InitiatedByUPN != "", InitiatedByUPN, InitiatedApp),
+         FirstTarget = coalesce(tostring(TargetResources[0].userPrincipalName), tostring(TargetResources[0].displayName))
+| summarize operations = dcount(CorrelationId), first = min(TimeGenerated), last = max(TimeGenerated),
+    targets = dcount(FirstTarget), ips = dcount(InitiatedIP)
+    by Direction, ActivityDisplayName, Initiator, Result
+| order by Direction asc, operations desc
+| take 1000

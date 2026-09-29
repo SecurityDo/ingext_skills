@@ -1,0 +1,13 @@
+// One directory operation in full -- every column, including AdditionalDetails
+// and the complete TargetResources -- for a CorrelationId taken from
+// dir_changes_targeting.kql or a raw event. Use it to read one change closely,
+// never to list many (that is what the other two queries are for).
+// Placeholders: {CID} = the operation's CorrelationId.
+AzureAuditLogs
+| where TimeGenerated > ago(30d)
+| where CorrelationId == "{CID}"
+| extend TargetResources = tostring(TargetResources), AdditionalDetails = tostring(AdditionalDetails),
+         InitiatedBy = tostring(InitiatedBy)
+| summarize dups = count() by TimeGenerated, ActivityDisplayName, Category, Result, ResultReason,
+    InitiatedBy, TargetResources, AdditionalDetails, CorrelationId
+| take 50

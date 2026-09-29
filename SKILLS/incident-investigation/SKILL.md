@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.3
+version: 1.2.4
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -945,12 +945,20 @@ It is not saved to a file. An unbounded 30-day directory audit for one admin ret
 - **Hit a bound?** 1,000 rows back, or the truncation notice, means the result is
   partial. Say so in the closure and narrow the window around the incident, or
   `summarize` to the question, and run it again. Never widen the window or the cap.
+- **Summarize first, then list the part that answers the question.** A wide audit is
+  three steps: counts per activity (small whatever the volume), the rows the check is
+  about in slim columns, and one operation in full on demand. The directory-audit check
+  works this way (`dir_changes_summary` → `dir_changes_targeting` → `dir_changes_detail`):
+  on one IT admin the single raw query was ~790k tokens, the three together ~20k, and the
+  role and group changes made *to* the admin all survived. Slim columns keep what changed
+  (property, old, new) and drop bulk (`AdditionalDetails`, object ids); the detail query
+  brings the bulk back for one operation.
 - **Don't fan out wide queries.** Raw-row queries that return nested columns
   (`TargetResources`, `ModifiedProperties`, `AuthenticationDetails`) can reach the
   truncation limit on their own. Run them one or two at a time, not all together.
 
 Queries use `{USER}` (lower-cased UPN), `{TARGET}` (the UPN as `ObjectId` spells it),
-`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}`, `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms). Run
+`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}`, `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{CID}` (one operation's `CorrelationId`). Run
 `ingext kql validate @<file>` after substituting — it parses in under a second and
 catches a wrong column name before a 20-second scan does.
 
