@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.2
+version: 1.2.3
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -40,11 +40,16 @@ data-segregation breach, however useful the comparison looks. It is never part o
 procedure.
 
 - **Lock the account in step 0 and never change it.** Write it down as `ACCOUNT=<name>`
-  and pass exactly that value to every tool call. The only other tenant-scoped call
-  allowed is `list_accounts`, once, to confirm the name exists.
+  and pass exactly that value to every tool call.
+- **Don't list the connector's accounts when the caller already verified yours.**
+  `list_accounts` returns every other customer on the connector, and the run's trace
+  can end up in front of this account's own users. An automated run (the Agent Portal)
+  says the account is verified and blocks the call; never try to work around that.
+  Only when a person typed the name, in an interactive run, call `list_accounts`
+  once to confirm it exists, and use nothing else from the list.
 - **If the requested account is not found, do not investigate at all.** When
-  `list_accounts` on the named connector has no entry matching the account the user
-  asked for, stop before any other call. Do not guess a close match, do not try other
+  that confirmation has no entry matching the account the user asked for, stop
+  before any other call. Do not guess a close match, do not try other
   connectors or accounts to locate it, and do not run any search, query or rule call.
   Tell the user the account was not found on that connector and ask them to confirm
   the name or connector.
@@ -135,12 +140,15 @@ parsed log, and need no binary installed.
 
 **Targeting is per call, so there is nothing to restore — but everything to check.**
 On a tenant's own endpoint the account *is* the endpoint. On the grid server every
-tool takes an `account` argument; call `list_accounts` once to confirm the target
-account's exact name — if it is not in the list, stop here and run nothing (see the
-hard rule) — set `ACCOUNT`, and pass that one value to every call for the
-rest of the run (see "Hard rule — one incident, one account"). `list_accounts` shows
-you the other customers on the connector; that list is for confirming a name, not a
-menu of tenants to query.
+tool takes an `account` argument. Set `ACCOUNT` and pass that one value to every call
+for the rest of the run (see "Hard rule — one incident, one account").
+
+- **The caller verified the account** (an automated run says so, and passes the
+  tenant's display name): use it as given. Do **not** call `list_accounts`.
+- **A person typed the name** (interactive): call `list_accounts` once to confirm the
+  exact name — if it is not in the list, stop here and run nothing (see the hard rule).
+  The list shows you the other customers on the connector; it is for confirming a
+  name, not a menu of tenants to query, and nothing else from it goes in the report.
 
 ### If you must use the CLI
 
@@ -844,8 +852,9 @@ multi-day incident (step 4 / step 1) → base-rate table when the base rate is a
   place a cross-tenant number would do the most damage, so the hard rule applies with
   extra force: if a figure did not come from this account, it does not appear.
 - **Name the tenant by its display name, and never name the connector.** The report
-  goes to the customer; the MCP connector is internal plumbing. Use the `displayName`
-  that `list_accounts` returned for `ACCOUNT` (e.g. `Contoso Ltd`, not `contoso`, and
+  goes to the customer; the MCP connector is internal plumbing. Use the tenant's display
+  name — as the caller gave it, or as the interactive `list_accounts` confirmation
+  returned it for `ACCOUNT` (e.g. `Contoso Ltd`, not `contoso`, and
   never `<connector> : contoso`) for `Tenant` in `meta` — which also feeds the header tag and footer —
   and wherever the tenant is named in the title, lede, captions and findings. Fall back
   to the account name only when no display name exists.

@@ -1,6 +1,6 @@
 ---
 name: ingext-get-profile
-version: 1.0.0
+version: 1.0.1
 description: >-
   Resolve an entity (a user, a group or a device) on one Fluency/Ingext tenant account
   and return its profile: which system it belongs to (Google Workspace, Microsoft 365 /
@@ -42,7 +42,9 @@ its own when a user asks who someone is.
 passes exactly the `account` it was given. It never searches other accounts or other
 connectors to find where an entity lives, even when the entity is not found — "not
 found on this account" is an answer, not a reason to look elsewhere. When run
-standalone, confirm the account once with `list_accounts` and stop if it is not there.
+standalone and a person typed the account name, confirm it once with `list_accounts`
+and stop if it is not there. When the caller supplied a verified account, never call
+`list_accounts`: it returns every other customer on the connector.
 
 ## Step 0 — Normalize the entity
 
