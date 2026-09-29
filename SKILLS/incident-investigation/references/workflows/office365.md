@@ -5,10 +5,11 @@ start with `O365_`, `AzureAD_` or `Fluency_O365_` (see the routing table in SKIL
 step 3). It is three checks, usually run in this order; each one's result goes into the
 step-5 closure with the index it came from.
 
-> **Guidance, not a script.** These are the checks that settled past tickets of this type
-> and a sensible order to run them in. Add, reorder or skip any of them when the evidence
-> points elsewhere, and say in the closure what you skipped and why. The non-negotiables
-> in SKILL.md still apply.
+> **Guidance, not a script — but every check that applies runs.** These are the checks
+> that settled past tickets of this type, in a sensible order. Add checks or reorder them
+> when the evidence points elsewhere. Skip one only when it cannot apply to this ticket
+> (say which and why in the closure); a check that applies runs its bundled queries
+> before any of your own (non-negotiable 4). Accuracy comes before speed and cost.
 
 Every query below lives in `assets/queries/` of the incident-investigation skill, uses
 the placeholders listed in SKILL.md "Assets", and is run with `validate_kql` then

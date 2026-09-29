@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.4
+version: 1.2.5
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -74,8 +74,9 @@ procedure.
 
 This skill is guidance for an investigator, not a script. The steps, the workflows, the
 bundled queries and the example calls are what settled past tickets and a sensible
-order to work in; add checks, reorder them or skip one when the evidence points
-elsewhere, and say in the closure what you skipped and why. Only these rules do not
+order to work in; add checks or reorder them when the evidence points elsewhere. Skip a
+check only when it cannot apply to this ticket, and say in the closure which and why.
+Accuracy comes before speed and cost. Only these rules do not
 bend:
 
 1. **One incident, one account** — every call on `ACCOUNT` only (the hard rule above).
@@ -83,8 +84,12 @@ bend:
    the same query can return something; otherwise it is a gap, not a pass.
 3. **Raw time, never bucket labels** — event times come from the raw index, not the
    summary's `from` / `to` (step 4).
-4. **Bundled queries are not altered** — run them unmodified and read their whole
-   output (see "Assets"). Writing your own queries alongside them is expected.
+4. **Bundled queries are run, not replaced** — when the workflow for the incident's type
+   names a bundled query, run it unmodified and read its whole output before writing your
+   own (see "Assets"). Your own queries add coverage; they never stand in for a bundled
+   one, and never with a narrower time window, a `take` / `limit`, or another table. A
+   check that could not run, or came back truncated, is a gap in the closure, never a
+   negative.
 5. **Quote before testing** — the ticket's claims are quoted verbatim before they are
    judged, and every number in the closure is one measured in this run.
 6. **No customer identifiers in skill files** — examples use placeholders (`contoso`).

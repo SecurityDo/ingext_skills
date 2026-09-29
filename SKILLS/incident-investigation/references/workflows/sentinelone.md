@@ -5,13 +5,11 @@ Run this when the ticket is a **SentinelOne** alert — its `behaviorRules` star
 workflow for this type. Seven parts, usually run in this order; each result goes into the
 step-5 closure with the index or tool it came from.
 
-> **Guidance, not a script.** These are the checks that settled past tickets of this type
-> and a sensible order to run them in. Add, reorder or skip any of them when the evidence
-> points elsewhere, and say in the closure what you skipped and why. The non-negotiables
-> in SKILL.md still apply.
->
-> The JSON calls below are **templates to adapt** — change the facets, window or filters
-> to fit the ticket, or search another way when a ticket does not fit the pattern.
+> **Guidance, not a script — but every check that applies runs.** These are the checks
+> that settled past tickets of this type, in a sensible order. Add checks or reorder them
+> when the evidence points elsewhere. Skip one only when it cannot apply to this ticket
+> (say which and why in the closure); a check that applies runs its bundled queries
+> before any of your own (non-negotiable 4). Accuracy comes before speed and cost.
 
 Sources used: the `investigate_sentinelone_alert` tool, the raw **SentinelOne** index
 through `lake_search`, and the `sentinelOneAgent` / `sentinelOneApplication` inventories.
