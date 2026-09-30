@@ -1,0 +1,17 @@
+// FALLBACK for dir_changes_detail.kql when the tenant has no AzureAuditLogs.
+// One directory operation in full -- Actor, Target and every ModifiedProperty --
+// for an InterSystemsId taken from dir_changes_targeting_o365.kql. InterSystemsId
+// is the same value AzureAuditLogs calls CorrelationId. One at a time; never loop it.
+// Placeholders: {CID} = the operation's InterSystemsId.
+Office365
+| where timestamp > ago(30d)
+| where Workload == "AzureActiveDirectory" and InterSystemsId == "{CID}"
+| project timestamp, Operation, ResultStatus, UserId, ObjectId, Actor, Target,
+    ModifiedProperties, InterSystemsId, IntraSystemId
+| extend Operation = tostring(Operation), ResultStatus = tostring(ResultStatus),
+    UserId = tostring(UserId), ObjectId = tostring(ObjectId), Actor = tostring(Actor),
+    Target = tostring(Target), ModifiedProperties = tostring(ModifiedProperties),
+    InterSystemsId = tostring(InterSystemsId), IntraSystemId = tostring(IntraSystemId)
+| summarize dups = count() by timestamp, Operation, ResultStatus, UserId, ObjectId, Actor,
+    Target, ModifiedProperties, InterSystemsId, IntraSystemId
+| take 50

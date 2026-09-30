@@ -1,0 +1,27 @@
+// FALLBACK for dir_changes_summary.kql when the tenant has no AzureAuditLogs.
+// Office365 carries only Entra's "Core Directory" audit events (RecordType 8), so
+// PIM, Authentication Methods (security info), self-service password reset and
+// Device Registration Service activities are NOT here -- zero rows for them is a
+// coverage gap, not a negative. Operation names end in "." ("Add member to group.").
+// Every change touching the subject, both directions, as counts -- run it first.
+// "by subject" is what the subject did; "on subject" is what was done TO the
+// subject, which dir_changes_targeting_o365.kql then lists.
+// operations = distinct InterSystemsId (= AzureAuditLogs CorrelationId; the datalake
+// repeats rows, so count operations, not rows). Initiator is UserId: a UPN, or
+// "ServicePrincipal_<id>" for an app; InitiatorName is the actor's display name
+// (e.g. "MS-PIM"). There is no initiator IP on these rows.
+// Placeholders: {USER} = lower-cased UPN.
+let UserEmail = tolower("{USER}");
+Office365
+| where timestamp > ago(30d)
+| where Workload == "AzureActiveDirectory" and RecordType == 8
+| extend Initiator = tolower(tostring(UserId)), TargetsText = tolower(tostring(Target))
+| where Initiator == UserEmail or TargetsText has UserEmail
+| extend Direction = iff(Initiator == UserEmail, "by subject", "on subject"),
+         InitiatorName = tostring(Actor[0].ID)
+| summarize operations = dcount(InterSystemsId), first = min(timestamp), last = max(timestamp),
+    targets = dcount(tostring(ObjectId))
+    by Direction, Operation = tostring(Operation), Initiator, InitiatorName,
+       ResultStatus = tostring(ResultStatus)
+| order by Direction asc, operations desc
+| take 1000

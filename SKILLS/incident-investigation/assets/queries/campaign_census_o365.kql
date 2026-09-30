@@ -1,0 +1,31 @@
+// FALLBACK for campaign_census.kql when the tenant has no AzureAuditLogs.
+// Office365 has no "User registered security info" events (that is Entra's
+// Authentication Methods service, which Office365 does not carry). What it does
+// carry is the effect: the directory's "Update user." row whose modified
+// properties hold the user's method lists. Counting the users whose list GREW or
+// SHRANK per day answers the same question -- is this one user, or a rollout?
+// Count the delta, never the property: StrongAuthenticationPhoneAppDetail is
+// rewritten with the same device count for ~340 users a day by the MFA service
+// itself, against ~40 real registrations. Against AzureAuditLogs on one tenant-day,
+// StrongAuthenticationMethod "added" = 45 users vs 41 "User registered security
+// info"; "removed" = 6 vs 7 deletions; SearchableDeviceKey "added" = Windows Hello
+// and passkey keys. Only successful changes are here: failed and abandoned
+// registrations are not.
+// Counts only (tenant-wide).
+Office365
+| where timestamp > ago(30d)
+| where Workload == "AzureActiveDirectory" and RecordType == 8
+| where Operation == "Update user."
+| mv-expand mp = ModifiedProperties
+| extend Property = tostring(mp.Name)
+| where Property in ("StrongAuthenticationMethod", "StrongAuthenticationPhoneAppDetail",
+    "SearchableDeviceKey")
+| extend OldCount = array_length(parse_json(tostring(mp.OldValue))),
+         NewCount = array_length(parse_json(tostring(mp.NewValue)))
+| extend Delta = case(isnull(OldCount) or isnull(NewCount), "unparsed",
+    NewCount > OldCount, "added", NewCount < OldCount, "removed", "same count")
+| where Delta != "same count"
+| summarize users = dcount(tolower(tostring(ObjectId))), operations = dcount(InterSystemsId)
+    by day = bin(timestamp, 1d), Property, Delta
+| order by day asc, Property asc, Delta asc
+| take 1000

@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.6
+version: 1.2.7
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -500,7 +500,8 @@ python3 scripts/summary_digest.py wave.json --rule <BehaviorRuleName>
 </details>
 
 Then widen it to the underlying directory activity with
-`assets/queries/campaign_census.kql`.
+`assets/queries/campaign_census.kql` (`campaign_census_o365.kql` on a tenant without
+`AzureAuditLogs`; `references/workflows/office365.md` says what that fallback cannot see).
 
 More than a handful of distinct entities means the incident is one instance of a
 campaign — a rollout, an admin push, a policy change, a vendor release — and the
@@ -974,7 +975,7 @@ It is not saved to a file. An unbounded 30-day directory audit for one admin ret
   truncation limit on their own. Run them one or two at a time, not all together.
 
 Queries use `{USER}` (lower-cased UPN), `{TARGET}` (the UPN as `ObjectId` spells it),
-`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}`, `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`), `{CID}` (one operation's `CorrelationId`). Run
+`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}`, `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`), `{CID}` (one operation's `CorrelationId`; in the `_o365` fallbacks its `InterSystemsId`, the same value). Run
 `ingext kql validate @<file>` after substituting — it parses in under a second and
 catches a wrong column name before a 20-second scan does.
 

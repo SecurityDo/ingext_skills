@@ -19,8 +19,62 @@ alongside them whenever the ticket needs something they do not cover.
 
 Tables used: `AzureSigninLogs`, `AzureAuditLogs`, `Office365`, `office365User`. Check they
 exist with `list_data_tables` first — a tenant without `AzureSigninLogs` needs the
-Office365-only path, and `office-user-investigation` covers it. Record any check that
+Office365-only path, and `office-user-investigation` covers it. A tenant without
+`AzureAuditLogs` runs the Office365 fallback queries below. Record any check that
 cannot run for a missing table as a gap, never as a pass.
+
+## No `AzureAuditLogs`? The Office365 fallback, and what it cannot see
+
+Not every site collects the AzureAudit feed. `Office365` rows with
+`Workload == "AzureActiveDirectory"` and `RecordType == 8` carry Entra's **Core Directory**
+audit events: user, group, role, licence, device-object and application changes. On a
+tenant with both feeds they matched `AzureAuditLogs` operation for operation. Use them
+only when `AzureAuditLogs` is absent. Where both exist, `AzureAuditLogs` is the source.
+
+| AzureAuditLogs query | Fallback | Notes |
+|---|---|---|
+| `dir_changes_summary.kql` | `dir_changes_summary_o365.kql` | `Initiator` is `UserId` (a UPN, or `ServicePrincipal_<id>`); `InitiatorName` is the actor's display name (`MS-PIM`). |
+| `dir_changes_targeting.kql` | `dir_changes_targeting_o365.kql` | Same one-row-per-operation shape; `Changes` from `ModifiedProperties`. |
+| `dir_changes_detail.kql` | `dir_changes_detail_o365.kql` | `{CID}` is `InterSystemsId`, the same value as `CorrelationId`. |
+| `app_actions_audit.kql` | `app_actions_o365.kql` (already run in 3c) | Its `Workload == "AzureActiveDirectory"` rows are the app's directory actions: `UserId` is `ServicePrincipal_<spid>` for the same events `InitiatedBy.app.servicePrincipalId` names. |
+| `campaign_census.kql` | `campaign_census_o365.kql` | Counts users whose method list **grew or shrank** per day, from `Update user.` rows. It tracks the shape of real registrations, a little lower. |
+
+Operation names end in a period in `Office365` (`Add member to group.`), and the time
+column is `timestamp`.
+
+**What Office365 never has.** These Entra services do not write to it at all. Zero rows
+for any of them is a coverage gap, never a negative:
+
+- **Authentication Methods**: "User registered / deleted / changed security info",
+  passkey creation. Their effect still shows as `Update user.` with
+  `StrongAuthenticationMethod`, `StrongAuthenticationPhoneAppDetail` or
+  `SearchableDeviceKey` modified. That is what 3b's `auth_method_changes.kql` already
+  reads, and it covers successful changes only; failed or abandoned attempts are gone.
+- **PIM**: activation requests, completions and expiries. The role grant PIM performs
+  arrives as `Add member to role.` by `MS-PIM`, so a role *was* granted is visible, but
+  *who asked for it and why* is not.
+- **Self-service password reset**, and password changes made through it.
+- **Device Registration Service**: BitLocker key reads, LAPS password recovery, Windows
+  Hello and device-bound passkey adds.
+- **Identity Protection**, B2B invitations, Terms of Use, Azure RBAC elevate-access,
+  Authentication Methods policy updates.
+- Within Core Directory, a few operations are missing too: "Hard Delete" of
+  devices/groups/service principals, **"Create application – Certificates and secrets
+  management"** (the first credential on a new app; "Update application – …" is present),
+  and some licence changes (126 of 176 in the measured week).
+
+**No initiator IP.** `ClientIP` and `ActorIpAddress` are empty on every directory row.
+3a cannot resolve the address a directory change came from; use the subject's sign-ins
+around that time, and say the change itself carries no IP.
+
+When the fallback runs, the closure states it once: *"AzureAuditLogs not collected;
+directory checks ran on Office365 (Core Directory only). PIM, authentication-methods,
+self-service password reset and device-registration events, and the initiator IP, were
+not available."* Then list every check whose answer depends on those as a gap.
+
+Measured on one large tenant with both feeds, one week: the subject's summary matched on
+all 6 Core Directory rows (13/13 role adds, 13/13 removals), and was missing 72 LAPS
+password recoveries and 9 PIM self-activations that only `AzureAuditLogs` had.
 
 ## 3a — Resolve every address against the rest of the tenant
 
@@ -131,6 +185,9 @@ A benign verdict rests on negatives, and they have to be collected, not assumed.
   - `assets/queries/app_actions_o365.kql` — Microsoft 365 actions the app took as itself
     (`UserId` = `ServicePrincipal_<spid>`); a 30-day `Office365` scan, so expect minutes.
 
+  Without `AzureAuditLogs`, skip `app_actions_audit.kql`: `app_actions_o365.kql`'s
+  `AzureActiveDirectory` rows are the same directory actions (see the fallback section).
+
   Each zero needs a control: run the same query with a principal that is known to be
   active in that table (for the audit and Office365 queries, any busy entry under
   `InitiatedBy.app` / `ServicePrincipal_…`; for sign-ins, an app the subject signed in to)
@@ -158,6 +215,10 @@ A benign verdict rests on negatives, and they have to be collected, not assumed.
   3. `assets/queries/dir_changes_detail.kql` — one operation in full (`{CID}` = its
      `CorrelationId`), when a change needs its complete `TargetResources` or
      `AdditionalDetails`. One at a time; never loop it over the list.
+
+  Without `AzureAuditLogs`, run the `_o365` versions of the three queries (fallback
+  section above). PIM activations, security-info changes and self-service resets are not
+  in them: a directory summary without those rows is not evidence they did not happen.
 
   An action the subject took that matters (a role granted to someone else, a
   conditional-access or app change) is found in the summary's "by subject" rows; pull
