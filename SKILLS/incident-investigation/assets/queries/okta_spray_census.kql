@@ -1,0 +1,23 @@
+// K3 -- is the subject the only target? The same signature -- failed sign-ins
+// on the legacy path or with no user agent -- counted per account, tenant-wide.
+// A spray rotates addresses, so "none of these IPs touched another account"
+// proves nothing; the signature does. A window of a day or two around the
+// ticket can make the subject look uniquely targeted when the same signature
+// has been hitting other accounts for weeks -- hence 30 days.
+// Counts only.
+Okta
+| where timestamp > ago(30d)
+| where tostring(["outcome.result"]) == "FAILURE"
+| where eventType in ("user.session.start", "user.authentication.auth_via_richclient")
+| extend uri = tostring(["debugContext.debugData.requestUri"]),
+    ua = tostring(["client.userAgent.rawUserAgent"])
+| extend legacy = eventType == "user.authentication.auth_via_richclient" or uri contains "/sso/wsfed/active"
+| where legacy or ua == "unknown" or ua == ""
+| summarize attempts = dcount(uuid), legacyAttempts = dcountif(uuid, legacy),
+    ips = dcount(["client.ipAddress"]),
+    countries = make_set(tostring(["client.geographicalContext.country"]), 10),
+    lockouts = dcountif(uuid, tostring(["outcome.reason"]) == "LOCKED_OUT"),
+    first = min(timestamp), last = max(timestamp)
+    by actor = tolower(tostring(["actor.alternateId"]))
+| order by attempts desc
+| take 1000

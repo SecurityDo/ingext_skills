@@ -1,0 +1,20 @@
+// K3 -- one campaign or several? Addresses whose failed legacy / no-user-agent
+// sign-ins hit more than one account. Shared infrastructure across the accounts
+// K3's census found makes them one campaign, and one fix.
+// Counts only.
+Okta
+| where timestamp > ago(30d)
+| where tostring(["outcome.result"]) == "FAILURE"
+| where eventType in ("user.session.start", "user.authentication.auth_via_richclient")
+| extend uri = tostring(["debugContext.debugData.requestUri"]),
+    ua = tostring(["client.userAgent.rawUserAgent"])
+| where eventType == "user.authentication.auth_via_richclient" or uri contains "/sso/wsfed/active"
+    or ua == "unknown" or ua == ""
+| summarize accounts = dcount(tolower(tostring(["actor.alternateId"]))),
+    actors = make_set(tolower(tostring(["actor.alternateId"])), 10), attempts = dcount(uuid),
+    country = min(tostring(["client.geographicalContext.country"])),
+    first = min(timestamp), last = max(timestamp)
+    by ip = tostring(["client.ipAddress"])
+| where accounts > 1
+| order by accounts desc, attempts desc
+| take 1000

@@ -1,0 +1,15 @@
+// K2 -- did anything from the attacking addresses SUCCEED, for anyone? Every
+// Okta event from the IPs that failed against the subject, tenant-wide, counted
+// by actor, event and outcome. The answer to "was the account compromised" is a
+// zero in the SUCCESS rows here -- and the FAILURE rows are its control: the
+// same filter returns the attempts themselves.
+// Counts only. Placeholders: {IPS} = quoted, comma-separated list of the failing
+// IPs from K1 detail, e.g. "203.0.113.7", "198.51.100.9".
+Okta
+| where timestamp > ago(30d)
+| where ["client.ipAddress"] in ({IPS})
+| summarize events = dcount(uuid), first = min(timestamp), last = max(timestamp)
+    by ip = tostring(["client.ipAddress"]), actor = tolower(tostring(["actor.alternateId"])),
+    eventType, result = tostring(["outcome.result"])
+| order by result asc, ip asc
+| take 1000

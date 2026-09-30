@@ -1,0 +1,39 @@
+// K1 -- HOW does the subject authenticate? Every Okta authentication for the
+// subject over 30 days, counted by the PATH it took (Okta's request URI), the
+// event, and the outcome. The path is the evidence a failed-login ticket turns on:
+// a spray that comes in through Office 365's legacy / rich-client path
+// ("/app/office365/.../sso/wsfed/active", relayed by Microsoft, no user agent)
+// never touches the Okta sign-in page, so the fix is to block legacy
+// authentication, not to block IPs -- and nothing else in the event says so.
+// noUA = events with no user agent ("unknown"): scripts and legacy clients.
+// relays = the org of the second hop in request.ipChain; "microsoft corporation"
+// means Microsoft forwarded the attempt on the client's behalf.
+// Counts only. Placeholders: {USER} = lower-cased login (Okta actor.alternateId).
+Okta
+| where timestamp > ago(30d)
+| where tolower(["actor.alternateId"]) == "{USER}"
+| where eventType startswith "user.session." or eventType startswith "user.authentication."
+    or eventType in ("user.account.lock", "policy.evaluate_sign_on")
+| extend uri = tostring(["debugContext.debugData.requestUri"]),
+    ua = tostring(["client.userAgent.rawUserAgent"])
+| extend Path = case(
+    eventType == "user.authentication.auth_via_richclient", "legacy: rich client",
+    uri contains "/sso/wsfed/active", "legacy: WS-Trust active",
+    uri startswith "/api/v1/authn", "primary: authn API",
+    uri startswith "/idp/idx", "primary: Identity Engine",
+    uri contains "/sso/wsfed/passive", "browser SSO: WS-Fed",
+    uri contains "/sso/saml", "browser SSO: SAML",
+    uri startswith "/oauth2", "OAuth / OIDC",
+    uri == "", "(no request path)",
+    "other")
+| extend relay = tostring(parse_json(tostring(["request.ipChain"]))[1].ipDetails.asOrg)
+// Okta events are counted by uuid: the datalake can hold the same event more
+// than once.
+| summarize events = dcount(uuid), noUA = dcountif(uuid, ua == "unknown" or ua == ""),
+    ips = dcount(["client.ipAddress"]),
+    countries = make_set(tostring(["client.geographicalContext.country"]), 10),
+    relays = make_set(relay, 5), first = min(timestamp), last = max(timestamp)
+    by Path, eventType, result = tostring(["outcome.result"]),
+    reason = tostring(["outcome.reason"])
+| order by Path asc, events desc
+| take 1000

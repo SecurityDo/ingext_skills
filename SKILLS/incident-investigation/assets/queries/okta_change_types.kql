@@ -1,0 +1,14 @@
+// K4 control -- the same event families tenant-wide, counted. If okta_account_changes
+// is empty for the subject, this shows the filter can return rows at all (a
+// zero with no control is not a negative).
+// Counts only.
+Okta
+| where timestamp > ago(30d)
+| where eventType startswith "user.account." or eventType startswith "user.mfa."
+    or eventType startswith "user.lifecycle." or eventType startswith "user.credential."
+    or eventType startswith "system.email.password_reset" or eventType == "user.session.clear"
+| where eventType != "user.account.update_profile"
+| summarize events = dcount(uuid), accounts = dcount(tolower(tostring(["actor.alternateId"])))
+    by eventType, result = tostring(["outcome.result"])
+| order by events desc
+| take 1000

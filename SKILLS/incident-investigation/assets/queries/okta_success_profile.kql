@@ -1,0 +1,29 @@
+// K5 -- what do the subject's REAL sign-ins look like? Each successful Okta
+// session over 30 days, grouped by address: how many sessions, how many went
+// through MFA (an auth_via_mfa success in the same session), the browser, and
+// the network. This is the baseline an attacker's attempt is judged against,
+// and the list of addresses okta_ip_users resolves. A shared admin mailbox shows
+// several people in several countries here; that is a fact about the account,
+// not an intrusion.
+// Counts only. Placeholders: {USER} = lower-cased login.
+Okta
+| where timestamp > ago(30d)
+| where tolower(["actor.alternateId"]) == "{USER}"
+| where tostring(["outcome.result"]) == "SUCCESS"
+| where eventType in ("user.session.start", "user.authentication.auth_via_mfa")
+| extend session = tostring(["authenticationContext.externalSessionId"])
+| where session != "" and session != "unknown"
+| summarize started = dcountif(uuid, eventType == "user.session.start"),
+    mfa = dcountif(uuid, eventType == "user.authentication.auth_via_mfa"),
+    ip = min(tostring(["client.ipAddress"])), when = min(timestamp),
+    ua = min(tostring(["client.userAgent.rawUserAgent"])),
+    isp = min(tostring(["securityContext.isp"])),
+    place = min(strcat(tostring(["client.geographicalContext.city"]), ", ",
+        tostring(["client.geographicalContext.country"])))
+    by session
+| where started > 0
+| summarize sessions = count(), withMFA = countif(mfa > 0), first = min(when), last = max(when),
+    browsers = make_set(substring(ua, 0, 60), 5)
+    by ip, isp, place
+| order by sessions desc
+| take 1000

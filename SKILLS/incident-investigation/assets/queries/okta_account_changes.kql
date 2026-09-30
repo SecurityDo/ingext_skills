@@ -1,0 +1,32 @@
+// K4 -- what changed ON the account? Lockouts and unlocks (who unlocked:
+// system@okta.com is the automatic timeout, a person is not), password and
+// factor changes, lifecycle events -- by the subject or by anyone on the subject.
+// A successful attack usually leaves one of these behind (a new factor, a reset)
+// in the "self" or "on subject" rows; its absence is a negative only with
+// okta_change_types as the control.
+// Raw rows for the subject, slim columns. Placeholders: {USER} = lower-cased login.
+Okta
+| where timestamp > ago(30d)
+| where tolower(["actor.alternateId"]) == "{USER}" or tolower(tostring(["target"])) contains "{USER}"
+| where eventType startswith "user.account." or eventType startswith "user.mfa."
+    or eventType startswith "user.lifecycle." or eventType startswith "user.credential."
+    or eventType startswith "system.email.password_reset" or eventType == "user.session.clear"
+| where eventType != "user.account.update_profile"
+| extend actor = tolower(tostring(["actor.alternateId"])),
+    tgt = parse_json(tostring(["target"]))
+// A target is a user (alternateId) or a thing such as a role or group, whose
+// alternateId is "unknown" and whose name is in displayName.
+| extend t0 = iff(tostring(tgt[0].alternateId) in ("", "unknown"), tostring(tgt[0].displayName), tostring(tgt[0].alternateId)),
+    t1 = iff(tostring(tgt[1].alternateId) in ("", "unknown"), tostring(tgt[1].displayName), tostring(tgt[1].alternateId))
+| extend target = tolower(t0), detail = t1
+// "on subject" rows are what happened TO the account; "by subject" rows are what
+// the subject did to others -- for an admin that is most of them, and ordinary.
+| extend Direction = iff(actor == "{USER}" and (target == "" or target == "{USER}"), "self",
+    iff(actor == "{USER}", "by subject", "on subject"))
+| project timestamp, uuid, Direction, eventType, result = tostring(["outcome.result"]),
+    reason = tostring(["outcome.reason"]), actor, actorType = tostring(["actor.type"]),
+    target, detail, ip = tostring(["client.ipAddress"]), message = tostring(displayMessage)
+| summarize dups = count() by timestamp, uuid, Direction, eventType, result, reason, actor,
+    actorType, target, detail, ip, message
+| top 1000 by timestamp desc
+| order by timestamp asc

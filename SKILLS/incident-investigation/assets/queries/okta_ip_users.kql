@@ -1,0 +1,17 @@
+// K5 -- whose addresses are these? For the addresses the subject signs in from
+// (okta_success_profile), how many OTHER people in the tenant signed in
+// successfully from each one. An address dozens of colleagues use every day is
+// the organisation's office or VPN egress, even in a country the ticket flags
+// as new; an address nobody else uses is a question for the user.
+// Counts only. Placeholders: {IPS} = quoted, comma-separated list.
+Okta
+| where timestamp > ago(30d)
+| where ["client.ipAddress"] in ({IPS})
+| where eventType == "user.session.start" and tostring(["outcome.result"]) == "SUCCESS"
+| summarize users = dcount(tolower(tostring(["actor.alternateId"]))), sessions = dcount(uuid),
+    sampleUsers = make_set(tolower(tostring(["actor.alternateId"])), 10),
+    isp = min(tostring(["securityContext.isp"])),
+    first = min(timestamp), last = max(timestamp)
+    by ip = tostring(["client.ipAddress"])
+| order by users desc
+| take 1000

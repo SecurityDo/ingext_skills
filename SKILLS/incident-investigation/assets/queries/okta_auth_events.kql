@@ -1,0 +1,26 @@
+// K1 detail -- the subject's authentication events around the incident, one row
+// per event, slim columns. The rows K2/K3 feed on: attacker IPs, the request
+// path of each attempt, the session id that ties a sign-in to its MFA step.
+// Window: the incident +-24h, and never later than the run (see K6).
+// Raw rows for the subject only. Placeholders: {USER} = lower-cased login,
+// {WFROM}/{WTO} = ISO-8601 UTC window.
+Okta
+| where timestamp between (datetime("{WFROM}") .. datetime("{WTO}"))
+| where tolower(["actor.alternateId"]) == "{USER}"
+| where eventType startswith "user.session." or eventType startswith "user.authentication."
+    or eventType in ("user.account.lock", "user.account.unlock")
+| project timestamp, uuid, eventType, result = tostring(["outcome.result"]),
+    reason = tostring(["outcome.reason"]), ip = tostring(["client.ipAddress"]),
+    country = tostring(["client.geographicalContext.country"]),
+    city = tostring(["client.geographicalContext.city"]),
+    isp = tostring(["securityContext.isp"]),
+    ua = tostring(["client.userAgent.rawUserAgent"]),
+    uri = tostring(["debugContext.debugData.requestUri"]),
+    relay = tostring(parse_json(tostring(["request.ipChain"]))[1].ipDetails.asOrg),
+    session = tostring(["authenticationContext.externalSessionId"]),
+    risk = tostring(["securityContext.risk.level"])
+// Dedup on every column (uuid included): one row per Okta event.
+| summarize dups = count() by timestamp, uuid, eventType, result, reason, ip, country,
+    city, isp, ua, uri, relay, session, risk
+| top 1000 by timestamp desc
+| order by timestamp asc

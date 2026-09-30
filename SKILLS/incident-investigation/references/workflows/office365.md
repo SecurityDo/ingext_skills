@@ -23,6 +23,10 @@ Office365-only path, and `office-user-investigation` covers it. A tenant without
 `AzureAuditLogs` runs the Office365 fallback queries below. Record any check that
 cannot run for a missing table as a gap, never as a pass.
 
+**A tenant with an `Okta` table may sign in to Microsoft 365 through Okta.** Its failed
+passwords, legacy-authentication attempts and lockouts are then in `Okta`, not here, so
+also run `references/workflows/okta.md` for any sign-in or lockout question.
+
 ## No `AzureAuditLogs`? The Office365 fallback, and what it cannot see
 
 Not every site collects the AzureAudit feed. `Office365` rows with

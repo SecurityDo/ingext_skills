@@ -1,0 +1,9 @@
+// K6 -- how far does the data actually reach? The newest Okta event the tenant
+// holds, and the volume of the last day. A negative such as "no activity after
+// the unlock" holds only up to `latest`, never to the end of a window that
+// reaches past the time of the run (the incident +24h, for a fresh ticket).
+// Counts only.
+Okta
+| where timestamp > ago(1d)
+| summarize latest = max(timestamp), events = dcount(uuid),
+    accounts = dcount(tolower(tostring(["actor.alternateId"])))

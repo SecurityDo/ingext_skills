@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.7
+version: 1.2.8
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -8,8 +8,8 @@ description: >-
   "triage this ticket", "is this a true positive", "the AI assist says actionable, check it",
   "why did this user score 3600", "should we escalate this alert". Pulls the ticket and the
   AI-assist verdict, profiles the subject, measures the in-tenant base rate for the rule that
-  fired, then runs the workflow for the incident type (Office365 today: resolve every source
-  IP against the tenant, read which device approved the change, prove what did NOT happen)
+  fired, then runs the workflow for the incident type (Office365, Okta sign-in paths and
+  legacy-auth sprays, SentinelOne; each proves what did NOT happen)
   and re-derives every number against the timestamp, error-code, user-agent, duplicate-row
   and GeoIP traps that manufacture findings. Ends in a closure (benign, escalate or
   confirmed) with tuning, and a Fluency-branded HTML closure report on request. Queries only
@@ -536,11 +536,16 @@ workflow file:
 | `behaviorRules` prefix | Incident type | Workflow |
 |---|---|---|
 | `O365_`, `AzureAD_`, `Fluency_O365_` | Office365 / Entra ID | `references/workflows/office365.md` — 3a resolve every address, 3b the approving device (auth incidents only), 3c prove what did not happen |
+| `okta_` | Okta sign-in / account | `references/workflows/okta.md` — K1 which path every sign-in took, K2 did any of it succeed, K3 the same signature on other accounts, K4 what changed on the account, K5 what the real sign-ins look like, K6 prove what did not happen up to where the data reaches |
 | `SentinelOne:` | SentinelOne EDR alert | `references/workflows/sentinelone.md` — S1 pull each alert whole, S2 running or at rest, S3 agent time and ownership, S4 hash prevalence and origin, S5 prove what did not run, S6 reconcile counts, S7 score, tuning and side findings |
 | anything else (`GoogleWorkspace_`, …) | no dedicated workflow yet | `references/workflows/generic.md` — G1 read the raw events, G2 how common the artifact is, G3 resolve every indicator, G4 raw timeline, G5 prove what did not happen, G6 side findings |
 
 - **A ticket can carry more than one type.** Run every matching workflow and keep their
   findings apart in the closure.
+- **An Office365 sign-in ticket on a tenant that signs in to Microsoft 365 through Okta
+  also runs the Okta workflow.** Its failed passwords are checked by Okta, so they are
+  in the `Okta` table and not in `Office365`: an empty `login_failures.kql` there says
+  nothing about attempts.
 - **When the prefix is ambiguous**, look the rule up with `eventwatch_rule_list`
   (`nameContains`) and use its `group` (`Office365`, `AzureAD`, `SentinelOne`,
   `GSuites`, …).
@@ -907,7 +912,7 @@ returns the documents directly, so only `summary_digest.py` still earns its plac
 feed it the `documents` array. `ingext_json.py` is unnecessary there: it exists solely
 to recover a JSON body from a debug log, and MCP returns one.
 | `assets/queries/*.kql` | The queries the workflows and steps name, placeholder-substituted and parse-validated |
-| `references/workflows/*.md` | Step 3: `office365.md` for Office365 / Entra ID incidents, `sentinelone.md` for SentinelOne alerts, `generic.md` for every other type |
+| `references/workflows/*.md` | Step 3: `office365.md` for Office365 / Entra ID incidents, `okta.md` for Okta incidents, `sentinelone.md` for SentinelOne alerts, `generic.md` for every other type |
 
 **Don't modify a bundled query or trim its output.** Run it unmodified — do not wrap it
 in a `summarize`, drop columns or filter out rows to make the output shorter — and write
@@ -975,7 +980,7 @@ It is not saved to a file. An unbounded 30-day directory audit for one admin ret
   truncation limit on their own. Run them one or two at a time, not all together.
 
 Queries use `{USER}` (lower-cased UPN), `{TARGET}` (the UPN as `ObjectId` spells it),
-`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}`, `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`), `{CID}` (one operation's `CorrelationId`; in the `_o365` fallbacks its `InterSystemsId`, the same value). Run
+`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}` (a quoted, comma-separated list of addresses), `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`, and for `Okta`; `{WTO}` is never later than the time of the run), `{CID}` (one operation's `CorrelationId`; in the `_o365` fallbacks its `InterSystemsId`, the same value). Run
 `ingext kql validate @<file>` after substituting — it parses in under a second and
 catches a wrong column name before a 20-second scan does.
 

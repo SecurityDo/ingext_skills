@@ -1,0 +1,30 @@
+// K2 / recommendation gate -- who gets a CORRECT password through on the legacy
+// path, tenant-wide, and what happened next? Three readings per account:
+//   successes > 0, denied = 0 : a working legacy sign-in -- a real mail client,
+//       scanner or script (it breaks if legacy authentication is blocked), or a
+//       stolen password in use. The address decides which.
+//   successes > 0, denied > 0 : the password was right and an Okta app sign-on rule
+//       refused Office 365 afterwards. The tenant already has such a rule, and
+//       SOMEONE HOLDS THAT USER'S VALID PASSWORD: treat it as a credential to
+//       reset, not as a blocked attack.
+//   successes = 0              : failures only -- the control for the rows above.
+// An app sign-on rule runs AFTER Okta checks the password: it stops a guessed
+// password being used, never the guessing or the lockouts.
+// Counts only.
+Okta
+| where timestamp > ago(30d)
+| extend uri = tostring(["debugContext.debugData.requestUri"])
+| where eventType == "user.authentication.auth_via_richclient"
+    or (uri contains "/sso/wsfed/active"
+        and eventType in ("user.session.start", "application.policy.sign_on.deny_access"))
+| extend res = tostring(["outcome.result"]), ip = tostring(["client.ipAddress"])
+| summarize successes = dcountif(uuid, res == "SUCCESS" and eventType != "application.policy.sign_on.deny_access"),
+    denied = dcountif(uuid, eventType == "application.policy.sign_on.deny_access"),
+    failures = dcountif(uuid, res == "FAILURE"),
+    successIPs = make_set_if(strcat(ip, " (", tostring(["securityContext.isp"]), ")"),
+        res == "SUCCESS" and eventType != "application.policy.sign_on.deny_access", 10),
+    lastSuccess = maxif(timestamp, res == "SUCCESS" and eventType != "application.policy.sign_on.deny_access"),
+    first = min(timestamp), last = max(timestamp)
+    by actor = tolower(tostring(["actor.alternateId"]))
+| order by successes desc, failures desc
+| take 1000
