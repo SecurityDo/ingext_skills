@@ -1,0 +1,22 @@
+// Delegated use of an application: what it did AS each user, after a consent
+// with ConsentContext.IsAppOnly = False. Delegated actions are recorded under
+// the user, not under ServicePrincipal_<spid>, so app_actions_o365 cannot see
+// them. Exchange and SharePoint/OneDrive rows name the client app in AppId,
+// ClientAppId or AppAccessContext.ClientAppId; sign-ins to the app name it in
+// ApplicationId. An AllPrincipals grant covers every user, so this is
+// tenant-wide and returns counts, never raw rows. Most reads are not audited
+// (MailItemsAccessed needs premium auditing): a zero covers writes and
+// sign-ins, never "nothing was read". Pair a zero with app_delegated_use_ctl_o365.
+// Placeholders: {APPID} = lower-cased application (client) id; {WFROM} = the
+// incident time minus 24h (ISO-8601 UTC). Runs to now: delegated use keeps
+// going after the ticket.
+Office365
+| where timestamp > ago(30d)
+| where timestamp >= datetime("{WFROM}")
+| where tolower(tostring(AppId)) == "{APPID}" or tolower(tostring(ClientAppId)) == "{APPID}"
+    or tolower(tostring(ApplicationId)) == "{APPID}" or tolower(tostring(AppAccessContext)) contains "{APPID}"
+| summarize events = count(), first = min(timestamp), last = max(timestamp),
+            ips = make_set(tostring(ClientIP), 10)
+    by UserId = tolower(tostring(UserId)), Workload = tostring(Workload), Operation = tostring(Operation)
+| order by first asc
+| take 1000

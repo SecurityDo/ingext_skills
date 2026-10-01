@@ -1,0 +1,14 @@
+// Control for app_delegated_use_o365: over the same window, how many Exchange
+// and SharePoint rows name ANY client app. A large count with the subject app
+// absent makes that query's zero real; a count near 0 means this tenant's
+// feed does not carry client-app ids and the zero is a gap.
+// Placeholders: {WFROM} = the incident time minus 24h (ISO-8601 UTC).
+Office365
+| where timestamp > ago(30d)
+| where timestamp >= datetime("{WFROM}")
+| where Workload in ("Exchange", "SharePoint", "OneDrive")
+| summarize events = count(),
+            withClientApp = countif(isnotempty(tostring(AppId)) or isnotempty(tostring(ClientAppId))),
+            apps = dcount(tostring(ClientAppId))
+    by Workload = tostring(Workload)
+| take 1000

@@ -128,7 +128,16 @@ a "impossible travel" finding built on an unverified city is manufactured.
 For any incident about authentication, MFA, passkeys or credentials, this is the fact
 that decides it, and **neither the behavior summary nor the sign-in log contains it**.
 For any other Office365 incident (an app registration, a mailbox permission, a policy
-change) skip 3b and record it as "not applicable" — do not force it.
+change), skip the full check. Do read one row, though: when a sign-in by the subject
+precedes the flagged action, read the subject's `Update user.` row at that sign-in, using
+`dir_changes_summary_o365` / `dir_changes_summary` ("on subject", initiator
+`Azure MFA StrongAuthenticationService`). Its `StrongAuthenticationPhoneAppDetail` diff
+shows which enrolled device approved the session. If the device is the same (same `Id`,
+same `DeviceToken`, only `LastAuthenticatedTimestamp` and the app version changed), an
+already-enrolled factor approved the session. That is the cheapest strong evidence
+against a takeover, and it costs one query you have usually already run. A dormant admin
+account whose old phone approves the sign-in is the owner, or someone holding the
+owner's phone.
 
 `assets/queries/auth_method_changes.kql` over a tight window around the event returns
 `ModifiedProperties`. Two properties matter:
@@ -179,6 +188,66 @@ A benign verdict rests on negatives, and they have to be collected, not assumed.
   and has anything else touched the app since. An app created minutes ago may not be in
   the snapshot yet — zero rows is a timing gap, not proof it does not exist; say so and
   fall back to the creating audit event.
+
+  **Whose app is it?** Decide this before judging anything else, because it changes every
+  recommendation:
+  - **"Add application." from the subject** means the tenant created its own app
+    registration. The subject owns its secrets, and "rotate the secret" is a real lever.
+  - **"Add service principal." with no "Add application."**, and no row in
+    `app_registration.kql` once the snapshot has caught up, means a **third-party
+    multi-tenant app**. Consent creates a local instance of an app that lives in the
+    vendor's tenant. Nobody in this tenant created the app or holds its credentials. The
+    `Credential` on the service principal event is not a secret the tenant can rotate.
+    Never write "self-registered" for this case.
+    - Name the vendor from the reply URLs in the event's `AppAddress`, read whole. A
+      vendor callback domain or a custom scheme (`<product>://`) names the product. Then
+      check the vendor's public documentation where the run can reach it.
+    - Say the publisher is unverified until `app_service_principal.kql` shows
+      `verifiedPublisher` and `appOwnerOrganizationId`.
+    - The levers are the **grant** and the **service principal**: revoke the grant,
+      narrow it to named users, drop scopes, or disable or delete the service principal.
+
+  **Read the consent itself, whole** (`dir_changes_detail_o365.kql` /
+  `dir_changes_detail.kql` on its `CorrelationId`):
+  - `ConsentContext.IsAdminConsent` and `OnBehalfOfAll` (or `ConsentType: AllPrincipals`)
+    show whether one person consented for themselves or an admin consented for every user.
+  - `ConsentContext.IsAppOnly` decides which usage check below applies.
+  - `ConsentAction.Reason` is Entra's own verdict. **"Risky application detected"** means
+    Microsoft flagged the app and an admin overrode it.
+  - The scope list is on "Add delegated permission grant.".
+
+  **Find who asked for it.** An admin consent usually answers a request. Search the app's
+  sign-ins across the tenant for the hour before the consent:
+  - `UserLoginFailed` with `LogonError` = **`AdminConsentRequired`** means a user was
+    blocked and needed an admin.
+  - `DelegationDoesNotExist` is the consent prompt itself.
+
+  `app_delegated_use_o365.kql` returns these rows. A blocked user minutes before the
+  consent turns "an admin granted access out of nowhere" into "an admin answered a
+  user's request". It also tells you the grant's intended audience: an `AllPrincipals`
+  grant made for one requester is the scope finding.
+
+  **Re-run the consent census at the end of the investigation, not only at the start.**
+  Grants change after a ticket is raised, and a second admin can widen the scopes the
+  same afternoon. List every "Consent to application.", "Add delegated permission grant."
+  and "Remove delegated permission grant." for the app up to the time of the run. The
+  **remove-then-add pair** is how Entra records a scope change on an existing grant.
+- **When the grant is delegated (`IsAppOnly: False`), check what the app did as each
+  user.** A delegated app acts *as the signed-in user*, and its actions are recorded
+  under that user, never under `ServicePrincipal_<spid>`. So `app_actions_o365.kql`
+  cannot see them, and a zero from it says nothing about a delegated mail or Teams grant.
+  Run `assets/queries/app_delegated_use_o365.kql`, which matches the app id in `AppId`,
+  `ClientAppId`, `ApplicationId` and `AppAccessContext`:
+  - **Rows under a user other than the consenting admin** mean the grant is in use in that
+    user's data. An Exchange `SoftDelete`, `Send`, `Update` or `Move` with
+    `ClientInfoString: Client=REST` is the app writing to that mailbox through Graph.
+  - **The control is `assets/queries/app_delegated_use_ctl_o365.kql`.** It counts rows that
+    name any client app, per workload. On one tenant Exchange carried client-app ids on
+    most rows while OneDrive and SharePoint carried none. A SharePoint or OneDrive zero
+    there is a gap.
+  - **Most reads are not audited.** `MailItemsAccessed` needs premium auditing, and Teams
+    message reads are not in this feed. A zero covers writes and sign-ins only. Write
+    "no write or sign-in by the app outside …", never "the app has not been used".
 - **When a credential was added to that application, check whether it has been used.**
   A new secret or certificate is the part of an app registration an attacker wants, and
   the registration events alone cannot say whether it was ever used. Take `{SPID}` from
@@ -188,6 +257,8 @@ A benign verdict rests on negatives, and they have to be collected, not assumed.
   - `assets/queries/app_actions_audit.kql` — directory changes the app made as itself.
   - `assets/queries/app_actions_o365.kql` — Microsoft 365 actions the app took as itself
     (`UserId` = `ServicePrincipal_<spid>`); a 30-day `Office365` scan, so expect minutes.
+    App-only use only. What a delegated grant did as each user is in
+    `app_delegated_use_o365.kql` (above).
 
   Without `AzureAuditLogs`, skip `app_actions_audit.kql`: `app_actions_o365.kql`'s
   `AzureActiveDirectory` rows are the same directory actions (see the fallback section).
