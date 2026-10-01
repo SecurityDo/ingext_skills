@@ -4,15 +4,16 @@ version: 1.0.0
 description: >-
   Deploy an FPL processor to an Ingext tenant through a provider proxy, and wire it into the
   tenant's running pipeline. Use this skill whenever the user asks to "deploy a processor", "push
-  this parser to a tenant", "install an FPL script on a customer site", "add a behavior pipe",
-  "wire this processor into the pipeline", "roll out a vendor Behavior script", or wants a script
-  that works locally to start running against a tenant's live data. Covers resolving a provider
-  and tenant from the grid config, rehearsing on a scratch tenant, validating the mapping against
-  the target tenant's own records before wiring anything, creating the pipe and sink the CLI
-  cannot create, verifying signals arrive, and rolling back in one call. Also covers publishing a
-  plugin binary and the reload that makes it live, and releasing an object to the repo registries
-  with sync_cli so it reaches other tenants. Trigger for any request that moves an FPL script, a
-  plugin or an application template from a repo onto a tenant.
+  this parser to a tenant", "install an FPL script on a customer site", "update a live parser",
+  "add a behavior pipe", "wire this processor into the pipeline", "roll out a vendor Behavior
+  script", or wants a script that works locally to start running against a tenant's live data.
+  Covers resolving a provider and tenant from the grid config, rehearsing on a scratch tenant,
+  validating the mapping against the target tenant's own records before wiring anything,
+  creating the pipe and sink the CLI cannot create, verifying signals arrive, and rolling back.
+  Also covers publishing a plugin binary and the reload that makes it live, and releasing an
+  object to the repo registries with sync_cli so it reaches other tenants. Trigger for any
+  request that moves an FPL script, a plugin or an application template from a repo onto a
+  tenant.
 ---
 
 # Deploy an FPL processor to a tenant
@@ -298,6 +299,55 @@ check downstream, so confirm the rule name is an invariant (a policy or detectio
 interpolated with a user or a count) and the key is a recurring entity (an account, a
 hostname) rather than something per-alert like a document path. Get that wrong and every
 event is a first occurrence.
+
+## Updating a processor that is already live
+
+Never `processor update` the live processor in place to test a change: every pipe that names
+it switches at once, and the released copy on the tenant is overwritten until the next sync.
+Test a renamed copy on the real pipe instead, then release and switch back:
+
+1. **Deploy under a different name.** Bump `@parserVersion` in the script first, so live
+   events show which version handled them.
+
+   ```bash
+   ingext processor add --name <Name>_test --type fpl_processor \
+     --desc "TEST: <change>" --content @fplProcessors/code/<Name>.js --gridaccount <tenant>
+   ingext processor validate --name <Name>_test --gridaccount <tenant>
+   ```
+
+2. **Point the pipe at the copy.** Note the pipe's current processor before you change it,
+   because you restore that exact name in step 4.
+
+   ```bash
+   ingext stream update-pipe-processor --router <Router> --pipe <Pipe> \
+     --processor <Name>_test --gridaccount <tenant>
+   ```
+
+   An app-installed pipe is named from the template's `Pipe` metadata, usually
+   `<AppConfig name>-<instance>`, and its router is `spec.router`. Example: the
+   `WindowsServerNXLog.yaml` template gives `WindowsSrvNxLog-default` on `SyslogRouter`.
+   If `stream list-router` is missing, the installed binary is older than `~/cc/ingext_api`.
+   In that case, read the names from the template and confirm the instance with
+   `ingext application get-instance --app <App> --instance <instance>` (an unknown
+   instance returns an error).
+
+3. **Test on live traffic, then release.** Check that new events carry the bumped
+   `@parserVersion`, that the changed event type looks right, and that every other event
+   type the processor handles comes through unchanged. Facet on `@parserVersion`, `@tags`,
+   `@eventType` and `@parserError` in the app's datalake index. Then commit,
+   `sync_cli release ... fplProcessor`, commit `release`, and push the branch the
+   tenants sync from (`branch/saas`). See "Releasing to the repo registries" below.
+
+4. **Switch back and remove the copy.** The tenant pulls the release on a sync cycle of
+   about **two hours**. Switch back before that and the pipe runs the old script again.
+   After the switch, confirm in the lake that events still carry the new
+   `@parserVersion`, and only then delete the copy:
+
+   ```bash
+   ingext stream update-pipe-processor --router <Router> --pipe <Pipe> \
+     --processor <Name> --gridaccount <tenant>
+   ingext processor del --name <Name>_test --gridaccount <tenant>
+   ```
 
 ## Debugging a live pipe
 
