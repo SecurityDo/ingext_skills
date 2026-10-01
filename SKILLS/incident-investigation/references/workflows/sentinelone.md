@@ -22,6 +22,31 @@ without an error. Search on **stable ids** — a quoted SHA-1, agent uuid, agent
 `externalId` — and read the rest from facets. A bare product or file name inside a path
 can return 0 across hundreds of thousands of rows.
 
+**The index can hold two feeds. Census both, and check how far back each one reaches.**
+
+| `@eventType` | Comes from | Carries | Fields |
+|---|---|---|---|
+| `SentinelOneThreat`, `SentinelOneActivity`, `SentinelOneAlert` | the SentinelOneEvents integration | whole threat records (`threatInfo`, `agentDetectionInfo`), activities, Unified Alerts | `@sentinelOneThreat.*`, `@sentinelOneActivity.data.*`, `@sentinelOneAlert.*` |
+| `SentinelOneAPI` | the older API connector | **activities only**, no threat record | `@s1.activityType`, `@s1.computerName`, `@s1.fileContentHash`, `@s1.fileDisplayName`, `@s1.threatId` |
+
+- **A site moving from the older connector to SentinelOneEvents has a short new feed.** The
+  new feed starts at whatever the integration backfilled, often a day or less. A 30-day
+  census on `SentinelOneThreat` alone then reports "the only threats on the tenant are this
+  ticket's" while other hosts had detections the week before. Before trusting a tenant-wide
+  zero from one feed, read its oldest document (`sortOrder: asc`, `limit: 1`).
+- **The older feed has no `threatInfo`.** Facets on `@s1.threatInfo.*` come back empty
+  because the field does not exist, not because nothing matched. Count detections there
+  by activity type: `4003` suspicious detected, `19` malicious detected, `2001` killed,
+  `2004` quarantined, `4008` mitigation status changed, `2037` cloud changed the confidence
+  level, `2` added to the blocklist.
+- **A tenant-wide negative cites both feeds**, or names the one it could not use and says
+  how far back the other reaches.
+
+**Do not call `list_integrations` to find out whether SentinelOneEvents is installed.** Its
+output can carry connector credentials, and the investigation trace stores whatever a tool
+returns. `investigate_sentinelone_alert` already answers the question: it fails with "no
+SentinelOneEvents integration is configured" when the integration is missing.
+
 ## S1 — Pull every alert whole
 
 The summary lists what fired; the alert investigation says what it was. For each
@@ -43,6 +68,11 @@ investigate_sentinelone_alert {
   The alert's own UUID also works. The result's `alertMatchedField` says which matched.
 - Read `associations.confidence`: `high` is an id match, `medium` a shared storyline,
   `low` only the same host in the window. `none` is an answer, not an error.
+- **If the tool fails** ("no SentinelOneEvents integration"), pull each threat from the
+  index instead: `lake_search` on the quoted threat id, with `@eventType` set to
+  `SentinelOneThreat`. When that returns nothing too, the site has only the older feed: read
+  the threat's activities from `@s1.*` (by `@s1.threatId`), and record the live endpoint
+  record and the threat's `threatInfo` as gaps. Say in the closure which path you used.
 
 ## S2 — Was it running, or was it found on disk?
 
@@ -54,13 +84,44 @@ These fields decide most SentinelOne tickets. Read them off each threat (S1 resu
 | `initiatedBy` | `full_disk_scan` — a file at rest, found by a scan. `agent_policy` — on-execution or on-write, in real time. `on_demand_scan` — someone asked for it. |
 | `engines` / `detectionType` | `User-Defined Blocklist`, `Reputation`, `SentinelOne Cloud` are **static hash hits** (`static`). `DBT - Executables` (Behavioral AI) is **dynamic**: something ran and behaved. |
 | `originatorProcess`, `processUser`, `maliciousProcessArguments` | Who launched it and how. `explorer.exe` run by a named user is a person double-clicking; `services.exe` as SYSTEM is a service. Empty on scan hits. |
-| `mitigationStatus` next to the agent's `mitigationMode` | "Not mitigated" under `detect` mode is the policy working as configured, not a failed response. |
+| `mitigationStatus` next to `agentDetectionInfo.agentMitigationMode` | "Not mitigated" under `detect` mode is the policy working as configured, not a failed response. Read the mode on the **threat's own detection record**, never the live endpoint record (see below). |
 | `analystVerdict`, `mitigationStatus: marked_as_benign` | An earlier human decision on the same hash. |
 | `cloudFilesHashVerdict`, `fileVerificationType`, `publisherName` | SentinelOne's cloud rating of the hash; whether the file is signed, and by whom. |
 
 A ticket where every threat is `full_disk_scan` + a static engine is **a file at rest**.
 It can still be real malware — but the question becomes "did it ever run?", not "is it
 running?", and containment is quarantine, not isolation.
+
+**The mitigation mode is set per confidence level, not per agent.** A SentinelOne policy
+has one mode for *suspicious* threats and another for *malicious* ones, and the common
+setting is detect for suspicious, protect for malicious. Three consequences:
+
+- **The live endpoint record's `mitigationMode` is the malicious-threat mode.** On the same
+  agent a suspicious threat can be stamped `detect` in `agentDetectionInfo` while the live
+  record says `protect`. Neither record is wrong. A ticket or AI-assist that says "protect,
+  so it auto-remediated" from the live record is wrong for a suspicious threat.
+- **"Detect" on a suspicious threat is not a misconfigured host.** Before recommending a
+  policy check, facet `agentDetectionInfo.agentMitigationMode` against
+  `threatInfo.confidenceLevel` over the tenant's threats. If suspicious detections read
+  detect and malicious ones read protect, that is the policy as configured. The finding is
+  then the policy choice itself (suspicious threats wait for an analyst), not one host.
+- **Compare only threats at the same confidence level.** Another host that auto-quarantined
+  a *malicious* detection does not show that this host's *suspicious* detection should have
+  been mitigated. Both follow the same policy.
+
+**A detection's confidence can change after the ticket.** SentinelOne's cloud can raise a
+suspicious threat to malicious hours later (activity `2037`), add its hash to the blocklist
+(`2`), and remediate it automatically. A file not mitigated at the time of investigation may
+be quarantined an hour later, and a new detection may follow from the same installer.
+Before writing the verdict, re-read each threat's `confidenceLevel`, `mitigationStatus` and
+`updatedAt`, and list every detection on the agent since the ticket's first one. State in the
+closure the time your evidence runs to, and say that a later SentinelOne action can change
+the verdict.
+
+**"Killed" does not prove it was running.** Activity `2001` "successfully killed the threat"
+is reported as part of every remediation, even when no process existed. Evidence of
+execution is the threat's `originatorProcess` and `processUser`, a child written by the
+file (the child's `originatorProcess` names it), or a dynamic engine.
 
 ## S3 — Place the agent in time and ownership
 
@@ -112,6 +173,9 @@ Read four things:
   names the delivery route: `...\Microsoft\Olk\Attachments\...` or
   `...\Content.Outlook\...` is an email attachment, `Downloads` a browser download,
   a removable-drive letter a USB stick.
+- **Both feeds** — on the older feed the same hashes are `@s1.fileContentHash`; search
+  the quoted SHA-1 without the `@eventType` filter and facet `@eventType` and
+  `@s1.computerName` as well. The spread is the union of the two computer-name facets.
 - **Prior execution anywhere** — rerun with a second filter
   `{ "field": "@sentinelOneThreat.threatInfo.initiatedBy", "terms": ["agent_policy"] }`
   and `limit: 2`. Any hit with a named `processUser` is someone running the file on
@@ -147,7 +211,9 @@ table first: on some tenants it returns only a `timestamp` column, which is a ga
   `agent_policy` = 0 is the negative. **Its control** is the S4 `agent_policy` search on
   the same hashes elsewhere on the tenant returning hits — it shows the query can find a
   runtime detection when there is one. If S4 found none either, the control is any
-  `agent_policy` threat on the tenant.
+  `agent_policy` threat on the tenant, or on the older feed any detection activity
+  (`4003`/`19`) on another host. If the only detections on the tenant are this ticket's
+  own, check the feed's oldest document first (see the two feeds above).
 - **After the event:** the last detection time and the scan-completed activity (`92`),
   against the agent's `lastActiveDate`. Nothing new since the scan finished is a
   negative only while the agent was active.
@@ -194,3 +260,9 @@ and expect tickets that fit none of these rows.
 | Same, plus Temp extraction folders or a runtime hit elsewhere by the same user | Escalate for remediation and a pre-install execution check on the host and the user's account |
 | `agent_policy` + dynamic engine with a user process, not mitigated | Escalate for containment — this is the live case |
 | Blocklist hit on a hash an analyst marked false positive | Benign for the host; tuning to the SentinelOne console |
+| On-write or on-execution detections at suspicious confidence, a named user, not mitigated because suspicious threats are in detect mode | Escalate for remediation (quarantine), with the policy choice as a finding, not a host fault; re-check confidence before closing, since the cloud may upgrade it |
+| A signed installer from a browser download writing further executables under the user's profile, single host, no spread | Usually an unwanted application the user installed; confirmed once the parent ran, contained when every child is quarantined; recommend checking persistence (Run keys, scheduled tasks, services) |
+
+**Every verdict is as of a time.** A SentinelOne ticket keeps moving after it is raised:
+cloud upgrades, automatic and analyst quarantines, new detections from the same installer.
+Write the time your evidence runs to into the verdict.
