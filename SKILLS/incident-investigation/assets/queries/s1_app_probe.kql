@@ -1,0 +1,12 @@
+// Is the SentinelOne application inventory readable on this account? Run it
+// before reading a zero from s1_host_apps or s1_app_census. The table is a
+// snapshot with no time column. `take 1` without a project returns only
+// `timestamp` because the engine returns just the columns a query names, so
+// that is not a probe. `withName` > 0 makes an absence real; 0 is a gap.
+// `hostRows` is the subject host's row count.
+// Placeholders: {HOST} = host name, lower-cased.
+sentinelOneApplication
+| summarize rows = count(),
+            withName = countif(isnotempty(tostring(name))),
+            withHost = countif(isnotempty(tostring(agentComputerName))),
+            hostRows = countif(tolower(tostring(agentComputerName)) == "{HOST}")

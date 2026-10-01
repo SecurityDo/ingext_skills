@@ -1,0 +1,14 @@
+// How many hosts on the account run a product, and at which versions. The
+// account-wide answer to "is this one host, or deployed software?". Run it when
+// a detection names a product: the file is one, a rule name or description
+// cites one, or s1_host_apps tied a cached installer to one. Compare the
+// versions with the range the rule or campaign names. Counts only, never raw
+// rows: anyHost is one example host per version, not a host list.
+// Placeholders: {APP} = product name fragment, lower-cased (e.g. "contoso").
+sentinelOneApplication
+| where tolower(tostring(name)) contains "{APP}" or tolower(tostring(publisher)) contains "{APP}"
+| summarize hosts = dcount(tostring(agentComputerName)),
+            anyHost = take_any(tostring(agentComputerName))
+    by name = tostring(name), version = tostring(version), publisher = tostring(publisher)
+| order by hosts desc
+| take 1000

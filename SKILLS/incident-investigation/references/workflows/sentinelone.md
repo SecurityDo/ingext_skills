@@ -22,6 +22,24 @@ without an error. Search on **stable ids** — a quoted SHA-1, agent uuid, agent
 `externalId` — and read the rest from facets. A bare product or file name inside a path
 can return 0 across hundreds of thousands of rows.
 
+**A rule or alert name is not a stable id either.** A free-text search for a word in a STAR
+rule's name has returned 0 across the whole index while that rule's alert was in it. Count
+alerts by name with a filter on the exact value, never a free-text search:
+
+```json
+lake_search {
+  "index": "SentinelOne", "searchStr": "*",
+  "mustFilters": [{ "field": "@sentinelOneAlert.name", "terms": ["<exact alert name>"] }],
+  "rangeFrom": <ms − 30 days>, "rangeTo": <ms>, "sortOrder": "asc", "limit": 1,
+  "facets": ["@sentinelOneAlert.asset.name", "@sentinelOneAlert.status",
+             "@sentinelOneAlert.analystVerdict"],
+  "facetSize": 50
+}
+```
+
+The activity side carries the same name in `@sentinelOneActivity.data.rulename`. The control
+is the ticket's own alert: a census that does not find it is broken, not empty.
+
 **The index can hold two feeds. Census both, and check how far back each one reaches.**
 
 | `@eventType` | Comes from | Carries | Fields |
@@ -73,6 +91,18 @@ investigate_sentinelone_alert {
   `SentinelOneThreat`. When that returns nothing too, the site has only the older feed: read
   the threat's activities from `@s1.*` (by `@s1.threatId`), and record the live endpoint
   record and the threat's `threatInfo` as gaps. Say in the closure which path you used.
+- **A STAR (custom rule) alert has no threat record.** Its `externalId` is STAR's own id,
+  the tool skips the threat lookup, and the alert record's `process` is null. What the rule
+  matched is in the alert's `3608` activity in the index. Run `lake_search` on the quoted
+  `externalId` and read `@sentinelOneActivity.data.*`:
+  - `dveventtype`: `FILESCAN` means a file at rest found by a scan. A process or
+    registry event type means something live.
+  - `tgtfilepath`, `tgtfilehashsha1` and `tgtfilehashsha256`: the file.
+  - `sourceprocess*` and `sourceparentprocess*`: the actor, which is empty on a scan.
+  - `ruleid`, `rulename`, `ruledescription` and `rulescopelevel`: the rule.
+
+  S2 to S5 then work on that file. "Alert created for  from Custom Rule" (an empty name)
+  in the activity text is the sign of a file-scan match.
 
 ## S2 — Was it running, or was it found on disk?
 
@@ -241,10 +271,48 @@ Folder names are hints about which application touched the file. Never let one s
 alone as "consistent with email delivery". Say which copy, at what time, relative to which
 launch.
 
+### Is it an installed product?
+
 When the detection is a **named application** rather than a dropped file (a remote-access
-tool, an updater), also count its installs in `sentinelOneApplication` by name, version
-and publisher — hundreds of hosts is deployed software, one is the finding. Probe the
-table first: on some tenants it returns only a `timestamp` column, which is a gap.
+tool, an updater), count its installs with `assets/queries/s1_app_census.kql`. Hundreds of
+hosts means deployed software; one host is the finding.
+
+**A hash hit can be a named application that does not look like one.** Two signs:
+
+- **The rule names a product.** A STAR hash rule's name or description cites a vendor
+  campaign or a tool, while the file it hit has a meaningless name.
+- **The file is in the Windows Installer cache.** That is `C:\Windows\Installer\<hex>.msi`
+  (or `.msp`). Windows Installer keeps a renamed copy of every package it installs there,
+  so it can repair, modify or uninstall the product later. A file there was **installed**,
+  not downloaded or dropped by hand, and it is dormant. A scan finding it means the product
+  is or was installed. It does not mean something ran, and the arrival-route analysis
+  above does not apply.
+
+Either sign changes the question to: **which product and version is this, and how many
+hosts run it?**
+
+1. **Probe the inventory** with `assets/queries/s1_app_probe.kql`. `withName > 0` makes
+   the table readable. A `take 1` with no `project` returns only `timestamp`, because the
+   engine returns just the columns a query names. That is not an unreadable table, so never
+   write a gap from it.
+2. **Name the package** with `assets/queries/s1_host_apps.kql` on the subject host. Look for
+   the product the rule names, or for an entry whose publisher fits the file's signer.
+   Where the run has an external hash lookup, match the hash too. Where it has none, say
+   that the identification rests on the inventory alone.
+3. **Census it** with `assets/queries/s1_app_census.kql`, using a fragment of the product
+   name.
+4. **Compare the installed version with the range the rule targets.** A hash rule for a
+   supply-chain campaign targets specific builds:
+   - Installed versions **inside** that range: every host running them is in scope. That is
+     a fleet exposure finding, not a single-host one.
+   - Versions **outside** it, especially later than the vendor's fixed release: the rule's
+     hash list is the suspect. The tuning goes to the SentinelOne console.
+
+**One alerting host among many with the product is not a contradiction.** A STAR file-scan
+rule fires when each agent's scan reaches the cached file. Scans run at different times,
+and a new agent's first full disk scan can take weeks on a laptop that is often off. Unless
+you measured why the other hosts are silent, write it down as a gap. It is not evidence
+that the product is absent elsewhere.
 
 ## S5 — Prove what did not run, with a control
 
@@ -319,6 +387,7 @@ and expect tickets that fit none of these rows.
 | Blocklist hit on a hash an analyst marked false positive | Benign for the host; tuning to the SentinelOne console |
 | On-write or on-execution detections at suspicious confidence, a named user, not mitigated because suspicious threats are in detect mode | Escalate for remediation (quarantine), with the policy choice as a finding, not a host fault; re-check confidence before closing, since the cloud may upgrade it |
 | An unsigned executable launched by named users on one or a few hosts over days, static on-write engine only (capability indicators, nothing observed), suspicious confidence | Escalate with one question: does the organisation recognise the file (an in-house or vendor tool)? Yes → benign, exclusion in the SentinelOne console; no → quarantine everywhere it is and trace where it came from. Not containment on the indicators alone |
+| A STAR hash rule matched a cached installer (`C:\Windows\Installer\<hex>.msi`) during a full disk scan, with no threat record and no process. The inventory names the product at a version outside the range the rule targets, installed across the account | Benign for the host. The finding is the rule's hash list, tuned in the SentinelOne console. If the hash was identified from the inventory alone, say so. Inside the range: escalate as a fleet exposure covering every host with that version |
 | A signed installer from a browser download writing further executables under the user's profile, single host, no spread | Usually an unwanted application the user installed; confirmed once the parent ran, contained when every child is quarantined; recommend checking persistence (Run keys, scheduled tasks, services) |
 
 **Every verdict is as of a time.** A SentinelOne ticket keeps moving after it is raised:

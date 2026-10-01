@@ -1,0 +1,14 @@
+// Everything SentinelOne inventories as installed on the subject host: name,
+// version, publisher. Use it to name the product behind a file that carries no
+// product name of its own, such as a cached installer in C:\Windows\Installer
+// (<hex>.msi), and to see the host's remote-access and admin tools. Run
+// s1_app_probe first; an empty result means nothing until the probe says the
+// table is readable.
+// Placeholders: {HOST} = host name, lower-cased.
+sentinelOneApplication
+| where tolower(tostring(agentComputerName)) == "{HOST}"
+| project name = tostring(name), version = tostring(version),
+          publisher = tostring(publisher), installedDate = tostring(installedDate)
+| summarize dups = count() by name, version, publisher, installedDate
+| order by name asc
+| take 1000
