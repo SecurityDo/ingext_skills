@@ -1,0 +1,834 @@
+schema: Netskope
+description: >-
+  Netskope Security Cloud DLP findings collected by the Ingext Netskope plugin
+  from the tenant REST API v2 dataexport iterators. Netskope DLP has no API of
+  its own; its findings arrive on three streams depending on which modules the
+  tenant licensed, and all three land in this one table:
+
+      labels.eventType      source stream          what it is
+      NetskopeDlpAlert      alerts/dlp             inline DLP hit (SWG/CASB
+                                                   real-time policy, SMTP DLP):
+                                                   data in motion
+      NetskopeIncident      events/incident        DLP incident from API Data
+                                                   Protection: data at rest in
+                                                   a sanctioned SaaS app
+      NetskopeEndpointDlp   events/epdlp           Endpoint DLP on the Netskope
+                                                   Client: USB, print, local
+                                                   file copy
+
+  Like the Office365 audit stream this is a single wide, sparse schema. The
+  Netskope record is stored under '@netskope' and the table's root field is
+  set to it, so fields are referenced bare (user, dlp_profile, app) with no
+  prefix. Use the per-field 'applicableEventTypes' list to know whether a field
+  is populated for the stream you are querying. If the integration is
+  configured with more alert/event types (policy, malware, page, application,
+  audit, ...) they arrive in this table too, each with its own
+  labels.eventType value (NetskopePolicyAlert, NetskopePageEvent, ...); the
+  fields below document the three DLP streams only.
+
+  Seven traps are worth knowing before writing a query:
+
+    1. labels.eventType is the ONLY reliable stream discriminator. It comes
+       from the labels map column, not from the Netskope record. alert_type is
+       absent on incidents, and 'type' varies with access method. Pin
+       `where labels.eventType == "NetskopeDlpAlert"` (or Incident /
+       EndpointDlp) first in every query; an unpinned query mixes data at
+       rest, data in motion and endpoint activity, whose fields mean
+       different things.
+    2. Incidents are a one-time export, not the current state. The iterator
+       serves each record once, so status/assignee/severity on a
+       NetskopeIncident row are what they were when the incident was
+       exported, and later triage never updates it. The current state is
+       the NetskopeDlpIncident resource (NetskopeResources), which the
+       resource half of the integration re-reads on a rolling window. There
+       are no repeated snapshots here to reduce with arg_max. The one source
+       of duplicates is a page re-served after a failed write (operation=
+       resend), so use `summarize take_any(*) by _id` on alerts and incidents
+       when exact counts matter.
+    3. Netskope times are epoch SECONDS. The 'timestamp' column is converted
+       to milliseconds, but created, modified and the raw
+       ['@netskope.timestamp'] are seconds: use
+       unixtime_seconds_todatetime(created), not the _milliseconds_ form.
+    4. dlp_incident_id / dlp_parent_id / incident_id are 64-bit integers
+       above 2^53. They are the join key between the streams: a
+       NetskopeDlpAlert or NetskopeEndpointDlp row carries the
+       dlp_incident_id of its incident. Compare and join them as strings
+       (tostring()), never through arithmetic or a double conversion, which
+       silently rounds the low digits and breaks the join.
+    5. dlp_match_info (incidents only) is a nested array: one element per
+       matched policy/profile, each holding a dlp_rules array with per-rule
+       severity and counts, and a dlp_data_identifiers bag of
+       identifier -> count. Take it apart with two mv-expands (the match,
+       then its dlp_rules) to get one row per rule. On DLP alerts the same
+       information is flat: dlp_profile, dlp_rule, dlp_rule_count,
+       dlp_rule_severity.
+    6. "Who" is spelled differently per stream. On alerts the violator is
+       act_user; on incidents it is acting_user; and for data at rest the
+       person holding the exposed file is owner. user is present everywhere
+       and is the safest common key (ur_normalized is its lower-cased form).
+       Incidents have no network context at all: srcip, src_country and
+       the rest of the geo fields exist only on inline alerts.
+    7. Severity casing is not consistent ("High" vs "high", "informational"),
+       and several flags are the strings "yes"/"no" or "true"/"false" rather
+       than booleans (alert, acked, sanctioned_instance, managed_app,
+       dlp_is_unique_count, file_password_protected). Compare with =~ and
+       against the string literal.
+
+  Provenance: field names, types and stream applicability come from Netskope's
+  published field metadata (github.com/netskopeoss/Data-Schema). As of
+  2026-09-25 no tenant has delivered events into this table, so there are no
+  eventSamples yet. Confirm the field list against the first real records.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Event timestamp (UTC), epoch milliseconds, converted from the Netskope record's own 'timestamp' (epoch SECONDS), falling back to _insertion_epoch_timestamp. This name resolves to the lake column, which shadows the raw Netskope field; read the raw seconds as ['@netskope.timestamp'] if ever needed."
+    applicableEventTypes: ["All"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+    applicableEventTypes: ["All"]
+
+  - name: labels.eventType
+    type: String
+    description: "The stream the record came from, set by the plugin. THE discriminator for this table — Netskope records carry no field that reliably separates an incident from an alert or an Endpoint DLP event. Pin it first in every query. Other values appear only if the integration enables more alert/event types (NetskopePolicyAlert, NetskopeMalwareAlert, NetskopePageEvent, NetskopeAppEvent, NetskopeAuditEvent, ...)."
+    sampleValues: ["NetskopeDlpAlert", "NetskopeIncident", "NetskopeEndpointDlp"]
+    applicableEventTypes: ["All"]
+
+  - name: _behaviors
+    type: DynamicArray
+    description: "Behavior rule names this event triggered, when a behavior pipeline is attached. Use mv-expand before grouping."
+    applicableEventTypes: ["All"]
+
+  # ==========================================
+  # RECORD IDENTITY & STREAM
+  # ==========================================
+  - name: _id
+    type: String
+    description: "Netskope's unique record id (hexadecimal string), on alerts and incidents; Netskope's field metadata does not list it for Endpoint DLP. Use it to de-duplicate if a page was re-served after a resend."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: alert
+    type: String
+    description: "\"yes\" on every record served from an alerts/* stream. Not a stream discriminator on its own — use labels.eventType."
+    sampleValues: ["yes", "no"]
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeEndpointDlp"]
+
+  - name: alert_type
+    type: String
+    description: "The alert family of an alerts/* record (e.g. \"DLP\" on NetskopeDlpAlert). Present on DLP alerts and on some Endpoint DLP records; absent on incidents."
+    sampleValues: ["DLP"]
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeEndpointDlp"]
+
+  - name: alert_name
+    type: String
+    description: "Name of the Netskope policy/alert that fired, as configured by the admin. The most readable label for grouping DLP alerts."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeEndpointDlp"]
+
+  - name: type
+    type: String
+    description: "Netskope's record type within the stream. Its values vary with access method and alert family, so do not use it to identify the stream — use labels.eventType."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeEndpointDlp"]
+
+  - name: sub_type
+    type: String
+    description: "Endpoint DLP sub-type (device control vs content control)."
+    sampleValues: ["SUBTYPE_DEVICE_CONTROL"]
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeEndpointDlp"]
+
+  - name: acked
+    type: String
+    description: "Whether the alert has been acknowledged in the Netskope console, as a STRING."
+    sampleValues: ["true", "false"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  # ==========================================
+  # USER
+  # ==========================================
+  - name: user
+    type: String
+    description: "Email of the user the record is about. The primary user key across all three streams."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident", "NetskopeEndpointDlp"]
+
+  - name: ur_normalized
+    type: String
+    description: "Lower-cased user email. Prefer it over user for grouping and joins."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: userkey
+    type: String
+    description: "User id or email as known to Netskope."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: act_user
+    type: String
+    description: "Acting user responsible for the policy violation on an alert (the incident stream calls this acting_user)."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: acting_user
+    type: String
+    description: "Acting user responsible for the violation on an incident (the alert stream calls this act_user)."
+    applicableEventTypes: ["NetskopeIncident"]
+
+  - name: violating_user
+    type: String
+    description: "User identified as the violator by the DLP policy."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: violating_user_type
+    type: String
+    description: "Classification of the violating user."
+    sampleValues: ["Bad Actor", "External Threat", "Bot"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: owner
+    type: String
+    description: "Owner of the file/object that was scanned (API Data Protection). For data-at-rest findings this, not user, is who holds the exposed data."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: userPrincipalName
+    type: String
+    description: "User Principal Name is used to authenticate users on the Windows OS."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: sAMAccountName
+    type: String
+    description: "The sAMAccountName attribute is a logon name used to support clients and servers from previous version of Windows, such as Windows NT 4.0, Windows 95, Windows 98, and LAN Manager."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: organization_unit
+    type: String
+    description: "AD organizational unit of the user, from the Netskope AD connector."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  # ==========================================
+  # APPLICATION & ACCESS
+  # ==========================================
+  - name: app
+    type: String
+    description: "Cloud application involved (e.g. Microsoft OneDrive for Business, Google Drive, Slack)."
+    sampleValues: ["Dropbox", "Google App Suite"]
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident", "NetskopeEndpointDlp"]
+
+  - name: appcategory
+    type: String
+    description: "Application category."
+    sampleValues: ["Cloud Storage", "Collaboration", "Webmail"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: appsuite
+    type: String
+    description: "The SAAS application suite ( Ex : Microsoft Office / Google Docs etc )."
+    sampleValues: ["Microsoft Live", "Google App"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: instance
+    type: String
+    description: "Named instance of the app (e.g. the corporate tenant vs a personal one)."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: instance_id
+    type: String
+    description: "Unique ID associated with an organization application instance."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: sanctioned_instance
+    type: String
+    description: "Whether the app instance is a company-sanctioned one. \"No\" on an upload/share DLP hit means data left for an unsanctioned instance."
+    sampleValues: ["Yes", "No"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: managed_app
+    type: String
+    description: "Whether or not the app in question is managed."
+    sampleValues: ["yes", "no"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: access_method
+    type: String
+    description: "How the traffic reached Netskope. \"API Connector\" means an out-of-band API Data Protection scan (data at rest); \"Client\"/\"Secure Forwarder\"/\"Reverse Proxy\" mean inline inspection (data in motion)."
+    sampleValues: ["Client", "API Connector", "Reverse Proxy", "Secure Forwarder"]
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident", "NetskopeEndpointDlp"]
+
+  - name: traffic_type
+    type: String
+    description: "Type of the traffic: CloudApp or Web. CloudApp indicates CASB and web indicates HTTP traffic. Web traffic is only captured for inline access method. It is currently not captured for Risk Insights."
+    sampleValues: ["CloudApp", "Web"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: activity
+    type: String
+    description: "User activity that triggered the inspection."
+    sampleValues: ["Upload", "Download", "Share", "Delete"]
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident", "NetskopeEndpointDlp"]
+
+  - name: app_activity
+    type: String
+    description: "Description of the user performed activity on the app."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: activity_type
+    type: String
+    description: "User performed activity type detected when policy is being applied."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: category
+    type: String
+    description: "Application Category information."
+    sampleValues: ["Cloud Storage", "Collaboration", "Webmail"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: ccl
+    type: String
+    description: "Netskope Cloud Confidence Level of the app."
+    sampleValues: ["excellent", "high", "medium", "low", "poor", "unknown"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: site
+    type: String
+    description: "For traffic_type = CloudApp, site = app and for traffic_type = Web, it will be the second level domain name + top-level domain name. For example, in www.cnn.com, it is cnn.com."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: url
+    type: String
+    description: "URL of the application that the user visited as provided by the log or data plane traffic."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: referer
+    type: String
+    description: "Referer URL associated with an activity in a cloud app.Referer URL of the application(with http) that the user visited as provided by the log or data plane traffic."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: app_session_id
+    type: Long
+    description: "Unique App/Site Session ID for traffic_type = CloudApp and Web. An app session starts when a user starts using a cloud app/site on and ends once they have been inactive for a certain period of time(15 minutes). Use app_session_id to check all the user activities in a single app session. app_session_id is unique for a user, device, browser and domain."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: browser
+    type: String
+    description: "Shows the actual browser from where the cloud app was accessed.A native browser refers to Safari (iOS), Chrome (Android), or the default browser on the user's laptop."
+    sampleValues: ["Chrome", "Edge", "Firefox", "Native"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: os
+    type: String
+    description: "Operating system of the host who generated the event."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeEndpointDlp"]
+
+  - name: device
+    type: String
+    description: "Device type from where the user accessed the cloud app. It could be Macintosh Windows device, iPad etc."
+    sampleValues: ["Windows Device", "Mac Device"]
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident", "NetskopeEndpointDlp"]
+
+  - name: hostname
+    type: String
+    description: "Hostname of the user's device (inline via Netskope Client)."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: device_classification
+    type: String
+    description: "Designation of device as determined by the Netskope Client as to whether the device is managed or not."
+    sampleValues: ["managed", "unmanaged", "unknown"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  # ==========================================
+  # POLICY & ACTION
+  # ==========================================
+  - name: action
+    type: String
+    description: "Action Netskope took."
+    sampleValues: ["alert", "block", "allow", "bypass"]
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeEndpointDlp"]
+
+  - name: policy
+    type: String
+    description: "Name of the Real-time Protection / API policy that matched."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: policy_id
+    type: String
+    description: "The Netskope internal ID for the policy created by an admin."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: policy_name
+    type: String
+    description: "Endpoint DLP policy that matched."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: policy_action
+    type: String
+    description: "Endpoint DLP action planned by the policy; the user can override it (see justification), so it may differ from what happened."
+    sampleValues: ["block", "allow", "readonly"]
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: severity
+    type: String
+    description: "Severity of the alert or incident. Casing is not consistent across streams (\"High\" vs \"high\") — compare case-insensitively (=~)."
+    sampleValues: ["Critical", "High", "Medium", "Low", "informational"]
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: justification
+    type: String
+    description: "Free-text justification the user typed when prompted by a coaching/override policy."
+    applicableEventTypes: ["NetskopeIncident", "NetskopeEndpointDlp"]
+
+  # ==========================================
+  # DLP MATCH
+  # ==========================================
+  - name: dlp_profile
+    type: String
+    description: "DLP profile that matched (a bundle of rules, e.g. PII, PCI)."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeEndpointDlp"]
+
+  - name: dlp_rule
+    type: String
+    description: "DLP rule inside the profile that matched."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeEndpointDlp"]
+
+  - name: dlp_rule_count
+    type: Integer
+    description: "Number of matches of dlp_rule in the content. A count of findings, not of files."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: dlp_rule_score
+    type: Integer
+    description: "DLP rule score for weighted dictionaries."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: dlp_rule_severity
+    type: String
+    description: "Severity configured on the matching DLP rule."
+    sampleValues: ["Critical", "High", "Medium", "Low"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: dlp_unique_count
+    type: Integer
+    description: "Integer value of number of unique matches seen per rule data. Only present if rule is uniquely counted."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: dlp_is_unique_count
+    type: String
+    description: "Whether dlp_rule_count counts unique values only, as a STRING."
+    sampleValues: ["true", "false"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: dlp_incident_id
+    type: Long
+    description: "DLP incident id for the scanned (sub-)file. Carried on DLP alerts, Endpoint DLP and incidents, it is the join key between the alert and incident streams. A 64-bit integer — keep it as long/string, never double."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident", "NetskopeEndpointDlp"]
+
+  - name: dlp_parent_id
+    type: Long
+    description: "Incident id of the containing file when the match was inside an archive or attachment; equals dlp_incident_id for a top-level file."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: dlp_mail_parent_id
+    type: String
+    description: "Parent Incident ID associated with main container (or non-container) file that was scanned."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: dlp_file
+    type: String
+    description: "Name of the file or object the DLP engine scanned (may be an inner file of an archive)."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: dlp_match_info
+    type: DynamicArray
+    description: "Incident-only ARRAY of match objects, one per matched policy/profile: {dlp_policy, dlp_profile_name, dlp_action, dlp_forensic_id, dlp_rules:[{dlp_rule_name, dlp_rule_severity, dlp_incident_rule_count, dlp_rule_score, dlp_data_identifiers:{<identifier>: count}}]}. Two levels deep — mv-expand dlp_match_info, then mv-expand its dlp_rules — to get one row per matched rule."
+    applicableEventTypes: ["NetskopeIncident"]
+
+  - name: inline_dlp_match_info
+    type: DynamicArray
+    description: "Inline DLP match info carries the details about DLP profile and rule info along with the violation count information."
+    applicableEventTypes: ["NetskopeIncident"]
+
+  - name: dlp_fingerprint_classification
+    type: String
+    description: "Fingerprint classification."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: dlp_fingerprint_match
+    type: String
+    description: "Fingerprint classification match file name"
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: dlp_fingerprint_score
+    type: Integer
+    description: "Fingerprint classification score"
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: classification
+    type: String
+    description: "Classification of the incident as decided by DLP backend services."
+    applicableEventTypes: ["NetskopeIncident"]
+
+  - name: classification_name
+    type: String
+    description: "dlp generated fingerprint classification."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  # ==========================================
+  # INCIDENT WORKFLOW
+  # ==========================================
+  - name: incident_id
+    type: Long
+    description: "Unique Incident ID associated with main container (or non-container) file that was scanned."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeEndpointDlp"]
+
+  - name: latest_incident_id
+    type: Long
+    description: "Latest incident ID captured by DLP backend services."
+    applicableEventTypes: ["NetskopeIncident"]
+
+  - name: status
+    type: String
+    description: "Triage status of the DLP incident AT THE TIME IT WAS EXPORTED. The dataexport iterator serves each incident once, so later triage is not reflected here — the current status lives in the NetskopeDlpIncident resource."
+    sampleValues: ["new", "in_progress"]
+    applicableEventTypes: ["NetskopeIncident"]
+
+  - name: assignee
+    type: String
+    description: "Admin the incident is assigned to, at export time (see status)."
+    applicableEventTypes: ["NetskopeIncident"]
+
+  - name: created
+    type: Long
+    description: "When the incident was created, in epoch SECONDS (not milliseconds): unixtime_seconds_todatetime(created)."
+    applicableEventTypes: ["NetskopeIncident"]
+
+  - name: modified
+    type: Long
+    description: "Modification time of the file/object, in epoch SECONDS."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: exposure
+    type: String
+    description: "How widely the scanned document is shared."
+    sampleValues: ["anyone_with_link", "organisation_wide_link", "external"]
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  # ==========================================
+  # FILE / OBJECT
+  # ==========================================
+  - name: object
+    type: String
+    description: "Name of the object acted on (file, folder, message, document)."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: object_id
+    type: String
+    description: "Unique ID associated with an object."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: object_type
+    type: String
+    description: "Type of the object which is being acted on. Object type could be a file, folder, report, document, message, etc."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: title
+    type: String
+    description: "Title of the file."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: file_path
+    type: String
+    description: "Path of the file in the application."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: file_size
+    type: Long
+    description: "File size in bytes."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident", "NetskopeEndpointDlp"]
+
+  - name: file_type
+    type: String
+    description: "File type as detected by Netskope Solutions."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident", "NetskopeEndpointDlp"]
+
+  - name: file_category
+    type: String
+    description: "Type of file category."
+    sampleValues: ["Text", "Pdf", "Spreadsheet", "Image (Raster)"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: true_filetype
+    type: String
+    description: "true file type of the file is used to take decision to send the file to TSS/DLP analysis file. Filter lib finds the true file type of the file."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: true_obj_category
+    type: String
+    description: "DLP incident object category ( ex Text )."
+    sampleValues: ["Spreadsheet", "Text", "Image (Raster)"]
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: mime_type
+    type: String
+    description: "A media type (also known as a Multipurpose Internet Mail Extensions or MIME type) indicates the nature and format of a document, file, or assortment of bytes."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: file_lang
+    type: String
+    description: "Language of the file."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: md5
+    type: String
+    description: "MD5 value of the file content."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident", "NetskopeEndpointDlp"]
+
+  - name: sha256
+    type: String
+    description: "Sha256 value of a file."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeEndpointDlp"]
+
+  - name: file_password_protected
+    type: String
+    description: "Denotes if inspected file is password protected or not."
+    sampleValues: ["yes", "no"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: file_cls_encrypted
+    type: Boolean
+    description: "Its a boolean value representing whether its CLS encrypted or not."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  # ==========================================
+  # SHARING & COLLABORATION
+  # ==========================================
+  - name: shared_with
+    type: String
+    description: "Addresses the document is shared with."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: shared_domains
+    type: String
+    description: "Domains of the users the document is shared with."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: external_collaborator_count
+    type: Integer
+    description: "Number of external collaborators on the file/folder (only some apps report it)."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: total_collaborator_count
+    type: Integer
+    description: "Count of collaborators on a file/folder. Supported for some apps."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: collaborated
+    type: String
+    description: "Denotes file ownership status found during DLP scans."
+    sampleValues: ["isInternallyOwned", "isExternallyOwned", "notCollaborated"]
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: from_storage
+    type: String
+    description: "Storage scan source."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: to_storage
+    type: String
+    description: "Storage scan destination."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  # ==========================================
+  # EMAIL & MESSAGING DLP
+  # ==========================================
+  - name: from_user
+    type: String
+    description: "Sender / login email (SMTP DLP and SaaS activity)."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: to_user
+    type: String
+    description: "Recipient, or the target user of a move/transfer."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: smtp_to
+    type: DynamicArray
+    description: "ARRAY of envelope recipients from the SMTP proxy — mv-expand to count recipients."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: cc
+    type: String
+    description: "SMTP Proxy will parse the cc field in the email and send them to DLP in the event object. The cc recipients from the e-mail header, up to 1KB."
+    applicableEventTypes: ["NetskopeIncident"]
+
+  - name: bcc
+    type: String
+    description: "Breach target references for compromised credentials or BCC users information in the case of SMTP DLP incident."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: message_id
+    type: String
+    description: "Unique message id used internally by NSProxy."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: channel
+    type: String
+    description: "Channel name for messaging-app DLP (Teams, Slack)."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  # ==========================================
+  # NETWORK & GEO
+  # ==========================================
+  - name: srcip
+    type: String
+    description: "Source (user egress) IP. Present on inline DLP alerts only — API Data Protection incidents have no network context."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: userip
+    type: String
+    description: "User's device IP as seen by the Netskope Client (often private)."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: dstip
+    type: String
+    description: "IP address where the destination app is hosted."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: src_country
+    type: String
+    description: "Netskope's two-letter GeoIP country for srcip."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: src_region
+    type: String
+    description: "Source state or region as determined by the Maxmind or IP2Location Geo database."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: src_location
+    type: String
+    description: "Netskope's GeoIP city for srcip."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  - name: dst_country
+    type: String
+    description: "Application's two-letter country code as determined by the Maxmind or IP2Location Geo Database."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: dst_location
+    type: String
+    description: "Application's city as determined by the Maxmind or IP2Location Geo database."
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeIncident"]
+
+  # ==========================================
+  # ENDPOINT DLP (USB / PRINT / FILE)
+  # ==========================================
+  - name: computer_name
+    type: String
+    description: "Computer name of the end point."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: os_user_name
+    type: String
+    description: "Username on the local machine that performs action."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: device_name
+    type: String
+    description: "Device name."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: device_type
+    type: String
+    description: "Endpoint device class the data went to."
+    sampleValues: ["usb mass storage", "Printer"]
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: device_id
+    type: String
+    description: "Windows device instance path of the peripheral (e.g. USB\\VID_xxxx&PID_xxxx&REV_xxxx), not the endpoint."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: vendor_id
+    type: String
+    description: "Netskope's Vendor id."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: product_id
+    type: String
+    description: "It's Part of USB specification. Used to identify a USB device."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: device_sn
+    type: String
+    description: "Peripheral serial number. May carry trailing NUL padding — trim before comparing."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: driver
+    type: String
+    description: "Driver name used by endpoint device."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: usb_device
+    type: String
+    description: "Name of the USB device that was attached to the endpoint."
+    applicableEventTypes: ["NetskopeIncident"]
+
+  - name: printer_identifier
+    type: String
+    description: "Identifier of the printer connected. such as printer name, manufacturer, driver name, printer port, location, or UNC path separated by a new line."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: unc_path
+    type: String
+    description: "The Universal Naming Convention path of the network file share, or printer."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: source_file_path
+    type: String
+    description: "Full file path on the user's device where the source file is located, as captured in Endpoint DLP events."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: source_file_name
+    type: String
+    description: "User's laptop source file name."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: destination_file_path
+    type: String
+    description: "Endpoint DLP destination file path."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: destination_file_name
+    type: String
+    description: "Endpoint DLP destination file name."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: process_name
+    type: String
+    description: "Endpoint process Name For example: native application for Printer on User's Laptop."
+    sampleValues: ["EXCEL.EXE", "explorer.exe", "WINWORD.EXE"]
+    applicableEventTypes: ["NetskopeDlpAlert", "NetskopeEndpointDlp"]
+
+  - name: process_path
+    type: String
+    description: "The path to the process that performed the action on the endpoint."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: parent_process_name
+    type: String
+    description: "Parent Process Name for the endpoint process associated with the event."
+    applicableEventTypes: ["NetskopeDlpAlert"]
+
+  - name: executable_hash
+    type: String
+    description: "Hash of the process executable that performed the action."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: executable_signed
+    type: Boolean
+    description: "Flag to indicate if executable_hash is signed or not."
+    applicableEventTypes: ["NetskopeEndpointDlp"]
+
+  - name: endpoint_policy_match
+    type: DynamicArray
+    description: "List of endpoint policy match objects, each containing action, desired_action, policy_name, and rule_matches, etc."
+    applicableEventTypes: ["NetskopeIncident"]
