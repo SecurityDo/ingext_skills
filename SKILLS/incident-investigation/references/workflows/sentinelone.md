@@ -109,6 +109,47 @@ investigate_sentinelone_alert {
   S2 to S5 then work on that file. "Alert created for  from Custom Rule" (an empty name)
   in the activity text is the sign of a file-scan match.
 
+### A network STAR alert: find what made the connection, then what followed
+
+When the `3608` activity's `dveventtype` is `DNS`, `IP` or another network event, there is
+no file to follow through S2 to S5. The rule matched one lookup or one connection. The
+destination is in `dnsrequest` / `dnsresponse` (or `dstip` / `dstport`), and the actor is in
+`sourceprocess*`. Two questions decide the ticket, and the SentinelOne index answers neither:
+what made the request, and what happened after it.
+
+- **A browser's network-service process stands in for every tab.** In Chromium browsers
+  (Edge, Chrome), every page's DNS lookups and connections are made by one utility process
+  (`--type=utility --utility-sub-type=network.mojom.NetworkService`). That process name
+  cannot rule out a page, an ad or an extension, and it cannot prove the lookup was the
+  browser's own housekeeping. Never write "not a tab" or "a routine lookup by the
+  browser itself" from it.
+- **Find what triggered it in the network logs.** Use the account's firewall or proxy
+  tables from `list_data_tables` (for example a FortiGate web-filter table with
+  `hostname`), filtered on the host's address from the activity's `agentipv4`. List the
+  hostnames it reached over a minute or two around the lookup, in time order. A domain
+  fetched within the same second as a burst of ad, analytics and CDN hosts is a script
+  embedded in a page the user opened. A domain reached on its own, at a steady interval,
+  or by a non-browser process is a different case.
+- **Then check what followed.** Count connections from the host to the resolved
+  addresses (`dnsresponse`) from the lookup to an hour after: sessions, bytes in each
+  direction, last seen. A few seconds to minutes of small transfers is a page load.
+  Repeating connections at a fixed interval look like a beacon, and large uploads look
+  like exfiltration. Check this before writing the verdict.
+- **A shared CDN address is not an indicator.** Cloudflare-, Akamai- or CloudFront-fronted
+  domains share addresses with unrelated sites, so search on the domain as well as the
+  address.
+- **Keep the window narrow.** Firewall tables are among the largest on an account: a
+  30-day domain search can fail outright (the lake search pool runs out of capacity) and
+  return no rows. That is a gap, not a negative. Search one or two hours around the event,
+  one query at a time.
+- **HTTPS logs name hosts, not pages.** A web filter that sees only the TLS server name
+  logs `https://<host>/`, so the page's own domain is often not separable from its
+  third-party scripts. Say so in the closure as a gap.
+
+If the account has no firewall, proxy or DNS logs for the host, the trigger and what
+followed are gaps. Write them as gaps, and do not fill them with what the process name
+suggests.
+
 ## S2 — Was it running, or was it found on disk?
 
 These fields decide most SentinelOne tickets. Read them off each threat (S1 result, or
@@ -409,6 +450,7 @@ and expect tickets that fit none of these rows.
 | On-write or on-execution detections at suspicious confidence, a named user, not mitigated because suspicious threats are in detect mode | Escalate for remediation (quarantine), with the policy choice as a finding, not a host fault; re-check confidence before closing, since the cloud may upgrade it |
 | An unsigned executable launched by named users on one or a few hosts over days, static on-write engine only (capability indicators, nothing observed), suspicious confidence | Escalate with one question: does the organisation recognise the file (an in-house or vendor tool)? Yes → benign, exclusion in the SentinelOne console; no → quarantine everywhere it is and trace where it came from. Not containment on the indicators alone |
 | A STAR hash rule matched a cached installer (`C:\Windows\Installer\<hex>.msi`) during a full disk scan, with no threat record and no process. The inventory names the product at a version outside the range the rule targets, installed across the account | Benign for the host. The finding is the rule's hash list, tuned in the SentinelOne console. If the hash was identified from the inventory alone, say so. Inside the range: escalate as a fleet exposure covering every host with that version |
+| A network STAR rule matched one browser DNS lookup to an uncommon-TLD domain. The firewall log shows it fetched in the same burst as a page's ad and analytics hosts, with a few minutes of small transfers and nothing after. The rule fires on many hosts and its earlier copies were closed | Benign, citing the page-load burst and the traffic that followed, not the process name. Tuning (a threshold, distinct domains, or excluding ad-serving lookups) goes to the SentinelOne console. Repeating connections or a non-browser actor: escalate |
 | A signed installer from a browser download writing further executables under the user's profile, single host, no spread | Usually an unwanted application the user installed; confirmed once the parent ran, contained when every child is quarantined; recommend checking persistence (Run keys, scheduled tasks, services) |
 
 **Every verdict is as of a time.** A SentinelOne ticket keeps moving after it is raised:
