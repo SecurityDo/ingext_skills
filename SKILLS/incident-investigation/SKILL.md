@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.16
+version: 1.2.17
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -1032,6 +1032,28 @@ It is not saved to a file. An unbounded 30-day directory audit for one admin ret
 - **Don't fan out wide queries.** Raw-row queries that return nested columns
   (`TargetResources`, `ModifiedProperties`, `AuthenticationDetails`) can reach the
   truncation limit on their own. Run them one or two at a time, not all together.
+- **Run scans of big tables one at a time.** A query reads every row of its table in its
+  time window, whatever the `where` clause selects: `total` and `totalBytes` in the reply
+  are the size of that scan, and a `take 5` costs the same as a full summary. On a large
+  tenant a 30-day `Office365` scan has read over 600 GB in more than 5 minutes, and an
+  `AzureAuditLogs` one 10 GB in about 2 minutes. Several such scans started together
+  share the account's lake search capacity. One run's batch has exhausted it ("cannot
+  scale pool … beyond max pods"): calls then wait minutes before they start, drop with
+  "transport dropped mid-call", or fail outright, and the run ran out of time. So:
+  - Treat a table as big when an earlier reply showed a scan over a few GB or over a
+    minute, or when the account memory lists its size. Run each 30-day scan of a big
+    table on its own, and only then the next. Small tables and narrow windows can still
+    go in parallel.
+  - Where both exist, directory changes come from `AzureAuditLogs`, not `Office365`
+    (`references/workflows/office365.md`). It is the smaller table as well as the fuller one.
+- **Never repeat a query that already returned.** Read the earlier reply again; a second
+  identical scan costs the full time again and adds nothing.
+- **A query that failed under load gets one retry, alone.** A capacity error or a dropped
+  call after minutes usually means it was competing with other scans. Retry a bundled
+  query once, with nothing else running, and unmodified (non-negotiable 4). If it fails
+  again, it is a gap in the closure. For your own queries, retry with a narrower window
+  (the incident time ±24h, or 7 days) rather than the same one. Either way, never let a
+  failed scan become a negative.
 
 Queries use `{USER}` (lower-cased UPN), `{TARGET}` (the UPN as `ObjectId` spells it),
 `{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}` (a quoted, comma-separated list of addresses), `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`, and for `Okta`; `{WTO}` is never later than the time of the run), `{CID}` (one operation's `CorrelationId`; in the `_o365` fallbacks its `InterSystemsId`, the same value), `{HOST}` (the ticket's host name as the events spell it; matched case-insensitively; lower-cased in the `s1_*` inventory queries and `file_download_origin`), `{APP}` (a lower-cased product-name fragment for `s1_app_census`), `{SHA256}` (a file's SHA256, lower-case hex), `{FILE}` (a file name without its `(n)` suffix or extension, lower-cased). Run
