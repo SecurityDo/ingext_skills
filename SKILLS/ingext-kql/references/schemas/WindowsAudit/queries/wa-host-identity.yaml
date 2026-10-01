@@ -1,0 +1,39 @@
+description: >-
+  Which machine owns which address, from the domain controllers' point of view.
+  Every domain-joined computer authenticates to a DC as its computer account
+  (NAME$), and the DC records the client address in IpAddress on 4624 / 4768 /
+  4769 / 4776. That gives an address-to-machine map that comes from inside the
+  events and from a different host than the one under suspicion, so it holds
+  even where ['@sender'] is not populated. Use it to name the machine behind a
+  sender address, or to show that a Hostname's real computer account only ever
+  authenticated from one address. An address with several computer accounts is
+  a NAT, a terminal server or a re-used IP; a computer account appearing at a
+  new address on one day is a move, a rebuild or a clone. A machine that never
+  talks to the domain (an isolated clone before its join, a workgroup box) does
+  not appear at all, so an absence here is not proof the machine does not exist.
+  Tenant-wide this scans every DC logon; filter to the addresses or accounts in
+  question when you can.
+datatype: WindowsAudit
+kql: |
+  WindowsAudit
+  | where timestamp > ago(1d)
+  | where EventID in (4624, 4768, 4769, 4776)
+  | where TargetUserName endswith "$"
+  | extend ip = replace_string(tostring(IpAddress), "::ffff:", "")
+  | where ip !in ("", "-", "::1", "127.0.0.1")
+  | summarize logons = count(), firstSeen = min(tostring(EventTime)), lastSeen = max(tostring(EventTime))
+      by ip, Computer = tostring(TargetUserName)
+  | summarize computers = make_set(Computer, 10), nComputers = dcount(Computer),
+              logons = sum(logons), firstSeen = min(firstSeen), lastSeen = max(lastSeen)
+      by ip
+  | order by nComputers desc, logons desc
+  | take 1000
+tags: [windows, audit, 4624, 4768, 4776, domain-controller, hostname, identity, clone, investigation]
+expected_output: |
+  Address -> computer account, one DC (sanitized). The clone authenticates only
+  after it was rebuilt and joined under its new name.
+
+  ip          computers         nComputers  logons  firstSeen            lastSeen
+  10.0.0.2    ["DC01$"]         1           5358    2026-10-01 02:00:33  2026-10-01 14:36:05
+  10.0.12.34  ["SRV-DEV-01$"]   1           1350    2026-10-01 02:04:39  2026-10-01 14:35:19
+  10.0.12.61  ["SRV-DEV-02$"]   1           100     2026-10-01 11:53:40  2026-10-01 14:23:41

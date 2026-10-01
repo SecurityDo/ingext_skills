@@ -1088,7 +1088,7 @@
     "WindowsAudit": {
       "datatype": "WindowsAudit",
       "description": "Windows audit events collected from the Windows Security event log (and a few adjacent channels) and forwarded by NXLog's im_msvistalog module as JSON. Like the Office365 audit stream, this is one wide, sparse schema: every record carries a common NXLog/Windows envelope (EventID, EventTime, Hostname, Channel, EventType, ...), and the numeric EventID selects which additional fields are present. Use the per-field 'applicableEventIDs' list to know whether a field is populated for the event you are querying, and always constrain on EventID first \u2014 a query that filters on TargetUserName without pinning EventID will mix logons, group changes and Kerberos ticket requests into one result set.\nThe record is stored as a dynamic JSON document, so any field can be referenced directly by name. Two typing rules matter when writing KQL:\n  * Fields from the event's <System> block (EventID, Task, Version, ProcessID,\n    ThreadID, RecordNumber, Keywords, OpcodeValue, SeverityValue) arrive as\n    JSON numbers.\n  * Fields from the event's <EventData> block arrive as strings, even when\n    they look numeric \u2014 LogonType is \"3\", KeyLength is \"0\", IpPort is \"0\",\n    SubjectLogonId is \"0x0\". Compare them as strings, or wrap in toint()/\n    tolong() first. Hex values (LogonId, Status, TicketOptions, AccessMask)\n    are lowercase \"0x\"-prefixed strings and should be compared as strings.\n\nSeveral EventData fields carry Windows message-table references rather than text \u2014 a \"%%NNNN\" token (for example ElevatedToken \"%%1842\" = Yes). The common tokens are documented on the individual fields below.",
-      "field_count": 156,
+      "field_count": 159,
       "info": "schemas/WindowsAudit/info.yaml",
       "queries": [
         {
@@ -1113,6 +1113,35 @@
             "password-spraying",
             "authentication",
             "detection"
+          ]
+        },
+        {
+          "description": "Which machine owns which address, from the domain controllers' point of view. Every domain-joined computer authenticates to a DC as its computer account (NAME$), and the DC records the client addre...",
+          "file": "schemas/WindowsAudit/queries/wa-host-identity.yaml",
+          "tags": [
+            "windows",
+            "audit",
+            4624,
+            4768,
+            4776,
+            "domain-controller",
+            "hostname",
+            "identity",
+            "clone",
+            "investigation"
+          ]
+        },
+        {
+          "description": "Is this Hostname one machine? Splits a host's records by the address that delivered them (['@sender']). Hostname is the machine's NAME: a cloned or restored VM keeps reporting the original's Hostna...",
+          "file": "schemas/WindowsAudit/queries/wa-hostname-senders.yaml",
+          "tags": [
+            "windows",
+            "audit",
+            "hostname",
+            "identity",
+            "clone",
+            "sender",
+            "investigation"
           ]
         },
         {

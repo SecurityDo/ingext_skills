@@ -32,7 +32,17 @@ fields:
   # ==========================================
   - name: timestamp
     type: DateTime
-    description: "Event timestamp (UTC), normalized to epoch milliseconds, derived from EventTime (when Windows generated the record). Primary time column for range filters (e.g. where timestamp > ago(1d)). Prefer this over EventTime/EventReceivedTime for time ranges; use EventReceivedTime only to measure collection lag."
+    description: >-
+      Event timestamp (UTC), epoch milliseconds. Primary time column for range
+      filters (e.g. where timestamp > ago(1d)). It is stamped when the record
+      reaches the platform, not taken from the Windows record: for a live agent
+      the two agree within seconds, but records an agent sends late (a backlog
+      after a reboot, a restored or cloned VM replaying its log) carry their
+      ARRIVAL time, and arrive stacked in the same second. One measured backlog
+      put a log clear 80 minutes late, ahead of events it actually followed.
+      The same record delivered twice gets two different timestamps. Use it to
+      select a window; take event order and event time from EventTime and
+      RecordNumber.
     applicableEventIDs: ["All"]
 
   - name: size
@@ -84,6 +94,39 @@ fields:
     applicableEventIDs: ["4624", "4625", "4648", "4768", "4769", "4771", "5140", "5145", "5156", "5157"]
 
   # ==========================================
+  # COLLECTOR ENVELOPE (added by the ingest pipeline)
+  # These names start with '@'. A bare @name in KQL silently returns null;
+  # always bracket-quote them: tostring(['@sender']).
+  # ==========================================
+  - name: "@sender"
+    type: String
+    description: >-
+      IP address of the machine that delivered the record to the collector —
+      the forwarding agent's own address. The only field that identifies the
+      sending MACHINE rather than its name: when a Hostname turns out to be
+      two machines (a clone, a restored VM, a re-used name), group by it to
+      split them, e.g.
+      `summarize n=count(), last=max(tostring(EventTime)) by sender=tostring(['@sender'])`.
+      Query it as ['@sender']; it is also a lake_search facet (@sender), which
+      is much cheaper on a wide window. Where it is not populated, map
+      address to machine from the domain controllers' logon events instead
+      (IpAddress -> computer account; see the wa-host-identity query).
+    sampleValues: ["10.0.12.34"]
+    applicableEventIDs: ["All"]
+
+  - name: "@source"
+    type: String
+    description: "Source address the pipeline recorded for the record; for agent-forwarded Windows events it has matched ['@sender']. Bracket-quote it."
+    sampleValues: ["10.0.12.34"]
+    applicableEventIDs: ["All"]
+
+  - name: "@collector"
+    type: String
+    description: "Name of the ingext collector that received the record. Identifies the collection path, not the host. Bracket-quote it."
+    sampleValues: ["Contoso_Collector_01"]
+    applicableEventIDs: ["All"]
+
+  # ==========================================
   # EVENT ENVELOPE (present on every record)
   # ==========================================
   - name: EventID
@@ -105,7 +148,13 @@ fields:
 
   - name: EventTime
     type: DateTime
-    description: "When Windows generated the event on the originating host (local time as reported by the agent, second resolution). Source of the 'timestamp' column."
+    description: >-
+      When Windows generated the event on the originating host — the true event
+      time. It is the host's LOCAL wall-clock time as a string with no zone
+      (e.g. a South African host reports UTC+2), so convert before comparing it
+      to the UTC 'timestamp': an apparent "clock skew" between the two is
+      usually the zone plus delivery delay, not a drifting clock. Use it for
+      timelines; see 'timestamp' for why that column can be late.
     sampleValues: ["2026-07-27 21:30:09"]
     applicableEventIDs: ["All"]
 
@@ -123,7 +172,16 @@ fields:
 
   - name: Hostname
     type: String
-    description: "FQDN of the Windows host that generated the record (the <Computer> element). This is the machine where the session was created / the operation was audited — for a network logon it is the destination, not the client. For DC-only events (4768/4769/4771/4776) it is the domain controller that answered."
+    description: >-
+      FQDN of the Windows host that generated the record (the <Computer>
+      element). This is the machine where the session was created / the
+      operation was audited — for a network logon it is the destination, not
+      the client. For DC-only events (4768/4769/4771/4776) it is the domain
+      controller that answered. It is a NAME, not a machine identity: a cloned
+      or restored VM reports the original's Hostname until it is renamed, so
+      two machines' events interleave under one value. Split by
+      ['@sender'] (see the collector envelope section) before treating a
+      Hostname as one machine.
     sampleValues: ["dc01.contoso.com", "wkstn-0142.contoso.com"]
     applicableEventIDs: ["All"]
 
@@ -195,7 +253,15 @@ fields:
 
   - name: RecordNumber
     type: Long
-    description: "Monotonically increasing record number within the host's event log. Combined with Hostname it uniquely identifies a record and can be used for deduplication; a backwards jump indicates the log was cleared or wrapped."
+    description: >-
+      Monotonically increasing record number within one event log channel on
+      one machine. Combined with Hostname and Channel it identifies a record
+      and can be used for deduplication — unless two machines share the
+      Hostname: a clone continues the original's sequence from the moment it
+      was copied, so after the fork both machines write the SAME numbers for
+      different events (add ['@sender'] to the key). The fork shows as two
+      interleaved ranges per channel: the clone's maximum stalls below the
+      original's. Note a 1102 log clear does NOT reset the number.
     sampleValues: ["165621415"]
     applicableEventIDs: ["All"]
 
@@ -207,7 +273,16 @@ fields:
 
   - name: ProcessID
     type: Integer
-    description: "Decimal process ID from the event's <Execution> block — the process that *emitted* the record, normally lsass.exe for Security-Auditing events. This is NOT the audited/subject process; that one is in the EventData fields ProcessName / NewProcessName."
+    description: >-
+      Decimal process ID from the event's <Execution> block — the process that
+      *emitted* the record, normally lsass.exe for Security-Auditing events
+      (services.exe for 7036, the Eventlog service for 104/1102, 4 for 4688).
+      This is NOT the audited/subject process; that one is in the EventData
+      fields ProcessName / NewProcessName. Because the emitter's PID is fixed
+      for one boot, it is a weak per-boot fingerprint: two machines on one
+      Hostname usually show different lsass PIDs on 4624. It changes on every
+      reboot and values can coincide across machines, so it can suggest a
+      split but never prove one.
     sampleValues: ["812", "716"]
     applicableEventIDs: ["All"]
 

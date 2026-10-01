@@ -1,0 +1,36 @@
+description: >-
+  Is this Hostname one machine? Splits a host's records by the address that
+  delivered them (['@sender']). Hostname is the machine's NAME: a cloned or
+  restored VM keeps reporting the original's Hostname until it is renamed, so
+  two machines' events interleave under one value and every per-host count,
+  timeline and "first seen" is a mix of both. One row per sender is the normal
+  answer. Two or more rows means two or more machines: compare their EventTime
+  ranges and RecordNumber ranges (a clone's numbers continue the original's and
+  then stall below it) and attribute each event to its sender before reading
+  the host's history. '@sender' must be bracket-quoted; a bare @sender
+  silently returns null. On a wide window, the lake_search facet on @sender is
+  much cheaper than this scan. If the field is empty on a tenant, fall back to
+  wa-host-identity (domain-controller logons map address to computer account).
+datatype: WindowsAudit
+kql: |
+  WindowsAudit
+  | where timestamp > ago(1d)
+  | where Hostname =~ "wkstn-0142.contoso.com"
+  | summarize events = count(),
+              firstEvent = min(tostring(EventTime)), lastEvent = max(tostring(EventTime)),
+              minRecord = min(RecordNumber), maxRecord = max(RecordNumber),
+              channels = make_set(tostring(Channel), 10)
+      by Sender = tostring(['@sender'])
+  | order by events desc
+  | take 1000
+tags: [windows, audit, hostname, identity, clone, sender, investigation]
+expected_output: |
+  One hostname, two machines: the production server and a clone of it (sanitized).
+
+  Sender      events  firstEvent           lastEvent            minRecord  maxRecord   channels
+  10.0.12.34  103495  2026-09-23 08:41:22  2026-10-01 14:30:09  786511     271312529   ["Security","System","Application",...]
+  10.0.12.61  13567   2026-09-23 08:41:22  2026-10-01 10:25:40  786511     271205706   ["Security","System","Application",...]
+
+  Both start at the same record (the clone replayed the shared history); the
+  clone's maximum stops well below the original's and its last event is the
+  restart that renamed it.

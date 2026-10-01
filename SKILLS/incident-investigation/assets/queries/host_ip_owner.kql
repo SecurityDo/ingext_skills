@@ -1,0 +1,19 @@
+// Which computer account owns each address, from the domain controllers'
+// logons (4624/4768/4769/4776 record the client IpAddress and NAME$). Use it to
+// name the machine behind each Sender from host_senders.kql; it also works
+// where @sender is empty. An address with several accounts is NAT, a terminal
+// server or a re-used IP. A machine that never authenticates to the domain
+// (a clone before its join) does not appear: an absence is not proof.
+// Placeholders: {IPS} = quoted, comma-separated list of addresses; {WFROM}/{WTO}.
+WindowsAudit
+| where timestamp between (datetime("{WFROM}") .. datetime("{WTO}"))
+| where EventID in (4624, 4768, 4769, 4776)
+| where TargetUserName endswith "$"
+| extend ip = replace_string(tostring(IpAddress), "::ffff:", "")
+| where ip in ({IPS})
+| summarize logons = count(),
+            firstSeen = min(tostring(EventTime)), lastSeen = max(tostring(EventTime)),
+            dcs = make_set(Hostname, 5)
+    by ip, Computer = tostring(TargetUserName)
+| order by ip asc, firstSeen asc
+| take 1000

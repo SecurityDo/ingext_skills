@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.9
+version: 1.2.10
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -649,6 +649,60 @@ quotes the late one. Two consequences:
 
 Rule: use the summary to find *which* events to pull, never to say *when* they happened.
 
+**On a forwarded Windows feed, the raw `timestamp` can be late too.** `WindowsAudit`
+stamps `timestamp` when a record reaches the platform. A live agent agrees with Windows
+within seconds, but a backlog (an agent catching up after a reboot, a restored or cloned
+VM replaying its log) arrives stacked in one second: one log clear read as 80 minutes
+later than it happened, ahead of events it actually followed. The same record delivered
+twice gets two timestamps. The event's own time is `EventTime` — the host's **local**
+clock with no zone, so convert it before setting it next to a UTC column. An apparent
+"clock skew" between the two is the zone plus delivery delay, not a drifting clock;
+don't report it as a finding. Select the window on `timestamp`, order the timeline on
+`EventTime` and `RecordNumber`.
+
+**A hostname is not a machine.** An `asset_…` ticket is keyed on the `Hostname` string,
+and a cloned or restored VM keeps reporting the original's name until it is renamed. Two
+machines' events then interleave under one key, and everything this procedure reads
+about "the host" — its history, its first-seen boost, its timeline — is a mix of both.
+In the case that taught this, a clone was sysprepped (logs cleared, domain groups
+removed, restart) under the production server's name, and the ticket asked for the
+production server to be contained. The production server was serving its users
+throughout. Before judging any `asset_…` ticket, count the host's senders:
+
+```json
+lake_search {
+  "index": "<the Windows index from lake_search_list_index, e.g. managed-WindowsAudit>",
+  "searchStr": "@fields.Hostname:\"<host as the events spell it>\"",
+  "rangeFrom": <ms − 24h>, "rangeTo": <ms + 24h>,
+  "limit": 1, "facets": ["@sender"]
+}
+```
+
+The facet is the cheap way in (seconds). `assets/queries/host_senders.kql` gives the same
+split with each sender's `EventTime` and `RecordNumber` ranges, which is what proves a
+clone — but on a busy host it scans for over a minute, past the point where an MCP call
+can come back empty. Run it once the facet shows more than one sender, or when the index
+is not on `lake_search_list_index`; if it returns nothing, that is a timeout until a
+narrower window says otherwise.
+
+- **One sender** is the normal case; carry on.
+- **Two or more senders** means two or more machines. Attribute every event the ticket
+  cites to its sender before judging it, and say in the closure which machine did what.
+  A clone shows as a second sender whose `RecordNumber` range starts inside the
+  original's and stops below it, and whose last event is often the restart that renamed
+  it. Look for the renamed machine's own ticket the same day — it is the same box.
+- **Name the machine behind each address** with `assets/queries/host_ip_owner.kql`: the
+  domain controllers' logons (4624/4768/4769/4776) map `IpAddress` to computer account
+  (`NAME$`) from inside the events. This also works where `@sender` is empty. A machine
+  that never authenticates to the domain (a clone before its join) does not appear, so
+  an absence there is not proof.
+- **The emitting `ProcessID` is a hint, not proof.** It is fixed per boot (lsass on
+  4624, services.exe on 7036), so two machines usually differ — but it changes on every
+  reboot and can coincide. Use it to suspect a split, never to prove one.
+
+`@sender` must be bracket-quoted in KQL (`tostring(['@sender'])`); a bare `@sender`
+returns null like every other `@` name (see "Bounded queries").
+
 **Error codes are not interchangeable.** Decompose any "N failed logins" with
 `assets/queries/login_failures.kql` before calling it a brute force.
 
@@ -980,7 +1034,7 @@ It is not saved to a file. An unbounded 30-day directory audit for one admin ret
   truncation limit on their own. Run them one or two at a time, not all together.
 
 Queries use `{USER}` (lower-cased UPN), `{TARGET}` (the UPN as `ObjectId` spells it),
-`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}` (a quoted, comma-separated list of addresses), `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`, and for `Okta`; `{WTO}` is never later than the time of the run), `{CID}` (one operation's `CorrelationId`; in the `_o365` fallbacks its `InterSystemsId`, the same value). Run
+`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}` (a quoted, comma-separated list of addresses), `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`, and for `Okta`; `{WTO}` is never later than the time of the run), `{CID}` (one operation's `CorrelationId`; in the `_o365` fallbacks its `InterSystemsId`, the same value), `{HOST}` (the ticket's host name as the events spell it; matched case-insensitively). Run
 `ingext kql validate @<file>` after substituting — it parses in under a second and
 catches a wrong column name before a 20-second scan does.
 

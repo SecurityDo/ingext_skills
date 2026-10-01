@@ -1,0 +1,18 @@
+// Is the ticket's host one machine? Splits the host's records by the address
+// that delivered them. A cloned or restored VM reports the original's Hostname
+// until it is renamed, so one asset key can be two machines. One row is the
+// normal answer; two or more rows are two or more machines — attribute every
+// cited event to its Sender before judging it. A clone's record range starts
+// inside the original's and stops below it. EventTime is host-local time.
+// '@sender' must stay bracket-quoted: a bare @sender silently returns null.
+// Placeholders: {HOST} = host name as the events spell it; {WFROM}/{WTO}.
+WindowsAudit
+| where timestamp between (datetime("{WFROM}") .. datetime("{WTO}"))
+| where Hostname =~ "{HOST}"
+| summarize events = count(),
+            firstEvent = min(tostring(EventTime)), lastEvent = max(tostring(EventTime)),
+            minRecord = min(RecordNumber), maxRecord = max(RecordNumber),
+            lsassPids = make_set_if(ProcessID, EventID == 4624, 10)
+    by Sender = tostring(['@sender'])
+| order by events desc
+| take 1000

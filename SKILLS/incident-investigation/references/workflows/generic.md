@@ -18,6 +18,12 @@ below runs on `ACCOUNT` only.
 
 The summary tells you what fired; the raw event tells you what happened.
 
+- **On an `asset_…` ticket, prove the host is one machine first.** The key is a host
+  name, and a cloned or restored VM reports the original's name until it is renamed.
+  Facet `@sender` on the host (SKILL.md step 4, "A hostname is not a machine"); with
+  more than one sender, attribute every event to its sender before reading anything
+  else, and name each address with `host_ip_owner.kql`. One ticket on the production
+  name and a second ticket on a fresh `WIN-…` name the same day is the pattern.
 - **Find where the source lands.** `lake_search_list_index` lists the raw indexes;
   `list_data_tables` lists the KQL tables and inventories. The ticket's attributes
   (`_customer`, the rule prefix, `detectionSourceVendor`) say which one.
@@ -68,7 +74,9 @@ which on some accounts holds only log-derived hosts.
 ## G4 — Build the timeline from raw time
 
 - **Raw timestamps only** — the event's own `createdAt` / `eventtime`, never the
-  summary's 2-minute buckets (step 4).
+  summary's 2-minute buckets (step 4). On a forwarded Windows feed that means
+  `EventTime` (host-local, convert the zone) and `RecordNumber` for order: the
+  `timestamp` column there is arrival time, and a backlog arrives in one second.
 - **Include when the artifact started, not just when it alerted.** A process that has
   run for a month and alerts today points at the detection, not the process.
 - **Include when the rule itself appeared.** A rule created minutes before a wave of
