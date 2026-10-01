@@ -82,11 +82,37 @@ These fields decide most SentinelOne tickets. Read them off each threat (S1 resu
 | Field | Reading |
 |---|---|
 | `initiatedBy` | `full_disk_scan` — a file at rest, found by a scan. `agent_policy` — on-execution or on-write, in real time. `on_demand_scan` — someone asked for it. |
-| `engines` / `detectionType` | `User-Defined Blocklist`, `Reputation`, `SentinelOne Cloud` are **static hash hits** (`static`). `DBT - Executables` (Behavioral AI) is **dynamic**: something ran and behaved. |
+| `engines` / `detectionEngines` | `User-Defined Blocklist`, `Reputation`, `SentinelOne Cloud` are **static hash hits**. `On-Write Static AI` / `On-Write DFI` (`detectionEngines.key: pre_execution_*`) is a **static model verdict on the file** — static whatever `detectionType` says (see below). `DBT - Executables` (Behavioral AI) is **dynamic**: something ran and behaved. |
 | `originatorProcess`, `processUser`, `maliciousProcessArguments` | Who launched it and how. `explorer.exe` run by a named user is a person double-clicking; `services.exe` as SYSTEM is a service. Empty on scan hits. |
 | `mitigationStatus` next to `agentDetectionInfo.agentMitigationMode` | "Not mitigated" under `detect` mode is the policy working as configured, not a failed response. Read the mode on the **threat's own detection record**, never the live endpoint record (see below). |
 | `analystVerdict`, `mitigationStatus: marked_as_benign` | An earlier human decision on the same hash. |
 | `cloudFilesHashVerdict`, `fileVerificationType`, `publisherName` | SentinelOne's cloud rating of the hash; whether the file is signed, and by whom. |
+
+**Indicators say what a file *can* do, not what it did.** A threat's `indicators[]` come
+from the engine that judged it. Under a static engine every entry is a **capability read
+from the binary** — its imports, sections and strings: "File can delete files", "File can
+create processes", "File can delay its execution", "high entropy, a sign of obfuscation or
+packing". None of them is an observed action, and a long list of them is not a behavioural
+profile. A packaged Python app (PyInstaller and similar) carries most of them by
+construction: "This is a compiled Python executable", high-entropy sections, ZLIB, debugger
+and kernel-exception imports, process create and terminate. An unsigned in-house tool built
+that way reads, indicator by indicator, exactly like a dropper.
+
+- **Decide static or dynamic on the engine, not on `detectionType` or
+  `classificationSource`.** The same hash on the same `On-Write Static AI` engine has been
+  stamped `detectionType: dynamic` on one record and `static` on the next, with
+  `classificationSource: Behavioral` on both. Neither field showed that anything happened
+  beyond the launch.
+- **What counts as behaviour:** a dynamic engine (`DBT - Executables`); an indicator that
+  reports an observed action rather than a capability; a child file or process whose
+  `originatorProcess` is this file; activity in S1's window attributed to it. A launch by a
+  named user (`originatorProcess: explorer.exe`, the "process started from shortcut"
+  indicator) proves the file **ran** — not that it did anything harmful.
+- **A capability list never supports `confirmed` on its own.** Quote it as "static
+  indicators" in the closure, never as "a dropper/stealer behavioral profile". With no
+  behaviour evidence, a suspicious static detection on a file the organisation might own is
+  an escalation with one question — does the organisation recognise this file? — and
+  remediation follows a no.
 
 A ticket where every threat is `full_disk_scan` + a static engine is **a file at rest**.
 It can still be real malware — but the question becomes "did it ever run?", not "is it
@@ -169,10 +195,9 @@ Read four things:
 
 - **Spread** — the computer-name facet. Many hosts first seen the same day as a wave of
   new agents is a rollout's first scans surfacing old files, not an outbreak.
-- **Origin** — the one document returned is the **oldest** threat. Its `filePath` often
-  names the delivery route: `...\Microsoft\Olk\Attachments\...` or
-  `...\Content.Outlook\...` is an email attachment, `Downloads` a browser download,
-  a removable-drive letter a USB stick.
+- **Origin** — the one document returned is the **oldest** threat. Only the earliest
+  copy can say how the file arrived, and the order of the copies matters more than their
+  folders. See "Arrival or departure" below.
 - **Both feeds** — on the older feed the same hashes are `@s1.fileContentHash`; search
   the quoted SHA-1 without the `@eventType` filter and facet `@eventType` and
   `@s1.computerName` as well. The spread is the union of the two computer-name facets.
@@ -183,6 +208,38 @@ Read four things:
 - **Earlier verdicts** — an `analystVerdict: false_positive` on a hash that now fires
   through `User-Defined Blocklist` means the hash was blocklisted after being judged
   benign. That is a tuning finding, not an incident.
+
+**Arrival or departure — order the copies before naming a delivery route.** One file
+detected in several places on a host is a sequence, not a set. Put every copy on the host
+in order of `identifiedAt` (facet `threatInfo.filePath` with `threatInfo.identifiedAt`,
+or read the records) and mark the first launch (`originatorProcess` a shell such as
+`explorer.exe` and a named `processUser`, or a "started from shortcut" indicator).
+
+- **Only the earliest copy on a host is a candidate for the arrival route.** Its folder
+  says which application last wrote it: an Outlook or mail-client attachment cache
+  (`...\Content.Outlook\...`, `...\Olk\...`, a WebView2 `IndexedDB` blob under a mail
+  origin), `Downloads`, a removable-drive letter, a `Temp\<guid>_<archive>.zip.<n>`
+  extraction folder.
+- **A copy that appears after a launch on the same host is the file being passed on, not
+  arriving.** Mail-client cache copies minutes after the user ran the file mean the file
+  was being attached and sent, or re-opened from a sent message. That changes the
+  question from "who sent it to this user" to "who did this user send it to", and
+  recipients are what a mail check should then look for.
+- **`Downloads` does not name a source.** A browser download and an attachment saved
+  from a mail client both land there. When the earliest copy is in `Downloads`, the route
+  is "not established", not "browser download".
+- **The earliest record is often not the arrival.** When it is a launch rather than an
+  on-write detection, the file was already on disk when the agent first saw it. If its
+  time is close to `registeredAt` (S3), or the static engine flags only on launch, the
+  file may predate the agent. State the arrival as a gap.
+- **Across hosts**, compare each host's earliest copy with the other hosts' launches. A
+  host whose first copy sits in a mail cache shortly after another host's user ran and
+  sent the file is a recipient. That is the internal spread path, and it is a different
+  finding from external delivery.
+
+Folder names are hints about which application touched the file. Never let one stand
+alone as "consistent with email delivery". Say which copy, at what time, relative to which
+launch.
 
 When the detection is a **named application** rather than a dropped file (a remote-access
 tool, an updater), also count its installs in `sentinelOneApplication` by name, version
@@ -261,6 +318,7 @@ and expect tickets that fit none of these rows.
 | `agent_policy` + dynamic engine with a user process, not mitigated | Escalate for containment — this is the live case |
 | Blocklist hit on a hash an analyst marked false positive | Benign for the host; tuning to the SentinelOne console |
 | On-write or on-execution detections at suspicious confidence, a named user, not mitigated because suspicious threats are in detect mode | Escalate for remediation (quarantine), with the policy choice as a finding, not a host fault; re-check confidence before closing, since the cloud may upgrade it |
+| An unsigned executable launched by named users on one or a few hosts over days, static on-write engine only (capability indicators, nothing observed), suspicious confidence | Escalate with one question: does the organisation recognise the file (an in-house or vendor tool)? Yes → benign, exclusion in the SentinelOne console; no → quarantine everywhere it is and trace where it came from. Not containment on the indicators alone |
 | A signed installer from a browser download writing further executables under the user's profile, single host, no spread | Usually an unwanted application the user installed; confirmed once the parent ran, contained when every child is quarantined; recommend checking persistence (Run keys, scheduled tasks, services) |
 
 **Every verdict is as of a time.** A SentinelOne ticket keeps moving after it is raised:
