@@ -28,7 +28,7 @@ alerts by name with a filter on the exact value, never a free-text search:
 
 ```json
 lake_search {
-  "index": "SentinelOne", "searchStr": "*",
+  "index": "SentinelOne", "searchStr": "",
   "mustFilters": [{ "field": "@sentinelOneAlert.name", "terms": ["<exact alert name>"] }],
   "rangeFrom": <ms − 30 days>, "rangeTo": <ms>, "sortOrder": "asc", "limit": 1,
   "facets": ["@sentinelOneAlert.asset.name", "@sentinelOneAlert.status",
@@ -36,6 +36,11 @@ lake_search {
   "facetSize": 50
 }
 ```
+
+**Leave `searchStr` empty.** An empty string matches everything, the same as `"*"` or
+leaving the field out. `searchStr` and the filters are ANDed, so adding the name, or a word
+from it, as a free-text term brings the false zero back even with the exact-name filter in
+place. The filter alone does the selecting.
 
 The activity side carries the same name in `@sentinelOneActivity.data.rulename`. The control
 is the ticket's own alert: a census that does not find it is broken, not empty.
@@ -291,14 +296,30 @@ hosts means deployed software; one host is the finding.
 Either sign changes the question to: **which product and version is this, and how many
 hosts run it?**
 
+**Run the three bundled queries; don't write your own first** (non-negotiable 4). They
+already carry the column names, and the inventory's names are not the ones you would guess:
+
+- **The host column is `agentComputerName`.** `computerName`, `hostName` and `assetName`
+  are not columns.
+- **`validate_kql` does not check column names.** A query on a column that doesn't exist
+  passes validation, then returns no columns and no rows. That reads as "nothing installed",
+  and it isn't.
+
+Substitute the placeholders and run the queries as written. Your own queries come after
+them, for anything they don't answer.
+
 1. **Probe the inventory** with `assets/queries/s1_app_probe.kql`. `withName > 0` makes
    the table readable. A `take 1` with no `project` returns only `timestamp`, because the
    engine returns just the columns a query names. That is not an unreadable table, so never
    write a gap from it.
 2. **Name the package** with `assets/queries/s1_host_apps.kql` on the subject host. Look for
    the product the rule names, or for an entry whose publisher fits the file's signer.
-   Where the run has an external hash lookup, match the hash too. Where it has none, say
-   that the identification rests on the inventory alone.
+   Where the run has an external hash lookup, match the hash too. Where it has none, the
+   identification rests on the inventory alone. Say so in the verdict sentence and in the
+   closure's gaps, for example "named from the application inventory; the hash was not
+   checked against external threat intelligence". A version range quoted from memory of a
+   public advisory is not a hash check. Name it as background knowledge, not as a measured
+   finding.
 3. **Census it** with `assets/queries/s1_app_census.kql`, using a fragment of the product
    name.
 4. **Compare the installed version with the range the rule targets.** A hash rule for a
