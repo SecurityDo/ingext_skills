@@ -1,0 +1,22 @@
+// Did this file arrive by mail? Every message in the last 30 days that carried
+// an attachment with this SHA256, from Defender for Office 365 threat-intel mail
+// data (Operation TIMailData). One row per message × recipient: the same
+// message is blocked for one recipient, junked for another and delivered to a
+// third, and the differences are the finding. Read DeliveryAction per row, and
+// read the Outbound rows: a forward or copy to an external system (a helpdesk,
+// a ticketing address) can be Delivered while the inbound copy was Blocked.
+// Scoped to one hash, so it returns raw rows; a 30-day scan of a busy tenant
+// takes minutes.
+// Placeholders: {SHA256} = the file's SHA256, lower-case hex.
+Office365
+| where timestamp > ago(30d)
+| where Operation == "TIMailData"
+| where tolower(tostring(AttachmentData)) contains "{SHA256}"
+| project timestamp, Recipients = tostring(Recipients), P1Sender = tostring(P1Sender),
+    P2Sender = tostring(P2Sender), SenderIp = tostring(SenderIp), Subject = tostring(Subject),
+    Verdict = tostring(Verdict), DeliveryAction = tostring(DeliveryAction),
+    Directionality = tostring(Directionality), NetworkMessageId = tostring(NetworkMessageId),
+    AttachmentData = tostring(AttachmentData)
+| summarize dups = count() by timestamp, Recipients, P1Sender, P2Sender, SenderIp, Subject,
+    Verdict, DeliveryAction, Directionality, NetworkMessageId, AttachmentData
+| top 1000 by timestamp desc

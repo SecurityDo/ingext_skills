@@ -1,0 +1,25 @@
+// Where did a file in Downloads come from? Endpoint download records
+// (Operation FileDownloadedFromBrowser, Workload Endpoint, from Defender for
+// Endpoint / Purview endpoint DLP) name the browser and the OriginatingDomain:
+// a mail web client, a helpdesk's attachment host, a file-sharing site.
+// Matches the hash anywhere on the tenant (other users who downloaded the same
+// file), or the base file name on the subject host only, so numbered copies
+// ("name (1).ext") are found too. The name match is limited to the host
+// because lures are often named after the company, and the company name is
+// in every OneDrive path. Not every copy is logged, so one row for three
+// copies on disk is normal. Zero rows: check the tenant has any
+// FileDownloadedFromBrowser rows before reading it as "not downloaded".
+// Placeholders: {SHA256} = the file's SHA256, lower-case hex; {FILE} = the file
+// name without its "(n)" suffix or extension, lower-cased (e.g. "invoice_2026");
+// {HOST} = the host name, lower-cased.
+Office365
+| where timestamp > ago(30d)
+| where Operation == "FileDownloadedFromBrowser"
+| extend sha = tolower(tostring(Sha256)), dev = tolower(tostring(DeviceName))
+| where sha == "{SHA256}" or (dev startswith "{HOST}" and tolower(tostring(ObjectId)) contains "{FILE}")
+| project timestamp, UserId = tolower(tostring(UserId)), ObjectId = tostring(ObjectId),
+    OriginatingDomain = tostring(OriginatingDomain), Application = tostring(Application),
+    sha, dev, sameHash = sha == "{SHA256}"
+| summarize dups = count() by timestamp, UserId, ObjectId, OriginatingDomain, Application,
+    sha, dev, sameHash
+| top 1000 by timestamp desc

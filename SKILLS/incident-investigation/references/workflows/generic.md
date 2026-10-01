@@ -38,6 +38,60 @@ The summary tells you what fired; the raw event tells you what happened.
 - **A vendor's own rule is not a Fluency rule.** If `eventwatch_rule_list` has nothing
   under the rule's name, the logic lives in the vendor console and Fluency only relays
   the alert. The tuning in step 5 then goes to the vendor.
+- **Microsoft Defender alerts list each file twice. Read `fileEvidence`.** The alert's
+  `evidence[]` has a `fileEvidence` entry per file, with its path, hashes and verdict.
+  It also has a `malwareEvidence` entry whose `files[]` repeats the files, but there
+  the hashes can be null and the verdict `unknown` for all but one. Reading only
+  `malwareEvidence` makes it look as though the scanner processed one file of several.
+- **Defender for Cloud agentless alerts always carry placeholder fields.**
+  `VM.Agentless_MalwareWasDetected` / `AgentlessAMThreatDetections` alerts come from a
+  scan of a disk snapshot. They arrive with `detectionSource: unknownFutureValue`,
+  `investigationState: unsupportedAlertType` and remediation `none` on every alert.
+  Those values are not contradictions or signs of tampering. Show it by finding the
+  same values on another agentless alert on the account. An agentless hit means a
+  **file at rest**: it says nothing about execution, and real-time protection on the
+  host did not act on that copy.
+
+## G1b — How did the file get there?
+
+When the ticket is about a file (a detection in `Downloads`, `Temp`, a mail cache or a
+user folder), find how it arrived before judging the host. The arrival route is often
+the real finding: a delivery path that bypasses mail filtering produces the same
+ticket again on every host it reaches. On a Microsoft 365 tenant, two bundled queries
+answer it:
+
+- `assets/queries/file_mail_by_hash.kql` finds every message in the last 30 days that
+  carried an attachment with this SHA256 (`TIMailData`, `AttachmentData`). It returns
+  one row per message × recipient with Microsoft's `Verdict` and `DeliveryAction`.
+  - **Read the outcome per recipient.** One message is often `Blocked` for some
+    recipients, `DeliveredAsSpam` for others and `Delivered` for a third.
+  - **Read the `Outbound` rows.** A forward, journal or copy to an outside system (a
+    helpdesk or ticketing address, a shared-inbox tool) can be `Delivered` while every
+    inbound copy was blocked. That system then hands the file to its users, outside
+    the mail client's protection.
+  - `P1Sender` `<>` with `P2Sender` set to an internal address is a spoofed internal
+    sender.
+- `assets/queries/file_download_origin.kql` reads the endpoint download records
+  (`FileDownloadedFromBrowser`). They give when the file was saved, by whom, in which
+  browser, and the **`OriginatingDomain`** it came from: a mail web client, a
+  helpdesk's attachment host, a file-sharing site.
+  - It matches the hash anywhere on the account, and the file name only on the
+    subject host. Lures are often named after the company, and the company name
+    appears in every OneDrive path.
+  - Not every saved copy is logged. One row for three copies on disk is normal.
+  - Rows from other users on the same host or the same originating domain show who
+    else the route reaches. They are G6 side findings.
+
+Run both before calling the route "not established". A zero from the mail query on a
+tenant with `TIMailData` rows means the file did not arrive as an attachment in 30 days
+(a link, a download or removable media remain possible). A zero from the download
+query needs a control: any `FileDownloadedFromBrowser` row on the account.
+
+**Use the download time as the anchor for everything after.** An agentless or
+scheduled scan finds the file days after it arrived. The credential, sign-in and
+activity checks start from the download time, not from the alert time. A ±24h window
+around the alert can miss the whole period in which a phishing lure would have been
+used.
 
 ## G2 — What is the thing that fired, and how common is it here?
 
