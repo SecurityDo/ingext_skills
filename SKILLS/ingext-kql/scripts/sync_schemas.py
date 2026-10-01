@@ -23,6 +23,13 @@ Usage:
 
 --check exits non-zero if the embedded KB is out of date (for CI), without
 writing anything.
+
+Fixed system tables (FIXED_TABLES below, e.g. ASSET) are the exception: they
+are always queryable but come from no ingext_schema datatype, so their folders
+under references/schemas/ are maintained by hand. A sync keeps them verbatim,
+never lists them in manifest.json (SKILL.md documents them instead), and
+--check ignores them. A fixed table that ingext_schema starts to define is an
+error: remove it from FIXED_TABLES so the generated copy takes over.
 """
 
 import argparse
@@ -44,6 +51,10 @@ except ImportError:
 
 
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Hand-maintained table folders under references/schemas/ that the rebuild must
+# keep. Keep in step with the "Fixed system tables" list in SKILL.md.
+FIXED_TABLES = ("ASSET",)
 
 
 def load_yaml(path):
@@ -201,7 +212,9 @@ def build_tree(tables, dest_root):
 
 
 def snapshot(root):
-    """Map of relpath -> bytes for every file under root (manifest minus its timestamp)."""
+    """Map of relpath -> bytes for every generated file under root (manifest
+    minus its timestamp). Fixed system table folders are not generated, so
+    they are left out on both sides of a --check comparison."""
     out = {}
     if not os.path.isdir(root):
         return out
@@ -209,6 +222,8 @@ def snapshot(root):
         for f in files:
             full = os.path.join(dirpath, f)
             rel = os.path.relpath(full, root)
+            if rel.split(os.sep, 1)[0] in FIXED_TABLES:
+                continue
             with open(full, "rb") as fh:
                 data = fh.read()
             if rel == "manifest.json":
@@ -237,6 +252,15 @@ def main():
 
     tables = discover(repo)
 
+    clash = sorted(set(tables) & set(FIXED_TABLES))
+    if clash:
+        sys.stderr.write(
+            "ingext_schema now defines %s, listed in FIXED_TABLES as hand-maintained. "
+            "Remove it from FIXED_TABLES (and its hand-written folder) so the "
+            "generated copy is the only one.\n" % ", ".join(clash)
+        )
+        sys.exit(1)
+
     if args.check:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dest = os.path.join(tmp, "schemas")
@@ -250,13 +274,37 @@ def main():
         print("Embedded schema KB is up to date (%d tables)." % len(tables))
         return
 
-    if os.path.isdir(dest):
-        shutil.rmtree(dest)
-    manifest = build_tree(tables, dest)
+    # Build beside the destination, carry the fixed tables over verbatim, then
+    # swap, so a failed build never leaves the skill without its schemas.
+    parent = os.path.dirname(dest)
+    os.makedirs(parent, exist_ok=True)
+    staging = tempfile.mkdtemp(prefix=".schemas-", dir=parent)
+    os.chmod(staging, 0o755)  # mkdtemp is 0700; the swapped-in dir must not be
+    try:
+        manifest = build_tree(tables, staging)
+        kept = []
+        for fixed in FIXED_TABLES:
+            src = os.path.join(dest, fixed)
+            if os.path.isdir(src):
+                shutil.copytree(src, os.path.join(staging, fixed))
+                kept.append(fixed)
+            else:
+                sys.stderr.write(
+                    "WARN: fixed table %s has no folder under %s; nothing to keep\n"
+                    % (fixed, os.path.relpath(dest, args.skill))
+                )
+        if os.path.isdir(dest):
+            shutil.rmtree(dest)
+        os.rename(staging, dest)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
     print(
         "Synced %d tables into %s"
         % (manifest["table_count"], os.path.relpath(dest, args.skill))
     )
+    if kept:
+        print("Kept fixed system tables: %s" % ", ".join(kept))
     for t in sorted(manifest["tables"]):
         info = manifest["tables"][t]
         print(

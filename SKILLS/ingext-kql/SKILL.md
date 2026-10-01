@@ -1,6 +1,6 @@
 ---
 name: ingext-kql
-version: 1.0.7
+version: 1.0.8
 description: >
   Generate a validated KQL query for the Ingext datalake from a natural-language description.
   Use this skill whenever the user asks to query, search, count, aggregate, or report on data
@@ -80,7 +80,9 @@ python3 scripts/sync_schemas.py --repo /path/to/ingext_schema
 A small number of tables are always queryable even though `list_data_tables` never
 lists them and they have no entry in `manifest.json` (which is auto-generated from
 the `ingext_schema` repo — don't add these by hand there). Check this list *in
-addition to* `list_data_tables` when picking a table (Workflow step 1).
+addition to* `list_data_tables` when picking a table (Workflow step 1). Their schema
+folders are hand-maintained; `scripts/sync_schemas.py` keeps every table named in its
+`FIXED_TABLES` when it rebuilds, so a new fixed table goes in this list **and** there.
 
 | Table | What it is |
 |---|---|
