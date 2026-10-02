@@ -1,0 +1,15 @@
+// The control for fw_aftermath_sessions: the host's 20 largest flows in the same window,
+// deduplicated the same way (client side srcport + dstip + dstport, max() of the
+// cumulative byte counters). Any row = the host was visible to the firewall, so a small
+// or empty aftermath is a measurement, not a gap; the largest rows are the yardstick for
+// "small". devices > 1 confirms the flows are logged by several FortiGates.
+// See references/fortigate.md F3.
+// Placeholders: {SRCIP} = the host's address; {T0} = the event time, ISO-8601 UTC.
+NetworkFortigateTraffic
+| where TimeGenerated between ((datetime("{T0}") - 1m) .. (datetime("{T0}") + 60m))
+| where srcip == "{SRCIP}"
+| summarize sent = max(sentbyte), rcvd = max(rcvdbyte), dur = max(duration),
+    first = min(TimeGenerated), devices = dcount(tostring(devname))
+    by srcport, dstip, dstport
+| extend total = sent + rcvd
+| top 20 by total desc

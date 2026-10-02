@@ -123,28 +123,36 @@ what made the request, and what happened after it.
   cannot rule out a page, an ad or an extension, and it cannot prove the lookup was the
   browser's own housekeeping. Never write "not a tab" or "a routine lookup by the
   browser itself" from it.
-- **Find what triggered it in the network logs.** Use the account's firewall or proxy
-  tables from `list_data_tables` (for example a FortiGate web-filter table with
-  `hostname`), filtered on the host's address from the activity's `agentipv4`. List the
-  hostnames it reached over a minute or two around the lookup, in time order. A domain
-  fetched within the same second as a burst of ad, analytics and CDN hosts is a script
-  embedded in a page the user opened. A domain reached on its own, at a steady interval,
-  or by a non-browser process is a different case.
-- **Then check what followed.** Count connections from the host to the resolved
-  addresses (`dnsresponse`) from the lookup to an hour after: sessions, bytes in each
-  direction, last seen. A few seconds to minutes of small transfers is a page load.
-  Repeating connections at a fixed interval look like a beacon, and large uploads look
-  like exfiltration. Check this before writing the verdict.
-- **A shared CDN address is not an indicator.** Cloudflare-, Akamai- or CloudFront-fronted
-  domains share addresses with unrelated sites, so search on the domain as well as the
-  address.
+- **Answer both with the firewall, following `references/fortigate.md`.** On an account
+  with FortiGate tables, run its three bundled queries in order, one at a time:
+  `fw_trigger_hosts.kql` (F1, the sites the host reached in the minute around the lookup's
+  raw `eventtime`, from `agentipv4`), `fw_aftermath_sessions.kql` (F2, every flow to the
+  addresses in `dnsresponse` for the next hour, one row per flow) and
+  `fw_host_sessions_control.kql` (F3, the host's largest flows in the same window, the
+  control). A domain fetched within the same second as a burst of a page's ad, analytics
+  and CDN hosts is a script embedded in a page the user opened. A domain reached on its
+  own, at a steady interval, or by a non-browser process is a different case.
+- **`hostname` is on `NetworkFortigateEvent` only.** `NetworkFortigateTraffic` has no such
+  column, so projecting it there returns null on every row. That is not "no web-filter
+  visibility". Names come from the Event table and sessions from the Traffic table.
+- **Count flows, not rows or session ids, and never sum the byte columns.** Several
+  FortiGates can log the same flow under different session ids, and `sentbyte` /
+  `rcvdbyte` are cumulative. The bundled queries handle both; a hand-written one that
+  does not is wrong by a multiple.
+- **A recurring lookup gets more than one anchor.** When the same domain alerts on several
+  days, run F1 on the first occurrence, the ticket's own and one in between, and say how
+  many of the total were checked.
+- **A shared CDN address is not an indicator.** Cloudflare-, Akamai- or CDN77-fronted
+  domains share addresses with unrelated sites, so attribute a flow to the domain only
+  near the lookup.
 - **Keep the window narrow.** Firewall tables are among the largest on an account: a
   30-day domain search can fail outright (the lake search pool runs out of capacity) and
-  return no rows. That is a gap, not a negative. Search one or two hours around the event,
-  one query at a time.
+  return no rows. That is a gap, not a negative. The bundled queries use ±1 minute and
+  +60 minutes.
 - **HTTPS logs name hosts, not pages.** A web filter that sees only the TLS server name
   logs `https://<host>/`, so the page's own domain is often not separable from its
-  third-party scripts. Say so in the closure as a gap.
+  third-party scripts, and a domain can be absent from the web filter by name while its
+  flows are in Traffic. Say so in the closure as a gap.
 
 If the account has no firewall, proxy or DNS logs for the host, the trigger and what
 followed are gaps. Write them as gaps, and do not fill them with what the process name
@@ -451,6 +459,7 @@ and expect tickets that fit none of these rows.
 | An unsigned executable launched by named users on one or a few hosts over days, static on-write engine only (capability indicators, nothing observed), suspicious confidence | Escalate with one question: does the organisation recognise the file (an in-house or vendor tool)? Yes → benign, exclusion in the SentinelOne console; no → quarantine everywhere it is and trace where it came from. Not containment on the indicators alone |
 | A STAR hash rule matched a cached installer (`C:\Windows\Installer\<hex>.msi`) during a full disk scan, with no threat record and no process. The inventory names the product at a version outside the range the rule targets, installed across the account | Benign for the host. The finding is the rule's hash list, tuned in the SentinelOne console. If the hash was identified from the inventory alone, say so. Inside the range: escalate as a fleet exposure covering every host with that version |
 | A network STAR rule matched one browser DNS lookup to an uncommon-TLD domain. The firewall log shows it fetched in the same burst as a page's ad and analytics hosts, with a few minutes of small transfers and nothing after. The rule fires on many hosts and its earlier copies were closed | Benign, citing the page-load burst and the traffic that followed, not the process name. Tuning (a threshold, distinct domains, or excluding ad-serving lookups) goes to the SentinelOne console. Repeating connections or a non-browser actor: escalate |
+| The same network STAR rule on one host on several working days, one domain. Each anchored lookup (first, latest, one between) sits inside the same site's page load or its ad-slot refreshes, with a few small flows after each | Benign: a site the user keeps open serves the domain through its ads. Tuning is an exclusion for that domain in the SentinelOne console; the recurrence is the user's habit, not persistence. A lookup with no page load around it: escalate |
 | A signed installer from a browser download writing further executables under the user's profile, single host, no spread | Usually an unwanted application the user installed; confirmed once the parent ran, contained when every child is quarantined; recommend checking persistence (Run keys, scheduled tasks, services) |
 
 **Every verdict is as of a time.** A SentinelOne ticket keeps moving after it is raised:

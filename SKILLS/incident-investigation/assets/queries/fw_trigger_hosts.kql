@@ -1,0 +1,16 @@
+// What the host was reaching in the minute around one network event: the sites in
+// FortiGate's UTM log (web filter, app control) from the host's address, in time order.
+// A burst of a site's own hosts plus its ad/analytics/CDN hosts around {T0} means the
+// event came from a page the user opened. hostname exists only on this table, never on
+// NetworkFortigateTraffic. See references/fortigate.md F1.
+// Placeholders: {SRCIP} = the host's address at the time (agentipv4 on the activity);
+// {T0} = the raw event time, ISO-8601 UTC, e.g. 2026-09-28T12:40:00Z.
+NetworkFortigateEvent
+| where TimeGenerated between ((datetime("{T0}") - 1m) .. (datetime("{T0}") + 1m))
+| where srcip == "{SRCIP}"
+| extend hostname = tostring(hostname), subtype = tostring(subtype), action = tostring(action),
+         dstip = tostring(dstip)
+| summarize n = count(), first = min(TimeGenerated), last = max(TimeGenerated)
+    by hostname, dstip, subtype, action
+| order by first asc
+| take 1000

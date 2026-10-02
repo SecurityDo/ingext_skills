@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.17
+version: 1.2.18
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -573,7 +573,8 @@ and the `behavior` index use `timestamp`; `AzureSigninLogs` and `AzureAuditLogs`
 `NetworkFortigateTraffic` also use `TimeGenerated` and do **not** populate
 `timestamp`. Carry a column across families and every query returns a confident zero.
 Read the time column from the schema doc for each table — never from the last table
-you queried.
+you queried. For FortiGate, `hostname` exists only on `NetworkFortigateEvent`, and
+session counts and bytes need `references/fortigate.md` before they mean anything.
 
 **The same trap in a projection: a column that does not exist returns null.** A
 `project` over a name the schema lacks yields `null` for every row, indistinguishable
@@ -967,6 +968,7 @@ feed it the `documents` array. `ingext_json.py` is unnecessary there: it exists 
 to recover a JSON body from a debug log, and MCP returns one.
 | `assets/queries/*.kql` | The queries the workflows and steps name, placeholder-substituted and parse-validated |
 | `references/workflows/*.md` | Step 3: `office365.md` for Office365 / Entra ID incidents, `okta.md` for Okta incidents, `sentinelone.md` for SentinelOne alerts, `generic.md` for every other type |
+| `references/fortigate.md` | Any workflow's firewall question about one host: which table holds names vs sessions, the duplicate-device and cumulative-byte traps, and the `fw_*` trigger / aftermath / control queries |
 
 **Don't modify a bundled query or trim its output.** Run it unmodified — do not wrap it
 in a `summarize`, drop columns or filter out rows to make the output shorter — and write
@@ -1056,7 +1058,7 @@ It is not saved to a file. An unbounded 30-day directory audit for one admin ret
   failed scan become a negative.
 
 Queries use `{USER}` (lower-cased UPN), `{TARGET}` (the UPN as `ObjectId` spells it),
-`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}` (a quoted, comma-separated list of addresses), `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`, and for `Okta`; `{WTO}` is never later than the time of the run), `{CID}` (one operation's `CorrelationId`; in the `_o365` fallbacks its `InterSystemsId`, the same value), `{HOST}` (the ticket's host name as the events spell it; matched case-insensitively; lower-cased in the `s1_*` inventory queries and `file_download_origin`), `{APP}` (a lower-cased product-name fragment for `s1_app_census`), `{SHA256}` (a file's SHA256, lower-case hex), `{FILE}` (a file name without its `(n)` suffix or extension, lower-cased). Run
+`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}` (a quoted, comma-separated list of addresses), `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`, and for `Okta`; `{WTO}` is never later than the time of the run), `{CID}` (one operation's `CorrelationId`; in the `_o365` fallbacks its `InterSystemsId`, the same value), `{HOST}` (the ticket's host name as the events spell it; matched case-insensitively; lower-cased in the `s1_*` inventory queries and `file_download_origin`), `{APP}` (a lower-cased product-name fragment for `s1_app_census`), `{SHA256}` (a file's SHA256, lower-case hex), `{FILE}` (a file name without its `(n)` suffix or extension, lower-cased), `{SRCIP}` (the host's address at the time of the event, as the firewall logs it), `{T0}` (one raw event time as ISO-8601 UTC, for the `fw_*` FortiGate queries, which build their own narrow windows around it). Run
 `ingext kql validate @<file>` after substituting — it parses in under a second and
 catches a wrong column name before a 20-second scan does.
 

@@ -1,0 +1,17 @@
+// Every flow from the host to the addresses a lookup resolved to, from just before the
+// lookup to an hour after: one row per flow, deduplicated across FortiGates. A flow is
+// keyed on the client side (srcport + dstip + dstport) because each firewall that logs
+// it assigns its own sessionid. Bytes are max() of the cumulative counters, i.e. the
+// flow's total; never sum() them. See references/fortigate.md F2.
+// Placeholders: {SRCIP} = the host's address; {T0} = the lookup time, ISO-8601 UTC;
+// {IPS} = the resolved addresses, quoted and comma-separated.
+NetworkFortigateTraffic
+| where TimeGenerated between ((datetime("{T0}") - 1m) .. (datetime("{T0}") + 60m))
+| where srcip == "{SRCIP}"
+| where dstip in ({IPS})
+| summarize records = count(), devices = make_set(tostring(devname)), sent = max(sentbyte),
+    rcvd = max(rcvdbyte), dur = max(duration), first = min(TimeGenerated),
+    last = max(TimeGenerated), actions = make_set(tostring(action))
+    by srcport, dstip, dstport
+| order by first asc
+| take 1000

@@ -121,8 +121,8 @@ carries — destination IPs and ports, domains, hashes, device or account ids.
 | Exactly one | Keep going — check its neighbours (same /24, same publisher, same parent) first |
 
 Good sources: agent inventories (`externalIp`, `lastIpToMgmt`), firewall traffic
-(`NetworkFortigateTraffic` — session counts and distinct sources, never summed bytes
-without the `fortigate-bandwidth` rules), and the platform `asset_search` inventory,
+(`NetworkFortigateTraffic` — flows and distinct sources, never summed bytes; for one
+host follow `references/fortigate.md`, for volume the `fortigate-bandwidth` rules), and the platform `asset_search` inventory,
 which on some accounts holds only log-derived hosts.
 
 ## G4 — Build the timeline from raw time
