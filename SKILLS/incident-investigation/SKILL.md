@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.18
+version: 1.2.19
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -649,6 +649,21 @@ quotes the late one. Two consequences:
   whose sequence was the entire argument.
 
 Rule: use the summary to find *which* events to pull, never to say *when* they happened.
+
+**Pull the ticket's own events from a window around the ticket, never from 30 days.** The
+ticket says when its events happened: the day in its id, the summary's `from`/`to`
+buckets and `incidentDetectionTime`. Search from `from` − 1h to the later of `to` and
+`incidentDetectionTime`, + 1h. A lake or KQL scan reads every row in its window, whatever
+the filter matches, so on a big table the window decides the cost. On one account a
+30-day `lake_search` of `Office365` for the trigger's `ObjectId` ran 210 s and was
+dropped. The same search over one day returned the events in 32 s.
+
+- **Nothing in that window?** Widen to the ticket's day ±24h. Only then go further back,
+  and never straight to 30 days.
+- **This applies only to finding the ticket's own events.** Checks that look back on
+  purpose keep the window their bundled query sets: the subject history, the sign-in
+  baseline, the persistence sweep and the first-seen lookups. Narrowing those loses
+  coverage.
 
 **On a forwarded Windows feed, the raw `timestamp` can be late too.** `WindowsAudit`
 stamps `timestamp` when a record reaches the platform. A live agent agrees with Windows

@@ -27,6 +27,9 @@ The summary tells you what fired; the raw event tells you what happened.
 - **Find where the source lands.** `lake_search_list_index` lists the raw indexes;
   `list_data_tables` lists the KQL tables and inventories. The ticket's attributes
   (`_customer`, the rule prefix, `detectionSourceVendor`) say which one.
+- **Search around the ticket time, not 30 days back.** Use the summary's `from` − 1h to
+  `to` / `incidentDetectionTime` + 1h, and widen to the day ±24h if that finds nothing
+  (SKILL.md step 4, "Pull the ticket's own events from a window around the ticket").
 - **Search by stable identifiers first** — agent id/uuid, alert id or `externalId`,
   object id, storyline id, hash. They are exact tokens. A product or process name
   (`ScreenConnect`) sits inside long strings and a bare-word search for it can return
