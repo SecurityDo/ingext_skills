@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.19
+version: 1.2.20
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -8,12 +8,12 @@ description: >-
   "triage this ticket", "is this a true positive", "the AI assist says actionable, check it",
   "why did this user score 3600", "should we escalate this alert". Pulls the ticket and the
   AI-assist verdict, profiles the subject, measures the in-tenant base rate for the rule that
-  fired, then runs the workflow for the incident type (Office365, Okta sign-in paths and
-  legacy-auth sprays, SentinelOne; each proves what did NOT happen)
+  fired, then runs the workflow for the incident type (Office365 and stolen sessions, Okta,
+  SentinelOne; each proves what did NOT happen)
   and re-derives every number against the timestamp, error-code, user-agent, duplicate-row
-  and GeoIP traps that manufacture findings. Ends in a closure (benign, escalate or
-  confirmed) with tuning, and a Fluency-branded HTML closure report on request. Queries only
-  the incident's own tenant account.
+  and GeoIP traps that manufacture findings, reading the customer Log Analytics workspace
+  when connected. Ends in a closure (benign, escalate or confirmed) with tuning, and an HTML
+  closure report on request. Queries only the incident's own tenant account.
 ---
 
 # Investigate a behavior incident
@@ -143,6 +143,7 @@ parsed log, and need no binary installed.
 | Who the subject IS | the **`ingext-get-profile`** skill (`list_data_tables` → `kql_search` → `get_azure_user_record`) | — |
 | Read a rule | `eventwatch_rule_list`, `eventwatch_rule_get` | `eventwatch rule_list/rule_get` |
 | Test a rule | `eventwatch_rule_test` | `eventwatch rule_test` |
+| The customer's own Log Analytics workspace | `azure_logs_list_tables`, `azure_logs_get_schema`, `azure_logs_validate`, `azure_logs_search` | — |
 
 **Targeting is per call, so there is nothing to restore — but everything to check.**
 On a tenant's own endpoint the account *is* the endpoint. On the grid server every
@@ -155,6 +156,41 @@ for the rest of the run (see "Hard rule — one incident, one account").
   exact name — if it is not in the list, stop here and run nothing (see the hard rule).
   The list shows you the other customers on the connector; it is for confirming a
   name, not a menu of tenants to query, and nothing else from it goes in the report.
+
+### Find every source, including the customer's Log Analytics workspace
+
+An account can carry its Microsoft data in two places: the datalake (`list_data_tables`,
+`lake_search_list_index`) and the customer's own **Azure Log Analytics** workspace,
+reached through an `AzureLogAnalytics` integration and the `azure_logs_*` tools.
+`list_data_tables` does **not** list the workspace, so an investigation that only reads
+the datalake never learns it is there. Probe it once, in step 0, on every account:
+
+```json
+azure_logs_list_tables { "filter": "signin" }
+azure_logs_get_schema  { "tables": ["SigninLogs", "AADNonInteractiveUserSignInLogs",
+  "MicrosoftGraphActivityLogs", "AuditLogs", "IdentityDirectoryEvents", "CloudAppEvents",
+  "EmailEvents", "UrlClickEvents"] }
+```
+
+- **An error saying no AzureLogAnalytics integration is configured** means the datalake
+  is the only source. Say so once in the closure.
+- **Where the workspace has a table, it is the source for that question**, and the
+  datalake copy is not. In the case that taught this, the datalake's `AzureSigninLogs`
+  held 9 of the subject's ~20 sign-ins in the hour that mattered, and none of the
+  non-interactive ones. The session capture, the attacker's Graph directory dump and the
+  on-prem password reset were all in the workspace and in none of the datalake tables.
+  An investigation built on the datalake alone called the incident "contained" while the
+  attacker still held a valid password.
+- **What only the workspace has:** non-interactive sign-ins (`AADNonInteractiveUserSignInLogs`,
+  where a replayed token shows up), Microsoft Graph requests (`MicrosoftGraphActivityLogs`),
+  on-prem AD changes on a synced account (`IdentityDirectoryEvents`, Defender for
+  Identity), and Defender XDR's own email, click and cloud-app tables.
+- **It is a different KQL dialect**, forwarded to Azure verbatim. Its time range is
+  ANDed with the query's own time filter and the narrower one wins; with no range the
+  tool applies the last 24 hours. Pass `rangeFrom` for anything older. `first` and
+  `last` are reserved words there. The `azure-log-analytics-search` skill has the rest.
+- The bundled `la_*.kql` queries are the workspace versions of the sign-in checks; the
+  Office365 workflow says when to use them.
 
 ### If you must use the CLI
 
@@ -535,7 +571,7 @@ workflow file:
 
 | `behaviorRules` prefix | Incident type | Workflow |
 |---|---|---|
-| `O365_`, `AzureAD_`, `Fluency_O365_` | Office365 / Entra ID | `references/workflows/office365.md` — 3a resolve every address, 3b the approving device (auth incidents only), 3c prove what did not happen |
+| `O365_`, `AzureAD_`, `Fluency_O365_`, and Defender alerts on a user (stolen session, token, Graph reconnaissance) | Office365 / Entra ID | `references/workflows/office365.md` — 3a resolve every address, 3a′ trace the session, 3b the approving device (auth incidents only), 3c prove what did not happen, including whether it is contained |
 | `okta_` | Okta sign-in / account | `references/workflows/okta.md` — K1 which path every sign-in took, K2 did any of it succeed, K3 the same signature on other accounts, K4 what changed on the account, K5 what the real sign-ins look like, K6 prove what did not happen up to where the data reaches |
 | `SentinelOne:`, `Fluency_SentinelOne_` | SentinelOne EDR alert | `references/workflows/sentinelone.md` — S1 pull each alert whole, S2 running or at rest, S3 agent time and ownership, S4 hash prevalence and origin, S5 prove what did not run, S6 reconcile counts, S7 score, tuning and side findings |
 | anything else (`GoogleWorkspace_`, …) | no dedicated workflow yet | `references/workflows/generic.md` — G1 read the raw events, G2 how common the artifact is, G3 resolve every indicator, G4 raw timeline, G5 prove what did not happen, G6 side findings |
@@ -1046,6 +1082,12 @@ It is not saved to a file. An unbounded 30-day directory audit for one admin ret
   datetime("..."))` — this engine rejects an unquoted `datetime(2026-...)`. `timestamp`
   is epoch ms on `Office365` but empty on `AzureSigninLogs`; use `TimeGenerated` there.
   `IsInteractive` is a string (`"true"`).
+- **Never cut a list column short.** `substring()` on a column that holds a list
+  (`Folders`, `AffectedItems`, `TargetResources`, `AuthenticationDetails`) drops the
+  entries past the cut and leaves no sign that any were there. One `MailItemsAccessed`
+  row listed three messages; cut to 400 characters it showed one, and the closure said
+  the attacker opened one message. Expand the list (`mv-expand`) and project the fields
+  you need from each entry, or keep the column whole.
 - **Don't fan out wide queries.** Raw-row queries that return nested columns
   (`TargetResources`, `ModifiedProperties`, `AuthenticationDetails`) can reach the
   truncation limit on their own. Run them one or two at a time, not all together.
@@ -1073,7 +1115,7 @@ It is not saved to a file. An unbounded 30-day directory audit for one admin ret
   failed scan become a negative.
 
 Queries use `{USER}` (lower-cased UPN), `{TARGET}` (the UPN as `ObjectId` spells it),
-`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}` (a quoted, comma-separated list of addresses), `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`, and for `Okta`; `{WTO}` is never later than the time of the run), `{CID}` (one operation's `CorrelationId`; in the `_o365` fallbacks its `InterSystemsId`, the same value), `{HOST}` (the ticket's host name as the events spell it; matched case-insensitively; lower-cased in the `s1_*` inventory queries and `file_download_origin`), `{APP}` (a lower-cased product-name fragment for `s1_app_census`), `{SHA256}` (a file's SHA256, lower-case hex), `{FILE}` (a file name without its `(n)` suffix or extension, lower-cased), `{SRCIP}` (the host's address at the time of the event, as the firewall logs it), `{T0}` (one raw event time as ISO-8601 UTC, for the `fw_*` FortiGate queries, which build their own narrow windows around it). Run
+`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}` (a quoted, comma-separated list of addresses), `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`, and for `Okta`; `{WTO}` is never later than the time of the run), `{CID}` (one operation's `CorrelationId`; in the `_o365` fallbacks its `InterSystemsId`, the same value), `{HOST}` (the ticket's host name as the events spell it; matched case-insensitively; lower-cased in the `s1_*` inventory queries and `file_download_origin`), `{APP}` (a lower-cased product-name fragment for `s1_app_census`), `{SHA256}` (a file's SHA256, lower-case hex), `{FILE}` (a file name without its `(n)` suffix or extension, lower-cased), `{SRCIP}` (the host's address at the time of the event, as the firewall logs it), `{T0}` (one raw event time as ISO-8601 UTC, for the `fw_*` FortiGate queries, which build their own narrow windows around it), `{SESSION}` (an Entra `SessionId`, for `la_session_trace` and `la_graph_activity`), `{OID}` (the subject's Entra object id), `{TCONTAIN}` (the containment time as ISO-8601 UTC: the first session revocation or password reset, for `la_post_containment`). The `la_*` queries run with `azure_logs_validate` / `azure_logs_search`, not `kql_search`. Run
 `ingext kql validate @<file>` after substituting — it parses in under a second and
 catches a wrong column name before a 20-second scan does.
 

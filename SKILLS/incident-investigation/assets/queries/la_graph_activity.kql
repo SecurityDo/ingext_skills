@@ -1,0 +1,20 @@
+// Log Analytics path. Every Microsoft Graph request the subject's tokens made in the
+// window: what was asked for (RequestUri, method), how much came back
+// (ResponseSizeBytes), from where and with which client (IPAddress, UserAgent, AppId),
+// and the session/token it rode on. This is what "Graph reconnaissance" alerts are
+// about, and it is NOT in the datalake's Office365 audit: a directory dump
+// (GET /users?$top=999) or a $search for payroll/finance staff only shows here.
+// Graph does not log response bodies; size divided by records is the only measure of
+// what was returned.
+// Background noise: the user's own apps (Outlook, Teams, the Authenticator) call /me
+// constantly. Read the rows whose UserAgent or IPAddress is not the user's.
+// Placeholders: {OID} = the subject's Entra object id, {SESSION} = the session to
+// include even if its UserId is blank, {WFROM}/{WTO} = ISO-8601 UTC.
+MicrosoftGraphActivityLogs
+| where TimeGenerated between (datetime("{WFROM}") .. datetime("{WTO}"))
+| where UserId == "{OID}" or SessionId == "{SESSION}"
+| summarize requests = count(), bytes = sum(ResponseSizeBytes), firstSeen = min(TimeGenerated), lastSeen = max(TimeGenerated)
+    by RequestMethod, Uri = substring(RequestUri, 0, 400), ResponseStatusCode, IPAddress,
+       UserAgent = substring(UserAgent, 0, 120), AppId, SessionId
+| order by firstSeen asc
+| take 1000

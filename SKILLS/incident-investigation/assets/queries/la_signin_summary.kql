@@ -1,0 +1,24 @@
+// Log Analytics path. The subject's sign-in profile over 30 days, interactive AND
+// non-interactive, as counts -- run it first. Use it instead of signin_summary.kql
+// whenever the account has an AzureLogAnalytics source: the datalake's AzureSigninLogs
+// can be an incomplete copy, and it has no non-interactive sign-ins, which is where
+// a replayed token shows up.
+// Run with azure_logs_search and rangeFrom = now - 30 days: without it the tool
+// applies the last 24 hours and silently ANDs it with the filter below.
+// Columns differ in type between the two tables (DeviceDetail is dynamic in one and
+// string in the other), so each leg normalises before the union.
+// firstSeen/lastSeen are CreatedDateTime (the event time); TimeGenerated lags it by minutes.
+// Placeholders: {USER} = UPN.
+let UserEmail = "{USER}";
+union
+    (SigninLogs | where TimeGenerated > ago(30d) | where UserPrincipalName =~ UserEmail
+        | extend DD = parse_json(tostring(DeviceDetail)), LD = parse_json(tostring(LocationDetails))),
+    (AADNonInteractiveUserSignInLogs | where TimeGenerated > ago(30d) | where UserPrincipalName =~ UserEmail
+        | extend DD = parse_json(tostring(DeviceDetail)), LD = parse_json(tostring(LocationDetails)))
+| summarize signins = dcount(CorrelationId), failures = dcountif(CorrelationId, tostring(ResultType) != "0"),
+    sessions = dcount(SessionId), apps = make_set(AppDisplayName, 8),
+    firstSeen = min(CreatedDateTime), lastSeen = max(CreatedDateTime)
+    by Table = Type, IPAddress, City = tostring(LD.city), Country = tostring(LD.countryOrRegion),
+       OS = tostring(DD.operatingSystem), Browser = tostring(DD.browser), DeviceId = tostring(DD.deviceId)
+| order by firstSeen asc
+| take 1000

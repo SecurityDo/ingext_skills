@@ -41,6 +41,16 @@ The summary tells you what fired; the raw event tells you what happened.
 - **A vendor's own rule is not a Fluency rule.** If `eventwatch_rule_list` has nothing
   under the rule's name, the logic lives in the vendor console and Fluency only relays
   the alert. The tuning in step 5 then goes to the vendor.
+- **A Defender alert's evidence is not on the summary. Read the alert.** The behavior
+  summary carries the alert's title, IP and verdict, but not its `evidence[]`: the
+  session id, user agent and each address's role (`attacker`, `source`). Pull the raw
+  alert (`lake_search` on the Defender index, `@eventType: MSDefenderAlert`, searching the
+  quoted incident id) before judging it. An AI assist that saw only the summary closed a
+  real stolen-session ticket as "only a single IP, insufficient evidence".
+- **A Defender alert about a user's session or token is an Office365 ticket.** "Possible
+  use of a stolen session cookie", "Anomalous token", "Azure AD threat intelligence",
+  "Graph reconnaissance": run `references/workflows/office365.md` (3a′ traces the
+  session), not this workflow.
 - **Microsoft Defender alerts list each file twice. Read `fileEvidence`.** The alert's
   `evidence[]` has a `fileEvidence` entry per file, with its path, hashes and verdict.
   It also has a `malwareEvidence` entry whose `files[]` repeats the files, but there

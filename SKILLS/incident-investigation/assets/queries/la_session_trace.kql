@@ -1,0 +1,24 @@
+// Log Analytics path. Where one session came from and everywhere it was used.
+// Take {SESSION} from the alert (Defender's cloudLogonSessionEvidence.sessionId, an
+// Identity Protection detection) or from la_signin_detail.kql. The FIRST row is the
+// sign-in that minted the session: its address, user agent and authentication steps
+// are the capture. A stolen session is often minted a day or more before it is
+// replayed, so this looks back 30 days -- pass rangeFrom = now - 30 days.
+// Graph requests made with the session are in la_graph_activity.kql.
+// Placeholders: {USER} = UPN, {SESSION} = the Entra SessionId.
+let UserEmail = "{USER}";
+let Sess = "{SESSION}";
+union
+    (SigninLogs | where TimeGenerated > ago(30d) | where SessionId == Sess
+        | extend LD = parse_json(tostring(LocationDetails)), AD = tostring(AuthenticationDetails),
+                 DD = parse_json(tostring(DeviceDetail))),
+    (AADNonInteractiveUserSignInLogs | where TimeGenerated > ago(30d) | where SessionId == Sess
+        | extend LD = parse_json(tostring(LocationDetails)), AD = tostring(AuthenticationDetails),
+                 DD = parse_json(tostring(DeviceDetail)))
+| where UserPrincipalName =~ UserEmail
+| project CreatedDateTime, Table = Type, IPAddress, City = tostring(LD.city), State = tostring(LD.state),
+    App = AppDisplayName, Resource = ResourceDisplayName, Result = tostring(ResultType),
+    OS = tostring(DD.operatingSystem), UserAgent, UniqueTokenIdentifier,
+    AuthSteps = substring(AD, 0, 600), CorrelationId
+| order by CreatedDateTime asc
+| take 1000

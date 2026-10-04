@@ -1,0 +1,38 @@
+// Log Analytics path. The subject's sign-ins AROUND THE INCIDENT, interactive and
+// non-interactive, one row per sign-in SHAPE (IP, app, result, session, user agent,
+// how each authentication step was satisfied) with its count and firstSeen/lastSeen.
+// Run la_signin_summary.kql first.
+// Window: {WFROM}..{WTO} = the incident time +-24h (ISO-8601 UTC). Pass the same
+// window as rangeFrom/rangeTo, or leave them out and accept that the tool's default
+// (last 24 hours) is ANDed with it.
+// Read it for:
+// - SessionId: every token minted from one sign-in carries it. A session first seen on
+//   an address and device the user never had is a stolen or relayed session, wherever
+//   it is used later -- trace it with la_session_trace.kql.
+// - Methods: "Password: Correct password" on a sign-in that is not the user's is the
+//   proof that the attacker holds the password, not only a token.
+// - ResultType 50074/50076 after "Correct password" = the password was right and MFA
+//   was demanded. 70046/50173 = a token or session was refused (revoked).
+// Placeholders: {USER} = UPN, {WFROM}/{WTO} = ISO-8601 UTC.
+let UserEmail = "{USER}";
+union
+    (SigninLogs | where UserPrincipalName =~ UserEmail
+        | extend DD = parse_json(tostring(DeviceDetail)), LD = parse_json(tostring(LocationDetails)),
+                 AD = parse_json(tostring(AuthenticationDetails))),
+    (AADNonInteractiveUserSignInLogs | where UserPrincipalName =~ UserEmail
+        | extend DD = parse_json(tostring(DeviceDetail)), LD = parse_json(tostring(LocationDetails)),
+                 AD = parse_json(tostring(AuthenticationDetails)))
+| where CreatedDateTime between (datetime("{WFROM}") .. datetime("{WTO}"))
+| mv-apply step = AD on (
+    summarize Methods = make_set(strcat(tostring(step.authenticationMethod), ": ",
+        tostring(step.authenticationStepResultDetail),
+        iff(tostring(step.succeeded) == "false", " (failed)", ""))))
+| summarize signins = dcount(CorrelationId), firstSeen = min(CreatedDateTime), lastSeen = max(CreatedDateTime)
+    by Table = Type, IPAddress, City = tostring(LD.city), State = tostring(LD.state),
+       App = AppDisplayName, Resource = ResourceDisplayName, Client = ClientAppUsed,
+       OS = tostring(DD.operatingSystem), Browser = tostring(DD.browser), DeviceId = tostring(DD.deviceId),
+       UserAgent, Result = tostring(ResultType), ResultDescription,
+       AuthRequirement = AuthenticationRequirement, CA = ConditionalAccessStatus,
+       Risk = RiskLevelDuringSignIn, SessionId, Methods = tostring(Methods)
+| order by firstSeen asc
+| take 1000

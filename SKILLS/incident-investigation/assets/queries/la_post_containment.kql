@@ -1,0 +1,23 @@
+// Log Analytics path. After containment, did anyone still get the password right?
+// Run it from the containment time (the first session revocation or password reset in
+// la_password_events.kql) to now. Every row is a sign-in whose password step
+// SUCCEEDED. Rows from an address, device or user agent that is not the user's mean the
+// attacker still holds a valid password and only the second factor stopped them: the
+// incident is not contained until a password change is confirmed in Entra.
+// Pass rangeFrom = {TCONTAIN} as epoch ms.
+// Placeholders: {USER} = UPN, {TCONTAIN} = containment time, ISO-8601 UTC.
+let UserEmail = "{USER}";
+union
+    (SigninLogs | where UserPrincipalName =~ UserEmail
+        | extend AD = parse_json(tostring(AuthenticationDetails)), LD = parse_json(tostring(LocationDetails))),
+    (AADNonInteractiveUserSignInLogs | where UserPrincipalName =~ UserEmail
+        | extend AD = parse_json(tostring(AuthenticationDetails)), LD = parse_json(tostring(LocationDetails)))
+| where CreatedDateTime > datetime("{TCONTAIN}")
+| mv-expand step = AD
+| where tostring(step.authenticationMethod) == "Password" and tostring(step.succeeded) == "true"
+| summarize attempts = dcount(CorrelationId), firstSeen = min(CreatedDateTime), lastSeen = max(CreatedDateTime),
+    results = make_set(tostring(ResultType))
+    by IPAddress, City = tostring(LD.city), App = AppDisplayName, UserAgent = substring(UserAgent, 0, 120),
+       SessionId
+| order by firstSeen asc
+| take 1000
