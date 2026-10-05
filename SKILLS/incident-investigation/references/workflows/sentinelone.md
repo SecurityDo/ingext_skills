@@ -91,7 +91,8 @@ investigate_sentinelone_alert {
   The alert's own UUID also works. The result's `alertMatchedField` says which matched.
 - Read `associations.confidence`: `high` is an id match, `medium` a shared storyline,
   `low` only the same host in the window. `none` is an answer, not an error.
-- **If the tool fails** ("no SentinelOneEvents integration"), pull each threat from the
+- **If the tool fails** ("no SentinelOneEvents integration", or "alert not found" for the
+  ticket's threat id), pull each threat from the
   index instead: `lake_search` on the quoted threat id, with `@eventType` set to
   `SentinelOneThreat`. When that returns nothing too, the site has only the older feed: read
   the threat's activities from `@s1.*` (by `@s1.threatId`), and record the live endpoint
@@ -158,6 +159,14 @@ If the account has no firewall, proxy or DNS logs for the host, the trigger and 
 followed are gaps. Write them as gaps, and do not fill them with what the process name
 suggests.
 
+- **"Alert not found" is common, not an error in the ticket.** The tool reads
+  SentinelOne's Unified Alerts, and a site can have far fewer of those than threats: one
+  account held 40 threat records and 5 alert records in 30 days. The threat record is still
+  in the index. Read it there (`lake_search` on the quoted threat id, `@eventType`
+  `SentinelOneThreat`, newest first, since each update is a new copy) and carry on with S2.
+  The live endpoint record is then the threat's own `agentRealtimeInfo`, as of the
+  threat's `updatedAt`.
+
 ## S2 — Was it running, or was it found on disk?
 
 These fields decide most SentinelOne tickets. Read them off each threat (S1 result, or
@@ -170,7 +179,47 @@ These fields decide most SentinelOne tickets. Read them off each threat (S1 resu
 | `originatorProcess`, `processUser`, `maliciousProcessArguments` | Who launched it and how. `explorer.exe` run by a named user is a person double-clicking; `services.exe` as SYSTEM is a service. Empty on scan hits. |
 | `mitigationStatus` next to `agentDetectionInfo.agentMitigationMode` | "Not mitigated" under `detect` mode is the policy working as configured, not a failed response. Read the mode on the **threat's own detection record**, never the live endpoint record (see below). |
 | `analystVerdict`, `mitigationStatus: marked_as_benign` | An earlier human decision on the same hash. |
-| `cloudFilesHashVerdict`, `fileVerificationType`, `publisherName` | SentinelOne's cloud rating of the hash; whether the file is signed, and by whom. |
+| `cloudFilesHashVerdict` | SentinelOne's cloud rating of the hash. |
+| `publisherName`, `certificateId`, `fileVerificationType`, `isValidCertificate` | **Who signed it, and whether the signature holds.** Required in every closure, quoted as read, including when empty. See "Who signed it" below. |
+| `mitigationStatus[]` (per action) and `agentRealtimeInfo.rebootRequired` | Whether the response actually finished. See "Is the mitigation finished?" below. |
+
+**Who signed it.** Read the four signer fields before judging what the file did, and
+quote them in the closure whatever they say.
+
+- **`SignedVerified` with `isValidCertificate: true` and a vendor in `publisherName`** means
+  the file is that vendor's build, unless its certificate was stolen, which is rare and
+  needs its own evidence. The question changes from "is this malware?" to "which product is
+  this, is it allowed here, and did the installer do anything an installer wouldn't?". Go
+  to "Is it an installed product?" in S4 and run the census on the publisher's product
+  **before** writing a verdict.
+- **Unsigned, `NotSigned`, or a signature that fails** is a fact about the file, not a
+  verdict. Many in-house tools are unsigned. Say so and carry it to the verdict shapes.
+- **A behavioural "Ransomware" label on a signed installer** is the common false positive:
+  an office suite or similar installer writes tens of thousands of files, registers shell
+  extensions, file associations, COM objects and scheduled tasks, which reads as mass file
+  modification plus persistence. One such installer showed `remediate` 35,421 actions and
+  `quarantine` 1,928. Those counts are the installer's own writes being reversed, not
+  encrypted user files. Never call a signed vendor installer "confirmed ransomware" from
+  the label and the counters alone.
+
+**Behavioural indicators belong to the storyline, not the file.** Under a behavioural
+engine (`DBT - Executables`) the threat's `indicators[]` are collected across its whole
+`storyline`: the file, its parent, its children, and processes it touched. One installer's
+record listed "User logged on", "Suspicious Kerberoasting attack. Too many SPN tickets
+requests", "Detected attempt to query the SAM" and "illegitimate access to … Edge's
+private memory" next to persistence and shell-extension indicators. An installer explains
+the second group. It does not obviously explain the first.
+
+- **Before citing an indicator against the file, attribute it to a process.** The record
+  does not say which process raised each indicator. The storyline does (the SentinelOne
+  console's storyline view, or Deep Visibility on the `storyline` id).
+- **If the index cannot attribute it, the unexplained indicators are the escalation
+  question.** Name them, name the storyline id, and say what would settle it. They are
+  neither proof against the file nor noise to drop.
+- **Group the indicators** in the closure: the ones the product's own install explains
+  (shell extension, file association, COM, scheduled task, registry), and the ones it does
+  not (credential access, injection into unrelated processes). The second group decides
+  the verdict.
 
 **Indicators say what a file *can* do, not what it did.** A threat's `indicators[]` come
 from the engine that judged it. Under a static engine every entry is a **capability read
@@ -227,6 +276,27 @@ Before writing the verdict, re-read each threat's `confidenceLevel`, `mitigation
 `updatedAt`, and list every detection on the agent since the ticket's first one. State in the
 closure the time your evidence runs to, and say that a later SentinelOne action can change
 the verdict.
+
+**Is the mitigation finished?** The top-level `threatInfo.mitigationStatus: mitigated` is
+set as soon as the first action succeeds. Each entry of `mitigationStatus[]` has its own
+`status` and `actionsCounters` (`success`, `failed`, `pendingReboot`, `notFound`):
+
+- `status: pending-reboot`, any `pendingReboot > 0`, or `agentRealtimeInfo.rebootRequired:
+  true` means the remediation or rollback is **not complete** until the host restarts.
+  Activities `2032` / `2033` ("A reboot is required … to complete the remediate / rollback")
+  say the same thing.
+- `failed > 0` on `rollback` means some of the changes were not reversed. Name the count,
+  and recommend checking those items after the reboot.
+- Never write "kill, quarantine, remediate and rollback all completed" without these
+  fields, and never explain the counters (for example as a group-wide broadcast) without
+  evidence. Quote them as read.
+
+**An analyst verdict from the customer's MDR is a relayed claim.** `analystVerdict:
+true_positive` set by a managed-detection provider's user usually means "a valid
+detection, now handled", not "proven malicious". The same provider marked a comparable
+detection on the same account `false_positive` two days earlier. Quote it with who set it
+and when, and weigh it as one party's disposition, never as independent confirmation of
+your verdict (SKILL.md, "A relayed claim inherits none of the original's confidence").
 
 **"Killed" does not prove it was running.** Activity `2001` "successfully killed the threat"
 is reported as part of every remediation, even when no process existed. Evidence of
@@ -328,7 +398,13 @@ launch.
 ### Is it an installed product?
 
 When the detection is a **named application** rather than a dropped file (a remote-access
-tool, an updater), count its installs with `assets/queries/s1_app_census.kql`. Hundreds of
+tool, an updater), count its installs with `assets/queries/s1_app_census.kql`. Treat it as
+named when **any** of these name a product: the rule, the threat's `publisherName` (S2), or
+the file name itself (a vendor's web installer often carries the product in its name, with a
+download token appended). Use the product or the publisher as `{APP}`. On one ticket the
+census found the same vendor's suite already on four other hosts at four different versions,
+which pointed to users installing it themselves. An investigation that skipped the census
+called that installer "confirmed ransomware". Hundreds of
 hosts means deployed software; one host is the finding.
 
 **A hash hit can be a named application that does not look like one.** Two signs:
@@ -460,6 +536,8 @@ and expect tickets that fit none of these rows.
 | A STAR hash rule matched a cached installer (`C:\Windows\Installer\<hex>.msi`) during a full disk scan, with no threat record and no process. The inventory names the product at a version outside the range the rule targets, installed across the account | Benign for the host. The finding is the rule's hash list, tuned in the SentinelOne console. If the hash was identified from the inventory alone, say so. Inside the range: escalate as a fleet exposure covering every host with that version |
 | A network STAR rule matched one browser DNS lookup to an uncommon-TLD domain. The firewall log shows it fetched in the same burst as a page's ad and analytics hosts, with a few minutes of small transfers and nothing after. The rule fires on many hosts and its earlier copies were closed | Benign, citing the page-load burst and the traffic that followed, not the process name. Tuning (a threshold, distinct domains, or excluding ad-serving lookups) goes to the SentinelOne console. Repeating connections or a non-browser actor: escalate |
 | The same network STAR rule on one host on several working days, one domain. Each anchored lookup (first, latest, one between) sits inside the same site's page load or its ad-slot refreshes, with a few small flows after each | Benign: a site the user keeps open serves the domain through its ads. Tuning is an exclusion for that domain in the SentinelOne console; the recurrence is the user's habit, not persistence. A lookup with no page load around it: escalate |
+| A vendor-signed (`SignedVerified`) installer the user launched from the browser, behavioural engine labels it "Ransomware" at suspicious confidence, auto-killed with mass remediation counts, the product already installed on other hosts. All indicators are explained by the install | Benign for the host: an unapproved application, not an attack. Recommend the customer decide whether the product is allowed, finish the pending reboot, and check failed rollback items. Not containment |
+| The same, but the storyline also carries indicators the install does not explain (credential access, SAM or Kerberos activity, injection into unrelated processes) | Escalate with one question: which process in storyline `<id>` raised those indicators? From the installer: benign as above. From anything else: contain |
 | A signed installer from a browser download writing further executables under the user's profile, single host, no spread | Usually an unwanted application the user installed; confirmed once the parent ran, contained when every child is quarantined; recommend checking persistence (Run keys, scheduled tasks, services) |
 
 **Every verdict is as of a time.** A SentinelOne ticket keeps moving after it is raised:

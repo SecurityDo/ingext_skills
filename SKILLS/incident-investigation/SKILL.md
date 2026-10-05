@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.20
+version: 1.2.21
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -373,6 +373,14 @@ What to take from it:
   has been the dominant one, and the rule's own severity a minority share.
 - the **AI-assist verdict** from `comments[]` (`username: "AI-Assistant"`, content is a
   JSON string). Read its `keyQuestions` as a to-do list, not as findings.
+- the **ticket's own history**: every entry in `comments[]`, in `createdOn` order, with
+  who made it (a person's address, or `AI-Assistant`) and its `actions` (status and
+  classification changes). The ticket's final `status` / `classification` is only the
+  last write. It can be an AI-assist overwriting a person's decision minutes earlier.
+  In one ticket an analyst closed it as a true positive and the AI-assist set "False
+  Positive" three minutes later, and an investigation that read only the final fields
+  credited the AI with the close. Quote the sequence in the closure, and say who
+  decided what.
 - the **`behaviorRules` list** — the names to hand to `eventwatch_rule_get` in step 5, and the key to step 3's workflow choice.
 
 Use `behavior_event_search` for the individual events behind a summary row; those
@@ -421,6 +429,13 @@ Factor scores, from `fsbv2/risk/risk_config.json`:
 | `ALERT_SEVERITY_HIGH` | alert | 400 |
 | `ALERT_SEVERITY_CRITICAL` | alert | 600 |
 | `ML_NEW_ALERT` / `ML_NEW_USER` / `ML_NEW_ASSET` | machine learning | 500 |
+| `VT_MALWARE` / `REPUTATION_FILE` | reputation | 1000 |
+| `VT_POSITIVE` / `VT_UNKNOWN_HASH` | reputation | 500 |
+
+**Reputation is its own dimension.** A VirusTotal hit on a file hash adds a third
+dimension, which doubles the multiplier again. So two VirusTotal engines out of 71
+weigh more in the score than the alert's own severity. Read the hit's ratio
+(`VT lookup: positive file: (2/71)`) before reading its score as a verdict.
 
 **`ALERT_POLICY` and `ALERT_SEVERITY_MEDIUM` are both 200**, so on the alert
 dimension they are indistinguishable when you work backwards from a score alone.
@@ -432,7 +447,11 @@ Worked: a passkey enrolment day with 6 events scoring 3600 —
 `ALERT_SEVERITY_HIGH` 400 × 1 × **2 appends (capped)** = 800, plus `ML_NEW_USER`
 500 × 2 (local) × 1 = 1000; subtotal 1800, two dimensions → ×2 → **3600**. A
 service-principal removal scoring 8400 — `ALERT_POLICY` 200 × 1, plus two
-**global** ML hits at 500 × 4 each; subtotal 4200, ×2 → **8400**.
+**global** ML hits at 500 × 4 each; subtotal 4200, ×2 → **8400**. An EDR detection
+scoring 12800 — `ALERT_SEVERITY_MEDIUM` 200, plus `ML_NEW_ASSET` 500 × 2 (local) on two
+hits (new host, new key) = 2000, plus `VT_MALWARE` 1000 on a 2/71 hash; subtotal 3200,
+three dimensions → ×4 → **12800**. The first time the host was seen accounts for 62% of
+the subtotal.
 
 Three consequences that change what you recommend:
 
@@ -522,7 +541,9 @@ is another entity's summary, which is the useful one to read. The exclusion remo
 only that one daily document — the subject's other days still count. What to read: the
 `key` facet is the set of distinct entities that fired the rule — the base rate is its
 length, not counting the subject if its key appears from another day — `dayIndex` shows whether they cluster on
-one day, and `status` / `classification` show how earlier copies were closed. Skip
+one day, and `status` / `classification` show how earlier copies were closed. **Name
+the keys in the closure, not just their number**, so a miscount can be seen: one run
+reported "2 other assets" when the facet held 3. Skip
 `O365_AzureAD_UserLoggedIn`-style background rules that fire for everyone every day;
 their base rate is the whole tenant and says nothing.
 
