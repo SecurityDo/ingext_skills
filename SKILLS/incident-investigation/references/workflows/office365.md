@@ -2,8 +2,9 @@
 
 Run this when the ticket is an **Office365 / Entra ID** incident — its `behaviorRules`
 start with `O365_`, `AzureAD_` or `Fluency_O365_` (see the routing table in SKILL.md
-step 3). It is three checks, usually run in this order; each one's result goes into the
-step-5 closure with the index it came from.
+step 3). It is three checks, usually run in this order, plus **3d** for an outbound-spam
+or sending-limit alert; each one's result goes into the step-5 closure with the index it
+came from.
 
 > **Guidance, not a script — but every check that applies runs.** These are the checks
 > that settled past tickets of this type, in a sensible order. Add checks or reorder them
@@ -364,3 +365,72 @@ A benign verdict rests on negatives, and they have to be collected, not assumed.
   An action the subject took that matters (a role granted to someone else, a
   conditional-access or app change) is found in the summary's "by subject" rows; pull
   its operations with the detail query rather than listing all of them.
+
+## 3d — Outbound spam: find what actually sent the mail
+
+Run this when the ticket is a sending-limit or outbound-spam alert: the rule is an
+`O365_SCC_Threat_Management_Alert_*` whose data says `EmailSendingLimitExceeded`, "User
+restricted from sending email" or `RecipientRateLimitExceeded`, or the account has a
+`HygieneTenantEvents` row with `Event: Listed`. Exchange has already stopped the mailbox
+from sending; the question is **what submitted the mail**, because that decides between a
+compromised account and a business system that outgrew a mailbox.
+
+The usual reading of these alerts, "high volume, so the account is compromised: block it
+and reset the password", is the one to test, not to act on. A reset does nothing to an
+application that relays through an on-prem server, and a block stops a business process.
+
+1. **Is this the first?** `assets/queries/sending_limit_census.kql` lists every restriction
+   and sending-limit alert on the account in 30 days. Its control is the ticket's own
+   restriction. Read `Reason` whole: `RecipientCountLast24Hours`, the limit, and the last
+   message trace id (the customer's Message Trace starts from it). The same mailbox listed
+   on the same weekday every month is a scheduled job.
+2. **Did the mail go through the mailbox?** `assets/queries/send_audit_ctl.kql` counts
+   Send / SendAs / SendOnBehalf over the incident window, with the subject's rows split
+   by client (`ClientInfoString`) and address. Rows for the subject name the path: a
+   mail client, OWA, a REST client or SMTP AUTH, and the address it came from. **Zero
+   rows for the subject next to many other senders** means the mail did not pass through
+   the mailbox. Mail that an on-prem relay submits through a connector never does. Do not
+   write "mailbox auditing is disabled" from that zero alone: it is one explanation, and
+   the relay is another.
+3. **Can the sign-in table see the sender?** `assets/queries/signin_coverage_ctl.kql`
+   splits the sign-in table by interactive and non-interactive, with the subject's rows
+   and Authenticated SMTP rows. SMTP AUTH is a non-interactive sign-in. On a feed with **no
+   non-interactive rows**, the subject's zero sign-ins rule out an interactive takeover
+   only. SMTP AUTH from the internet is then a gap, stated as one, never a negative.
+4. **Which host sent it?** On an account with FortiGate tables, run in order, one at a
+   time (they scan the traffic table, about a minute each):
+   - `assets/queries/fw_smtp_senders.kql` over the 24 hours before the restriction: every
+     internal host sending SMTP, to Microsoft's mail edge (`52.101.x` on 25) or to an
+     internal relay. A host sending to the mail edge is the relay or an application with
+     a connector; hosts sending to that relay are its clients.
+   - `assets/queries/fw_smtp_sender_baseline.kql` on each candidate: eight days, per day.
+     **Compare working day with working day.** On one account the relay carried about 200
+     connections on a weekend day and 547–1,314 on weekdays. The incident Monday's 940 read
+     as "five times normal" against the weekend and was ordinary against the week.
+   - `assets/queries/fw_smtp_sender_hourly.kql` on the incident day. A large session at the
+     same hour on every baseline day is a scheduled job, not the spike.
+   - `assets/queries/host_ip_owner.kql` to name each address: a relay often has a second
+     address that no inventory knows.
+   - Then the relay host's own EDR record (threats on its agent id, SentinelOne workflow
+     S5) for anything that ran on it.
+
+   **What the firewall can and cannot say.** It counts SMTP connections, not messages,
+   recipients or sender addresses: it cannot tie the subject's 10,000 recipients to one
+   relay connection. Hosts on the relay's own subnet reach it without crossing the
+   firewall. A relay that sends far more than the firewall saw it receive is not by
+   itself the source of the mail. "The mail most likely left through <relay>" is an
+   inference from the subject having no cloud sends; label it so. Recipients, sender
+   addresses and the client that submitted each message are in the customer's Message
+   Trace and the relay's own logs. Name both as the place the question is answered.
+5. **Takeover negatives still run.** `bec_sweep.kql` (inbox rules, forwarding, delegated
+   access, consent) and the directory summary. A `LastDirSyncTime` change on a long-idle
+   synced account reads like someone touching it. Before citing one, count how many
+   accounts the same sync service principals touched that day: on one account a single
+   morning's sync touched 161 users, 17 of them idle for over a year.
+
+| What 3d shows | Verdict |
+|---|---|
+| No sign-ins or sends by the subject, no takeover changes, an internal relay carrying the account's mail at its normal weekday volume | Escalate with one question: which system on <relay> sends as this mailbox, and what changed the recipient count? Keep the mailbox restricted until the customer answers; no password reset on this evidence |
+| The subject's own Send rows from SMTP AUTH or a REST client at an address 3a does not resolve to the tenant, or inbox rules / forwarding created around the burst | Account compromise: contain (block sign-in, revoke sessions, change the password, remove the rules), then pull the recipients from Message Trace |
+| The same mailbox restricted on a regular schedule, sent through the relay at the job's usual hour | Benign business process outgrowing a mailbox: the fix is a bulk-mail path for that system, and the restriction is the symptom |
+

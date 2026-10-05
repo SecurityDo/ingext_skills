@@ -1,0 +1,14 @@
+// What the sign-in table can see. Splits the account's 30 days of sign-ins by
+// IsInteractive, with the subject's rows and Authenticated SMTP rows in each.
+// A tenant whose feed carries no non-interactive rows cannot show SMTP AUTH,
+// app or refreshed-token sign-ins at all: a zero for the subject there is a gap,
+// never "nobody signed in". Run it before reading any sign-in zero as a negative.
+// Placeholders: {USER} = UPN, lower-cased.
+AzureSigninLogs
+| where TimeGenerated > ago(30d)
+| extend u = tolower(tostring(UserPrincipalName)), client = tostring(ClientAppUsed)
+| summarize rows = count(), users = dcount(u), subjectRows = countif(u == "{USER}"),
+    smtpAuthRows = countif(client == "Authenticated SMTP"),
+    subjectSmtpAuth = countif(u == "{USER}" and client == "Authenticated SMTP")
+    by Interactive = tostring(IsInteractive)
+| take 10

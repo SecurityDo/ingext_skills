@@ -1,0 +1,19 @@
+// One SMTP sender's connections per hour, from a day before {T0} to three hours
+// after: when in the day the volume came. Run fw_smtp_sender_baseline.kql first;
+// an hour only stands out against the same hour on a comparable working day.
+// maxSessionBytes is the largest single session in the hour (sentbyte is
+// cumulative per session, so max, never sum). A large session at the same hour on
+// the baseline days is a scheduled job, not the spike. Name the host with
+// host_ip_owner.kql.
+// Placeholders: {SRCIP} = the sender's address from fw_smtp_senders.kql;
+// {T0} = the restriction time, ISO-8601 UTC.
+NetworkFortigateTraffic
+| where TimeGenerated between ((datetime("{T0}") - 1d) .. (datetime("{T0}") + 3h))
+| where tostring(srcip) == "{SRCIP}"
+| extend dstport = toint(dstport)
+| where dstport in (25, 465, 587)
+| summarize flows = dcount(strcat(tostring(srcport), ">", tostring(dstip), ":", tostring(dstport))),
+    maxSessionBytes = max(tolong(sentbyte))
+    by hour = bin(TimeGenerated, 1h)
+| order by hour asc
+| take 1000

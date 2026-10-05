@@ -1,0 +1,20 @@
+// One SMTP sender's connections per day for the eight days up to {T0}: the
+// baseline the spike is judged against. Compare the incident day with the SAME
+// WEEKDAY a week earlier and with other working days, never with a weekend: a
+// relay that carries 200 connections on a Saturday and 1,300 on a Friday makes
+// an ordinary Monday look like "5x normal" against the weekend. maxSessionBytes is
+// the largest single session that day (sentbyte is cumulative per session, so
+// max, never sum); a large session at the same hour every day is a scheduled job.
+// Flows are SMTP connections, not messages or recipients.
+// Placeholders: {SRCIP} = the sender's address from fw_smtp_senders.kql;
+// {T0} = the restriction time, ISO-8601 UTC.
+NetworkFortigateTraffic
+| where TimeGenerated between ((datetime("{T0}") - 8d) .. (datetime("{T0}") + 3h))
+| where tostring(srcip) == "{SRCIP}"
+| extend dstport = toint(dstport)
+| where dstport in (25, 465, 587)
+| summarize flows = dcount(strcat(tostring(srcport), ">", tostring(dstip), ":", tostring(dstport))),
+    maxSessionBytes = max(tolong(sentbyte))
+    by day = bin(TimeGenerated, 1d)
+| order by day asc
+| take 1000

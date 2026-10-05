@@ -1,0 +1,27 @@
+// Which internal hosts sent SMTP (25/465/587) in the window, and to where. An
+// internal host sending to Microsoft's mail edge (52.101.x on port 25) is an
+// on-prem relay or an application submitting through a connector; an internal
+// host sending to another internal address is a hop to that relay. Inbound
+// scanners (public sources) are excluded. One row per source, destination class
+// and port, counting flows by the client-side key so several firewalls logging
+// one flow count once (references/fortigate.md). Flows are SMTP connections, not
+// messages or recipients: one connection can carry many. Only traffic that crosses
+// the firewall is here: hosts on the relay's own subnet hand it mail unseen, so a
+// relay sending far more than it receives is not by itself the relay generating
+// the mail. make_set's size argument is not enforced by this engine; dsts lists
+// every destination.
+// Placeholders: {WFROM}/{WTO} = the 24 hours before the restriction, plus a margin.
+NetworkFortigateTraffic
+| where TimeGenerated between (datetime("{WFROM}") .. datetime("{WTO}"))
+| extend srcip = tostring(srcip), dstip = tostring(dstip), dstport = toint(dstport)
+| where dstport in (25, 465, 587)
+| where srcip startswith "10." or srcip startswith "192.168."
+    or srcip matches regex @"^172\.(1[6-9]|2[0-9]|3[01])\."
+| extend dstInternal = dstip startswith "10." or dstip startswith "192.168."
+    or dstip matches regex @"^172\.(1[6-9]|2[0-9]|3[01])\."
+| summarize flows = dcount(strcat(srcip, ":", tostring(srcport), ">", dstip, ":", tostring(dstport))),
+    dsts = make_set(dstip, 10), devices = make_set(tostring(devname), 5),
+    first = min(TimeGenerated), last = max(TimeGenerated)
+    by srcip, dstport, dstInternal
+| order by flows desc
+| take 1000

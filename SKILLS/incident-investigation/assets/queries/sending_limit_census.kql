@@ -1,0 +1,20 @@
+// Every outbound-spam restriction and sending-limit alert on the account in the
+// last 30 days. HygieneTenantEvents with Event "Listed" is the restriction itself
+// (EventValue = the mailbox, Reason = the limit hit, e.g.
+// RecipientRateLimitExceeded;RecipientCountLast24Hours=10000, and the last message
+// trace id). AlertTriggered is the alert raised for it; its UserId is the alert
+// service, not the mailbox. One mailbox listed once is a first; the same mailbox on
+// the same weekday each month is a scheduled job. The control is the ticket's own
+// restriction: a census that does not find it is broken, not empty.
+// Placeholders: none.
+Office365
+| where timestamp > ago(30d)
+| where Operation == "HygieneTenantEvents"
+    or (Operation == "AlertTriggered" and (tostring(Name) contains "sending limit"
+        or tostring(Name) contains "restricted from sending"))
+| summarize n = count(), first = min(timestamp), last = max(timestamp)
+    by Operation = tostring(Operation), Name = tostring(Name),
+       Mailbox = tolower(tostring(EventValue)), Event = tostring(Event),
+       Reason = tostring(Reason)
+| order by first asc
+| take 1000

@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.21
+version: 1.2.22
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -592,7 +592,7 @@ workflow file:
 
 | `behaviorRules` prefix | Incident type | Workflow |
 |---|---|---|
-| `O365_`, `AzureAD_`, `Fluency_O365_`, and Defender alerts on a user (stolen session, token, Graph reconnaissance) | Office365 / Entra ID | `references/workflows/office365.md` — 3a resolve every address, 3a′ trace the session, 3b the approving device (auth incidents only), 3c prove what did not happen, including whether it is contained |
+| `O365_`, `AzureAD_`, `Fluency_O365_`, and Defender alerts on a user (stolen session, token, Graph reconnaissance) | Office365 / Entra ID | `references/workflows/office365.md` — 3a resolve every address, 3a′ trace the session, 3b the approving device (auth incidents only), 3c prove what did not happen, including whether it is contained, 3d what actually sent the mail (outbound-spam and sending-limit alerts) |
 | `okta_` | Okta sign-in / account | `references/workflows/okta.md` — K1 which path every sign-in took, K2 did any of it succeed, K3 the same signature on other accounts, K4 what changed on the account, K5 what the real sign-ins look like, K6 prove what did not happen up to where the data reaches |
 | `SentinelOne:`, `Fluency_SentinelOne_` | SentinelOne EDR alert | `references/workflows/sentinelone.md` — S1 pull each alert whole, S2 running or at rest, S3 agent time and ownership, S4 hash prevalence and origin, S5 prove what did not run, S6 reconcile counts, S7 score, tuning and side findings |
 | anything else (`GoogleWorkspace_`, …) | no dedicated workflow yet | `references/workflows/generic.md` — G1 read the raw events, G2 how common the artifact is, G3 resolve every indicator, G4 raw timeline, G5 prove what did not happen, G6 side findings |

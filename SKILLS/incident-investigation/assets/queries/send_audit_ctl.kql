@@ -1,0 +1,19 @@
+// Did the mail go through the mailbox? Exchange audits Send / SendAs /
+// SendOnBehalf when a client submits from the mailbox (Outlook, OWA, a REST or
+// SMTP AUTH client). Rows for the subject show the client and address that sent.
+// Zero rows for the subject next to many senders on the tenant (the control, the
+// isSubject=false rows) means the mail did not pass through the mailbox: it came in
+// through a connector from an on-prem relay, or the mailbox is not audited. It does
+// not by itself mean "auditing is disabled". Counts per client, not raw rows.
+// Placeholders: {USER} = the mailbox UPN, lower-cased; {WFROM}/{WTO}.
+Office365
+| where timestamp between (datetime("{WFROM}") .. datetime("{WTO}"))
+| where Operation in ("Send", "SendAs", "SendOnBehalf")
+| extend u = tolower(tostring(UserId)), owner = tolower(tostring(MailboxOwnerUPN))
+| extend isSubject = u == "{USER}" or owner == "{USER}"
+| extend client = iff(isSubject, tostring(ClientInfoString), ""),
+         ip = iff(isSubject, tostring(ClientIP), "")
+| summarize events = count(), senders = dcount(u), first = min(timestamp),
+    last = max(timestamp) by Operation, isSubject, client, ip
+| order by isSubject desc, events desc
+| take 1000
