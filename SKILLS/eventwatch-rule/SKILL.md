@@ -1,6 +1,6 @@
 ---
 name: eventwatch-rule
-version: 1.0.0
+version: 1.1.0
 description: >-
   Create, test, deploy and release an Ingext EventWatch rule — the behavior and aggregation rules
   that turn parsed events into behavior signals. Use this skill whenever the user asks to "create
@@ -32,7 +32,10 @@ name             unique per tenant; the file is rule_<name>.json
 group            folder name, e.g. Fortigate
 eventSelector    which events match
   mustFilters      AND of filters; terms within one filter are OR'd
-  mustNotFilters   exclusions
+  mustNotFilters   exclusions; each one drops an event on its own (they are OR'd)
+  eventFilter      a Lucene string; the server compiles it into `query`
+  query            GENERATED from eventFilter on every write -- never hand-write it
+  jsonFilter       Lua script -- deprecated; still evaluated, but do not add new ones
 behaviorRule     what to emit when they do
   key / keyType    the entity: a field path, and username | asset | ip
   behavior         security alert | application activity | account login | network access
@@ -46,6 +49,41 @@ timeSlices       ["1d","1h","1m"]
 
 `filterType` values in use: `field`, `exists`, `entityinfo`, `contains`, `startswith`,
 `endswith`. `entityinfo` matches the field against a named EntityInfo list (`HOME_NET`).
+
+### `eventFilter` and `query`: write the Lucene, let the server compile
+
+`query` is not an input. On every `rule_add` / `rule_update` the server rewrites the selector
+(unless `matchAll` or `lvdbQueryFlag` is already set):
+
+| What you send | What the server stores |
+| --- | --- |
+| no `eventFilter`, no must/mustNot filters, no `jsonQuery` | `matchAll: true` |
+| `eventFilter` set | `query` = the Lucene parsed into an ES bool, **replacing any `query` you sent**; a parse error refuses the write |
+| no `eventFilter`, but must/mustNot filters, no `LVDBQuery` | `query` = `{"match_all":{}}` |
+
+So a hand-written `query` with an empty `eventFilter` is silently replaced by `match_all`, and the
+rule matches more than you meant. Put the condition in `eventFilter`. In repo files, keep the
+compiled `query` next to it, copied from a `rule_get` read-back, as every existing rule with an
+`eventFilter` does.
+
+**An exclusion that needs two conditions together goes in `eventFilter`.** `mustNotFilters`
+are OR'd, so two of them drop events matching *either* value — usually far too much. Write the
+pair as one Lucene clause:
+
+```
+NOT (@fields.ParametersFields.Identity:"DiscoverySearchMailbox{D919BA05-46A6-415f-80AD-7E09334BB852}" AND @fields.ParametersFields.User:"Discovery Management")
+```
+
+which compiles to `bool.must_not[ bool.must[ term, term ] ]`. That example is a real one: Exchange
+Online periodically re-grants its own Discovery Management role group FullAccess on the built-in
+discovery mailbox, and a FullAccess-grant rule fires on it every couple of weeks in every tenant.
+Excluding either field alone would also hide a real grant on that mailbox, or a real grant *to*
+that role group.
+
+**Don't add a Lua `jsonFilter`.** It is deprecated. Existing rules that carry one still run, and
+the engine still evaluates it, so leave them alone unless you are rewriting the rule anyway. For
+new work, match the processor-flattened fields with filters: `@fields.ParametersFields.AccessRights`,
+not a Lua loop over `@fields.Parameters`.
 
 Two detection types:
 
@@ -133,6 +171,17 @@ Two things worth deciding deliberately:
   renders as the literal string `__undefined` in the behavior event. If your selector narrows
   to a subset of events, re-check that every attribute still exists on that subset.
 
+  The usual source of a permanent `__undefined` is an attribute borrowed from a sibling
+  operation. One Exchange mailbox-permission rule carried a `Trustee` attribute, a parameter of a
+  *different* cmdlet that `Add-MailboxPermission` never sends; the real grantee was in an
+  attribute named `User`, right next to `UserId` (the actor). Every behavior summary read
+  `Trustee: __undefined`, and two automated triage tiers reported the grantee as unknown. Facet
+  each attribute's field over the selector's real hits: one that is never populated is removed,
+  not tolerated.
+- **Name attributes for what they are.** The alias is all a reader (or an AI triage step) sees.
+  `Grantee` and `Mailbox` say what `User` and `ObjectId` do not. Renaming an alias changes no
+  value, so it does not change the dedup key either.
+
 The platform lowercases the key (`originalKey` keeps the raw value), so mixed-case usernames
 collapse to one entity on their own.
 
@@ -158,6 +207,14 @@ miss_web_deny            -        -         -
 
 Include, at minimum: one event per branch you intend to match, one event per branch you
 intend to *exclude*, and one event from a different vendor entirely.
+
+**`--content` tests the file as written, not as it will be stored.** `rule_test` honours a
+`query` passed inline, but a deploy recompiles `query` from `eventFilter` (see Anatomy). A
+hand-written `query` exclusion therefore passes here and is gone on the tenant. The matrix only
+counts once it has been re-run against the read-back rule (step 6). The same tests are available
+as MCP tools (`eventwatch_rule_list`, `eventwatch_rule_get`, `eventwatch_rule_test`, all
+read-only); passing a `rule_get` result to `eventwatch_rule_test` tests exactly what is stored.
+Rule writes (`rule_add`, `rule_update`, `rule_toggle`) are CLI only.
 
 A hit prints the rendered `description`, the `valueMap`, and the full `behaviorEvent` with
 resolved attributes — read them. That is where `__undefined` and an unrendered `{{.Alias}}`
@@ -251,7 +308,15 @@ ingext eventwatch rule_get --name <name>               # read back what was stor
 ```
 
 Then re-run the step 4 matrix with `--name` against the deployed rule, not `--content`. They
-can differ — a field the server rejects or defaults is only visible on read-back.
+can differ — a field the server rejects or defaults is only visible on read-back. Check
+`eventSelector.query` on the read-back first: `{"match_all":{}}` where you expected an exclusion
+means the condition was written into `query` instead of `eventFilter`.
+
+**While a `_Local` copy runs next to its global rule, both fire.** Every matching event raises
+two behaviors on the same key, and the local copy starts with no `first` history, so its
+first-seen detections fire on the early events. The tenant's scores for those entities are
+inflated until the copy is deleted. Say so to whoever triages that tenant, and keep the
+window short.
 
 ## Step 7 — Verify it fires on live traffic
 
