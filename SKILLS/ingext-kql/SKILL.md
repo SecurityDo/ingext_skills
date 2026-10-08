@@ -1,6 +1,6 @@
 ---
 name: ingext-kql
-version: 1.0.9
+version: 1.1.0
 description: >
   Generate a validated KQL query for the Ingext datalake from a natural-language description.
   Use this skill whenever the user asks to query, search, count, aggregate, or report on data
@@ -97,6 +97,7 @@ These tools are available via the connected Ingext MCP connector. Use them on de
 | Tool | When to use |
 |---|---|
 | `list_data_tables` | You don't yet know which table to query. Returns the tenant's `streamTables` (event logs) and `resourceTables` (entity snapshots) — both KQL-queryable — each with a name + short description. **Call this first.** *(This is the tool that replaces the old `list_indexes`.)* |
+| `list_entity_tables` | You want to enrich or filter events with a lookup (event-ID descriptions, watchlists, subnets, license names). Returns the tenant's entityinfo tables with `kqlName`, `fields` and `lookupType`. Optional — see **Entity tables**. |
 | `validate_kql` | You have a candidate query. **Always call this before returning your final answer.** Returns `OK` or a parser error. |
 
 Schema columns and example queries come from the **embedded KB** (`references/schemas/`), not from a tool. Read those files directly.
@@ -127,6 +128,9 @@ Check the table's `queries` in the manifest. If one is close to the user's reque
 ### 4. Draft the KQL
 Use the **table name** (from `list_data_tables`) as the identifier. Reference only columns that appear in the schema you loaded. If the user's request can't be answered with the available data, say so in `explanation` and return an empty `kql`.
 
+### 4b. Enrich with an entity table (optional)
+If the question would read better with a description, label, group or watchlist flag attached to a raw value — an event ID, an operation name, a status code, a source IP's subnet, a SKU ID — check for an entity (lookup) table and `join` it in. Skip this step when the user just wants raw events or counts. Follow **Entity tables** below; the entity-table skill (`ingext-entity-tables`) owns discovery and searching of those tables.
+
 ### 5. Validate
 Call `validate_kql`. If it errors, read the message, fix the query, and call again. Common causes: a wrong column name, a case mismatch in the table identifier, or an idiom the engine doesn't support (e.g. the parser may reject the wildcard form `summarize arg_max(col, *)` — replace `*` with the explicit columns you need). Always double-check column and table names against the embedded schema and `list_data_tables`.
 
@@ -141,7 +145,7 @@ Emit a single JSON object — no prose wrapper, no markdown fence:
 }
 ```
 
-`tables` must contain **table names** exactly as they appear in KQL.
+`tables` must contain **table names** exactly as they appear in KQL — including any `ENTITY_*` table joined in.
 
 ---
 
@@ -173,6 +177,53 @@ Emit a single JSON object — no prose wrapper, no markdown fence:
 - **Dynamic JSON fields:** use `.` navigation and cast with `tostring()` / `tolong()` before aggregating.
 
 For full syntax, read `references/kql_syntax.md`. For dynamic-JSON handling, read `references/dynamic_json.md`. For worked, table-specific examples, read the relevant `references/schemas/<TableName>/queries/*.yaml`.
+
+---
+
+## Entity tables (enrichment with JOIN)
+
+Entity tables are small lookup tables (`ENTITY_*`) that Fluency ships into each tenant or the tenant imports itself: event-ID/status-code descriptions, watchlists, whitelists/blacklists, critical users/assets/subnets, corporate subnets, license SKUs. They are **not** in `list_data_tables` and **not** in the schema KB. Use the `ingext-entity-tables` skill (or `list_entity_tables` directly) to discover them per tenant, then `join` them onto the event table to enrich results.
+
+**Rules**
+- **Discover first, never guess.** Call `list_entity_tables(account)`. Use each table's `kqlName` verbatim and only the columns in its `fields`. Catalogs differ per tenant; if the table you want is absent, say so and answer without it.
+- **All entity columns are strings.** Wrap with `toint()` / `todouble()` before arithmetic. Spaced names need brackets: `['Event ID']`, `['ENTITY_Microsoft License List']`.
+- **Entity tables are snapshots:** no time filter and no dedup on the entity side. Only the event table gets `where TimeGenerated > ago(...)`.
+- **Sample the entity table first** (`<kqlName> | take 10`) and compare key formats with the event column. Keys rarely match raw — normalise on the event side with `extend` (e.g. `strcat(ActivityDisplayName, ".")` for `ENTITY_O365_Azure_Administrative_Operations`, whose operations end in a period; country lists hold full names while `AzureSigninLogs.Location` holds codes like `US`).
+- **Use `join`, not `in (<entity> | project ...)`.** A subquery inside `in (...)` does not parse.
+- **Pick the join kind for the intent:** `kind=inner` keeps only matches (watchlist/filter); `kind=leftouter` keeps all events and adds the description (then test `isnotempty(<entity col>)`); a leftouter plus `where isempty(<entity col>)` is an anti-join (not on the whitelist).
+- **Check `lookupType`:** `string_match` joins on equality; `prefix` rows are prefixes (match with `startswith`, not `==`); `CIDR` rows are subnets (use the range pattern below); `translation` tables map an AgentID to `##username`, `##asset`, `##ip`.
+- **Aggregate before joining** when you can (as in the examples) so the join runs over distinct values, not every event.
+- **Empty entity tables** are listed but return no rows (on `titan`: `ENTITY_Group_Critical_Subnets`, `ENTITY_AD`). An inner join against one yields nothing — say the table is empty rather than reporting "no matches".
+
+**Equality join — description lookup**
+```
+AzureAuditLogs
+| where TimeGenerated > ago(1d)
+| extend Operation = strcat(ActivityDisplayName, ".")
+| join kind=inner ENTITY_O365_Azure_Administrative_Operations on Operation
+| summarize Events=count() by Operation, Description
+| order by Events desc
+```
+
+**CIDR join — classify IPs by subnet.** KQL has no direct "IP in table of CIDRs" join, so cross-join on a constant key, keep rows where the IP falls in the range, then take the *most specific* (longest-prefix) match per IP:
+```
+NetworkFortigateTraffic
+| where TimeGenerated > ago(1d)
+| where ipv4_is_private(srcip)
+| summarize hits = count() by srcip
+| extend k = 1
+| join kind=inner (ENTITY_Corporate_Subnets | extend k = 1) on k
+| where ipv4_is_in_range(srcip, cidr)
+| extend prefix = ipv4_netmask_suffix(cidr)
+| summarize arg_max(prefix, cidr, name, tags), hits = any(hits) by srcip
+| summarize ips = count(), hits = sum(hits) by tags
+| sort by hits desc
+```
+Notes: `summarize` the events down to distinct IPs *before* the cross join, since the join multiplies rows by the number of subnets. `arg_max(prefix, ...)` makes overlapping subnets resolve to the narrowest. Substitute the real `kqlName` and column names (`cidr`, `name`, `tags` here) from `list_entity_tables`. For FortiGate byte/bandwidth totals apply the **fortigate-bandwidth** rules instead of `count()`.
+
+More worked samples (left outer, anti-join, license SKU lookup, prefix lookup, CIDR) are in `references/entity_joins.md`.
+
+Status of these patterns: the equality join was run against `titan` and returned rows; the CIDR join parses (`validate_kql` ok) but has not been executed with data because no tenant checked had a non-empty CIDR entity table.
 
 ---
 
