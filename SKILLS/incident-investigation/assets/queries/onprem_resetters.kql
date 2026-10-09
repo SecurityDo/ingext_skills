@@ -1,0 +1,13 @@
+// Control and base rate for onprem_password_events.kql: every account that reset
+// or unlocked someone else's password on this domain in 30 days. An admin who
+// does this routinely is the helpdesk; a reset by an account that never does it is
+// the finding. A zero here means the DC Security log is not collected, so the
+// subject's zero is a gap, not a negative.
+WindowsAudit
+| where timestamp > ago(30d)
+| where toint(EventID) in (4724, 4767)
+| summarize actions = count(), targets = dcount(tostring(TargetUserName)),
+    firstSeen = min(timestamp), lastSeen = max(timestamp)
+    by Admin = tostring(SubjectUserName), EventID = toint(EventID)
+| order by actions desc
+| take 1000

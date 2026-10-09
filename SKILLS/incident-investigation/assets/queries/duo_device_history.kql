@@ -1,0 +1,21 @@
+// Every Duo event for the subject, enrolments included: which phone approved,
+// when that phone was enrolled, and where the phone (auth_device.ip) and the
+// computer (access_device.ip) were. A "new auth device" alert whose device has an
+// event_type "enrollment" row moments earlier is the first use of a phone the
+// subject just enrolled, not a substituted one. Later rows where the same device
+// key approves while phone and computer share an address tie the phone to the user.
+// Placeholders: {USER} = lower-cased UPN as Duo spells user.name.
+DuoAuthentication
+| where timestamp > ago(30d)
+| where tolower(tostring(user.name)) == "{USER}"
+| project timestamp, txid = tostring(txid), event_type = tostring(event_type),
+    factor = tostring(factor), result = tostring(result), reason = tostring(reason),
+    application = tostring(application.name),
+    authDeviceKey = tostring(auth_device.key), authDeviceName = tostring(auth_device.name),
+    authDeviceIp = tostring(auth_device.ip), accessIp = tostring(access_device.ip),
+    accessHost = tostring(access_device.hostname)
+// Dedup: the datalake can return an event more than once.
+| summarize dups = count() by timestamp, txid, event_type, factor, result, reason,
+    application, authDeviceKey, authDeviceName, authDeviceIp, accessIp, accessHost
+| top 1000 by timestamp desc
+| order by timestamp asc

@@ -18,11 +18,18 @@ the placeholders listed in SKILL.md "Assets", and is run with `validate_kql` the
 aggregating, no dropped columns (see SKILL.md "Assets") — and add your own queries
 alongside them whenever the ticket needs something they do not cover.
 
-Tables used: `AzureSigninLogs`, `AzureAuditLogs`, `Office365`, `office365User`. Check they
+Tables used: `AzureSigninLogs`, `AzureAuditLogs`, `Office365`, `office365User`, and where
+the tenant has them `DuoAuthentication` (3a, 3b) and `WindowsAudit` (3c). Check they
 exist with `list_data_tables` first — a tenant without `AzureSigninLogs` needs the
 Office365-only path, and `office-user-investigation` covers it. A tenant without
 `AzureAuditLogs` runs the Office365 fallback queries below. Record any check that
 cannot run for a missing table as a gap, never as a pass.
+
+**`list_data_tables` can name a raw table (`Duo`) when the typed one is what KQL reads.**
+A tenant whose Duo source shows up as `Duo` is queried as `DuoAuthentication`; probe it
+with `DuoAuthentication | where timestamp > ago(1d) | project timestamp, txid | take 1`
+before calling Duo a gap. Selecting the nested fields from `Duo` returns nulls, not an
+error.
 
 **A tenant with an `Okta` table may sign in to Microsoft 365 through Okta.** Its failed
 passwords, legacy-authentication attempts and lockouts are then in `Okta`, not here, so
@@ -141,6 +148,22 @@ employees on Apple devices through *Apple Internet Accounts* — iCloud Private 
 which egresses through Cloudflare. One query turned the strongest-looking indicator
 into a consumer privacy feature.
 
+**On a Duo tenant, also run `duo_ip_census.kql` over the same addresses.** It counts
+users on each side of a Duo event: the computer (`access_device`) and the phone
+(`auth_device`). Staff phones on an office Wi-Fi report that network as their
+`auth_device.ip`, and phones never appear in `AzureSigninLogs`. So an office network can
+look like "a handful of users" in `ip_census.kql` and still be dozens of users' phones in
+Duo. Many users on the phone side of an address means it is the organisation's own
+network.
+
+**An IPv4 and an IPv6 address in the same seconds are one client.** A dual-stack machine
+sends some requests over IPv6 (often the MFA registration and the security-info pages)
+and others over IPv4 (the sign-ins). When the directory audit's initiator address is
+IPv6 and the sign-ins in the same seconds are IPv4, resolve them as one location: the
+location of the IPv4 address that 3a has already resolved. Do not call the IPv6 address
+"the user's home" because no one else uses it. Each machine gets its own IPv6 address,
+so it is almost always unique to one user, and that says nothing about where the user is.
+
 GeoIP is a hypothesis too. Private Relay, VPN and corporate NAT all move the pin, and
 a "impossible travel" finding built on an unverified city is manufactured.
 
@@ -201,6 +224,31 @@ owner's phone.
 Also read `AuthenticationDetails` on the sign-in: `"Previously satisfied"` means the
 session carried MFA from an earlier authentication, so find that one.
 
+### Duo (external MFA): was the "new device" just enrolled?
+
+When MFA is Duo, through Entra external authentication methods or any other
+integration, the authenticator diff above does not exist: Entra records only "User
+registered External MFA". The device is in Duo. Run `duo_device_history.kql`
+(30 days, every enrolment and authentication for the subject) and read it as follows:
+
+- **An `enrollment` row for the same `authDeviceKey` shortly before the flagged
+  approval** means the alert is the first use of a phone the subject had just enrolled.
+  A "device not seen in 30 days" rule fires on it by construction. The question changes
+  from "whose phone approved this?" to "who enrolled it?". Answer it with the
+  enrolment's surroundings: the subject's own sign-in session (3a), and on a hybrid
+  account the password reset that let them in (3c).
+- **An approval from a device key that was not just enrolled, while the subject has an
+  older key,** is the substitution a takeover produces. Compare it against the older
+  key's last use.
+- **Ownership after the fact.** A later approval by the same key, with
+  `authDeviceIp == accessIp` (phone and computer on one network) at an address the
+  subject uses again, ties the phone to the person who uses that computer. Run the
+  history up to the time of the run, not only to the ticket time.
+- **A brand-new account's first enrolment is expected onboarding.** Duo's own record of
+  the account's creation (`DuoAdmin`, `user_create` by the directory sync) and the
+  account's age come from step 1. On an account that is days old, every first-seen rule
+  fires at its first sign-in. Say so, and do not read the risk score as severity.
+
 ## 3c — Prove what did not happen
 
 A benign verdict rests on negatives, and they have to be collected, not assumed.
@@ -219,7 +267,8 @@ A benign verdict rests on negatives, and they have to be collected, not assumed.
     Tokens") ends tokens. It does **not** change the password, and Microsoft's own risk
     remediation for a token-theft risk revokes sessions only.
   - On a synced (hybrid) account an on-prem reset is logged only in
-    `IdentityDirectoryEvents`, never in Entra `AuditLogs`. An "Account Password changed"
+    `IdentityDirectoryEvents` (or the domain controllers' Security log; see the next
+    bullet), never in Entra `AuditLogs`. An "Account Password changed"
     followed seconds later by "Account Password expired" is a reset with "must change at
     next logon", and unless the tenant enabled `UserForcePasswordChangeOnLogonEnabled`,
     that password is **not synced**: Entra keeps the old one.
@@ -227,6 +276,32 @@ A benign verdict rests on negatives, and they have to be collected, not assumed.
     user's is an attacker who still has the password, stopped only by the second factor.
     The closure says **not contained**, and the first recommendation is a password change
     that is confirmed by an Entra password event.
+- **Who changed the password on a hybrid account?** Entra records an on-prem change as
+  `Change user password` / `Update PasswordProfile` initiated by the directory-sync
+  account (`ConnectSyncProvisioning_*`, or `Action Client Name: DirectorySync`). That
+  names the sync, not the person. Whenever such a row falls in the ticket window, and
+  the tenant collects `WindowsAudit` from its domain controllers, run
+  `onprem_password_events.kql` for the subject's on-prem account name and
+  `onprem_resetters.kql` as its control:
+  - `4724` with `SubjectUserName` = an admin is a reset by that admin. `4723` is the
+    user's own change. `4767` is an unlock, and `4771` with Status `0x18` is a wrong
+    password; a run of these before a reset is a user locked out and helped. The first
+    `4768` with Status `0x0` after it is the first good logon, and its time matches the
+    Entra sync row.
+  - `onprem_resetters.kql` shows whether that admin resets passwords routinely. A
+    helpdesk account that does it every week is the expected actor. A reset by an
+    account that never does it is a finding. If the control returns nothing, the DC
+    log is not collected: a gap, not a negative.
+  - The `IpAddress` on the `4771` / `4768` rows is the internal client the user typed
+    the password on. Internal addresses there place the user on site, whatever GeoIP
+    says about their Entra sign-ins.
+  - `EventTime` is the DC's local time with no zone. Use `timestamp` (UTC, a few
+    seconds late) for the timeline, or work out the offset from the `4768` that
+    matches the Entra sync row.
+
+  Do not explain an on-prem password change as "routine propagation" without this
+  check. A named admin resetting the password of a locked-out user is the strongest
+  benign evidence an onboarding or lockout ticket has, and the sync row hides it.
 - **What did the stolen tokens ask Graph for?** `la_graph_activity.kql` lists every request.
   A directory dump (`GET /users?$top=999`), a `$search` for payroll, finance or HR staff, or
   a scripted client (`axios`, `python-requests`) is reconnaissance for the next attack, and

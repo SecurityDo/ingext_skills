@@ -1,0 +1,16 @@
+// Who else's Duo traffic uses these addresses, split by side. A staff Wi-Fi or an
+// office egress shows up as the auth_device.ip of many users' PHONES, and that side
+// never reaches AzureSigninLogs, so ip_census.kql alone undercounts a shared office
+// network. Many users on the phone side = the organisation's own network.
+// Placeholders: {IPS} = quoted, comma-separated list.
+DuoAuthentication
+| where timestamp > ago(30d)
+| extend accessIp = tostring(access_device.ip), authDeviceIp = tostring(auth_device.ip),
+    u = tolower(tostring(user.name))
+| where accessIp in ({IPS}) or authDeviceIp in ({IPS})
+| extend side = iff(accessIp in ({IPS}), "access_device", "auth_device"),
+    ip = iff(accessIp in ({IPS}), accessIp, authDeviceIp)
+| summarize events = count(), users = dcount(u), firstSeen = min(timestamp),
+    lastSeen = max(timestamp) by ip, side
+| order by ip asc, side asc
+| take 1000
