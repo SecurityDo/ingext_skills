@@ -83,6 +83,7 @@ package in the same change — the validator checks inside the archives and will
 | [add-connector](#add-connector) | Install a new application connector |
 | [deploy-fpl-processor](#deploy-fpl-processor) | Deploy an FPL processor to a tenant and wire it into the running pipeline |
 | [eventwatch-rule](#eventwatch-rule) | Create, test, threshold and deploy an EventWatch behavior / aggregation rule |
+| [parser-rule](#parser-rule) | Create, test, deploy and release a parser rule: a registered rule matched in FPL, emitting into CorrelationService |
 | [setup-aws-cloudtrail-connector](#setup-aws-cloudtrail-connector) | Set up the AWS CloudTrail connector: S3 → SQS notification, cross-account role, real-time import |
 | [setup-aws-guardduty-connector](#setup-aws-guardduty-connector) | Set up the Amazon GuardDuty connector: assume-role, per-region detector check, API poll |
 | [create-ingext-audit-app](#create-ingext-audit-app) | Guide an Entra admin to register the `ingext-audit` app (Graph + O365 audit import) |
@@ -355,6 +356,31 @@ For deploying the parser that produces the events, use **deploy-fpl-processor**.
 - "add an aggregation rule for multiple failed logins in a few hours"
 - "why is this rule never firing?"
 - "promote the local test rule to the global one on <tenant>"
+
+### parser-rule
+
+Creates, tests, deploys and releases a parser rule: a registered EventWatch rule with
+`parser` set, whose matching runs in an FPL channel rule instead of the eventwatch engine. The
+channel rule writes the same hit and aggregation lines eventwatch would into the
+`CorrelationService` sink, and fsm_service, mantis and the behavior summary service treat them
+exactly like an eventwatch rule's — so a parser release no longer restarts the rule's warm-up.
+
+Covers when to choose a parser rule over a static rule or a dynamic behavior signal, the
+never-matching selector the rule file must carry in both forms, the line formats (strings in a
+hit line's `valueMap`, `__undefined` for a missing field, seconds in `ts`), local validation
+with `fplJobValidate -signals` over sample events, `rule_test` (which runs the stored
+processor for a parser rule), and wiring a **site-local** caller pipe at priority 1500 that
+returns `"abort"`, so a test never edits a released processor that the next sync would
+overwrite. Then reading fsm_service's `parserSignalFile` keep/drop counts, comparing side by
+side with the static rule, warm-up, and `sync_cli release` of the rule and the channel rule.
+`assets/` holds the kql pilot's working rules and channel rules.
+For the rule's behaviorRule, correlations and thresholds, use **eventwatch-rule**.
+
+**Try:**
+- "create a parser rule for Office365 logins, matched in FPL"
+- "move this static rule's matching into the parser and compare the two"
+- "why are my parser rule's signals dropped?"
+- "release the parser rule and its channel rule"
 
 ### setup-aws-cloudtrail-connector
 

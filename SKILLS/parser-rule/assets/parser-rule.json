@@ -1,0 +1,294 @@
+{
+  "id": 0,
+  "name": "O365_AzureAD_UserLoggedIn_local",
+  "group": "Office365",
+  "description": "A behavior rule to track UserLoggedIn operations in Azure Active Directory, by UserId.\n\nThis rule indicates the first occurrence of a successful login by the UserId, the login ISP, and login Country.\nAdditionally, this rule also examines the first occurrence of a login ISP within the entity scope.\n\nNotes:\nLogonError - UserAccountNotFound, InvalidPasswordExpiredPassword, and UserInformationNotProvided events are excluded\nUserType - 0\nExcludes ISP - Microsoft Corporation",
+  "disabled": false,
+  "enableTotal": false,
+  "eventType": "event",
+  "resourceType": "",
+  "aggregationBucket": false,
+  "isProcessor": false,
+  "processor": "",
+  "ruleGroup": "",
+  "timeSlices": [
+    "1d",
+    "1h",
+    "1m"
+  ],
+  "eventSelector": {
+    "matchAll": false,
+    "eventFilter": "_na_:_na_",
+    "query": {
+      "term": {
+        "_na_": "_na_"
+      }
+    },
+    "mustFilters": [],
+    "mustNotFilters": [],
+    "jsonQuery": null,
+    "lvdbQueryFlag": false
+  },
+  "behaviorRule": {
+    "name": "O365_AzureAD_UserLoggedIn_local",
+    "behavior": "application activity",
+    "description": "{{.Username}} logged in from {{.ClientIP}} of {{.ISP}} in {{.Country}}",
+    "keyType": "username",
+    "key": "@fields.UserId",
+    "timelineFlag": true,
+    "caseFlag": false,
+    "fields": [
+      "@fields.ActorIpAddress",
+      "@fields.ExtendedPropertiesFields.RequestType",
+      "@fields.DevicePropertiesFields.BrowserType",
+      "@fields._ip.city",
+      "@fields.ClientIP",
+      "@fields._ip.country",
+      "@fields._ip.isp",
+      "@fields.Operation",
+      "@fields.DevicePropertiesFields.OS",
+      "@fields.UserId",
+      "@fields.Workload"
+    ],
+    "rules": [
+      {
+        "name": "NewISP",
+        "type": "first",
+        "description": "",
+        "first": {
+          "window": {
+            "unit": "day",
+            "length": 30,
+            "text": "30d"
+          },
+          "fields": [
+            "@fields._ip.isp"
+          ],
+          "localScope": true
+        },
+        "caseFlag": false,
+        "risks": [
+          "ML_NEW_GEO_ISP"
+        ],
+        "lastUpdate": "2021-11-02T08:21:19.859317182Z"
+      },
+      {
+        "name": "NewISP_ES",
+        "type": "first",
+        "description": "",
+        "first": {
+          "window": {
+            "unit": "day",
+            "length": 30,
+            "text": "30d"
+          },
+          "fields": [
+            "@fields._ip.isp"
+          ],
+          "entityScope": true
+        },
+        "caseFlag": false,
+        "risks": [
+          "ML_NEW_GEO_ISP"
+        ],
+        "lastUpdate": "2021-11-02T08:21:19.859317182Z"
+      },
+      {
+        "name": "NewUser",
+        "type": "first",
+        "description": "",
+        "first": {
+          "window": {
+            "unit": "day",
+            "length": 30,
+            "text": "10d"
+          },
+          "fields": [
+            "@fields.UserId"
+          ],
+          "localScope": true
+        },
+        "caseFlag": false,
+        "risks": [
+          "ML_NEW_USER"
+        ],
+        "lastUpdate": "2021-11-02T08:21:19.859317182Z"
+      },
+      {
+        "name": "NewCountry",
+        "type": "first",
+        "description": "",
+        "first": {
+          "window": {
+            "unit": "day",
+            "length": 30,
+            "text": "10d"
+          },
+          "fields": [
+            "@fields._ip.country"
+          ],
+          "localScope": true
+        },
+        "caseFlag": false,
+        "risks": [
+          "ML_NEW_GEO_COUNTRY"
+        ],
+        "lastUpdate": "2021-10-08T14:53:17.227520832Z"
+      },
+      {
+        "name": "NewAuthType",
+        "type": "first",
+        "description": "",
+        "first": {
+          "window": {
+            "unit": "day",
+            "length": 60,
+            "text": "10d"
+          },
+          "fields": [
+            "@fields.ExtendedPropertiesFields.RequestType"
+          ],
+          "localScope": true
+        },
+        "caseFlag": false,
+        "risks": [
+          "ALERT_SEVERITY_HIGH",
+          "ALERT_HIGH_CONFIDENCE"
+        ],
+        "lastUpdate": "2023-09-01T02:01:16.465825353Z"
+      }
+    ],
+    "attributes": [
+      {
+        "field": "@fields.ActorIpAddress",
+        "aliase": "ActorIP",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields.ExtendedPropertiesFields.RequestType",
+        "aliase": "AuthType",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields.DevicePropertiesFields.BrowserType",
+        "aliase": "BrowserType",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields._ip.city",
+        "aliase": "City",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields.ClientIP",
+        "aliase": "ClientIP",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields._ip.country",
+        "aliase": "Country",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields._ip.isp",
+        "aliase": "ISP",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields.Operation",
+        "aliase": "Operation",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields.DevicePropertiesFields.OS",
+        "aliase": "OS",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields.UserId",
+        "aliase": "Username",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields.Workload",
+        "aliase": "Workload",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      }
+    ]
+  },
+  "translation": {},
+  "tags": [
+    "O365",
+    "AzureAD",
+    "ParserRuleTest"
+  ],
+  "searchProfile": "Default-O365_Azure_AD",
+  "discard": false,
+  "parser": "O365_AzureAD_UserLoggedIn_local"
+}

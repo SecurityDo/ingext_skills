@@ -1,0 +1,144 @@
+{
+  "id": 0,
+  "name": "O365_LoginFailed_Agg_local",
+  "group": "Office365",
+  "description": "Parser rule test (aggregation): static side. Same selector as O365_AzureAD_UserLoginFailed_Brute_Force, threshold > 0 and no risks; compare with O365_LoginFailed_Agg_PR.",
+  "disabled": false,
+  "enableTotal": false,
+  "eventType": "event",
+  "resourceType": "",
+  "aggregationBucket": false,
+  "isProcessor": false,
+  "processor": "",
+  "ruleGroup": "",
+  "timeSlices": [
+    "1d",
+    "1h",
+    "1m"
+  ],
+  "eventSelector": {
+    "matchAll": false,
+    "eventFilter": "_na_:_na_",
+    "query": {
+      "term": {
+        "_na_": "_na_"
+      }
+    },
+    "mustFilters": [],
+    "mustNotFilters": [],
+    "jsonQuery": null,
+    "lvdbQueryFlag": false
+  },
+  "aggregations": null,
+  "tagActions": null,
+  "signals": null,
+  "behaviorRule": {
+    "name": "O365_LoginFailed_Agg_local",
+    "behavior": "account login",
+    "description": "User {{.Username}} may have had an attempted brute force on their account from {{.IP}} in {{.ISP}} in {{.Country}}",
+    "keyType": "username",
+    "key": "@fields.UserId",
+    "timelineFlag": false,
+    "caseFlag": false,
+    "fields": [
+      "@fields.UserId",
+      "@fields._ip.country",
+      "@fields._ip.city",
+      "@fields.ClientIP",
+      "@fields._ip.isp"
+    ],
+    "rules": [
+      {
+        "name": "Failed",
+        "type": "aggregation",
+        "description": "Failed sign-ins in 1 hour (parser rule test)",
+        "aggregation": {
+          "window": {
+            "unit": "hour",
+            "length": 1,
+            "text": "1h"
+          },
+          "aggType": "count",
+          "match": {
+            "operator": "gt",
+            "operands": [
+              0,
+              0
+            ],
+            "text": ""
+          },
+          "anomalyFlag": false,
+          "anomalyScore": 90
+        },
+        "caseFlag": false,
+        "risks": []
+      }
+    ],
+    "attributes": [
+      {
+        "field": "@fields.UserId",
+        "aliase": "Username",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields._ip.country",
+        "aliase": "Country",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields._ip.city",
+        "aliase": "City",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields.ClientIP",
+        "aliase": "IP",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      },
+      {
+        "field": "@fields._ip.isp",
+        "aliase": "ISP",
+        "objectFlag": false,
+        "objectField": {
+          "keyField": "",
+          "valueField": "",
+          "key": ""
+        },
+        "entityInfo": ""
+      }
+    ]
+  },
+  "translation": {},
+  "tags": [
+    "O365",
+    "AzureAD",
+    "ParserRuleTest"
+  ],
+  "searchProfile": "Default-O365_Azure_AD",
+  "discard": false,
+  "parser": "O365_LoginFailed_Agg_local"
+}
