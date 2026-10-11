@@ -1,6 +1,6 @@
 ---
 name: eventwatch-rule
-version: 1.1.0
+version: 1.1.1
 description: >-
   Create, test, deploy and release an Ingext EventWatch rule — the behavior and aggregation rules
   that turn parsed events into behavior signals. Use this skill whenever the user asks to "create
@@ -220,10 +220,11 @@ A hit prints the rendered `description`, the `valueMap`, and the full `behaviorE
 resolved attributes — read them. That is where `__undefined` and an unrendered `{{.Alias}}`
 show up.
 
-**A known CLI wart:** an aggregation rule that hits prints
-`signal 0 is not valid JSON: cannot unmarshal number into ... valueMap of type string`.
-The rule matched; the CLI cannot render a signal whose valueMap holds the numeric count.
-Read line one (`hit`) and ignore the error.
+An aggregation rule that hits prints one `signal: <rule>:<correlation> key <k> value <n>` line
+per entry: an aggregation line has no key or count of its own, and its valueMap holds the
+numeric count per key. A CLI built before ingext_api `294e800` instead fails with
+`signal 0 is not valid JSON: cannot unmarshal number into ... valueMap of type string` and
+exits 1; the rule did match — read line one (`hit`), or rebuild the CLI.
 
 ## Step 5 — Validate thresholds by replaying real history
 
