@@ -371,8 +371,11 @@ hit line's `valueMap`, `__undefined` for a missing field, seconds in `ts`), loca
 with `fplJobValidate -signals` over sample events, `rule_test` (which runs the stored
 processor for a parser rule), and wiring a **site-local** caller pipe at priority 1500 that
 returns `"abort"`, so a test never edits a released processor that the next sync would
-overwrite. Then reading fsm_service's `parserSignalFile` keep/drop counts, comparing side by
-side with the static rule, warm-up, and `sync_cli release` of the rule and the channel rule.
+overwrite. Then tagging the stored event's `@behaviors` from the channel rule as eventwatch
+does for a static rule (hit rules with timeline or risks, never aggregations, an array of
+strings set before the event is sunk), reading fsm_service's `parserSignalFile` keep/drop
+counts, comparing side by side with the static rule, warm-up, and `sync_cli release` of the
+rule and the channel rule.
 `assets/` holds the kql pilot's working rules and channel rules.
 For the rule's behaviorRule, correlations and thresholds, use **eventwatch-rule**.
 

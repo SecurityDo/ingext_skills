@@ -5,7 +5,8 @@
 // Compare the two rules' behavior events.
 //
 // A channel rule (channel Office365ParserRules_local), called from Office365_ParserRules_local
-// with Platform_Channel("Office365ParserRules_local", {obj}). It must not change obj.
+// with Platform_Channel("Office365ParserRules_local", {obj}). It must not change obj,
+// not even "@behaviors": eventwatch never tags an event for an aggregation rule.
 //
 // The line copies what eventwatch writes for a count aggregation correlation:
 //   {"signal":"behavior:<rule>:<correlation>","ts":<sec, 60 s slot>,

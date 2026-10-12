@@ -5,8 +5,10 @@
 // instead of in eventwatch. Compare the two rules' behavior events.
 //
 // A channel rule (channel Office365ParserRules_local), called from Office365_ParserRules_local
-// with Platform_Channel("Office365ParserRules_local", {obj}). It must not change obj:
-// every rule of the channel and the calling parser share it.
+// with Platform_Channel("Office365ParserRules_local", {obj}). Every rule of the
+// channel and the calling parser share obj, so the only change it makes is the
+// eventwatch tag: on a hit it adds its name to obj["@behaviors"], as eventwatch
+// does for a static rule with timelineFlag or risks (never for an aggregation).
 //
 // The line copies what eventwatch writes for a behavior rule hit:
 //   {"signal":"behavior:<rule>","ts":<sec, 120 s slot>,"count":1,"key":<key>,
@@ -23,6 +25,7 @@ function main({obj, size}) {
     for _, field = range signalFields() {
         valueMap[field] = fieldString(obj, field)
     }
+    addBehavior(obj, "O365_AzureAD_UserLoggedIn_local")
     let key = valueMap["@fields.UserId"]
     let ms = obj["@timestamp"]
     let sec = (ms - ms % 1000) / 1000
@@ -88,6 +91,27 @@ function signalFields() {
         "@fields.UserId",
         "@fields.Workload"
     ]
+}
+
+// addBehavior adds the rule to the event's "@behaviors" the way eventwatch's tag
+// action does: an array of strings, each name once. eventwatch appends its own
+// static hits to that array, but ignores a "@behaviors" that is not an array
+// (it would drop its tag), so a non-array value is left alone.
+function addBehavior(obj, rule) {
+    let tags = obj["@behaviors"]
+    if (isUndef(tags) || isNull(tags)) {
+        obj["@behaviors"] = [rule]
+        return
+    }
+    if (!Array.isArray(tags)) {
+        return
+    }
+    for _, t = range tags {
+        if (t == rule) {
+            return
+        }
+    }
+    obj["@behaviors"] = append(tags, rule)
 }
 
 // fieldString reads a dotted path the way eventwatch does for a signal: a

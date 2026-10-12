@@ -1,6 +1,6 @@
 ---
 name: parser-rule
-version: 1.0.0
+version: 1.1.0
 description: >-
   Create, test, deploy and release an Ingext parser rule: a registered EventWatch rule whose
   matching runs in an FPL processor instead of the eventwatch engine. The processor (a channel
@@ -10,7 +10,7 @@ description: >-
   signals from FPL for a registered rule", "write a channel rule", "test a parser rule",
   "compare a parser rule with its static rule", or "release a parser rule". Covers choosing a
   parser rule over a static rule or a dynamic behavior signal, the rule file, the hit and
-  aggregation line formats, writing the channel rule, local validation with
+  aggregation lines, writing the channel rule, tagging @behaviors, local validation with
   fplJobValidate -signals, rule_test, wiring a site-local test pipe without touching standard
   processors, verifying fsm_service keeps the lines, side-by-side comparison, warm-up, and
   release with sync_cli.
@@ -141,6 +141,7 @@ function main({obj, size}) {
         return "skip"
     }
     ...build valueMap / key / ts...
+    addBehavior(obj, "<Rule>")       // hit rules with timeline or risks only
     Platform_Sink("CorrelationService", {obj: { signal: "behavior:<Rule>", ... }})
     return "match"
 }
@@ -148,12 +149,42 @@ function main({obj, size}) {
 
 Rules for a channel rule:
 
-- **Never change `obj`.** Every rule of the channel and the calling processor share it.
+- **Change nothing in `obj` but `@behaviors`** (next section). Every rule of the channel and
+  the calling processor share it.
 - A channel rule's error does not stop the caller or the other rules; it is only counted.
   Test locally (step 4) — on a tenant it is easy to miss.
 - The processor named in the rule's `parser` is the channel rule, not the caller.
 - Several rules can share a channel; a call to an unknown channel is a silent no-op, so a
   caller can ship the `Platform_Channel` line to tenants that have no rules on it.
+
+### Tag the event (`@behaviors`)
+
+eventwatch adds a static rule's name to the matched event's `@behaviors` array, so the stored
+event says which rules it hit (`"@behaviors": ["AWS_Unauthorized_API_Call"]`). eventwatch
+never tags for a parser rule, so the channel rule does it itself:
+
+- **When:** on a hit line, if the rule has `behaviorRule.timelineFlag: true` or non-empty
+  risks. **Never for an aggregation rule** — eventwatch does not tag those either.
+- **How:** `addBehavior(obj, "<Rule>")` from `assets/channel-rule-hit.js`. It creates the
+  array when missing, adds the name once, and leaves a `@behaviors` that is not an array
+  alone. Use the rule's registered name.
+- **Format: an array of strings, nothing else.** eventwatch's tag action (lv3
+  `eventwatch_record_tag_action`) keeps an existing array and appends its own static hits, so
+  both survive. But when `@behaviors` exists and is not an array it silently drops its own
+  tag, and a non-string element in the array breaks it.
+- **When it runs:** the tag must be on `obj` before the event is written to the sink that
+  stores it. A released caller therefore calls the channel **before** the parser's
+  `Platform_Sink` / `return "pass"`. The site-local test caller (step 5) runs after the
+  vendor's main pipe has already sunk the event; its tags reach the stored event only
+  because the job router serializes that same object when it flushes. That is fine for a
+  test, but don't design around it.
+
+Verified on kql (Office365, 2026-10-11): a `UserLoggedIn` event hit by both the parser rule
+and its static twin was stored with
+`"@behaviors": ["O365_AzureAD_UserLoggedIn_local", "O365_AzureAD_UserLoggedIn"]` (the parser
+tag first, eventwatch's appended). A `TeamsSessionStarted` event that only the parser rule
+`O365_Teams_SessionStarted_local` matched was stored with
+`"@behaviors": ["O365_Teams_SessionStarted_local"]`.
 
 ## Step 4 — Validate locally: `fplJobValidate -signals`
 
@@ -213,7 +244,9 @@ Why 1500 and `"abort"`: a router stops at the first pipe that does not return `"
 (see **deploy-fpl-processor**, step 7b). The vendor's `_Behavior` processor returns `"drop"`,
 so the caller must run **before** it and return `"abort"` so the event still reaches it; and
 after the main pipe, which enriches the event and hands it on. The pipe needs no sinks: a
-named `Platform_Sink` goes straight to that sink.
+named `Platform_Sink` goes straight to that sink. Where the main pipe sinks the event itself
+(`Platform_Sink("", {obj})` then `"abort"`, as Office365 does), the event is already stored
+by then; see "Tag the event" for what that means for `@behaviors`.
 
 gitsync only deletes objects a release lists as deleted or renamed, so `_local` objects that
 never appear in the repo are safe from it.
@@ -268,6 +301,16 @@ For a side-by-side test, compare per user over the same window: count, key, attr
 (alias and value), rendered description, `ruleRisks`. Day-0 differences are match logic or
 valueMap gaps in the channel rule.
 
+If the channel rule tags, check the stored events in the vendor's index. Each matched event
+should carry the parser rule in `@behaviors`, next to any static rules that also hit it:
+
+```bash
+ingext datalake search --index <VendorIndex> --query '@behaviors:<Rule>_local' \
+    --from <ms> --to <ms> --limit 10 --facet '@behaviors'
+```
+
+Only events processed after the channel rule was deployed carry the tag.
+
 **Warm-up.** A new parser rule starts with no history: mantis's learning window (7 × the
 correlation window unit) and the 7-day DeployedOn grace apply, so its `first` hits differ from
 a static rule with years of history until both have run 7+ days. Renaming the rule (including
@@ -279,9 +322,11 @@ a static rule with years of history until both have run 7+ days. Renaming the ru
    released channel rule.
 2. Channel rule in `fplProcessors/` (`meta/<Name>.json` with `"type": "fpl_rule"` and
    `"channel"`, `code/<Name>.js`).
-3. The `Platform_Channel("<Channel>", {obj})` line in the vendor's released caller (usually its
-   `_Behavior` processor, at the top of `main`). Safe on every tenant: an unknown channel is a
-   no-op.
+3. The `Platform_Channel("<Channel>", {obj})` line in the vendor's released caller. Safe on
+   every tenant: an unknown channel is a no-op. If any rule on the channel tags `@behaviors`,
+   the call goes in the parser that stores the event, after its enrichment and **before** its
+   `Platform_Sink` / `return "pass"`. A channel with only untagged rules (aggregations, no
+   timeline or risks) can be called from the `_Behavior` processor, at the top of `main`.
 4. Samples under `fplProcessors/samples/<Caller>/` and a clean `fplJobValidate -signals`.
 5. Commit, then release both resources — they are separate:
 
@@ -302,6 +347,8 @@ released rule runs, or both write behavior events for the same events.
 - **Numbers in a hit line's valueMap.** Use strings; a `first` correlation on a number breaks.
 - **A rule named in a line must be a parser rule.** Emitting a static rule's name is dropped
   (`notParser`) — FPL cannot add hits to eventwatch's rules.
+- **`@behaviors` must stay an array of strings.** A string or object there makes eventwatch
+  drop its own static tags without a word, and a non-string element breaks its tag action.
 - **`:` in a rule or correlation name** makes the line unparseable; `sync_cli` refuses it.
 - **Sample events and `@type`:** `"@type":"event"` is a legacy filter; parser rules do not use
   it. Some old static rules only hit in `rule_test` when the sample carries it — add it when
