@@ -1,0 +1,540 @@
+{
+   "id": 720152,
+   "repository": "Fluency",
+   "group": "System",
+   "gitPath": "fplProcessors/code/WinHost_Health_Report.js",
+   "name": "WinHost_Health_Report",
+   "type": "fpl_report",
+   "channel": "",
+   "reportConfig": {
+      "title": "Windows Host Health",
+      "description": "Windows host health and SentinelOne agent services from NXLog performance counters (winhost_* metrics)",
+      "panels": [
+         {
+            "key": "whHeader01",
+            "dataTable": "",
+            "title": "",
+            "panelType": "text",
+            "table": {
+               "columns": []
+            },
+            "histogram": {},
+            "topn": {},
+            "chart": {},
+            "pie": {},
+            "geoMap": {
+               "ipColumn": "",
+               "valueColumn": ""
+            },
+            "counter": {
+               "field": ""
+            },
+            "panelConfig": {
+               "text": "<p><strong class=\"ql-size-large\">Windows Host Health</strong></p><p>Host health and SentinelOne agent services from NXLog performance counters. Status columns are current values; charts cover the report period. A host that stops reporting stays listed as NOT REPORTING for 24 hours.</p>"
+            }
+         },
+         {
+            "key": "whCountHst",
+            "dataTable": "hostsReporting",
+            "title": "Hosts Reporting",
+            "panelType": "counter",
+            "table": {
+               "columns": []
+            },
+            "histogram": {},
+            "topn": {},
+            "chart": {},
+            "pie": {},
+            "geoMap": {
+               "ipColumn": "",
+               "valueColumn": ""
+            },
+            "counter": {
+               "field": ""
+            },
+            "panelConfig": {
+               "field": "_value",
+               "format": "default"
+            }
+         },
+         {
+            "key": "whCountS1d",
+            "dataTable": "servicesDown",
+            "title": "S1 Services Not Running",
+            "panelType": "counter",
+            "table": {
+               "columns": []
+            },
+            "histogram": {},
+            "topn": {},
+            "chart": {},
+            "pie": {},
+            "geoMap": {
+               "ipColumn": "",
+               "valueColumn": ""
+            },
+            "counter": {
+               "field": ""
+            },
+            "panelConfig": {
+               "field": "_value",
+               "format": "default"
+            }
+         },
+         {
+            "key": "whHostTabl",
+            "dataTable": "hosts",
+            "title": "Host Status",
+            "panelType": "table",
+            "table": {
+               "columns": []
+            },
+            "histogram": {},
+            "topn": {},
+            "chart": {},
+            "pie": {},
+            "geoMap": {
+               "ipColumn": "",
+               "valueColumn": ""
+            },
+            "counter": {
+               "field": ""
+            },
+            "panelConfig": {
+               "columns": [
+                  {
+                     "field": "host",
+                     "header": "Host",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  },
+                  {
+                     "field": "status",
+                     "header": "Status",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  },
+                  {
+                     "field": "lastSeenSec",
+                     "header": "Last Sample (s ago)",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  },
+                  {
+                     "field": "cpuPct",
+                     "header": "CPU %",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  },
+                  {
+                     "field": "memCommittedPct",
+                     "header": "Memory Committed %",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  },
+                  {
+                     "field": "memAvailMB",
+                     "header": "Memory Available (MB)",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  },
+                  {
+                     "field": "minDiskFreePct",
+                     "header": "Lowest Disk Free %",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  },
+                  {
+                     "field": "s1ServicesUp",
+                     "header": "S1 Services Up",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  }
+               ]
+            }
+         },
+         {
+            "key": "whS1Table0",
+            "dataTable": "services",
+            "title": "SentinelOne Agent Services",
+            "panelType": "table",
+            "table": {
+               "columns": []
+            },
+            "histogram": {},
+            "topn": {},
+            "chart": {},
+            "pie": {},
+            "geoMap": {
+               "ipColumn": "",
+               "valueColumn": ""
+            },
+            "counter": {
+               "field": ""
+            },
+            "panelConfig": {
+               "columns": [
+                  {
+                     "field": "host",
+                     "header": "Host",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  },
+                  {
+                     "field": "process",
+                     "header": "Service",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  },
+                  {
+                     "field": "state",
+                     "header": "State",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  },
+                  {
+                     "field": "cpuPct",
+                     "header": "CPU %",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  }
+               ]
+            }
+         },
+         {
+            "key": "whDiskTabl",
+            "dataTable": "disks",
+            "title": "Disk Free Space",
+            "panelType": "table",
+            "table": {
+               "columns": []
+            },
+            "histogram": {},
+            "topn": {},
+            "chart": {},
+            "pie": {},
+            "geoMap": {
+               "ipColumn": "",
+               "valueColumn": ""
+            },
+            "counter": {
+               "field": ""
+            },
+            "panelConfig": {
+               "columns": [
+                  {
+                     "field": "host",
+                     "header": "Host",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  },
+                  {
+                     "field": "drive",
+                     "header": "Drive",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  },
+                  {
+                     "field": "freePct",
+                     "header": "Free %",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  },
+                  {
+                     "field": "freeMB",
+                     "header": "Free (MB)",
+                     "dateTimeFormat": "default",
+                     "alignment": ""
+                  }
+               ]
+            }
+         },
+         {
+            "key": "whCpuChart",
+            "dataTable": "cpu",
+            "title": "CPU %",
+            "panelType": "metric",
+            "table": {
+               "columns": []
+            },
+            "histogram": {},
+            "topn": {},
+            "chart": {},
+            "pie": {},
+            "geoMap": {
+               "ipColumn": "",
+               "valueColumn": ""
+            },
+            "counter": {
+               "field": ""
+            },
+            "panelConfig": {
+               "chart": "line",
+               "dateFormats": "HH:mm"
+            }
+         },
+         {
+            "key": "whMemChart",
+            "dataTable": "mem",
+            "title": "Memory Committed %",
+            "panelType": "metric",
+            "table": {
+               "columns": []
+            },
+            "histogram": {},
+            "topn": {},
+            "chart": {},
+            "pie": {},
+            "geoMap": {
+               "ipColumn": "",
+               "valueColumn": ""
+            },
+            "counter": {
+               "field": ""
+            },
+            "panelConfig": {
+               "chart": "line",
+               "dateFormats": "HH:mm"
+            }
+         },
+         {
+            "key": "whDiskFree",
+            "dataTable": "diskFree",
+            "title": "Disk Free % by Drive",
+            "panelType": "metric",
+            "table": {
+               "columns": []
+            },
+            "histogram": {},
+            "topn": {},
+            "chart": {},
+            "pie": {},
+            "geoMap": {
+               "ipColumn": "",
+               "valueColumn": ""
+            },
+            "counter": {
+               "field": ""
+            },
+            "panelConfig": {
+               "chart": "line",
+               "dateFormats": "HH:mm"
+            }
+         },
+         {
+            "key": "whDiskBusy",
+            "dataTable": "diskBusy",
+            "title": "Disk Busy %",
+            "panelType": "metric",
+            "table": {
+               "columns": []
+            },
+            "histogram": {},
+            "topn": {},
+            "chart": {},
+            "pie": {},
+            "geoMap": {
+               "ipColumn": "",
+               "valueColumn": ""
+            },
+            "counter": {
+               "field": ""
+            },
+            "panelConfig": {
+               "chart": "line",
+               "dateFormats": "HH:mm"
+            }
+         },
+         {
+            "key": "whNetChart",
+            "dataTable": "net",
+            "title": "Network Bytes/sec",
+            "panelType": "metric",
+            "table": {
+               "columns": []
+            },
+            "histogram": {},
+            "topn": {},
+            "chart": {},
+            "pie": {},
+            "geoMap": {
+               "ipColumn": "",
+               "valueColumn": ""
+            },
+            "counter": {
+               "field": ""
+            },
+            "panelConfig": {
+               "chart": "line",
+               "dateFormats": "HH:mm"
+            }
+         },
+         {
+            "key": "whS1CpuCh0",
+            "dataTable": "s1Cpu",
+            "title": "SentinelOne CPU % (all Sentinel processes)",
+            "panelType": "metric",
+            "table": {
+               "columns": []
+            },
+            "histogram": {},
+            "topn": {},
+            "chart": {},
+            "pie": {},
+            "geoMap": {
+               "ipColumn": "",
+               "valueColumn": ""
+            },
+            "counter": {
+               "field": ""
+            },
+            "panelConfig": {
+               "chart": "line",
+               "dateFormats": "HH:mm"
+            }
+         },
+         {
+            "key": "whS1UpChrt",
+            "dataTable": "s1Up",
+            "title": "SentinelOne Services Running (of 5)",
+            "panelType": "metric",
+            "table": {
+               "columns": []
+            },
+            "histogram": {},
+            "topn": {},
+            "chart": {},
+            "pie": {},
+            "geoMap": {
+               "ipColumn": "",
+               "valueColumn": ""
+            },
+            "counter": {
+               "field": ""
+            },
+            "panelConfig": {
+               "chart": "line",
+               "dateFormats": "HH:mm"
+            }
+         }
+      ],
+      "layout": [
+         {
+            "id": "whHeader01",
+            "x": 0,
+            "y": 0,
+            "width": 8,
+            "height": 3
+         },
+         {
+            "id": "whCountHst",
+            "x": 8,
+            "y": 0,
+            "width": 4,
+            "height": 3
+         },
+         {
+            "id": "whCountS1d",
+            "x": 12,
+            "y": 0,
+            "width": 4,
+            "height": 3
+         },
+         {
+            "id": "whHostTabl",
+            "x": 0,
+            "y": 3,
+            "width": 16,
+            "height": 5
+         },
+         {
+            "id": "whS1Table0",
+            "x": 0,
+            "y": 8,
+            "width": 10,
+            "height": 6
+         },
+         {
+            "id": "whDiskTabl",
+            "x": 10,
+            "y": 8,
+            "width": 6,
+            "height": 6
+         },
+         {
+            "id": "whCpuChart",
+            "x": 0,
+            "y": 14,
+            "width": 8,
+            "height": 6
+         },
+         {
+            "id": "whMemChart",
+            "x": 8,
+            "y": 14,
+            "width": 8,
+            "height": 6
+         },
+         {
+            "id": "whDiskFree",
+            "x": 0,
+            "y": 20,
+            "width": 8,
+            "height": 6
+         },
+         {
+            "id": "whDiskBusy",
+            "x": 8,
+            "y": 20,
+            "width": 8,
+            "height": 6
+         },
+         {
+            "id": "whNetChart",
+            "x": 0,
+            "y": 26,
+            "width": 8,
+            "height": 6
+         },
+         {
+            "id": "whS1CpuCh0",
+            "x": 8,
+            "y": 26,
+            "width": 8,
+            "height": 6
+         },
+         {
+            "id": "whS1UpChrt",
+            "x": 0,
+            "y": 32,
+            "width": 16,
+            "height": 5
+         }
+      ]
+   },
+   "arguments": [
+      {
+         "name": "from",
+         "defaultValue": "-6h@m",
+         "optional": true,
+         "type": "string"
+      },
+      {
+         "name": "to",
+         "defaultValue": "@m",
+         "optional": true,
+         "type": "string"
+      },
+      {
+         "name": "interval",
+         "defaultValue": "5m",
+         "optional": true,
+         "type": "string"
+      }
+   ],
+   "description": "Windows host health and SentinelOne agent services from the winhost_* gauges written by WinHost_Metrics (needs platform 9.0.7+)",
+   "scriptLang": "",
+   "scriptText": "",
+   "createdOn": "2026-10-12T18:00:00Z",
+   "updatedOn": "2026-10-12T18:00:00Z"
+}

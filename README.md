@@ -74,6 +74,7 @@ package in the same change — the validator checks inside the archives and will
 | [fortigate-bandwidth](#fortigate-bandwidth) | Correct FortiGate bandwidth aggregation rules |
 | [fluency-report](#fluency-report) | Run an existing FPL report → HTML summary |
 | [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
+| [fpl-report-dashboard](#fpl-report-dashboard) | Build, test, deploy and release a dashboard report: panels, layout, metric charts |
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
 | [office-user-investigation](#office-user-investigation) | Investigate an M365 mailbox user (KQL + GeoIP) |
 | [o365-activity-report](#o365-activity-report) | Account-wide O365/Exchange activity report (KQL: timechart + tables) |
@@ -190,6 +191,19 @@ it (use fluency-report) and not for single standalone queries (use ingext-kql).
 **Try:**
 - "create an FPL report from these queries"
 - "turn these KQL queries into a report"
+
+### fpl-report-dashboard
+
+Builds a dashboard report end to end: the `fpl_report` script (metric queries, status
+tables, metric streams), its `reportConfig` panels and 16-column layout, testing with
+`processor test` and `run_report`, deploying a test copy with its layout, and the Scripts
+repo release. Includes the chart-alignment fix for dashboards whose charts read zero, a
+panel cookbook, a deploy helper and a worked example (Windows host health).
+
+**Try:**
+- "build a dashboard for these metrics"
+- "add a host health report with CPU and disk charts"
+- "the report's charts all show zero"
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: fpl-report-builder
-version: 1.0.0
+version: 1.0.1
 description: >
   Author a Fluency / Ingext FPL report source file that compiles one or more KQL queries
   into a single time-bounded report. Use this skill whenever the user wants to BUILD, WRITE,
@@ -22,6 +22,9 @@ is the deliverable — the user pastes or deploys it into Fluency themselves.
 
 This is purely a code-authoring task. Do **not** call MCP tools, run reports, or query a live
 tenant. Generate well-formed FPL/KQL from the conventions below.
+
+For a **dashboard** — panels, a layout, metric charts (`Platform_Metric_*`), deploying with
+its reportConfig, testing and releasing — use **fpl-report-dashboard** instead.
 
 ## What an FPL report is
 
