@@ -1,0 +1,46 @@
+{
+  "staleDays": 30,
+  "sources": [
+    {
+      "name": "SentinelOne",
+      "label": "SentinelOne",
+      "scope": "SentinelOne agent inventory, decommissioned agents excluded",
+      "resource": "sentinelOneAgent",
+      "filter": {"isDecommissioned": false},
+      "host": "computerName",
+      "os": "osName",
+      "lastSeen": "lastActiveDate",
+      "required": true
+    },
+    {
+      "name": "Defender",
+      "label": "Defender",
+      "scope": "Microsoft Defender for Endpoint machines that are onboarded and not excluded",
+      "resource": "msDefenderMachine",
+      "filter": {"onboardingStatus": "Onboarded", "isExcluded": false},
+      "host": "computerDnsName",
+      "deviceId": "aadDeviceId",
+      "os": "osPlatform",
+      "lastSeen": "lastSeen",
+      "required": true
+    },
+    {
+      "name": "Entra",
+      "label": "Entra ID",
+      "scope": "Entra ID devices that are enabled and Entra-joined or hybrid-joined (Windows and macOS)",
+      "resource": "office365Device",
+      "filter": {
+        "accountEnabled": true,
+        "operatingSystem": ["Windows", "MacMDM", "macOS"],
+        "trustType": ["AzureAd", "ServerAd"]
+      },
+      "host": "displayName",
+      "deviceId": "deviceId",
+      "idAuthority": true,
+      "os": "operatingSystem",
+      "lastSeen": "approximateLastSignInDateTime",
+      "required": false,
+      "missingLabel": "Not joined"
+    }
+  ]
+}

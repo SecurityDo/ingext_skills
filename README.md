@@ -49,6 +49,7 @@ Alternatively, install a specific skill by name:
 | [fortigate-bandwidth](#fortigate-bandwidth) | Correct FortiGate bandwidth aggregation rules |
 | [fluency-report](#fluency-report) | Run an existing FPL report → HTML summary |
 | [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
+| [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
 | [office-user-investigation](#office-user-investigation) | Investigate an M365 mailbox user (KQL + GeoIP) |
 | [ingext-health-monitor](#ingext-health-monitor) | Check whether a site is healthy and ingesting |
@@ -170,6 +171,25 @@ it (use fluency-report) and not for single standalone queries (use ingext-kql).
 **Try:**
 - "create an FPL report from these queries"
 - "turn these KQL queries into a report"
+
+### security-agent-deployment-status-report
+
+Builds a client-ready security agent deployment status report for an account: which active
+devices have every required agent installed and reporting, which are missing one, and which have
+an agent that went silent. It downloads the account's inventory resource dumps (by default
+SentinelOne, Microsoft Defender for Endpoint, and Entra ID as a reference), matches devices across
+them by Entra device ID and then by hostname, and processes everything locally with a
+standard-library Python script — no FPL report, processor, or search queries. A health check
+stops the run when an inventory is empty or stale, so a broken integration is never reported as
+missing agents. Output is a Fluency-branded HTML page (A4 PDF via **html-to-pdf**) plus a
+`devices.csv` of every device. The inventories are set in `sources.json`, so adding Intune,
+CrowdStrike, or another agent is a config change.
+
+**Try:**
+- "run the agent deployment status report for account X"
+- "which devices are missing SentinelOne or Defender?"
+- "give me an EDR coverage report for customer Y"
+- "deployment gap report for the Fluency account, as a PDF"
 
 ---
 
