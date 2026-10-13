@@ -74,7 +74,11 @@ package in the same change — the validator checks inside the archives and will
 | [fortigate-bandwidth](#fortigate-bandwidth) | Correct FortiGate bandwidth aggregation rules |
 | [fluency-report](#fluency-report) | Run an existing FPL report → HTML summary |
 | [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
+<<<<<<< HEAD
 | [fpl-report-dashboard](#fpl-report-dashboard) | Build, test, deploy and release a dashboard report: panels, layout, metric charts |
+=======
+| [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
+>>>>>>> 44fbfc4 (add security agent deployment report)
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
 | [office-user-investigation](#office-user-investigation) | Investigate an M365 mailbox user (KQL + GeoIP) |
 | [o365-activity-report](#o365-activity-report) | Account-wide O365/Exchange activity report (KQL: timechart + tables) |
@@ -192,6 +196,7 @@ it (use fluency-report) and not for single standalone queries (use ingext-kql).
 - "create an FPL report from these queries"
 - "turn these KQL queries into a report"
 
+<<<<<<< HEAD
 ### fpl-report-dashboard
 
 Builds a dashboard report end to end: the `fpl_report` script (metric queries, status
@@ -204,6 +209,26 @@ panel cookbook, a deploy helper and a worked example (Windows host health).
 - "build a dashboard for these metrics"
 - "add a host health report with CPU and disk charts"
 - "the report's charts all show zero"
+=======
+### security-agent-deployment-status-report
+
+Builds a client-ready security agent deployment status report for an account: which active
+devices have every required agent installed and reporting, which are missing one, and which have
+an agent that went silent. It downloads the account's inventory resource dumps (by default
+SentinelOne, Microsoft Defender for Endpoint, and Entra ID as a reference), matches devices across
+them by Entra device ID and then by hostname, and processes everything locally with a
+standard-library Python script — no FPL report, processor, or search queries. A health check
+stops the run when an inventory is empty or stale, so a broken integration is never reported as
+missing agents. Output is a Fluency-branded HTML page (A4 PDF via **html-to-pdf**) plus a
+`devices.csv` of every device. The inventories are set in `sources.json`, so adding Intune,
+CrowdStrike, or another agent is a config change.
+
+**Try:**
+- "run the agent deployment status report for account X"
+- "which devices are missing SentinelOne or Defender?"
+- "give me an EDR coverage report for customer Y"
+- "deployment gap report for the Fluency account, as a PDF"
+>>>>>>> 44fbfc4 (add security agent deployment report)
 
 ---
 
