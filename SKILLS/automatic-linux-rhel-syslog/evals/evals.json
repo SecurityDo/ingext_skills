@@ -1,0 +1,58 @@
+{
+  "skill_name": "automatic-linux-rhel-syslog",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Get the logs from this RHEL 9 box into Ingext. You have sudo here — just do it, and use encryption if you can.",
+      "expected_output": "The skill takes Mode A. It resolves the site syslog transport first (syslog_get_config; register once per site only if none exists; syslog_update_config to enable the TLS listener if the config lacks it), preferring TLS because rsyslog supports it natively. It installs the LinuxRHELSyslog connector via create_connector (live template fetch, instance 'linuxrhelsyslog', never 'default'). On the host it inspects the existing rsyslog setup first, discusses the selector (defaulting to *.* while noting the volume tradeoff), then runs assets/setup-ingext-rsyslog.sh with --protocol tls, surfacing the script's confirmation prompt. It notes the script installs the platform CA certificate, registers a non-514 port with SELinux, validates with rsyslogd -N1 before restarting, and restores the previous config if validation fails. It verifies with a logger test message and a datalake row count rather than waiting.",
+      "files": [],
+      "expectations": [
+        "The site syslog config is read before anything is created, and registered only if absent",
+        "TLS is preferred and the platform CA certificate is installed on the host",
+        "It installs the LinuxRHELSyslog connector itself with a live template fetch and a non-'default' instance id",
+        "It runs the bundled script rather than hand-writing config, and surfaces the confirmation prompt",
+        "It mentions the rsyslogd -N1 validation and the restore-on-failure safety behavior",
+        "Verification uses a logger test message plus a row count with the table confirmed via list_data_tables"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We want our Linux fleet's logs in Fluency. It's about 60 RHEL and Rocky servers, managed with Ansible. Our sysadmins won't give out sudo.",
+      "expected_output": "The skill recognizes both constraints: no sudo means Mode B, and 60 hosts means the deliverable is a config artifact rather than per-host runs. It completes the Fluency side itself (resolve/enable the syslog transport, install the LinuxRHELSyslog connector), then produces the exact rsyslog drop-in — generated with --dry-run so it is concrete rather than a template — for the sysadmins to ship via Ansible, along with the package prerequisite (rsyslog-gnutls for TLS), the CA certificate installation, the SELinux port registration for non-514 ports, and the validate-then-restart sequence. It explicitly recommends config management over looping SSH sessions and asks them to confirm a pilot host before the fleet rollout.",
+      "files": [],
+      "expectations": [
+        "It selects Mode B because sudo is unavailable, without pushing for host access",
+        "It recognizes a fleet needs configuration management and hands over the drop-in file rather than proposing 60 individual runs",
+        "The handover includes package prerequisites, CA cert installation, SELinux port registration, and the validate-before-restart step",
+        "The Fluency side (transport + connector) is completed now",
+        "It suggests verifying one pilot host before the full rollout"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Set up rsyslog forwarding to Ingext on our jump host. Before you touch anything: what exactly will you change, and what happens if it breaks logging on that box?",
+      "expected_output": "The skill answers the safety question directly before acting: it will add one drop-in file (/etc/rsyslog.d/10-ingext-forward.conf), install the platform CA certificate if TLS is used, possibly register the port with SELinux, and restart rsyslog — nothing else, and forwarding is additive so the host keeps writing local logs. On breakage it explains the mitigation honestly: the script runs rsyslogd -N1 first and refuses to restart on a config that does not validate, backs up any existing drop-in, and restores the previous state (exiting non-zero) if validation fails or rsyslog does not come back active. It offers --dry-run to preview the exact file first, and notes the 10- prefix ordering rationale plus the risk that an existing global() netstream driver could conflict.",
+      "files": [],
+      "expectations": [
+        "It enumerates precisely what is changed on the host before changing anything",
+        "It explains the validate-then-restart-else-restore behavior as the safety property",
+        "It notes that forwarding is additive and local logging continues",
+        "It offers --dry-run as a preview and mentions inspecting existing drop-ins for conflicts",
+        "It does not downplay the blast radius of an rsyslog misconfiguration"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[Invoked from customer-onboarding] The customer picked Linux servers from the onboarding menu. The Fluency MCP is connected; the operator has sudo on two RHEL hosts and says more will follow later. Complete this stage and hand back to the onboarding checklist.",
+      "expected_output": "The skill recognizes the onboarding hand-off: it is self-contained, so it resolves the syslog transport (register only if the site has none), installs the LinuxRHELSyslog connector itself WITHOUT chaining into add-connector and without re-collecting router context, and configures the two hosts it has access to. It hands back the connector instance id, the datalake table name (confirmed via list_data_tables since the template has no index), the endpoint domain/port/protocol, the list of hosts actually configured, and an explicit note that a fleet rollout remains outstanding. It verifies the configured hosts with logger test messages rather than assuming, and tells the router to mark the source pending because hosts remain unconfigured — not because events are missing from the two that are done.",
+      "files": [],
+      "expectations": [
+        "The skill completes transport plus connector itself and does not hand off to add-connector",
+        "It does not re-collect context the onboarding router already established",
+        "It hands back the instance id, confirmed table name, endpoint details, and the list of configured hosts",
+        "It verifies the configured hosts with generated test events rather than waiting passively",
+        "The pending status is attributed to the outstanding fleet rollout, distinguishing it from missing events on a configured host"
+      ]
+    }
+  ]
+}
