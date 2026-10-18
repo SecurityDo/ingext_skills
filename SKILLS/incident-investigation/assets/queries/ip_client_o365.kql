@@ -1,0 +1,27 @@
+// Has this exact address been used before, by this user or anyone, outside the
+// sign-in log? Office365 sign-in rows are sparse (a token lives for hours), so
+// an address can be "new" in the sign-in census and still have carried the
+// user's Outlook for a week. Outlook desktop (Client=MSExchangeRPC) and OWA rows
+// carry the CLIENT's own address; match on IP equality only. Do NOT read a
+// location from these rows, and never widen Source to other Exchange clients:
+// Client=REST/RESTSystem rows carry Microsoft datacenter addresses (40.126.x,
+// 20.190.x, 2603:10b6::), which geolocate to "Microsoft Corporation".
+// actor = who did it, mailbox = whose mailbox. actor "not available" = a
+// sign-in row with no UPN (failed, pre-authentication).
+// Counts include the datalake's duplicate copies; read first/last seen, not events.
+// Measured on one Office365-only tenant: two "never-used" addresses on a ticket
+// had carried the subject's and a colleague's Outlook for 4 and 7 days.
+// Placeholders: {IPS} = quoted, comma-separated list.
+Office365
+| where timestamp > ago(30d)
+| where Workload in ("AzureActiveDirectory", "Exchange")
+| extend ip = tostring(ClientIP), cis = tostring(ClientInfoString), op = tostring(Operation)
+| extend Source = case(op in ("UserLoggedIn", "UserLoginFailed"), "signin",
+    cis startswith "Client=MSExchangeRPC", "outlook_rpc",
+    cis startswith "Client=OWA", "owa", "")
+| where Source != ""
+| where ip in ({IPS})
+| summarize events = count(), firstSeen = min(timestamp), lastSeen = max(timestamp)
+    by ip, actor = tolower(tostring(UserId)), mailbox = tolower(tostring(MailboxOwnerUPN)), Source
+| order by ip asc, firstSeen asc
+| take 1000

@@ -115,6 +115,24 @@ An IP is not suspicious because it is unfamiliar to one user. Run
 rule's attributes, not only the IP of the action that scored highest — then
 `ip_users.kql` on whatever is left.
 
+**Before calling an address "new" or "never used", check it in two steps.**
+
+1. **Pre-filter in the behavior index (milliseconds).** Run `behavior_event_search` over
+   30 days with the quoted IPs as `searchStr`. If it shows the address on this user, or
+   on other users, before the ticket, the address is not new and you can stop.
+2. **Deep search only when the address is absent there or first seen at the ticket:**
+   run `ip_client_o365.kql`. The behavior index holds only a sign-in fingerprint, so
+   when it finds nothing, that proves nothing.
+
+This applies on every tenant, and above all on one without `AzureSigninLogs`. Office365
+sign-in rows are sparse, because one token covers hours of use. An address can be absent
+from the sign-in census and still have carried the user's Outlook, or a colleague's, for
+days. The query adds Outlook desktop (`Client=MSExchangeRPC`) and OWA rows, which carry
+the client's own address. Use them only to test whether it is the **same IP**, by user
+(`actor`) and by mailbox. They are never a source of location: take location only from
+sign-in rows. Do not widen the query to other Exchange clients. `REST`/`RESTSystem` rows
+carry Microsoft datacenter addresses.
+
 The ticket's addresses are the minimum, not the limit. When the picture needs it, resolve
 more: the IP the flagged action actually came from in the raw audit event (it can differ
 from the sign-in IPs the summary lists), the subject's other sign-in IPs around the event,
