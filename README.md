@@ -81,6 +81,7 @@ package in the same change — the validator checks inside the archives and will
 | [o365-activity-report](#o365-activity-report) | Account-wide O365/Exchange activity report (KQL: timechart + tables) |
 | [incident-investigation](#incident-investigation) | Triage an escalated behavior incident / AI-assist ticket to a verdict |
 | [ingext-get-profile](#ingext-get-profile) | Resolve a user, group or device to its profile: admin, roles, MFA, status; OS, last user, join state, EDR health |
+| [ingext-log-analytics-evidence](#ingext-log-analytics-evidence) | The incident checks that read a customer's own Log Analytics workspace (few accounts have one): sessions, Graph, containment, endpoint triggers, Azure changes |
 | [ingext-health-monitor](#ingext-health-monitor) | Check whether a site is healthy and ingesting |
 | [add-connector](#add-connector) | Install a new application connector |
 | [deploy-fpl-processor](#deploy-fpl-processor) | Deploy an FPL processor to a tenant and wire it into the running pipeline |
@@ -284,7 +285,9 @@ verdict rests on. Carries the error-code, user-agent, duplicate-row and GeoIP tr
 manufacture findings that are not there. Ends in a written closure with the detection tuning
 that stops the next eleven copies of the same ticket.
 
-Depends on **ingext-get-profile** for step 1 (what the subject and every target IS).
+Depends on **ingext-get-profile** for step 1 (what the subject and every target IS), and,
+on the few accounts with an AzureLogAnalytics integration, on
+**ingext-log-analytics-evidence** for the checks that read the customer's workspace.
 For the whole mailbox rather than one incident, use **office-user-investigation**; to write
 the suppression the base-rate check calls for, use **eventwatch-rule**.
 
@@ -321,6 +324,25 @@ own.
 ---
 
 ## Platform operations
+
+### ingext-log-analytics-evidence
+
+The workspace half of **incident-investigation**, for the few accounts that connect the
+customer's own Azure Log Analytics workspace. There the workspace, not the datalake, is the
+evidence: non-interactive sign-ins, where a stolen session was captured and everywhere it
+was replayed, the Microsoft Graph requests its tokens made, whether the password was really
+changed (including an on-prem reset that never synced) and whether anyone used it after
+containment; for a Defender for Endpoint alert, the exact process or PowerShell line it fired
+on, who logged on to the host, and who created, deleted or rebuilt the host in Azure. Nine
+bundled `la_*` queries, run with the `azure_logs_*` tools. incident-investigation step 0
+decides whether it applies; for free-form workspace queries use **azure-log-analytics-search**.
+
+**Try:**
+- "trace this session id in the customer's Log Analytics"
+- "what did the stolen token ask Graph for?"
+- "was <user>'s password really changed, and did anyone use it afterwards?"
+- "what did this Defender custom detection actually fire on?"
+- "who rebuilt <host> in Azure?"
 
 ### ingext-health-monitor
 

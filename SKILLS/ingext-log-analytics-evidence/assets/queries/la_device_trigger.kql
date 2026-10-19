@@ -1,0 +1,30 @@
+// Log Analytics path. What a Defender for Endpoint alert actually fired on.
+// {T0} = the alert's firstActivityDateTime (Defender alert JSON in the datalake, or
+// AlertInfo/AlertEvidence). On an MDE alert it is the Timestamp of the triggering event
+// to the 100 ns, so the row with AtT0 = true is the trigger. Returns every process,
+// PowerShell command, logon and connection on the host from 30 s before to 10 s after
+// (the trigger is usually the last step of a sequence that started seconds earlier;
+// widen to 60 s only if the run-up is cut off -- a busy host fills the result cap).
+// PowerShell content is in Command (DeviceEvents ActionType PowerShellCommand); a
+// custom detection's alert evidence carries only the machine, so this is where the
+// account, parent process and command come from.
+// Placeholders: {HOST} = the host as the alert spells it (prefix match, any case),
+// {T0} = ISO-8601 UTC.
+let Host = "{HOST}";
+let T0 = datetime("{T0}");
+union DeviceProcessEvents, DeviceEvents, DeviceLogonEvents, DeviceNetworkEvents
+| where TimeGenerated between ((T0 - 1h) .. (T0 + 2h))
+| where Timestamp between ((T0 - 30s) .. (T0 + 10s))
+| where DeviceName startswith Host
+| project Timestamp, Table = Type, ActionType, AccountDomain, AccountName, LogonType,
+    FileName, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessAccountName,
+    InitiatingProcessParentFileName,
+    Command = tostring(parse_json(AdditionalFields).Command),
+    RemoteIP, RemotePort = tostring(RemotePort), LocalPort = tostring(LocalPort)
+| extend AtT0 = Timestamp == T0
+| summarize dups = count() by Timestamp, AtT0, Table, ActionType, AccountDomain, AccountName,
+    LogonType, FileName, ProcessCommandLine, InitiatingProcessFileName,
+    InitiatingProcessAccountName, InitiatingProcessParentFileName,
+    Command, RemoteIP, RemotePort, LocalPort
+| top 1000 by Timestamp desc
+| order by Timestamp asc

@@ -1,0 +1,20 @@
+// Log Analytics path. Who changed the Azure resources around a host: create, delete,
+// re-register, deploy. Use it when the alert's device evidence carries an Azure
+// resource id (vmMetadata.resourceId, azureResourceEvidence) -- an Azure VM, or an
+// Arc-connected server or cluster node (Microsoft.HybridCompute/machines). Scoped to
+// the resource's resource group, so the cluster or VM set the host belongs to is in it.
+// A Caller that is a UPN is a person (check that account's sign-ins); a GUID is a
+// service principal, usually an Azure resource provider acting on the person's request.
+// Placeholders: {AZRES} = the Azure resource id, {WFROM}/{WTO} = the incident time
+// +-24h, ISO-8601 UTC.
+let Parts = split(tolower("{AZRES}"), "/");
+let Sub = tostring(Parts[2]);
+let Rg = tostring(Parts[4]);
+AzureActivity
+| where TimeGenerated between (datetime("{WFROM}") .. datetime("{WTO}"))
+| where SubscriptionId =~ Sub and ResourceGroup =~ Rg
+| summarize n = count(), t0 = min(TimeGenerated), t1 = max(TimeGenerated),
+    ips = make_set(CallerIpAddress, 10)
+    by Caller, OperationNameValue, ActivityStatusValue
+| order by t0 asc
+| take 1000

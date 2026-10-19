@@ -35,25 +35,17 @@ error.
 passwords, legacy-authentication attempts and lockouts are then in `Okta`, not here, so
 also run `references/workflows/okta.md` for any sign-in or lockout question.
 
-## A Log Analytics workspace? Use it for sign-ins, Graph and password changes
+## A Log Analytics workspace? Hand those checks to the sub-skill
 
 When step 0 found an `AzureLogAnalytics` integration (SKILL.md, "Find every source"), the
-workspace is the source for these checks and the datalake tables are not. Run the `la_*`
-queries with `azure_logs_search`, passing `rangeFrom`/`rangeTo` as each query's header
-says:
-
-| Check | Datalake query | Workspace query |
-|---|---|---|
-| 30-day sign-in profile (3a) | `signin_summary.kql` | `la_signin_summary.kql`, interactive and non-interactive |
-| Sign-ins around the incident (3a) | `signin_detail.kql` | `la_signin_detail.kql`, with `SessionId` and each authentication step |
-| Where a session came from and where it went (3a′) | — | `la_session_trace.kql` |
-| Graph requests the subject's tokens made (3c) | — | `la_graph_activity.kql` |
-| Was the password actually changed (3c) | — | `la_password_events.kql` |
-| Did anyone get the password right after containment (3c) | — | `la_post_containment.kql` |
-
-Directory changes still come from `AzureAuditLogs` (or the workspace's `AuditLogs`; they
-hold the same Entra audit). The Exchange checks (`bec_sweep`, `activity_profile`) still run
-on the datalake's `Office365`.
+workspace is the source for the sign-in profile and detail (3a), the session trace
+(3a′), and the Graph and containment checks (3c), and the datalake tables are not.
+**`ingext-log-analytics-evidence`** carries those checks and their `la_*` queries; run
+it at each step marked *workspace* below. Directory changes still come from
+`AzureAuditLogs`, and the Exchange checks (`bec_sweep`, `activity_profile`) still run on
+the datalake's `Office365`. On an account without a workspace — most of them — skip
+every *workspace* step and record what it would have answered as a gap where this file
+says so.
 
 ## No `AzureAuditLogs`? The Office365 fallback, and what it cannot see
 
@@ -138,7 +130,10 @@ more: the IP the flagged action actually came from in the raw audit event (it ca
 from the sign-in IPs the summary lists), the subject's other sign-in IPs around the event,
 and any address a 3c negative turns up. Say which extra addresses you resolved and why.
 
-**The subject's own sign-ins, in two steps — summary first.**
+**The subject's own sign-ins, in two steps — summary first.** On an account with a
+workspace, run `ingext-log-analytics-evidence`'s `la_signin_summary` and
+`la_signin_detail` in their place (*workspace*): they add the non-interactive sign-ins,
+`SessionId` and each authentication step, which these two cannot see.
 
 1. `assets/queries/signin_summary.kql` — 30 days as counts per IP × city × country × OS ×
    browser × device × interactive: which addresses, devices and places are normal for
@@ -185,28 +180,15 @@ so it is almost always unique to one user, and that says nothing about where the
 GeoIP is a hypothesis too. Private Relay, VPN and corporate NAT all move the pin, and
 a "impossible travel" finding built on an unverified city is manufactured.
 
-## 3a′ — Trace the session (stolen-session and token alerts)
+## 3a′ — Trace the session (stolen-session and token alerts) — *workspace*
 
 A "stolen session cookie", "anomalous token" or "Azure AD threat intelligence" alert is
-about a **session**, not a sign-in. The session is minted once and then replayed, often
-the next day, from residential proxies that change on almost every request. The replay
-sign-ins say "MFA satisfied by claim in the token", and none of them is the moment the
-account was lost. Take the `SessionId` from the alert (Defender's
-`cloudLogonSessionEvidence.sessionId`) or from `la_signin_detail.kql`, and run
-`la_session_trace.kql` over 30 days:
+about a **session**, not a sign-in: minted once, replayed later from addresses that
+change on almost every request, and none of the replay sign-ins is the moment the
+account was lost. Tracing it back to the capture needs the non-interactive sign-ins, so
+it runs in **`ingext-log-analytics-evidence`** ("Trace the session"), starting from the
+alert's session id (Defender's `cloudLogonSessionEvidence.sessionId`).
 
-- **The first row is the capture.** Its address, user agent and authentication steps
-  ("Correct password" plus the second factor, satisfied *on that sign-in*) say where and
-  how the session was taken. A browser string that matches the user's own phone while the
-  detected OS is a desktop one is what a phishing proxy relaying the victim looks like.
-  Look at the subject's own sign-ins in the minutes either side (`la_signin_detail.kql`):
-  the victim usually lands on the real site seconds after the capture.
-- **Read what happened just before it.** A broken push MFA, a helpdesk-added phone method,
-  a new-device enrolment: a user stuck at a prompt is the user who follows a link to get
-  past it.
-- **Every later row is a use of the stolen session.** Count the addresses and note which
-  resource each token was for (Exchange, Graph). Those are what `la_graph_activity.kql`
-  and the Exchange checks then follow.
 - The datalake has none of this when the account has no workspace: say "session origin not
   established" and name the alert's session id as the thing to trace.
 
@@ -278,22 +260,13 @@ A benign verdict rests on negatives, and they have to be collected, not assumed.
   recognises. It reads `office365User`, a snapshot table: if it returns zero rows, run
   `ingext-get-profile`'s readability probe on that table before writing "no methods
   registered" — or reuse the step-1 profile, which already did.
-- **Is it contained? A revoked session is not a changed password.** Run
-  `la_password_events.kql` and `la_post_containment.kql` whenever the ticket is a
-  credential or session theft and the customer has responded:
-  - A session revocation (`Update StsRefreshTokenValidFrom Timestamp`, "Revoke Session
-    Tokens") ends tokens. It does **not** change the password, and Microsoft's own risk
-    remediation for a token-theft risk revokes sessions only.
-  - On a synced (hybrid) account an on-prem reset is logged only in
-    `IdentityDirectoryEvents` (or the domain controllers' Security log; see the next
-    bullet), never in Entra `AuditLogs`. An "Account Password changed"
-    followed seconds later by "Account Password expired" is a reset with "must change at
-    next logon", and unless the tenant enabled `UserForcePasswordChangeOnLogonEnabled`,
-    that password is **not synced**: Entra keeps the old one.
-  - Any row in `la_post_containment.kql` from an address or user agent that is not the
-    user's is an attacker who still has the password, stopped only by the second factor.
-    The closure says **not contained**, and the first recommendation is a password change
-    that is confirmed by an Entra password event.
+- **Is it contained? A revoked session is not a changed password** — *workspace*. A
+  session revocation ends tokens but does not change the password, and on a synced
+  account an on-prem reset with "must change at next logon" is usually never synced to
+  Entra. Whenever the ticket is a credential or session theft and the customer has
+  responded, run `ingext-log-analytics-evidence` "Is it contained?". Without a
+  workspace, read the password events in `AzureAuditLogs` and the next bullet's on-prem
+  path, and say the post-containment sign-ins were not verified.
 - **Who changed the password on a hybrid account?** Entra records an on-prem change as
   `Change user password` / `Update PasswordProfile` initiated by the directory-sync
   account (`ConnectSyncProvisioning_*`, or `Action Client Name: DirectorySync`). That
@@ -320,12 +293,9 @@ A benign verdict rests on negatives, and they have to be collected, not assumed.
   Do not explain an on-prem password change as "routine propagation" without this
   check. A named admin resetting the password of a locked-out user is the strongest
   benign evidence an onboarding or lockout ticket has, and the sync row hides it.
-- **What did the stolen tokens ask Graph for?** `la_graph_activity.kql` lists every request.
-  A directory dump (`GET /users?$top=999`), a `$search` for payroll, finance or HR staff, or
-  a scripted client (`axios`, `python-requests`) is reconnaissance for the next attack, and
-  the people it found are who to warn. Graph does not log response bodies: report the
-  bytes, and if you reconstruct who matched a search from the directory, label it a
-  reconstruction.
+- **What did the stolen tokens ask Graph for?** — *workspace*. Graph requests are logged
+  only in the workspace: run `ingext-log-analytics-evidence` "What did the stolen tokens
+  ask Graph for?". Without one, it is a gap.
 - `assets/queries/bec_sweep.kql` — 30 days of what an actor does *after* taking an
   account: inbox rules, forwarding, delegated mailbox access, transport rules, OAuth
   consent. Zero hits across all of them is strong evidence and takes one query.

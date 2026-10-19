@@ -1,0 +1,16 @@
+// Log Analytics path. Who logged on to the host, and from where, in the incident window.
+// One row per account x logon type x result x source. A remote session the alert
+// attributes to "a service account" shows here with the machine that opened it
+// (RemoteIP / RemoteDeviceName); NTLM failures for a domain account before a host's
+// domain join are expected. Read the sources against the host's own neighbours
+// (cluster nodes, management servers) before calling one foreign.
+// Placeholders: {HOST} = the host as the alert spells it (prefix match, any case),
+// {WFROM}/{WTO} = the incident time +-24h, ISO-8601 UTC.
+let Host = "{HOST}";
+DeviceLogonEvents
+| where TimeGenerated between (datetime("{WFROM}") .. datetime("{WTO}"))
+| where DeviceName startswith Host
+| summarize n = count(), t0 = min(Timestamp), t1 = max(Timestamp)
+    by AccountDomain, AccountName, LogonType, ActionType, Protocol, RemoteIP, RemoteDeviceName
+| order by t0 asc
+| take 1000

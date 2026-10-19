@@ -38,6 +38,20 @@ The summary tells you what fired; the raw event tells you what happened.
 - **Read the whole event**, not the summary's attribute list: the actor (user, process,
   service account), its parent, its start time, signer, command line, source and
   destination, and what the product did about it (blocked, killed, excluded, failed).
+- **On a Defender for Endpoint alert, read the trigger from the Log Analytics workspace
+  when the account has one** (SKILL.md step 0) — *workspace*. The datalake's Defender
+  index holds the alert, not what the device did, and a **custom detection's** alert
+  (`detectionSource: customDetection`) names only the machine: no account, process or
+  command, and the rule's query lives in the customer's Defender portal. An AI assist
+  that read only the alert closed one as "no supporting telemetry" while the trigger sat
+  in the workspace. `ingext-log-analytics-evidence` "What the alert fired on" pins the
+  event to the alert's `firstActivityDateTime`. Without a workspace, the trigger is a
+  gap.
+- **Read `firstSeenDateTime` in the alert's device evidence.** A device first seen
+  minutes before the alert is being built, rebuilt or onboarded: a reimaged machine gets
+  a new Defender device id, so `ML_NEW_ASSET` fires on a host that has existed for
+  months. The same rule firing on every sibling (`<cluster>host01…04`) within a minute is
+  one operation, not four intrusions — find who ran it in G4.
 - **A vendor's own rule is not a Fluency rule.** If `eventwatch_rule_list` has nothing
   under the rule's name, the logic lives in the vendor console and Fluency only relays
   the alert. The tuning in step 5 then goes to the vendor.
@@ -146,6 +160,12 @@ which on some accounts holds only log-derived hosts.
   `timestamp` column there is arrival time, and a backlog arrives in one second.
 - **Include when the artifact started, not just when it alerted.** A process that has
   run for a month and alerts today points at the detection, not the process.
+- **Find who made the change, not just what ran.** Activity by `SYSTEM`, a service
+  account or a deployment account was started by someone. On an Azure VM or an
+  Arc-connected server, the create, delete and deploy operations name that person; on a
+  domain host, the join names the deployment account. Both are workspace tables —
+  `ingext-log-analytics-evidence` "Who made the change" (*workspace*). Without one, ask
+  the customer who owns the change and say so in the closure.
 - **Include when the rule itself appeared.** A rule created minutes before a wave of
   identical alerts means the wave is the rule. Vendor ids are often time-ordered; if you
   derive a time from one, calibrate it on events with known times and label it
@@ -159,6 +179,9 @@ a control.
 - **A device:** other alerts or threats on the host in the same source and in every other
   endpoint source (Defender, EDR); what the product did (killed, quarantined, excluded,
   failed); the device's other activity that day; outbound connections after the event.
+  Where the workspace exists, `ingext-log-analytics-evidence` "Who logged on" lists
+  every logon to the host and its source, with the host's neighbours as the control
+  (*workspace*).
 - **A user:** the Office365 workflow's 3c negatives if the account has Microsoft 365
   data; otherwise the identity provider's own sign-in and admin events, and any sharing,
   forwarding or app authorisation the user did afterwards.

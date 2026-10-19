@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.2.24
+version: 1.3.0
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -104,8 +104,16 @@ bend:
 | Sub-skill | Used in | For |
 |---|---|---|
 | **`ingext-get-profile`** | step 1 | what the subject (and any target account, group or device) IS: identity system, admin flags, directory roles, MFA state, status, group type; for a host — OS, last user, join/compliance state, EDR coverage and health, threat and exposure level |
+| **`ingext-log-analytics-evidence`** | step 0, then steps 3–4 — **only on an account with an AzureLogAnalytics integration** | the workspace versions of the sign-in, session, Graph, containment, endpoint-trigger, logon and Azure-change checks, with their nine `la_*` queries |
 
-Invoke it rather than re-implementing its lookups here. **If it is not installed,
+**`ingext-log-analytics-evidence` is needed only when step 0 finds a workspace**, which
+few accounts have. If it is found but the sub-skill is not installed, say so, offer to
+fetch `cowork/ingext-log-analytics-evidence.skill` from the `SecurityDo/ingext_skills`
+repo, and carry on with the datalake — but every check the workspace would have answered
+is a **gap** in the closure ("not verified — the account's Log Analytics workspace was
+not read"), never a datalake negative.
+
+Invoke `ingext-get-profile` rather than re-implementing its lookups here. **If it is not installed,
 improvise the profile** with whatever the tenant offers — `list_data_tables` for the
 inventories, a direct query on the entity, `get_azure_user_record` for a Microsoft 365
 user, the endpoint agent's live record or `asset_search` for a device — and carry on.
@@ -160,37 +168,27 @@ for the rest of the run (see "Hard rule — one incident, one account").
 ### Find every source, including the customer's Log Analytics workspace
 
 An account can carry its Microsoft data in two places: the datalake (`list_data_tables`,
-`lake_search_list_index`) and the customer's own **Azure Log Analytics** workspace,
-reached through an `AzureLogAnalytics` integration and the `azure_logs_*` tools.
-`list_data_tables` does **not** list the workspace, so an investigation that only reads
-the datalake never learns it is there. Probe it once, in step 0, on every account:
+`lake_search_list_index`) and, on a few accounts, the customer's own **Azure Log
+Analytics** workspace, reached through an `AzureLogAnalytics` integration and the
+`azure_logs_*` tools. `list_data_tables` does **not** list the workspace, so an
+investigation that only reads the datalake never learns it is there. Ask once, on every
+account and for every incident type:
 
 ```json
 azure_logs_list_tables { "filter": "signin" }
-azure_logs_get_schema  { "tables": ["SigninLogs", "AADNonInteractiveUserSignInLogs",
-  "MicrosoftGraphActivityLogs", "AuditLogs", "IdentityDirectoryEvents", "CloudAppEvents",
-  "EmailEvents", "UrlClickEvents"] }
 ```
 
-- **An error saying no AzureLogAnalytics integration is configured** means the datalake
-  is the only source. Say so once in the closure.
-- **Where the workspace has a table, it is the source for that question**, and the
-  datalake copy is not. In the case that taught this, the datalake's `AzureSigninLogs`
-  held 9 of the subject's ~20 sign-ins in the hour that mattered, and none of the
-  non-interactive ones. The session capture, the attacker's Graph directory dump and the
-  on-prem password reset were all in the workspace and in none of the datalake tables.
-  An investigation built on the datalake alone called the incident "contained" while the
-  attacker still held a valid password.
-- **What only the workspace has:** non-interactive sign-ins (`AADNonInteractiveUserSignInLogs`,
-  where a replayed token shows up), Microsoft Graph requests (`MicrosoftGraphActivityLogs`),
-  on-prem AD changes on a synced account (`IdentityDirectoryEvents`, Defender for
-  Identity), and Defender XDR's own email, click and cloud-app tables.
-- **It is a different KQL dialect**, forwarded to Azure verbatim. Its time range is
-  ANDed with the query's own time filter and the narrower one wins; with no range the
-  tool applies the last 24 hours. Pass `rangeFrom` for anything older. `first` and
-  `last` are reserved words there. The `azure-log-analytics-search` skill has the rest.
-- The bundled `la_*.kql` queries are the workspace versions of the sign-in checks; the
-  Office365 workflow says when to use them.
+- **An error saying no AzureLogAnalytics integration is configured** — the usual answer:
+  the datalake is the only source. Say so once in the closure and carry on; nothing
+  else in this skill changes.
+- **A listing** — the workspace exists, and **where it has a table, it is the source for
+  that question**; the datalake copy is partial. In the case that taught this, the
+  datalake held 9 of the subject's ~20 sign-ins in the hour that mattered, and the
+  session capture, the attacker's Graph requests and the on-prem password reset were in
+  the workspace only. On an endpoint ticket the datalake holds the Defender *alert*, the
+  workspace what the device *did*. Run **`ingext-log-analytics-evidence`** (see "Depends
+  on") for every check it covers: the Office365 and generic workflows name the points
+  where it takes over.
 
 ### If you must use the CLI
 
@@ -1136,7 +1134,7 @@ It is not saved to a file. An unbounded 30-day directory audit for one admin ret
   failed scan become a negative.
 
 Queries use `{USER}` (lower-cased UPN), `{TARGET}` (the UPN as `ObjectId` spells it),
-`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}` (a quoted, comma-separated list of addresses), `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`, and for `Okta`; `{WTO}` is never later than the time of the run), `{CID}` (one operation's `CorrelationId`; in the `_o365` fallbacks its `InterSystemsId`, the same value), `{HOST}` (the ticket's host name as the events spell it; matched case-insensitively; lower-cased in the `s1_*` inventory queries and `file_download_origin`), `{APP}` (a lower-cased product-name fragment for `s1_app_census`), `{SHA256}` (a file's SHA256, lower-case hex), `{FILE}` (a file name without its `(n)` suffix or extension, lower-cased), `{SRCIP}` (the host's address at the time of the event, as the firewall logs it), `{T0}` (one raw event time as ISO-8601 UTC, for the `fw_*` FortiGate queries, which build their own narrow windows around it), `{SESSION}` (an Entra `SessionId`, for `la_session_trace` and `la_graph_activity`), `{OID}` (the subject's Entra object id), `{SAM}` (the subject's on-prem account name as the domain controllers log `TargetUserName`, lower-cased, for the `onprem_*` queries), `{TCONTAIN}` (the containment time as ISO-8601 UTC: the first session revocation or password reset, for `la_post_containment`). The `la_*` queries run with `azure_logs_validate` / `azure_logs_search`, not `kql_search`. Run
+`{APPID}` (lower-cased application id), `{SPID}` (lower-cased service-principal object id), `{IPS}` (a quoted, comma-separated list of addresses), `{PREFIX}`, `{UA}`, `{FROM}`/`{TO}` (epoch ms), `{WFROM}`/`{WTO}` (the incident time ±24h as ISO-8601 UTC, e.g. `2026-09-28T12:40:00Z`, for tables whose time column is `TimeGenerated`, and for `Okta`; `{WTO}` is never later than the time of the run), `{CID}` (one operation's `CorrelationId`; in the `_o365` fallbacks its `InterSystemsId`, the same value), `{HOST}` (the ticket's host name as the events spell it; matched case-insensitively; lower-cased in the `s1_*` inventory queries and `file_download_origin`), `{APP}` (a lower-cased product-name fragment for `s1_app_census`), `{SHA256}` (a file's SHA256, lower-case hex), `{FILE}` (a file name without its `(n)` suffix or extension, lower-cased), `{SRCIP}` (the host's address at the time of the event, as the firewall logs it), `{T0}` (one raw event time as ISO-8601 UTC, for the `fw_*` FortiGate queries, which build their own narrow windows around it), `{SAM}` (the subject's on-prem account name as the domain controllers log `TargetUserName`, lower-cased, for the `onprem_*` queries). The workspace queries and their placeholders are in `ingext-log-analytics-evidence`. Run
 `ingext kql validate @<file>` after substituting — it parses in under a second and
 catches a wrong column name before a 20-second scan does.
 
