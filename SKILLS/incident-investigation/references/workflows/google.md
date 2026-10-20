@@ -68,6 +68,10 @@ an address can be "first seen" for logins while it has carried the user's apps f
 2. `gw_ip_users.kql` on the ticket's addresses — who else used them. Many users is the
    organisation's network; one user is that user's home or site, or an attacker: W3
    decides which.
+3. `subnet_lookup.kql` on the same addresses, against each `lookupType: CIDR` entity
+   table. Only a match in the organisation's own inventory makes an address "theirs";
+   many users without a match makes it shared. Grade and word it as `office365.md` 3a
+   says.
 
 | Shape | Reading |
 |---|---|

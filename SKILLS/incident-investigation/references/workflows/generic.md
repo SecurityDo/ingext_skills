@@ -140,6 +140,11 @@ account, whether or not it alerted.
 The Office365 workflow does this for sign-in IPs; do the same for whatever the ticket
 carries — destination IPs and ports, domains, hashes, device or account ids.
 
+For every IP address, run `assets/queries/subnet_lookup.kql` first, against each
+`lookupType: CIDR` entity table. A match in the organisation's own subnet inventory is
+the only thing that makes an address "theirs"; hundreds of sources make it shared
+infrastructure, not owned. Grade and word it as `office365.md` 3a says.
+
 | Shape | Reading |
 |---|---|
 | Hundreds of sources / hosts, every day | Company infrastructure or deployed software |

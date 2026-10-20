@@ -138,6 +138,9 @@ verdict.
   how many *other* people sign in from each. An address dozens of colleagues use is the
   organisation's office or VPN egress, even in a country the ticket flags as new. An
   address only the subject uses is a question for the user.
+- `assets/queries/subnet_lookup.kql` — the same addresses against the tenant's own
+  subnet inventory, run first. Only a match there makes an address the organisation's
+  own; many users makes it shared. Grade and word it as `office365.md` 3a says.
 
 A shared team or admin mailbox shows several people in several countries here. That is a
 fact about the account, not an intrusion. Say so, and move the risk to K4's role check.

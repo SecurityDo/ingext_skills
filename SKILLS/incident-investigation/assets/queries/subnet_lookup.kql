@@ -1,0 +1,26 @@
+// Is each address inside a range the tenant itself lists? Run it before
+// ip_census. A match in the organisation's own subnet inventory (an IPAM export,
+// an office/ISP list) is the only evidence here that an address is THEIR network;
+// a user count proves "shared", not "ours". Find the table with
+// list_entity_tables (lookupType "CIDR") and read its description: an inventory
+// of the organisation's own ranges proves ownership, a watchlist ("critical
+// subnets") only labels the range.
+// No match is NOT "external": an inventory can miss a circuit. decidable=false
+// means the table holds no range of that address family (often no IPv6 at all),
+// so it cannot answer for that address either way.
+// Placeholders: {ENTITY} = the table's kqlName, verbatim (ENTITY_Corporate_Subnets);
+// {CIDR} = its CIDR column (cidr); {LABEL} = an expression naming the range from
+// its other columns, e.g. strcat(name, " | ", tags); {IPS} = quoted,
+// comma-separated list.
+datatable(ip:string)[{IPS}]
+| extend k = 1
+| join kind=leftouter ({ENTITY} | extend k = 1, net = tostring({CIDR}), label = {LABEL}) on k
+| extend v6ip = ip contains ":", v6net = net contains ":"
+| extend hit = case(v6ip and v6net, ipv6_is_in_range(ip, net),
+                    not(v6ip) and not(v6net) and isnotempty(net), ipv4_is_in_range(ip, net),
+                    false)
+| summarize ranges = make_set_if(strcat(net, " | ", label), hit, 20),
+            sameFamilyRanges = countif(v6ip == v6net and isnotempty(net))
+    by ip
+| extend decidable = sameFamilyRanges > 0
+| take 1000

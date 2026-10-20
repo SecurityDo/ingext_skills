@@ -107,6 +107,33 @@ An IP is not suspicious because it is unfamiliar to one user. Run
 rule's attributes, not only the IP of the action that scored highest — then
 `ip_users.kql` on whatever is left.
 
+**First, look the addresses up in the tenant's own subnet inventory.** Call
+`list_entity_tables` and take every table with `lookupType: CIDR`. Read each one's
+description: an inventory of the organisation's own ranges (an IPAM export, an office or
+ISP-circuit list) is what proves an address is *their* network. A watchlist such as
+"critical subnets" only labels a range. Run `assets/queries/subnet_lookup.kql` once per
+inventory table, over the same addresses. It takes the table's `kqlName`, its CIDR
+column and a label built from its other columns. Then grade every address before you
+write about it:
+
+| Evidence | Grade | How to write it |
+|---|---|---|
+| Inside a range in the organisation's own inventory | **owned** | "<Org>'s own network (`<table>`: `<cidr>` <label>)" |
+| No inventory match, but `ip_census` shows dozens of users | **shared** | "shared by N users in 30 days; not in `<table>`". Never "<Org>'s own" |
+| `decidable: false` (the table holds no range of that family, often no IPv6 at all) | **undecided by the inventory** | grade it on the census alone, and say the inventory cannot answer |
+| No table with `lookupType: CIDR` | — | say so once; every address is graded on the census |
+
+- **No match is not "external".** An inventory can miss a circuit. On one tenant, one of
+  the two HQ egress addresses, used by 1,064 users, was absent from a 1,547-row IPAM
+  export, while the other one matched. An address that is shared at that scale but not
+  in the inventory is a side finding: the customer's inventory may be incomplete.
+- **Owned settles where, not who.** A match says the sign-in came from inside the
+  organisation's network. A compromised laptop, or an attacker on the VPN, comes from
+  there too. It answers the location question and nothing else.
+- **Account notes do not replace the lookup.** A note listing "the org's shared corporate
+  IPs" records a past census. Run the lookup on this ticket's addresses anyway, and when
+  you save or revise such a note, keep owned and shared addresses in separate lists.
+
 **Before calling an address "new" or "never used", check it in two steps.**
 
 1. **Pre-filter in the behavior index (milliseconds).** Run `behavior_event_search` over
@@ -149,7 +176,7 @@ row cap, so it was both incomplete and most of an investigation's cost.
 
 | Shape | Reading |
 |---|---|
-| Dozens of users, hundreds of events | Corporate egress / VPN NAT. Not an anomaly, whatever the GeoIP city says. |
+| Dozens of users, hundreds of events | Corporate egress / VPN NAT. Not an anomaly, whatever the GeoIP city says. Call it the organisation's own only when `subnet_lookup` matched it. |
 | Many users first seen on the same day | A network change — new circuit, new VPN, office move. |
 | A handful of users, recent | A site, an event, a travelling group. Corroborate in 3c. |
 | Exactly one user, one event | Keep going — but run `ip_prefix_sweep.kql` first. |
