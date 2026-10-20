@@ -11,8 +11,9 @@
 // Placeholders: {ENTITY} = the table's kqlName, verbatim (ENTITY_Corporate_Subnets);
 // {CIDR} = its CIDR column (cidr); {LABEL} = an expression naming the range from
 // its other columns, e.g. strcat(name, " | ", tags); {IPS} = quoted,
-// comma-separated list.
-datatable(ip:string)[{IPS}]
+// comma-separated list. Keep the spaces inside [ ]: with one address,
+// ["1.2.3.4"] parses as a bracket-quoted identifier and the query fails.
+datatable(ip:string)[ {IPS} ]
 | extend k = 1
 | join kind=leftouter ({ENTITY} | extend k = 1, net = tostring({CIDR}), label = {LABEL}) on k
 | extend v6ip = ip contains ":", v6net = net contains ":"
