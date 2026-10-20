@@ -1,0 +1,22 @@
+// Google Workspace: the subject's sign-in and account events, raw and deduped, 30
+// days: login, saml, DLP rules, user_accounts (password and 2-Step Verification
+// changes) and admin. Read event.parameters whole:
+//   login_challenge_method   what was asked: ["password","device_prompt"] is a
+//                            password plus a Google prompt on an enrolled phone;
+//                            ["password","password",...] is one mistyped password
+//   login_challenge_status   "passed" on login_verification is the second factor
+//   login_type               "reauth" with method ["none"] refreshes an existing
+//                            session; "google_password" is a fresh sign-in
+//   is_suspicious            Google's own risk flag on the login
+// The ticket's rows carry _behaviors (the rules they fired).
+// Placeholders: {USER} = lower-cased primary email.
+GSuite
+| where timestamp > ago(30d)
+| where tolower(tostring(actor.email)) == "{USER}"
+| where tostring(id.applicationName) in ("login", "saml", "rules", "user_accounts", "admin")
+| project timestamp, app = tostring(id.applicationName), name = tostring(event.name),
+    ip = tostring(ipAddress), isp = tostring(['_ip.isp']), city = tostring(['_ip.city']),
+    params = tostring(event.parameters), behaviors = tostring(_behaviors)
+| summarize dups = count() by timestamp, app, name, ip, isp, city, params, behaviors
+| top 1000 by timestamp desc
+| order by timestamp asc

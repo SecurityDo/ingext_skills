@@ -1,0 +1,12 @@
+// Google Workspace: who else used these addresses in 30 days, and since when. Many
+// users on one address is the organisation's network; one user is that user's own
+// home or site (or an attacker), which the subject's census and device check decide.
+// Placeholders: {IPS} = quoted, comma-separated list.
+GSuite
+| where timestamp > ago(30d)
+| where tostring(ipAddress) in ({IPS})
+| summarize events = count(), logins = countif(tostring(id.applicationName) == "login"),
+    first = min(timestamp), last = max(timestamp)
+    by ip = tostring(ipAddress), user = tolower(tostring(actor.email))
+| order by ip asc, events desc
+| take 1000

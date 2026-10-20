@@ -285,6 +285,11 @@ verdict rests on. Carries the error-code, user-agent, duplicate-row and GeoIP tr
 manufacture findings that are not there. Ends in a written closure with the detection tuning
 that stops the next eleven copies of the same ticket.
 
+Has a dedicated workflow per incident type: Office365 / Entra ID, Okta, SentinelOne and
+Google Workspace (the Google one separates a first interactive login from a genuinely new
+address, and reads the approving device from the mobile sync report); anything else runs a
+generic workflow.
+
 Depends on **ingext-get-profile** for step 1 (what the subject and every target IS), and,
 on the few accounts with an AzureLogAnalytics integration, on
 **ingext-log-analytics-evidence** for the checks that read the customer's workspace.

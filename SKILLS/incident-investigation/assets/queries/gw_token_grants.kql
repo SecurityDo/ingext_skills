@@ -1,0 +1,18 @@
+// Google Workspace: every OAuth app the subject authorised or revoked in 30 days,
+// with first and last use and the addresses it came from. An app first authorised
+// minutes after the flagged login is the follow-on to read: take its scopes from
+// the raw authorize event (gw_login_detail does not list token rows). Scopes limited
+// to openid, userinfo.email and userinfo.profile are a "Sign in with Google", with no
+// mail, Drive or directory access; gmail.*, drive, directory.* or
+// https://mail.google.com/ scopes give the app the data.
+// Placeholders: {USER} = lower-cased primary email.
+GSuite
+| where timestamp > ago(30d)
+| where tolower(tostring(actor.email)) == "{USER}"
+| where tostring(id.applicationName) == "token"
+| summarize events = count(), first = min(timestamp), last = max(timestamp),
+    ips = make_set(tostring(ipAddress))
+    by name = tostring(event.name), appname = tostring(event.parameters.app_name),
+       client = tostring(event.parameters.client_id)
+| order by first asc
+| take 1000

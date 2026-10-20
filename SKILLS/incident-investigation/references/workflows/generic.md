@@ -1,8 +1,8 @@
 # Generic workflow (incident-investigation, step 3)
 
 Run this when no dedicated workflow matches the ticket's type (see the routing table in
-SKILL.md step 3) — an EDR alert, a firewall event, a Google Workspace login, a vendor
-alert Fluency relays, anything new. It is not a query list. It is the order of questions
+SKILL.md step 3) — an EDR alert, a firewall event, a vendor alert Fluency relays,
+anything new. It is not a query list. It is the order of questions
 a dedicated workflow answers, with the tools that answer them on any data source.
 
 > **Guidance, not a script.** These are the questions that settled past tickets with no

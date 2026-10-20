@@ -1,0 +1,16 @@
+// Google Workspace: admin-console and account-security events done BY or TO the
+// subject in 30 days: password resets, 2-Step Verification changes, role and OU
+// changes, suspensions, recovery-contact edits, data transfers. The admin report
+// names the target only inside event.parameters (USER_EMAIL), hence `contains`.
+// Its control is gw_app_census.kql: zero here means nothing only when that census
+// shows admin and user_accounts events elsewhere on the account.
+// Placeholders: {USER} = lower-cased primary email.
+GSuite
+| where timestamp > ago(30d)
+| where tostring(id.applicationName) in ("admin", "user_accounts")
+| where tolower(tostring(actor.email)) == "{USER}" or tolower(tostring(event.parameters)) contains "{USER}"
+| project timestamp, app = tostring(id.applicationName), name = tostring(event.name),
+    actor = tostring(actor.email), ip = tostring(ipAddress), params = tostring(event.parameters)
+| summarize dups = count() by timestamp, app, name, actor, ip, params
+| top 1000 by timestamp desc
+| order by timestamp asc

@@ -1,0 +1,17 @@
+// Google Workspace: the subject's endpoint-managed devices, 30 days (mobile report,
+// DEVICE_SYNC_EVENT). A device that synced in the same second as the flagged login,
+// with weeks of history under the same DEVICE_ID, is the user's own machine: this is
+// Google's equivalent of the Office365 workflow's approving-device check (3b). A
+// DEVICE_ID first seen at the ticket is a new device: check who enrolled it.
+// The mobile report breaks the other reports' conventions (UPPER_SNAKE_CASE keys,
+// "true"/"false" strings); see the ingext-kql GSuite schema.
+// Placeholders: {USER} = lower-cased primary email.
+GSuite
+| where timestamp > ago(30d)
+| where tolower(tostring(actor.email)) == "{USER}"
+| where tostring(id.applicationName) == "mobile"
+| summarize syncs = count(), first = min(timestamp), last = max(timestamp)
+    by device = tostring(event.parameters.DEVICE_ID), model = tostring(event.parameters.DEVICE_MODEL),
+       os = tostring(event.parameters.OS_VERSION), type = tostring(event.parameters.DEVICE_TYPE)
+| order by first asc
+| take 1000

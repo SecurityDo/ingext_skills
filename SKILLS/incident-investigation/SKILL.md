@@ -1,18 +1,18 @@
 ---
 name: incident-investigation
-version: 1.3.0
+version: 1.4.0
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
-  ticket, an alert or a risk score and asks what it really is — "investigate this incident",
+  ticket, an alert or risk score and asks what it really is — "investigate this incident",
   "triage this ticket", "is this a true positive", "the AI assist says actionable, check it",
   "why did this user score 3600", "should we escalate this alert". Pulls the ticket and the
   AI-assist verdict, profiles the subject, measures the in-tenant base rate for the rule that
   fired, then runs the workflow for the incident type (Office365 and stolen sessions, Okta,
-  SentinelOne; each proves what did NOT happen)
+  SentinelOne, Google; each proves what did NOT happen)
   and re-derives every number against the timestamp, error-code, user-agent, duplicate-row
-  and GeoIP traps that manufacture findings, reading the customer Log Analytics workspace
-  when connected. Ends in a closure (benign, escalate or confirmed) with tuning, and an HTML
+  and GeoIP traps that manufacture findings, reading the customer's Log Analytics workspace
+  if any. Ends in a closure (benign, escalate or confirmed) with tuning, and an HTML
   closure report on request. Queries only the incident's own tenant account.
 ---
 
@@ -593,7 +593,8 @@ workflow file:
 | `O365_`, `AzureAD_`, `Fluency_O365_`, `Duo_` on a Microsoft 365 user, and Defender alerts on a user (stolen session, token, Graph reconnaissance) | Office365 / Entra ID | `references/workflows/office365.md` — 3a resolve every address (Duo's phone side too), 3a′ trace the session, 3b the approving device (auth incidents only; Duo: was it just enrolled), 3c prove what did not happen, including whether it is contained and, on a hybrid account, who changed the password on-prem, 3d what actually sent the mail (outbound-spam and sending-limit alerts) |
 | `okta_` | Okta sign-in / account | `references/workflows/okta.md` — K1 which path every sign-in took, K2 did any of it succeed, K3 the same signature on other accounts, K4 what changed on the account, K5 what the real sign-ins look like, K6 prove what did not happen up to where the data reaches |
 | `SentinelOne:`, `Fluency_SentinelOne_` | SentinelOne EDR alert | `references/workflows/sentinelone.md` — S1 pull each alert whole, S2 running or at rest, S3 agent time and ownership, S4 hash prevalence and origin, S5 prove what did not run, S6 reconcile counts, S7 score, tuning and side findings |
-| anything else (`GoogleWorkspace_`, …) | no dedicated workflow yet | `references/workflows/generic.md` — G1 read the raw events, G2 how common the artifact is, G3 resolve every indicator, G4 raw timeline, G5 prove what did not happen, G6 side findings |
+| `GoogleWorkspace_` | Google Workspace sign-in / account | `references/workflows/google.md` — W0 which Google reports the account collects, W1 who the subject is (`gsuiteUser`), W2 is the address really new (logins vs token traffic), W3 which device and factor approved it, W4 what the session did next (OAuth grants), W5 prove what did not happen, W6 score and base rate |
+| anything else | no dedicated workflow yet | `references/workflows/generic.md` — G1 read the raw events, G2 how common the artifact is, G3 resolve every indicator, G4 raw timeline, G5 prove what did not happen, G6 side findings |
 
 - **A ticket can carry more than one type.** Run every matching workflow and keep their
   findings apart in the closure.
@@ -663,6 +664,15 @@ One tenant's `gsuiteGroup` held 98 groups with nothing readable in any of them. 
 control is `ingext-get-profile`'s readability probe (`assets/queries/readability_probe.kql`
 in that skill): count the rows and how many carry a non-empty key column. `readable > 0`
 makes the absence real; anything else is a gap, and the closure says "not verified".
+
+**A misspelled column is not an unreadable table either.** A filter on a column that does
+not exist returns a result whose `Columns` list is **empty** — not null columns, no columns
+at all. A lookup on `gsuiteUser | where PrimaryEmail == "…"` (the column is `primaryEmail`)
+came back that way, the run saved "gsuiteUser has no readable fields" as an account note,
+and later runs trusted the note and skipped the table. `Columns: []` means the query named
+something the table does not have: read the schema (`ingext-kql`, or the profile skill's
+query) and run it again before calling anything a gap, and never record a table as
+unreadable without the readability probe.
 
 **A summary's `count` can be lower than the number of real events.** The engine
 dedupes behavior events on a key built from `Key`, `KeyType`, `BehaviorRule` **and
@@ -1037,7 +1047,7 @@ returns the documents directly, so only `summary_digest.py` still earns its plac
 feed it the `documents` array. `ingext_json.py` is unnecessary there: it exists solely
 to recover a JSON body from a debug log, and MCP returns one.
 | `assets/queries/*.kql` | The queries the workflows and steps name, placeholder-substituted and parse-validated |
-| `references/workflows/*.md` | Step 3: `office365.md` for Office365 / Entra ID incidents, `okta.md` for Okta incidents, `sentinelone.md` for SentinelOne alerts, `generic.md` for every other type |
+| `references/workflows/*.md` | Step 3: `office365.md` for Office365 / Entra ID incidents, `okta.md` for Okta incidents, `sentinelone.md` for SentinelOne alerts, `google.md` for Google Workspace incidents, `generic.md` for every other type |
 | `references/fortigate.md` | Any workflow's firewall question about one host: which table holds names vs sessions, the duplicate-device and cumulative-byte traps, and the `fw_*` trigger / aftermath / control queries |
 
 **Don't modify a bundled query or trim its output.** Run it unmodified — do not wrap it

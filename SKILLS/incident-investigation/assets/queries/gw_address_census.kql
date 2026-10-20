@@ -1,0 +1,19 @@
+// Google Workspace: every address the subject used in 30 days, as counts. Run it
+// before calling any address "new". The ML geo first-seen terms (NewCity, NewISP,
+// NewCountry) on a GoogleWorkspace_Login_* ticket are learned from LOGIN events
+// only, so an address can be "first seen" while it has carried the user's OAuth
+// token traffic (applicationName "token") for weeks. Read `logins` and `events`
+// side by side: logins = 1, events = 60 is the user's own network at its first
+// interactive login, not a new location.
+// Rows with an empty ip are server-attributed actions (mobile sync, DLP rules,
+// add-on Drive and Calendar activity); they carry no address by design.
+// Placeholders: {USER} = lower-cased primary email.
+GSuite
+| where timestamp > ago(30d)
+| where tolower(tostring(actor.email)) == "{USER}"
+| extend ip = tostring(ipAddress), isp = tostring(['_ip.isp']), city = tostring(['_ip.city']),
+    cc = tostring(['_ip.countryCode']), app = tostring(id.applicationName)
+| summarize events = count(), logins = countif(app == "login"), first = min(timestamp),
+    last = max(timestamp), apps = make_set(app) by ip, isp, city, cc
+| order by first asc
+| take 1000

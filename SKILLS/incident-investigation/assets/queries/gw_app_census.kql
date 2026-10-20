@@ -1,0 +1,10 @@
+// Google Workspace: which Reports API applications this account collects, 30 days,
+// as counts. The control for every Google negative: an application absent here is a
+// gap, never a zero. Gmail settings (forwarding, filters, delegation) arrive only
+// with a "gmail" application; without it, mail-side persistence cannot be checked.
+GSuite
+| where timestamp > ago(30d)
+| summarize events = count(), users = dcount(tolower(tostring(actor.email))),
+    last = max(timestamp) by app = tostring(id.applicationName)
+| order by events desc
+| take 1000
