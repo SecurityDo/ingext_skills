@@ -3,11 +3,14 @@
 // forwarding, delegated mailbox access, transport rules, OAuth consent. Zero
 // hits across all of them is strong evidence; run it before writing "benign".
 // Placeholders: {USER} = lower-cased UPN, {TARGET} = the UPN as ObjectId spells it.
+// Folder sharing from Outlook / OWA is logged as AddFolderPermissions /
+// ModifyFolderPermissions / RemoveFolderPermissions, not as the cmdlet name.
 Office365
 | where timestamp > ago(30d)
 | where Operation has_any ("New-InboxRule", "Set-InboxRule", "UpdateInboxRules",
     "Set-Mailbox", "Add-MailboxPermission", "Add-RecipientPermission",
-    "Add-MailboxFolderPermission", "Consent to application",
+    "Add-MailboxFolderPermission", "AddFolderPermissions",
+    "ModifyFolderPermissions", "RemoveFolderPermissions", "Consent to application",
     "Add service principal", "Add app role assignment grant to user",
     "Add delegated permission grant", "Add OAuth2PermissionGrant",
     "New-TransportRule", "Set-TransportRule", "Update user")
