@@ -363,6 +363,77 @@ Read four things:
   through `User-Defined Blocklist` means the hash was blocklisted after being judged
   benign. That is a tuning finding, not an incident.
 
+### Earlier verdicts on the same file, across hashes
+
+The hash search above answers "has *this build* been seen". It cannot find the same
+program's earlier detections, because every vendor update ships a new hash. On one ticket
+a fleet management agent's service binary was flagged with a hash seen on no other host.
+That made it read as new, so the run escalated over storyline indicators it could not
+attribute. The same binary, on its previous build, had been flagged on another host with
+the same label and engine, and every one of the ticket's indicators was on that record too.
+The customer had closed it as a false positive. Only a search by file found it.
+
+Run this search whenever the threat has a file, and run it **after** the hash search,
+not instead of it. Filter on the exact `threatName` and leave out this ticket's hashes:
+
+```json
+lake_search {
+  "index": "SentinelOne", "searchStr": "",
+  "mustFilters": [
+    { "field": "@eventType", "terms": ["SentinelOneThreat"] },
+    { "field": "@sentinelOneThreat.threatInfo.threatName", "terms": ["<threatName, exact>"] }
+  ],
+  "mustNotFilters": [{ "field": "@sentinelOneThreat.threatInfo.sha1", "terms": ["<this ticket's sha1s>"] }],
+  "rangeFrom": <ms − 30 days>, "rangeTo": <ms>, "limit": 1,
+  "facets": ["@sentinelOneThreat.agentRealtimeInfo.agentComputerName",
+             "@sentinelOneThreat.threatInfo.threatId",
+             "@sentinelOneThreat.threatInfo.sha1",
+             "@sentinelOneThreat.threatInfo.filePath",
+             "@sentinelOneThreat.threatInfo.publisherName",
+             "@sentinelOneThreat.threatInfo.engines",
+             "@sentinelOneThreat.threatInfo.classification",
+             "@sentinelOneThreat.threatInfo.analystVerdict",
+             "@sentinelOneThreat.threatInfo.mitigationStatus",
+             "@sentinelOneThreat.threatInfo.createdAt"],
+  "facetSize": 50
+}
+```
+
+- **Read the facets, not the document.** One behavioural threat record with its
+  `indicators[]` is about 20k tokens. `limit` cannot go below 1, so one record always comes
+  back. Take its indicator list as the record to compare with (below), and don't fetch more.
+- **It is the same program only if path and signer match.** A copy counts as an earlier
+  build of this file when its `filePath` is the same install path and its `publisherName`
+  is the same signer, or both are empty on both. A matching name with a different path or
+  signer is another file with the same name. Report it as such, and it is not a precedent.
+- **What it can show:**
+  - **an earlier analyst verdict.** `analystVerdict: false_positive` or
+    `mitigationStatus: marked_as_benign` on an earlier build is the customer's decision
+    about this program. Quote it with the host, the threat id and when it was created.
+  - **an earlier `true_positive`, or a quarantine.** Quote it the same way. It weighs against
+    the file.
+  - **no earlier copies.** That is a negative only next to its control: the same search
+    with the `mustNotFilters` removed returns this ticket's own threat.
+- **Compare the indicators, not just the label.** When an earlier copy exists, facet
+  `@sentinelOneThreat.indicators.description` over the same search with the `mustNotFilters`
+  removed. An indicator whose count equals the number of threat records is on every copy.
+  List the ticket's indicators that are **absent** from the earlier, cleared copies. Those
+  are the indicators the precedent does not cover, and S2's attribution question applies
+  to them. When every indicator on the ticket also appears on a copy the customer cleared,
+  say so in the closure. That is the strongest evidence the index holds about what this
+  program's storyline normally looks like.
+- **The window sees a threat only if it was updated recently.** Each update of a threat is
+  written to the index again. A threat created months ago shows up here only if something
+  touched it in the last 30 days. Read `createdAt` for its age. A zero therefore means "no
+  earlier copy updated in 30 days", not "never seen". State it that way.
+- **Older feed.** On a site with only `SentinelOneAPI` documents, the name is in
+  `@s1.fileDisplayName` and there is no verdict field. Count `4008` "marked as benign"
+  activities for the name instead, or record the check as a gap.
+- **It informs the verdict, it does not decide it.** A precedent says how the customer
+  judged an earlier build. It does not say this build is the same code. A hash that is new
+  to the tenant is still a gap unless it was checked against threat intelligence. And any
+  indicator the precedent does not cover is still unexplained.
+
 **Arrival or departure — order the copies before naming a delivery route.** One file
 detected in several places on a host is a sequence, not a set. Put every copy on the host
 in order of `identifiedAt` (facet `threatInfo.filePath` with `threatInfo.identifiedAt`,
@@ -531,6 +602,7 @@ and expect tickets that fit none of these rows.
 | Same, plus Temp extraction folders or a runtime hit elsewhere by the same user | Escalate for remediation and a pre-install execution check on the host and the user's account |
 | `agent_policy` + dynamic engine with a user process, not mitigated | Escalate for containment — this is the live case |
 | Blocklist hit on a hash an analyst marked false positive | Benign for the host; tuning to the SentinelOne console |
+| Behavioural detection of a vendor-signed, fleet-installed service on a hash new to the tenant, where an earlier build of the same path and signer was cleared as a false positive and carried every indicator on this ticket | Benign, citing the earlier threat id, host and verdict and the indicator comparison. Name the new hash as not checked against threat intelligence. Tuning is a certificate-plus-path exclusion in the SentinelOne console, because a hash exclusion breaks at the next update. If the ticket has an indicator the cleared copies lack, escalate on that indicator alone |
 | On-write or on-execution detections at suspicious confidence, a named user, not mitigated because suspicious threats are in detect mode | Escalate for remediation (quarantine), with the policy choice as a finding, not a host fault; re-check confidence before closing, since the cloud may upgrade it |
 | An unsigned executable launched by named users on one or a few hosts over days, static on-write engine only (capability indicators, nothing observed), suspicious confidence | Escalate with one question: does the organisation recognise the file (an in-house or vendor tool)? Yes → benign, exclusion in the SentinelOne console; no → quarantine everywhere it is and trace where it came from. Not containment on the indicators alone |
 | A STAR hash rule matched a cached installer (`C:\Windows\Installer\<hex>.msi`) during a full disk scan, with no threat record and no process. The inventory names the product at a version outside the range the rule targets, installed across the account | Benign for the host. The finding is the rule's hash list, tuned in the SentinelOne console. If the hash was identified from the inventory alone, say so. Inside the range: escalate as a fleet exposure covering every host with that version |

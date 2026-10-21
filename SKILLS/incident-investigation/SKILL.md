@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.4.3
+version: 1.4.4
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -592,7 +592,7 @@ workflow file:
 |---|---|---|
 | `O365_`, `AzureAD_`, `Fluency_O365_`, `Duo_` on a Microsoft 365 user, and Defender alerts on a user (stolen session, token, Graph reconnaissance) | Office365 / Entra ID | `references/workflows/office365.md` — 3a resolve every address (the tenant's own subnet inventory first, Duo's phone side too), 3a′ trace the session, 3b the approving device (auth incidents only; Duo: was it just enrolled), 3c prove what did not happen, including whether it is contained and, on a hybrid account, who changed the password on-prem, 3d what actually sent the mail (outbound-spam and sending-limit alerts) |
 | `okta_` | Okta sign-in / account | `references/workflows/okta.md` — K1 which path every sign-in took, K2 did any of it succeed, K3 the same signature on other accounts, K4 what changed on the account, K5 what the real sign-ins look like, K6 prove what did not happen up to where the data reaches |
-| `SentinelOne:`, `Fluency_SentinelOne_` | SentinelOne EDR alert | `references/workflows/sentinelone.md` — S1 pull each alert whole, S2 running or at rest, S3 agent time and ownership, S4 hash prevalence and origin, S5 prove what did not run, S6 reconcile counts, S7 score, tuning and side findings |
+| `SentinelOne:`, `Fluency_SentinelOne_` | SentinelOne EDR alert | `references/workflows/sentinelone.md` — S1 pull each alert whole, S2 running or at rest, S3 agent time and ownership, S4 hash prevalence, origin and earlier verdicts on the same file across hashes, S5 prove what did not run, S6 reconcile counts, S7 score, tuning and side findings |
 | `GoogleWorkspace_` | Google Workspace sign-in / account | `references/workflows/google.md` — W0 which Google reports the account collects, W1 who the subject is (`gsuiteUser`), W2 is the address really new (logins vs token traffic), W3 which device and factor approved it, W4 what the session did next (OAuth grants), W5 prove what did not happen, W6 score and base rate |
 | anything else | no dedicated workflow yet | `references/workflows/generic.md` — G1 read the raw events, G2 how common the artifact is, G3 resolve every indicator, G4 raw timeline, G5 prove what did not happen, G6 side findings |
 
