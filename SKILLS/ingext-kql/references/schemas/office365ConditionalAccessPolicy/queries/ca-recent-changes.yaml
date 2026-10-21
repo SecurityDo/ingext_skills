@@ -1,0 +1,26 @@
+description: >-
+  Lists Conditional Access policies created or modified in the last 30 days,
+  using modifiedDateTime when present and falling back to createdDateTime for
+  policies never edited since creation (timestamp is not a change time). Useful
+  for change review and after an incident: an attacker with admin rights often
+  weakens a policy (adds an exclusion, switches it to report-only) rather than
+  deleting it. Pair with the Entra ID audit log ("Update conditional access
+  policy") to see who made the change.
+datatype: office365ConditionalAccessPolicy
+kql: |
+  office365ConditionalAccessPolicy
+  | extend Modified = todatetime(modifiedDateTime), Created = todatetime(createdDateTime)
+  | extend LastChange = iff(isnull(Modified), Created, Modified)
+  | where isnotnull(LastChange) and LastChange > ago(30d)
+  | extend IsNew = isnull(Modified)
+  | project LastChange, displayName, state, IsNew, Created
+  | order by LastChange desc
+tags: [office365, entra-id, conditional-access, change-tracking, incident-response]
+expected_output: |
+  Policies changed in the last 30 days, newest first (sanitized).
+
+  LastChange                    displayName                                                        state                              IsNew  Created
+  2026-10-21T14:44:01.953236Z   CA001 - Require MFA and Terms of Use for all users outside trusted locations  enabled  false  2023-08-15T15:02:36.1556306Z
+  2026-10-15T14:53:20.8219966Z  CA004 - Block non-compliant devices from untrusted locations      enabled                            false  2026-06-11T19:02:42.631936Z
+  2026-10-15T14:07:05.0722234Z  [Report] CA004 - Block non-compliant devices (exceptions under review)  enabledForReportingButNotEnforced  false  2023-08-16T12:16:54.1548466Z
+  2026-10-14T11:21:38.1388095Z  CA002 - Require MFA for all administrator roles                   enabled                            false  2023-08-15T14:48:22.7442529Z

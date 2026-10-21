@@ -1,0 +1,34 @@
+description: >-
+  Summarizes the tenant's Conditional Access posture: how many policies are
+  enforced, report-only, or disabled, broken down by what they enforce (block,
+  MFA — via built-in mfa or an authentication strength — other grant controls
+  such as compliant/hybrid-joined device, or session controls only). A quick
+  baseline for Zero Trust reviews; a large report-only or disabled share means
+  intended protections are not actually enforced.
+datatype: office365ConditionalAccessPolicy
+kql: |
+  office365ConditionalAccessPolicy
+  | extend Grant = iff(isnull(grantControls), "", strcat_array(grantControls.builtInControls, ",")),
+      AuthStrength = tostring(grantControls.authenticationStrength.displayName),
+      HasSession = isnotnull(sessionControls)
+  | extend Control = case(Grant has "block", "block",
+      Grant has "mfa" or isnotempty(AuthStrength), "mfa",
+      isnotempty(Grant), "other-grant",
+      HasSession, "session-only",
+      "none")
+  | summarize Policies = count() by state, Control
+  | order by state asc, Policies desc
+tags: [office365, entra-id, conditional-access, mfa, zero-trust, posture]
+expected_output: |
+  Policy counts by enforcement state and control type (sanitized).
+
+  state                              Control       Policies
+  disabled                           mfa           3
+  disabled                           session-only  1
+  enabled                            block         10
+  enabled                            mfa           9
+  enabled                            none          2
+  enabled                            other-grant   2
+  enabledForReportingButNotEnforced  block         5
+  enabledForReportingButNotEnforced  mfa           4
+  enabledForReportingButNotEnforced  other-grant   2

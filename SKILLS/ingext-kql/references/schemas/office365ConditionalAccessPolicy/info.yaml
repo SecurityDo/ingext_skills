@@ -1,0 +1,317 @@
+schema: office365ConditionalAccessPolicy
+description: >-
+  Microsoft Entra ID (Azure AD) Conditional Access policy snapshot collected by
+  Ingext from Microsoft Graph /identity/conditionalAccess/policies. Each record is
+  the current state of one policy: its enforcement state (enabled, report-only,
+  disabled), the conditions it applies to (users/groups/roles, guests, cloud apps and
+  user actions, client app types, platforms, named locations, device filter, sign-in /
+  user / insider risk, authentication flows), and what it enforces (grant controls
+  such as block, MFA, compliant device or an authentication strength, combined with
+  AND/OR, plus session controls such as sign-in frequency and persistent browser).
+  The policy is stored as a dynamic JSON document, so nested objects are accessed
+  with dot notation (e.g. conditions.users.excludeUsers, grantControls.builtInControls)
+  and arrays require mv-expand or array_index_of(). Users, groups, named locations
+  and terms-of-use are referenced only by object ID (GUID); roles by Entra role
+  template ID; applications by appId or a keyword (All, Office365,
+  MicrosoftAdminPortals). Resolve user IDs by joining to office365User.id and group
+  IDs to office365Group.id. Useful for Zero Trust / MFA-coverage reviews, finding
+  report-only or disabled policies, auditing exclusion sprawl (break-glass and
+  service accounts excluded from many policies), legacy-authentication and
+  device-code blocking, and tracking recent policy changes.
+  Traps: (1) a policy can require MFA through grantControls.authenticationStrength
+  while builtInControls is empty, so test both when asking "does this policy
+  require MFA"; (2) grantControls is null for session-control-only policies;
+  (3) mv-expand of an empty array (e.g. excludeUsers == []) still yields one row
+  with an empty value, so filter isnotempty() after expanding; (4) older policies
+  have createdDateTime == null, in which case timestamp is the collection time,
+  and modifiedDateTime is null for policies never edited since creation;
+  (5) Graph adds "...@odata.context" sibling keys (e.g.
+  grantControls.authenticationStrength@odata.context) that are noise.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "converted from the field createdDateTime; when createdDateTime is null (seen on older policies) it falls back to the collection time. Not a change time: use modifiedDateTime for 'recently changed' questions."
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _key
+    type: String
+    description: "Resource key used to identify/deduplicate the policy record; the policy's id (GUID). Unique per resource: each _key holds the latest snapshot, so no arg_max/dedup is needed."
+
+  # ==========================================
+  # IDENTITY & STATE
+  # ==========================================
+  - name: id
+    type: String
+    description: "The Conditional Access policy's object ID (GUID)."
+    sampleValues: ["9a8b7c6d-0000-0000-0000-000000000001"]
+
+  - name: displayName
+    type: String
+    description: "Admin-chosen policy name. Microsoft-managed policies are prefixed 'Microsoft-managed:'; tenants often encode scope/intent in the name (e.g. 'CA001 - ...', '[TEST]', '[REPORT]', '[PILOT]')."
+    sampleValues: ["CA06 - All Apps: Block Legacy Auth for All Users", "Microsoft-managed: Multifactor authentication for admins accessing Microsoft Admin Portals"]
+
+  - name: state
+    type: String
+    description: "Enforcement state. 'enabled' is enforced; 'enabledForReportingButNotEnforced' is report-only (evaluated and logged in sign-in logs, but never blocks or prompts); 'disabled' is off."
+    sampleValues: ["enabled", "enabledForReportingButNotEnforced", "disabled"]
+
+  - name: templateId
+    type: String
+    description: "ID of the Microsoft policy template the policy was created from; null for custom policies. Microsoft-managed policies use 4200930c-0da2-4e33-ca01-0000000000NN."
+    sampleValues: ["4200930c-0da2-4e33-ca01-000000000007", "927c884e-7888-4e81-abc4-bd56ded28985"]
+
+  - name: createdDateTime
+    type: DateTime
+    description: "When the policy was created (UTC, ISO 8601 string with 7-digit fractional seconds); null for older policies. Use todatetime() to compare."
+    sampleValues: ["2023-08-15T15:02:36.1556306Z"]
+
+  - name: modifiedDateTime
+    type: DateTime
+    description: "When the policy was last modified (UTC, ISO 8601 string); null if never modified since creation. For 'last change' use iff(isnull(todatetime(modifiedDateTime)), todatetime(createdDateTime), todatetime(modifiedDateTime))."
+    sampleValues: ["2026-07-09T18:54:32.5565882Z"]
+
+  - name: deletedDateTime
+    type: DateTime
+    description: "Soft-delete time; always null in practice (only live policies are collected)."
+
+  # ==========================================
+  # CONDITIONS - USERS
+  # ==========================================
+  - name: conditions.users.includeUsers
+    type: DynamicArray
+    description: "Users in scope: user object IDs (GUID) or the keywords 'All', 'None', 'GuestsOrExternalUsers'. 'All' is the typical baseline scope. Test with array_index_of(conditions.users.includeUsers, \"All\") >= 0."
+    sampleValues: ["All", "3f2504e0-0000-0000-0000-000000000001"]
+
+  - name: conditions.users.excludeUsers
+    type: DynamicArray
+    description: "User object IDs (GUID) excluded from the policy, typically break-glass / emergency access and service accounts. mv-expand and join to office365User.id to resolve to userPrincipalName; a user excluded from many enabled policies is a key review finding."
+    sampleValues: ["3f2504e0-0000-0000-0000-000000000001"]
+
+  - name: conditions.users.includeGroups
+    type: DynamicArray
+    description: "Group object IDs (GUID) in scope; join to office365Group.id for names."
+
+  - name: conditions.users.excludeGroups
+    type: DynamicArray
+    description: "Group object IDs (GUID) excluded from the policy (exclusion groups); join to office365Group.id for names and membership."
+    sampleValues: ["6b29fc40-0000-0000-0000-000000000001"]
+
+  - name: conditions.users.includeRoles
+    type: DynamicArray
+    description: "Entra directory role template IDs in scope (admin-targeted policies). These are Microsoft-wide constants, e.g. 62e90394-69f5-4237-9190-012177145e10 Global Administrator, 194ae4cb-b126-40b2-bd5b-6091b380977d Security Administrator, f28a1f50-f6e7-4571-818b-6a12f2af6b6c SharePoint Administrator, 29232cdf-9323-42fd-ade2-1d097af3e4de Exchange Administrator, 729827e3-9c14-49f7-bb1b-9608f156bbb8 Helpdesk Administrator."
+    sampleValues: ["62e90394-69f5-4237-9190-012177145e10"]
+
+  - name: conditions.users.excludeRoles
+    type: DynamicArray
+    description: "Entra role template IDs excluded; commonly d29b2b05-8046-44ba-8758-1e26182fcf32 (Directory Synchronization Accounts)."
+    sampleValues: ["d29b2b05-8046-44ba-8758-1e26182fcf32"]
+
+  - name: conditions.users.includeGuestsOrExternalUsers
+    type: Dynamic
+    description: "Guest/external user scope, or null. Object with guestOrExternalUserTypes (comma-separated string, not an array: internalGuest, b2bCollaborationGuest, b2bCollaborationMember, b2bDirectConnectUser, otherExternalUser, serviceProvider) and externalTenants {membershipKind: all|enumerated, members[] tenant IDs}."
+
+  - name: conditions.users.excludeGuestsOrExternalUsers
+    type: Dynamic
+    description: "Same shape as includeGuestsOrExternalUsers, for guest/external users excluded from the policy; null if none."
+    sampleValues: ["{\"externalTenants\":{\"membershipKind\":\"all\"},\"guestOrExternalUserTypes\":\"serviceProvider\"}"]
+
+  # ==========================================
+  # CONDITIONS - APPLICATIONS
+  # ==========================================
+  - name: conditions.applications.includeApplications
+    type: DynamicArray
+    description: "Cloud apps in scope: appIds or keywords 'All', 'None', 'Office365', 'MicrosoftAdminPortals'. Well-known appIds include 00000002-0000-0ff1-ce00-000000000000 (Exchange Online), 00000003-0000-0ff1-ce00-000000000000 (SharePoint Online), cc15fd57-2c6c-4117-a88c-83b1d56b4bbe (Microsoft Teams services), 797f4846-ba00-4fd7-ba43-dac1f8f63013 (Windows Azure Service Management API). Empty when the policy targets user actions instead."
+    sampleValues: ["All", "Office365", "00000002-0000-0ff1-ce00-000000000000"]
+
+  - name: conditions.applications.excludeApplications
+    type: DynamicArray
+    description: "appIds excluded from the policy."
+
+  - name: conditions.applications.includeUserActions
+    type: DynamicArray
+    description: "User actions in scope instead of apps: 'urn:user:registersecurityinfo' (MFA/SSPR registration) or 'urn:user:registerdevice' (device register/join)."
+    sampleValues: ["urn:user:registersecurityinfo", "urn:user:registerdevice"]
+
+  - name: conditions.applications.includeAuthenticationContextClassReferences
+    type: DynamicArray
+    description: "Authentication context class references (c1..c99) in scope; usually empty."
+
+  - name: conditions.applications.applicationFilter
+    type: Dynamic
+    description: "Custom-security-attribute app filter {mode, rule}; usually null."
+
+  - name: conditions.clientApplications
+    type: Dynamic
+    description: "Workload-identity scope {includeServicePrincipals[], excludeServicePrincipals[], servicePrincipalFilter} for policies that target service principals instead of users; usually null."
+
+  # ==========================================
+  # CONDITIONS - CLIENT, PLATFORM, LOCATION, DEVICE
+  # ==========================================
+  - name: conditions.clientAppTypes
+    type: DynamicArray
+    description: "Client app types in scope: all, browser, mobileAppsAndDesktopClients (modern auth), exchangeActiveSync, other. A block policy that includes exchangeActiveSync and other is the classic 'block legacy authentication' policy."
+    sampleValues: ["all", "browser", "mobileAppsAndDesktopClients", "exchangeActiveSync", "other"]
+
+  - name: conditions.platforms.includePlatforms
+    type: DynamicArray
+    description: "Device platforms in scope: all, android, iOS, windows, windowsPhone, macOS, linux. conditions.platforms is null when the policy has no platform condition (applies to every platform)."
+    sampleValues: ["all", "windows", "iOS", "android", "macOS"]
+
+  - name: conditions.platforms.excludePlatforms
+    type: DynamicArray
+    description: "Device platforms excluded."
+    sampleValues: ["android", "iOS"]
+
+  - name: conditions.locations.includeLocations
+    type: DynamicArray
+    description: "Named location IDs (GUID) or keywords 'All' / 'AllTrusted' in scope. conditions.locations is null when there is no location condition. Country block-lists are named locations, so a GUID here plus a block grant usually means a geo-block policy."
+    sampleValues: ["All", "7c9e6679-0000-0000-0000-000000000001"]
+
+  - name: conditions.locations.excludeLocations
+    type: DynamicArray
+    description: "Named location IDs or 'AllTrusted' excluded. includeLocations ['All'] with excludeLocations ['AllTrusted'] means 'outside trusted networks'."
+    sampleValues: ["AllTrusted"]
+
+  - name: conditions.devices.deviceFilter.mode
+    type: String
+    description: "Whether devices matching the filter rule are included or excluded. conditions.devices is null when there is no device filter."
+    sampleValues: ["include", "exclude"]
+
+  - name: conditions.devices.deviceFilter.rule
+    type: String
+    description: "Device filter expression over device properties (trustType, isCompliant, deviceId, operatingSystem, extensionAttributeN ...)."
+    sampleValues: ["device.isCompliant -eq True -or device.trustType -eq \"ServerAD\""]
+
+  - name: conditions.authenticationFlows.transferMethods
+    type: String
+    description: "Authentication flows in scope: deviceCodeFlow and/or authenticationTransfer (comma-separated string). Null object when not set. With a block grant this is a 'block device code flow' policy (mitigates device-code phishing)."
+    sampleValues: ["deviceCodeFlow"]
+
+  # ==========================================
+  # CONDITIONS - RISK
+  # ==========================================
+  - name: conditions.signInRiskLevels
+    type: DynamicArray
+    description: "Entra ID Protection sign-in risk levels that trigger the policy: low, medium, high (empty = not a risk policy)."
+    sampleValues: ["high", "medium"]
+
+  - name: conditions.userRiskLevels
+    type: DynamicArray
+    description: "Entra ID Protection user risk levels that trigger the policy: low, medium, high."
+    sampleValues: ["high"]
+
+  - name: conditions.servicePrincipalRiskLevels
+    type: DynamicArray
+    description: "Workload identity risk levels; usually empty."
+
+  - name: conditions.insiderRiskLevels
+    type: String
+    description: "Microsoft Purview insider risk levels (comma-separated string, not an array): minor, moderate, elevated; null when unused."
+    sampleValues: ["elevated", "moderate,elevated"]
+
+  # ==========================================
+  # GRANT CONTROLS
+  # ==========================================
+  - name: grantControls
+    type: Dynamic
+    description: "Access controls enforced when the conditions match; null for session-control-only policies."
+
+  - name: grantControls.operator
+    type: String
+    description: "How multiple grant controls combine: OR (any one satisfies) or AND (all required)."
+    sampleValues: ["OR", "AND"]
+
+  - name: grantControls.builtInControls
+    type: DynamicArray
+    description: "Built-in controls: block, mfa, compliantDevice, domainJoinedDevice (Hybrid Entra joined), approvedApplication, compliantApplication (app protection policy), passwordChange. 'block' denies access outright. Test with array_index_of(grantControls.builtInControls, \"block\") >= 0. Empty when the policy uses authenticationStrength or termsOfUse alone."
+    sampleValues: ["block", "mfa", "compliantDevice", "domainJoinedDevice"]
+
+  - name: grantControls.authenticationStrength
+    type: Dynamic
+    description: "Required authentication strength object, or null. When set, the policy requires MFA even if builtInControls is empty. Built-in strengths: 00000000-0000-0000-0000-000000000002 'Multifactor authentication', ...0003 'Passwordless MFA', ...0004 'Phishing-resistant MFA'; custom strengths have policyType 'custom'."
+
+  - name: grantControls.authenticationStrength.displayName
+    type: String
+    description: "Name of the required authentication strength."
+    sampleValues: ["Multifactor authentication", "Phishing-resistant MFA", "Passwordless MFA"]
+
+  - name: grantControls.authenticationStrength.policyType
+    type: String
+    description: "builtIn or custom."
+    sampleValues: ["builtIn", "custom"]
+
+  - name: grantControls.authenticationStrength.allowedCombinations
+    type: DynamicArray
+    description: "Authentication method combinations that satisfy the strength (e.g. fido2, windowsHelloForBusiness, x509CertificateMultiFactor, 'password,microsoftAuthenticatorPush', 'password,sms'). Presence of sms/voice combinations means the strength is not phishing-resistant."
+    sampleValues: ["fido2", "windowsHelloForBusiness", "password,microsoftAuthenticatorPush"]
+
+  - name: grantControls.termsOfUse
+    type: DynamicArray
+    description: "Terms-of-use agreement IDs (GUID) the user must accept."
+    sampleValues: ["c0ffee00-0000-0000-0000-000000000001"]
+
+  - name: grantControls.customAuthenticationFactors
+    type: DynamicArray
+    description: "Custom controls (third-party MFA); usually empty."
+
+  # ==========================================
+  # SESSION CONTROLS
+  # ==========================================
+  - name: sessionControls
+    type: Dynamic
+    description: "Session controls object, or null. Sub-objects are null when not configured."
+
+  - name: sessionControls.signInFrequency.isEnabled
+    type: Boolean
+    description: "Whether a sign-in frequency (reauthentication) control is set."
+    sampleValues: ["true"]
+
+  - name: sessionControls.signInFrequency.frequencyInterval
+    type: String
+    description: "timeBased (reauthenticate after value/type) or everyTime (reauthenticate on every sign-in, used by risk policies)."
+    sampleValues: ["timeBased", "everyTime"]
+
+  - name: sessionControls.signInFrequency.value
+    type: Integer
+    description: "Reauthentication interval amount; null when frequencyInterval is everyTime."
+    sampleValues: ["12", "7", "30"]
+
+  - name: sessionControls.signInFrequency.type
+    type: String
+    description: "Unit of signInFrequency.value: hours or days; null when everyTime."
+    sampleValues: ["hours", "days"]
+
+  - name: sessionControls.signInFrequency.authenticationType
+    type: String
+    description: "Which authentication the frequency applies to."
+    sampleValues: ["primaryAndSecondaryAuthentication"]
+
+  - name: sessionControls.persistentBrowser.mode
+    type: String
+    description: "Persistent browser session: always or never ('never' disables 'Stay signed in')."
+    sampleValues: ["never", "always"]
+
+  - name: sessionControls.cloudAppSecurity.cloudAppSecurityType
+    type: String
+    description: "Defender for Cloud Apps conditional access app control: mcasConfigured, monitorOnly, blockDownloads."
+    sampleValues: ["mcasConfigured", "blockDownloads"]
+
+  - name: sessionControls.applicationEnforcedRestrictions.isEnabled
+    type: Boolean
+    description: "Whether app-enforced restrictions are passed to Exchange Online / SharePoint Online (e.g. limited web access on unmanaged devices)."
+    sampleValues: ["true"]
+
+  - name: sessionControls.disableResilienceDefaults
+    type: Boolean
+    description: "Whether resilience defaults are disabled; usually null."
+
+  - name: sessionControls.secureSignInSession
+    type: Dynamic
+    description: "Token protection (secure sign-in session) setting; usually null."

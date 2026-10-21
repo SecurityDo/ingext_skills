@@ -1,0 +1,28 @@
+description: >-
+  Lists Conditional Access policies that block legacy authentication, i.e. a
+  block grant applied to the exchangeActiveSync and/or other client app types
+  (protocols that cannot do MFA: IMAP, POP, SMTP AUTH, older Office clients).
+  Shows whether each policy is enforced, whether it covers all users and all
+  apps, and how many users/groups are excluded. No enabled row with AllUsers
+  and Apps == "All" means legacy auth (a common password-spray path) is not
+  fully blocked.
+datatype: office365ConditionalAccessPolicy
+kql: |
+  office365ConditionalAccessPolicy
+  | extend ClientApps = conditions.clientAppTypes, Grant = grantControls.builtInControls
+  | where array_index_of(Grant, "block") >= 0
+  | where array_index_of(ClientApps, "exchangeActiveSync") >= 0 or array_index_of(ClientApps, "other") >= 0
+  | extend AllUsers = array_index_of(conditions.users.includeUsers, "All") >= 0,
+      Apps = strcat_array(conditions.applications.includeApplications, ", "),
+      ExcludedUsers = array_length(conditions.users.excludeUsers),
+      ExcludedGroups = array_length(conditions.users.excludeGroups)
+  | project displayName, state, AllUsers, Apps, ClientApps = strcat_array(ClientApps, ", "), ExcludedUsers, ExcludedGroups
+  | order by state asc
+tags: [office365, entra-id, conditional-access, legacy-authentication, password-spray, security-hygiene]
+expected_output: |
+  Legacy-auth block policies and their coverage (sanitized).
+
+  displayName                                            state    AllUsers  Apps                                            ClientApps                                                  ExcludedUsers  ExcludedGroups
+  CA003 - Block legacy authentication for Office 365     enabled  true      00000002-0000-0ff1-ce00-000000000000, Office365  exchangeActiveSync, other                                   5              0
+  CA012 - Block admin portals for privileged-access users enabled  false     MicrosoftAdminPortals, Office365                exchangeActiveSync, browser, mobileAppsAndDesktopClients, other  5              0
+  CA06 - All Apps: Block Legacy Auth for All Users       enabled  true      All                                             exchangeActiveSync, other                                   0              1

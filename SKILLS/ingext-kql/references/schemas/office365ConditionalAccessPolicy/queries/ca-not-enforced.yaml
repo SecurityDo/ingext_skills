@@ -1,0 +1,31 @@
+description: >-
+  Lists Conditional Access policies that are configured but not enforcing —
+  report-only (enabledForReportingButNotEnforced) or disabled — with what they
+  would enforce and when they were last changed. Report-only policies are
+  evaluated and logged in sign-in logs but never block or prompt, so a block or
+  MFA policy left in report-only for months is a protection the tenant believes
+  it has but does not. Microsoft-managed policies are shown with their templateId.
+datatype: office365ConditionalAccessPolicy
+kql: |
+  office365ConditionalAccessPolicy
+  | where state != "enabled"
+  | extend Grant = iff(isnull(grantControls), "", strcat_array(grantControls.builtInControls, ",")),
+      AuthStrength = tostring(grantControls.authenticationStrength.displayName),
+      Modified = todatetime(modifiedDateTime),
+      Created = todatetime(createdDateTime)
+  | extend LastChange = iff(isnull(Modified), Created, Modified)
+  | extend DaysSinceChange = datetime_diff('day', now(), LastChange)
+  | project displayName, state, Grant, AuthStrength, LastChange, DaysSinceChange, templateId
+  | order by state asc, DaysSinceChange desc
+tags: [office365, entra-id, conditional-access, report-only, posture, security-hygiene]
+expected_output: |
+  Report-only and disabled policies, stalest first within each state (sanitized, abridged).
+
+  displayName                                                                   state                              Grant                               AuthStrength                LastChange                    DaysSinceChange  templateId
+  Microsoft-managed: Multifactor authentication for per-user multifactor ...    disabled                                                               Multifactor authentication  2024-08-05T19:24:22.253663Z   806              4200930c-0da2-4e33-ca01-000000000001
+  Microsoft-managed: Multifactor authentication and reauthentication for ...    disabled                           mfa                                                             2026-03-20T14:48:42.5899745Z  215              4200930c-0da2-4e33-ca01-000000000007
+  All Apps: Require Passwordless MFA for Users                                  disabled                                                               Passwordless MFA + TAP      2026-06-04T13:07:43.9265483Z  139
+  Require Compliant or Hybrid Azure AD joined device for all users - Windows... enabledForReportingButNotEnforced  compliantDevice,domainJoinedDevice                              2023-07-26T15:35:35.3443875Z  1183             927c884e-7888-4e81-abc4-bd56ded28985
+  Microsoft-managed: Block legacy authentication                                enabledForReportingButNotEnforced  block                                                           2026-03-18T13:37:11.9248237Z  217              4200930c-0da2-4e33-ca01-000000000009
+  Select Apps: Require Phishing Resistant MFA for Users                         enabledForReportingButNotEnforced                                      Phishing-resistant MFA      2026-03-25T14:35:31.1859146Z  210
+  Block-Device Code Auth                                                        enabledForReportingButNotEnforced  block                                                           2026-08-14T12:11:38.3383092Z  68

@@ -1,0 +1,31 @@
+description: >-
+  Resolves the users excluded from enabled Conditional Access policies and
+  counts how many policies each one bypasses. Break-glass accounts are expected
+  here, but any other account (service accounts, admins, departed users,
+  disabled accounts) excluded from many policies is a standing gap that should
+  be justified or removed. office365User is the outer table on purpose: it is
+  much larger than the policy table, and the engine refuses a join whose
+  right-hand table would be clipped at its row cap. The isnotempty() filter
+  drops the empty row mv-expand emits for policies with no excluded users.
+datatype: office365ConditionalAccessPolicy
+kql: |
+  let Excluded = office365ConditionalAccessPolicy
+  | where state == "enabled"
+  | mv-expand ExcludedUserId = conditions.users.excludeUsers
+  | extend ExcludedUserId = tostring(ExcludedUserId)
+  | where isnotempty(ExcludedUserId)
+  | summarize PolicyCount = count(), Policies = make_set(displayName) by ExcludedUserId;
+  office365User
+  | extend ExcludedUserId = tostring(id)
+  | join kind=inner Excluded on ExcludedUserId
+  | project userPrincipalName, accountEnabled, PolicyCount, Policies
+  | order by PolicyCount desc
+tags: [office365, entra-id, conditional-access, exclusions, break-glass, access-review]
+expected_output: |
+  Users excluded from enabled policies, most-excluded first (sanitized).
+
+  userPrincipalName                  accountEnabled  PolicyCount  Policies
+  breakglass01@contoso.onmicrosoft.com  true         12           ["CA001 - ...", "CA002 - ...", ...]
+  alex.wilber_adm@contoso.com        true            12           ["CA001 - ...", "CA003 - ...", ...]
+  adele.vance_adm@contoso.com        true            5            ["CA002 - ...", ...]
+  svc-scanner@contoso.com            true            4            ["CA004 - ...", ...]

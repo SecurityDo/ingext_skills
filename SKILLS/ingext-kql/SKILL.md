@@ -1,6 +1,6 @@
 ---
 name: ingext-kql
-version: 1.1.0
+version: 1.1.1
 description: >
   Generate a validated KQL query for the Ingext datalake from a natural-language description.
   Use this skill whenever the user asks to query, search, count, aggregate, or report on data
@@ -63,7 +63,7 @@ python3 scripts/sync_schemas.py --repo /path/to/ingext_schema
 - A **table** returned by the data-table listing tool (see below) is queried directly in KQL: the table name *is* the KQL identifier. Use it exactly as returned — **KQL identifiers are case-sensitive**.
 - The listing tool splits tables into two kinds. **Both are queryable with KQL**, but they behave differently:
   - **`streamTables`** are append-only event logs in the datalake (e.g. `AzureSigninLogs`, `Office365`, `behavior`). One row per event. Time column: **`TimeGenerated`** (epoch ms).
-  - **`resourceTables`** are entity *snapshot* tables synced from a vendor API (e.g. `office365User`, `office365Application`, `office365Device`, `office365Group`, `office365InstalledApp`). Each already holds the **current** state — one row per entity. So query them **directly**: no `where <time> > ago(...)` clause (they are not time-bounded) and no dedup needed. For example:
+  - **`resourceTables`** are entity *snapshot* tables synced from a vendor API (e.g. `office365User`, `office365Application`, `office365Device`, `office365Group`, `office365InstalledApp`, `office365ConditionalAccessPolicy`). Each already holds the **current** state — one row per entity. So query them **directly**: no `where <time> > ago(...)` clause (they are not time-bounded) and no dedup needed. For example:
     ```
     office365User
     | where tobool(userRegistration.isAdmin) == true
