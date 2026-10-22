@@ -6,6 +6,7 @@ recognises a matching request, letting it carry out a specific task — querying
 datalake, running a report, investigating a user, checking site health, and more.
 
 - Skill sources live in [`SKILLS/`](./SKILLS) (each is a folder with a `SKILL.md`).
+- Report skills (security agent deployment status, O365 activity) live in [`reports/`](./reports), same layout.
 - Packaged, installable skills live in [`cowork/`](./cowork) as `*.skill` files.
 - Change history is in [`release_notes/`](./release_notes).
 
@@ -60,7 +61,7 @@ python3 scripts/validate_skills.py --worktree
 With no flag it validates the **staged** content, which is what the pre-commit hook uses.
 
 Note that `cowork/*.skill` packages embed their own copy of `SKILL.md`. Editing
-`SKILLS/<name>/SKILL.md` alone leaves the package failing at install time, so rebuild the
+`SKILLS/<name>/SKILL.md` (or `reports/<name>/SKILL.md`) alone leaves the package failing at install time, so rebuild the
 package in the same change — the validator checks inside the archives and will catch it.
 
 ## Skills at a glance

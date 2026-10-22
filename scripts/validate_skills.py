@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate skill frontmatter before it reaches a provider.
 
-Checks every SKILLS/*/SKILL.md and the SKILL.md embedded in every cowork/*.skill
+Checks every SKILLS/*/SKILL.md and reports/*/SKILL.md and the SKILL.md embedded in every cowork/*.skill
 package, because the packages carry their own copy of the frontmatter and a fix to
 the source alone leaves them failing at install time.
 
@@ -79,7 +79,7 @@ def main():
 
     errors, n = [], 0
     for path in tracked_files():
-        if path.endswith("/SKILL.md") and path.startswith("SKILLS/"):
+        if path.endswith("/SKILL.md") and path.startswith(("SKILLS/", "reports/")):
             try:
                 blob = read(path, from_index)
             except subprocess.CalledProcessError:
