@@ -74,6 +74,7 @@ package in the same change — the validator checks inside the archives and will
 | [azure-log-analytics-search](#azure-log-analytics-search) | Search the customer's own Azure Log Analytics / Sentinel workspace live with KQL |
 | [fortigate-bandwidth](#fortigate-bandwidth) | Correct FortiGate bandwidth aggregation rules |
 | [fluency-report](#fluency-report) | Run an existing FPL report → HTML summary |
+| [fluency-report-rollup](#fluency-report-rollup) | Monthly / quarterly / trend report assembled from a scheduled report's archived daily runs |
 | [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
 | [fpl-report-dashboard](#fpl-report-dashboard) | Build, test, deploy and release a dashboard report: panels, layout, metric charts |
 | [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
@@ -184,6 +185,21 @@ actually exist — it never invents or substitutes one.
 - "run the Ingext IngestionRate report"
 - "give me a Fluency report on top alerted users"
 - "build a Fluency summary for the IngestionRate report"
+
+### fluency-report-rollup
+
+Builds a week, month, quarter or trend version of a scheduled report from its archive:
+the report runs once a day for exactly that day, and each day is kept for 12 months. The
+skill checks coverage first and reports or backfills missing days. It merges the dailies
+the way the report computes its numbers (sum by key, each time bucket once, top-N and
+totals recomputed), using the bundled `scripts/rollup.py`. fluency-report then renders the
+result. It also covers ranges the report refuses to run directly, such as a quarter.
+
+**Try:**
+- "give me the monthly System_Event_Ingress_Report for September"
+- "build a Q3 ingress report from the daily archive"
+- "show month-over-month ingress for the last three months"
+- "which days are missing from the archive for this report? backfill them"
 
 ### fpl-report-builder
 
