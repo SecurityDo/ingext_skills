@@ -8,7 +8,7 @@ datalake, running a report, investigating a user, checking site health, and more
 - Skill sources live in [`SKILLS/`](./SKILLS) (each is a folder with a `SKILL.md`).
 - [`reports/`](./reports) holds report skills only: skills that produce a finished report
   document (HTML / PDF / CSV) from tenant data, such as security agent deployment status, O365
-  activity, compliance assessment and the executive report renderer. Skills about *handling*
+  activity and compliance assessment. Skills about *handling*
   reporting (running, rolling up, authoring or building dashboards for FPL reports) stay in
   `SKILLS/`. Same layout either way.
 - Packaged, installable skills live in [`cowork/`](./cowork) as `*.skill` files.
@@ -79,7 +79,6 @@ package in the same change — the validator checks inside the archives and will
 | [fortigate-bandwidth](#fortigate-bandwidth) | Correct FortiGate bandwidth aggregation rules |
 | [fluency-report](#fluency-report) | Run an existing FPL report → HTML summary |
 | [compliance-assessment](#compliance-assessment) | Per-tenant, per-month NIST SP 800-53 evidence report from the tenant's own telemetry → HTML + PDF |
-| [executive-report](#executive-report) | Turn any finished findings into an executive-lead HTML and PDF |
 | [fluency-report-rollup](#fluency-report-rollup) | Monthly / quarterly / trend report assembled from a scheduled report's archived daily runs |
 | [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
 | [fpl-report-dashboard](#fpl-report-dashboard) | Build, test, deploy and release a dashboard report: panels, layout, metric charts |
@@ -217,11 +216,6 @@ never says compliant or certified. Lives in [`reports/`](./reports).
 
 **Try:**
 - "run the compliance assessment for <tenant> for September on the Develop connector"
-
-### executive-report
-
-Presentation-only skill that renders finished findings as an executive-lead HTML and a
-mail-ready PDF, with a QA gate. Used by compliance-assessment. Lives in [`reports/`](./reports).
 
 ### fpl-report-builder
 

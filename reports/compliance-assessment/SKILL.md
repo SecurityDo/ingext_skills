@@ -7,7 +7,7 @@ description: >-
   Office365, Entra sign-in and audit, Windows audit; behavior summaries; Office 365 and Qualys
   resource dumps; connector and report inventory). Maps the evidence onto 13 NIST SP
   800-53 Rev. 5 control groups as supported, partial, not observed or needs manual review, and
-  renders a self-contained HTML plus a mail-ready PDF via executive-report. Never claims
+  renders a self-contained HTML plus a mail-ready PDF. Never claims
   certification or compliance. USE THIS SKILL for "compliance assessment", "NIST 800-53
   posture", "audit-ready evidence report", "control coverage report" for a tenant. DO NOT use it
   for a single incident (incident-investigation) or for a user (office-user-investigation).
@@ -101,14 +101,24 @@ python3 scripts/build_report.py --evidence-dir WORKDIR --tenant acme --tenant-na
 
 ## Step 4 — Render and QA
 
-Use the `executive-report` skill to render the PDF and run its QA gate:
-
 ```bash
-node ../executive-report/scripts/render-html-pdf.mjs --input WORKDIR/report.html \
+node scripts/render-html-pdf.mjs --input WORKDIR/report.html \
   --output WORKDIR/report.pdf --title "Example Corp Compliance Evidence Report - September 2026"
 ```
 
-Look at the pages. If you cannot (no `pdftoppm`), say that in the hand-off.
+The renderer needs Playwright and a Chrome or Chromium binary. It looks for Chrome in the usual
+macOS, Linux and Windows paths (override with `--chrome` or `CHROME_PATH`) and for Playwright in
+the current folder, the input's folder and the global npm root. It writes a Letter PDF with the
+title in the footer on the left and "X of Y" on the right.
+
+QA before delivering:
+
+1. If `pdftoppm` exists, convert the pages to PNG and look at every page: footer on every page,
+   no stranded heading, no clipped or overlapping text, tables inside the page.
+2. In print media at the PDF content width, check with Playwright that each table has
+   `scrollWidth <= clientWidth` and its right edge inside the document width. If a table
+   overflows, tighten column widths or wrapping and rebuild.
+3. If you cannot look at the pages (no `pdftoppm`), say that in the hand-off.
 
 ## Reading the result
 
