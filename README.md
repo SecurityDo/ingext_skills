@@ -82,6 +82,7 @@ package in the same change — the validator checks inside the archives and will
 | [fluency-report-rollup](#fluency-report-rollup) | Monthly / quarterly / trend report assembled from a scheduled report's archived daily runs |
 | [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
 | [fpl-report-dashboard](#fpl-report-dashboard) | Build, test, deploy and release a dashboard report: panels, layout, metric charts |
+| [endpoint-os-currency](#endpoint-os-currency) | Endpoint OS inventory, end-of-support and build-currency report from an EDR or Entra device dump → HTML + PDF + CSV |
 | [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
 | [office-user-investigation](#office-user-investigation) | Investigate an M365 mailbox user (KQL + GeoIP) |
@@ -216,6 +217,18 @@ never says compliant or certified. Lives in [`reports/`](./reports).
 
 **Try:**
 - "run the compliance assessment for <tenant> for September on the Develop connector"
+
+### endpoint-os-currency
+
+Reports which operating systems a tenant's endpoints run, which Windows releases are past or near
+the end of vendor support, and which hosts are on an older build than the rest of the fleet. It
+reads one resource dump (CrowdStrike `falconAgent`, else `sentinelOneAgent`, else Entra
+`office365Device`), computes everything locally and renders HTML, PDF and a per-host CSV. Support
+dates come from a curated, dated table in the script. Lives in [`reports/`](./reports).
+
+**Try:**
+- "which of <tenant>'s endpoints are on an unsupported OS?"
+- "run the endpoint OS currency report for <tenant>"
 
 ### fpl-report-builder
 
