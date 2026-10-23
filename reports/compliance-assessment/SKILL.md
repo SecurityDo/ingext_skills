@@ -79,7 +79,8 @@ fails at the proxy is retried once, then left out (it renders as not collected).
 | `o365_workloads.json`, `signin.json`, `audit_categories.json`, `windows.json` | `kql_search` with `rangeFrom` and `rangeTo` set to the month |
 | `behavior.json` | `behavior_summary_search`, same window, `limit: 0`, facets `status`, `classification`, `scoreLevel` |
 | `users.jsonl.gz`, `devices.jsonl.gz`, `ca_policies.jsonl.gz`, `qualys.jsonl.gz` | `list_resource_dumps`, then `get_resource_dump_url` per resource (see below). Current snapshot, no time window |
-| `connectors.json`, `reports.json` | `list_connectors`, `list_reports` |
+| `connectors.json` | `list_connectors`, reduced to `{"entries": [{"application": ..., "state": ...}]}` before saving (see below) |
+| `reports.json` | `list_reports` |
 
 **Resource dumps.** Call `list_resource_dumps` for the tenant to get each resource's customer
 name and record count. If a resource is not listed, treat it as absent. Call
@@ -88,6 +89,11 @@ the URL straight to disk with `curl -o WORKDIR/<file>` (the link expires in 15 m
 read it into the conversation). `build_report.py` counts the records locally. Check the record
 count in the file against the `count` that `list_resource_dumps` reported; a mismatch means a
 truncated download.
+
+**Connector credentials.** `list_connectors` returns credentials in clear text (API keys, HEC and
+integration tokens). Never save the raw result to the work folder. Reduce it to the application
+and state of each entry (for example with `python3 -c`, reading the harness-saved file) and save
+only that, then delete any raw copy. The report needs nothing else from it.
 
 Large results are saved to a file by the harness; copy that file to the name above rather than
 retyping it. Do not substitute a different table for one that is absent.

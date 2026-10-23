@@ -18,7 +18,7 @@ Evidence files (each is the raw JSON the tool returned; KQL files hold a kql_sea
   devices.jsonl.gz      resource dump: office365Device
   ca_policies.jsonl.gz  resource dump: office365ConditionalAccessPolicy
   qualys.jsonl.gz       resource dump: qualysHost
-  connectors.json       list_connectors result
+  connectors.json       list_connectors result reduced to {"entries": [{"application", "state"}]} (no credentials)
   reports.json          list_reports result
 """
 import argparse, datetime, gzip, html, json, os, sys
