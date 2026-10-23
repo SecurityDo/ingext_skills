@@ -6,7 +6,11 @@ recognises a matching request, letting it carry out a specific task — querying
 datalake, running a report, investigating a user, checking site health, and more.
 
 - Skill sources live in [`SKILLS/`](./SKILLS) (each is a folder with a `SKILL.md`).
-- Report skills (security agent deployment status, O365 activity) live in [`reports/`](./reports), same layout.
+- [`reports/`](./reports) holds report skills only: skills that produce a finished report
+  document (HTML / PDF / CSV) from tenant data, such as security agent deployment status, O365
+  activity, compliance assessment and the executive report renderer. Skills about *handling*
+  reporting (running, rolling up, authoring or building dashboards for FPL reports) stay in
+  `SKILLS/`. Same layout either way.
 - Packaged, installable skills live in [`cowork/`](./cowork) as `*.skill` files.
 - Change history is in [`release_notes/`](./release_notes).
 
@@ -74,6 +78,8 @@ package in the same change — the validator checks inside the archives and will
 | [azure-log-analytics-search](#azure-log-analytics-search) | Search the customer's own Azure Log Analytics / Sentinel workspace live with KQL |
 | [fortigate-bandwidth](#fortigate-bandwidth) | Correct FortiGate bandwidth aggregation rules |
 | [fluency-report](#fluency-report) | Run an existing FPL report → HTML summary |
+| [compliance-assessment](#compliance-assessment) | Per-tenant, per-month NIST SP 800-53 evidence report from the tenant's own telemetry → HTML + PDF |
+| [executive-report](#executive-report) | Turn any finished findings into an executive-lead HTML and PDF |
 | [fluency-report-rollup](#fluency-report-rollup) | Monthly / quarterly / trend report assembled from a scheduled report's archived daily runs |
 | [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
 | [fpl-report-dashboard](#fpl-report-dashboard) | Build, test, deploy and release a dashboard report: panels, layout, metric charts |
@@ -200,6 +206,22 @@ result. It also covers ranges the report refuses to run directly, such as a quar
 - "build a Q3 ingress report from the daily archive"
 - "show month-over-month ingress for the last three months"
 - "which days are missing from the archive for this report? backfill them"
+
+### compliance-assessment
+
+Builds a customer-facing compliance evidence report for one tenant and one month, mapped onto
+13 NIST SP 800-53 Rev. 5 control groups as supported, partial, not observed or needs manual
+review. It checks `list_data_tables` first, queries event tables with KQL, and takes inventory
+tables from resource dumps. Every figure is rendered by a script from saved raw results. It
+never says compliant or certified. Lives in [`reports/`](./reports).
+
+**Try:**
+- "run the compliance assessment for <tenant> for September on the Develop connector"
+
+### executive-report
+
+Presentation-only skill that renders finished findings as an executive-lead HTML and a
+mail-ready PDF, with a QA gate. Used by compliance-assessment. Lives in [`reports/`](./reports).
 
 ### fpl-report-builder
 
