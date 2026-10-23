@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.5.0
+version: 1.5.1
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
