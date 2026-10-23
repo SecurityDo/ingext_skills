@@ -61,6 +61,11 @@ The summary tells you what fired; the raw event tells you what happened.
   alert (`lake_search` on the Defender index, `@eventType: MSDefenderAlert`, searching the
   quoted incident id) before judging it. An AI assist that saw only the summary closed a
   real stolen-session ticket as "only a single IP, insufficient evidence".
+- **A Defender alert about a fake IT helpdesk is a helpdesk ticket.** Mail bombing, a
+  Teams impersonation or Teams phishing title, or a hands-on-keyboard / human-operated
+  alert on a user with an outside Teams contact the same day: run
+  `references/workflows/helpdesk.md`, not this workflow. Its H0 explains why a clean
+  sign-in history clears nothing there.
 - **A Defender alert about a user's session or token is an Office365 ticket.** "Possible
   use of a stolen session cookie", "Anomalous token", "Azure AD threat intelligence",
   "Graph reconnaissance": run `references/workflows/office365.md` (3a′ traces the

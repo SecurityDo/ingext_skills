@@ -1,0 +1,31 @@
+// Every Teams contact between the subject and a user of ANOTHER Microsoft 365
+// tenant in the last 30 days: chats the outsider opened (ChatCreated), the subject
+// accepting one (MemberAdded), messages, and calls (CallParticipantDetail, which
+// carries JoinTime / LeaveTime and the device). Call records reach the audit log
+// about four hours after the call, so a call minutes old is not here yet.
+// An outside sender on a *.onmicrosoft.com address is a tenant that never added a
+// domain: the throwaway shape helpdesk-impersonation crews use. Read Members for
+// who was in the chat, Attendees for who joined the call, and the external
+// ResourceTenantId for which tenant it was.
+// Ordinary phone (PSTN) calls also appear: UserId is a phone number and
+// resTenant is all zeros. They are not outside tenants; read past them.
+// A 30-day scan of a busy tenant's Teams audit takes about four minutes.
+// Placeholders: {UPN} = the subject's address, lower-cased.
+Office365
+| where timestamp > ago(30d)
+| where Workload == "MicrosoftTeams"
+| where Operation in ("ChatCreated", "MemberAdded", "MessageSent", "MessageCreatedHasLink",
+    "CallParticipantDetail", "MeetingParticipantDetail")
+| extend user = tolower(tostring(UserId)), members = tolower(tostring(Members)),
+    attendees = tolower(tostring(Attendees)), parts = tostring(ParticipantInfo),
+    resTenant = tostring(ResourceTenantId), org = tostring(OrganizationId)
+| where user == "{UPN}" or members contains "{UPN}" or attendees contains "{UPN}"
+| where parts contains "\"HasForeignTenantUsers\":true" or (resTenant != "" and resTenant != org)
+| project timestamp, Operation, user, resTenant, members, attendees,
+    ChatThreadId = tostring(ChatThreadId), CallId = tostring(CallId),
+    JoinTime = tostring(JoinTime), LeaveTime = tostring(LeaveTime),
+    Device = tostring(DeviceInformation), ClientIP = tostring(ClientIP),
+    outsiderOnMicrosoft = user endswith ".onmicrosoft.com" or members matches regex @"[a-z0-9._-]+@[a-z0-9-]+\.onmicrosoft\.com"
+| summarize dups = count() by timestamp, Operation, user, resTenant, members, attendees,
+    ChatThreadId, CallId, JoinTime, LeaveTime, Device, ClientIP, outsiderOnMicrosoft
+| top 1000 by timestamp desc
