@@ -1,0 +1,27 @@
+// Which outside users opened Teams chats or calls with this tenant in the last
+// 30 days, and how many of this tenant's users each one reached. One row per
+// outside sender and tenant: chats opened, call records, distinct users reached
+// (from the chat Members / call Attendees, the sender excluded), first and last
+// seen. A sender on *.onmicrosoft.com that reached several users within hours is
+// a helpdesk-impersonation wave; a long-standing partner on a default domain
+// shows steady contact over weeks. Call records arrive about four hours late.
+// A 30-day scan of a busy tenant's Teams audit takes one to three minutes.
+// Counts only (tenant-wide).
+Office365
+| where timestamp > ago(30d)
+| where Workload == "MicrosoftTeams"
+| where Operation in ("ChatCreated", "CallParticipantDetail")
+| extend sender = tolower(tostring(UserId)), resTenant = tostring(ResourceTenantId),
+    org = tostring(OrganizationId), parts = tostring(ParticipantInfo)
+| where sender endswith ".onmicrosoft.com" and sender !contains "#ext#"
+| where resTenant != org or parts contains "\"HasForeignTenantUsers\":true"
+| extend people = iff(Operation == "ChatCreated", parse_json(tostring(Members)), parse_json(tostring(Attendees)))
+| mv-expand p = people
+| extend upn = tolower(tostring(p.UPN))
+| where upn != sender and upn != ""
+| summarize chats = dcountif(tostring(Id), Operation == "ChatCreated"),
+    callRecords = dcountif(tostring(Id), Operation == "CallParticipantDetail"),
+    reached = dcount(upn), first = min(timestamp), last = max(timestamp)
+    by sender, resTenant
+| order by last desc
+| take 1000

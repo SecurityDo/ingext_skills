@@ -74,6 +74,7 @@ package in the same change — the validator checks inside the archives and will
 | [azure-log-analytics-search](#azure-log-analytics-search) | Search the customer's own Azure Log Analytics / Sentinel workspace live with KQL |
 | [fortigate-bandwidth](#fortigate-bandwidth) | Correct FortiGate bandwidth aggregation rules |
 | [fluency-report](#fluency-report) | Run an existing FPL report → HTML summary |
+| [fluency-report-rollup](#fluency-report-rollup) | Monthly / quarterly / trend report assembled from a scheduled report's archived daily runs |
 | [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
 | [fpl-report-dashboard](#fpl-report-dashboard) | Build, test, deploy and release a dashboard report: panels, layout, metric charts |
 | [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
@@ -185,6 +186,21 @@ actually exist — it never invents or substitutes one.
 - "give me a Fluency report on top alerted users"
 - "build a Fluency summary for the IngestionRate report"
 
+### fluency-report-rollup
+
+Builds a week, month, quarter or trend version of a scheduled report from its archive:
+the report runs once a day for exactly that day, and each day is kept for 12 months. The
+skill checks coverage first and reports or backfills missing days. It merges the dailies
+the way the report computes its numbers (sum by key, each time bucket once, top-N and
+totals recomputed), using the bundled `scripts/rollup.py`. fluency-report then renders the
+result. It also covers ranges the report refuses to run directly, such as a quarter.
+
+**Try:**
+- "give me the monthly System_Event_Ingress_Report for September"
+- "build a Q3 ingress report from the daily archive"
+- "show month-over-month ingress for the last three months"
+- "which days are missing from the archive for this report? backfill them"
+
 ### fpl-report-builder
 
 Authors an FPL report *source file* by compiling one or more KQL queries into a
@@ -286,10 +302,13 @@ verdict rests on. Carries the error-code, user-agent, duplicate-row and GeoIP tr
 manufacture findings that are not there. Ends in a written closure with the detection tuning
 that stops the next eleven copies of the same ticket.
 
-Has a dedicated workflow per incident type: Office365 / Entra ID, Okta, SentinelOne and
-Google Workspace (the Google one separates a first interactive login from a genuinely new
-address, and reads the approving device from the mobile sync report); anything else runs a
-generic workflow.
+Has a dedicated workflow per incident type: Office365 / Entra ID, Teams helpdesk
+impersonation, Okta, SentinelOne and Google Workspace (the Google one separates a first
+interactive login from a genuinely new address, and reads the approving device from the
+mobile sync report); anything else runs a generic workflow. The helpdesk workflow covers
+mail bombing, outside "IT" contacts on Teams and the intrusion that follows. There the
+attacker works through the employee's own computer during a call, so clean sign-ins clear
+nothing and the verdict rests on whether the employee engaged and what ran on the device.
 
 Depends on **ingext-get-profile** for step 1 (what the subject and every target IS), and,
 on the few accounts with an AzureLogAnalytics integration, on

@@ -1,0 +1,23 @@
+// What the subject's devices recorded in a window around a call: browser
+// downloads (with OriginatingDomain and Sha256), files created, copied or
+// uploaded, and printing, from the Endpoint workload (Defender for Endpoint /
+// Purview endpoint DLP). Set the window from about 30 minutes before the first
+// outside contact to two hours after the call ends. An installer, script or
+// archive downloaded while the call was live is the finding that decides the
+// ticket; a download host on cloudapp.azure.com, blob.core.windows.net or
+// s3.amazonaws.com, or with a random-looking file name, is the usual delivery.
+// Zero rows: check the tenant has any Workload Endpoint rows at all (Purview
+// device onboarding) before reading it as "nothing downloaded".
+// Placeholders: {UPN} = the subject's address, lower-cased; {FROM}, {TO} = the
+// window as datetime literals.
+Office365
+| where timestamp between ({FROM} .. {TO})
+| where Workload == "Endpoint"
+| where tolower(tostring(UserId)) == "{UPN}"
+| project timestamp, Operation = tostring(Operation), Device = tolower(tostring(DeviceName)),
+    ObjectId = tostring(ObjectId), FileExtension = tostring(FileExtension),
+    OriginatingDomain = tostring(OriginatingDomain), Application = tostring(Application),
+    Sha256 = tolower(tostring(Sha256))
+| summarize dups = count() by timestamp, Operation, Device, ObjectId, FileExtension,
+    OriginatingDomain, Application, Sha256
+| top 1000 by timestamp desc

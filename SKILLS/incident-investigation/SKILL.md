@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.4.4
+version: 1.5.0
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -8,10 +8,10 @@ description: >-
   "triage this ticket", "is this a true positive", "the AI assist says actionable, check it",
   "why did this user score 3600", "should we escalate this alert". Pulls the ticket and the
   AI-assist verdict, profiles the subject, measures the in-tenant base rate for the rule that
-  fired, then runs the workflow for the incident type (Office365 and stolen sessions, Okta,
-  SentinelOne, Google; each proves what did NOT happen)
-  and re-derives every number against the timestamp, error-code, user-agent, duplicate-row
-  and GeoIP traps that manufacture findings, reading the customer's Log Analytics workspace
+  fired, then runs the workflow for the incident type (Office365 and stolen sessions, Teams
+  helpdesk attacks, Okta, SentinelOne, Google; each proves what did NOT happen)
+  and re-derives every number against the timestamp, duplicate-row and GeoIP traps that
+  manufacture findings, reading the customer's Log Analytics workspace
   if any. Ends in a closure (benign, escalate or confirmed) with tuning, and an HTML
   closure report on request. Queries only the incident's own tenant account.
 ---
@@ -29,6 +29,15 @@ base rate has closed more tickets here than everything after it combined.
 
 **Never write a verdict from the summary alone.** The behavior summary tells you what
 fired, never whether it matters.
+
+**One family fails the other way: fake IT helpdesk attacks.** Mail bombing, an outside
+"IT" contact on Teams, a Teams link opened on a device, hands-on-keyboard activity after
+such a contact. The attacker works through the employee's own computer during a call,
+so the employee's sign-ins, MFA and mailbox all stay normal — the picture this skill
+otherwise reads as benign. Real intrusions of this kind were closed as "False Positive —
+incorrect alert logic" on clean sign-ins. For these tickets the workflow is
+`references/workflows/helpdesk.md`, and its H0 sets the burden: engagement on the call
+and what ran on the device decide the verdict, never the sign-in history.
 
 ## Hard rule — one incident, one account
 
@@ -591,6 +600,7 @@ workflow file:
 | `behaviorRules` prefix | Incident type | Workflow |
 |---|---|---|
 | `O365_`, `AzureAD_`, `Fluency_O365_`, `Duo_` on a Microsoft 365 user, and Defender alerts on a user (stolen session, token, Graph reconnaissance) | Office365 / Entra ID | `references/workflows/office365.md` — 3a resolve every address (the tenant's own subnet inventory first, Duo's phone side too), 3a′ trace the session, 3b the approving device (auth incidents only; Duo: was it just enrolled), 3c prove what did not happen, including whether it is contained and, on a hybrid account, who changed the password on-prem, 3d what actually sent the mail (outbound-spam and sending-limit alerts) |
+| `MSDefender:` mail bombing, Teams impersonation or Teams phishing titles, `O365_Teams_OnMicrosoft_Tenant_Chat`, `O365_Endpoint_Download_From_Azure_CloudApp`, or a Defender hands-on-keyboard / human-operated / emerging-threat alert on a user with an outside Teams contact the same day (full list in the workflow's H0) | Teams helpdesk impersonation | `references/workflows/helpdesk.md` — H0 clean sign-ins clear nothing, H1 the Teams contact and whether the employee engaged (answered, accepted, replied), H2 mail bombing before it, H3 what ran on the device during and after the call (endpoint downloads, Defender alert evidence, Windows installer and PowerShell events, EDR), H4 containment already done, H5 the same sender's other contacts, H6 the verdict table. Run the Office365 workflow too and keep the findings apart |
 | `okta_` | Okta sign-in / account | `references/workflows/okta.md` — K1 which path every sign-in took, K2 did any of it succeed, K3 the same signature on other accounts, K4 what changed on the account, K5 what the real sign-ins look like, K6 prove what did not happen up to where the data reaches |
 | `SentinelOne:`, `Fluency_SentinelOne_` | SentinelOne EDR alert | `references/workflows/sentinelone.md` — S1 pull each alert whole, S2 running or at rest, S3 agent time and ownership, S4 hash prevalence, origin and earlier verdicts on the same file across hashes, S5 prove what did not run, S6 reconcile counts, S7 score, tuning and side findings |
 | `GoogleWorkspace_` | Google Workspace sign-in / account | `references/workflows/google.md` — W0 which Google reports the account collects, W1 who the subject is (`gsuiteUser`), W2 is the address really new (logins vs token traffic), W3 which device and factor approved it, W4 what the session did next (OAuth grants), W5 prove what did not happen, W6 score and base rate |
@@ -922,6 +932,14 @@ State plainly where you disagree with the AI-assist verdict and why. That workfl
 skipped exactly three checks — the base rate, the IP resolution and the approving
 device — and each one is a single query.
 
+**Some verdicts are not available for the helpdesk family.** On a ticket routed to
+`references/workflows/helpdesk.md`, "False Positive — incorrect alert logic" is never the
+verdict, and neither "Benign" nor a closure may rest on sign-in, MFA or mailbox evidence
+alone. Benign needs that workflow's H6 conditions: no call answered after the four-hour
+call-record lag, the chat not accepted or replied to, and a clean device window with
+controls. Anything short of that is Escalate; anything that ran on the device is
+Confirmed.
+
 ### Proving a tuning change before you propose it
 
 A verdict that ends "suppress this rule" is a claim about a rule you have probably
@@ -1051,7 +1069,7 @@ returns the documents directly, so only `summary_digest.py` still earns its plac
 feed it the `documents` array. `ingext_json.py` is unnecessary there: it exists solely
 to recover a JSON body from a debug log, and MCP returns one.
 | `assets/queries/*.kql` | The queries the workflows and steps name, placeholder-substituted and parse-validated |
-| `references/workflows/*.md` | Step 3: `office365.md` for Office365 / Entra ID incidents, `okta.md` for Okta incidents, `sentinelone.md` for SentinelOne alerts, `google.md` for Google Workspace incidents, `generic.md` for every other type |
+| `references/workflows/*.md` | Step 3: `office365.md` for Office365 / Entra ID incidents, `helpdesk.md` for Teams helpdesk impersonation and mail bombing, `okta.md` for Okta incidents, `sentinelone.md` for SentinelOne alerts, `google.md` for Google Workspace incidents, `generic.md` for every other type |
 | `references/fortigate.md` | Any workflow's firewall question about one host: which table holds names vs sessions, the duplicate-device and cumulative-byte traps, and the `fw_*` trigger / aftermath / control queries |
 
 **Don't modify a bundled query or trim its output.** Run it unmodified — do not wrap it

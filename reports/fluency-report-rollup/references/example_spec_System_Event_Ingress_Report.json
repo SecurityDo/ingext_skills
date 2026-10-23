@@ -1,0 +1,15 @@
+{
+  "report": "System_Event_Ingress_Report",
+  "tables": {
+    "statsByDestination":   {"mode": "sum", "key": "dest",        "columns": ["totalSize", "eventCount"]},
+    "statsByEventType":     {"mode": "sum", "key": "eventtype",   "columns": ["totalSize", "eventCount"]},
+    "statsByProductName":   {"mode": "sum", "key": "ProductName", "columns": ["totalSize", "eventCount"]},
+    "totalStatsTimeTable":  {"mode": "timebucket", "time": "Date", "format": "%Y/%m/%d %H:%M",
+                             "step": "1h", "label": "end", "rollup": "1d",
+                             "columns": ["totalSize", "eventCount"]},
+    "totalStats":           {"mode": "aggregate", "from": "statsByEventType",
+                             "columns": {"totalIngressSize": ["sum", "totalSize"], "totalEventTypes": ["count"]}},
+    "topSizeByEventType":   {"mode": "top", "from": "statsByEventType",   "by": "totalSize", "n": 10},
+    "topSizeByProductName": {"mode": "top", "from": "statsByProductName", "by": "totalSize", "n": 10}
+  }
+}

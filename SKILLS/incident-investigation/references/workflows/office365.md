@@ -12,6 +12,12 @@ came from.
 > (say which and why in the closure); a check that applies runs its bundled queries
 > before any of your own (non-negotiable 4). Accuracy comes before speed and cost.
 
+**A Teams helpdesk-impersonation or mail-bombing ticket also runs
+`references/workflows/helpdesk.md`.** This file proves what did not happen to the
+*account*; in that family the attacker never touches the account from outside, so a
+clean result here is expected and decides nothing. Engagement on the call and the device
+timeline do.
+
 Every query below lives in `assets/queries/` of the incident-investigation skill, uses
 the placeholders listed in SKILL.md "Assets", and is run with `validate_kql` then
 `kql_search` on `ACCOUNT` only. **Don't modify a bundled query or trim its output** — no

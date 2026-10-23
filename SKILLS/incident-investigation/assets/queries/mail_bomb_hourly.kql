@@ -1,0 +1,25 @@
+// Mail bombing before a helpdesk call: the subject's inbound mail that Microsoft
+// flagged, per hour, over the last 30 days. A bombing shows as one or two hours
+// with 50-150 messages from as many different senders, mostly newsletter and
+// mailing-list "confirm your subscription" mail in several languages, an hour or
+// so before an outside Teams chat. Only messages with a threat verdict reach
+// TIMailData, so this undercounts the flood; the shape still stands out against
+// the subject's normal handful a day. Mail filtered by a gateway in front of
+// Microsoft 365 (Proofpoint, Mimecast) never reaches it at all.
+// Security-awareness simulations (KnowBe4 and similar) land here too: simSender
+// counts them so they are not read as an attack.
+// Placeholders: {UPN} = the subject's address, lower-cased.
+Office365
+| where timestamp > ago(30d)
+| where Operation == "TIMailData" and tostring(Directionality) == "Inbound"
+| where tolower(tostring(Recipients)) contains "{UPN}"
+| extend p1 = tolower(tostring(P1Sender)), subj = tolower(tostring(Subject))
+| summarize messages = dcount(tostring(NetworkMessageId)), senders = dcount(p1),
+    subscriptionLike = dcountif(tostring(NetworkMessageId), subj contains "confirm" or subj contains "subscri"
+        or subj contains "newsletter" or subj contains "registr" or subj contains "verif"),
+    simSender = dcountif(tostring(NetworkMessageId), p1 contains "knowbe4" or p1 contains "phishsim"
+        or p1 contains "phishme" or p1 contains "proofpointsecurityawareness"),
+    sampleSubject = take_any(tostring(Subject))
+    by hour = bin(timestamp, 1h)
+| order by hour asc
+| take 1000
