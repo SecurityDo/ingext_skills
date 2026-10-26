@@ -35,6 +35,48 @@ Proofpoint | where tostring(['@proofpoint.threatsInfoMap']) has "<threatID or th
 Proofpoint | where ['@proofpoint.subject'] == "<subject without RE:/FW: prefix>"
 ```
 
+## Related mail from the same sender or sender IP
+
+Finds a campaign that rotates URLs and subjects. Counts only, no rows:
+
+```kql
+Proofpoint
+| where ['@proofpoint.senderIP'] == "<sender IP>" or tostring(['@proofpoint.sender']) =~ "<sender address>"
+| summarize records=count(), msgs=dcount(tostring(['@proofpoint.GUID'])),
+    recipients=dcount(tostring(['@proofpoint.recipient'])), first=min(timestamp), last=max(timestamp)
+  by type=tostring(['@proofpoint.type'])
+```
+
+## Baseline for the threat
+
+How common is this threat id on the tenant? Use 14 to 30 days. A threat that is on hundreds of
+messages from dozens of senders is a flagged shared or shortened link, not a targeted attack:
+
+```kql
+Proofpoint
+| where tostring(['@proofpoint.threatsInfoMap']) has "<threatID>"
+| summarize msgs=dcount(tostring(['@proofpoint.GUID'])), senders=dcount(tostring(['@proofpoint.sender'])),
+    first=min(timestamp), last=max(timestamp) by type=tostring(['@proofpoint.type'])
+```
+
+The same shape on the sender domain gives the sender baseline.
+
+## After delivery (Office365)
+
+Proofpoint stops at the gateway. For each internal user who received the message, look at the
+mailbox from the delivery time on. `kql_search` on `Office365`, window from the delivery time;
+the `Office365` fields have no prefix (`UserId`, `Operation`). Wide `has_any` lists over a
+several-day window time out, so start narrow:
+
+```kql
+Office365 | where tolower(tostring(UserId)) == "<user@example.com>"
+| summarize n=count() by op=tostring(Operation) | order by n desc | take 12
+```
+
+For follow-on actions (inbox rules, forwarding, delegated access, OAuth consent) run
+`incident-investigation/assets/queries/bec_sweep.kql` with `{USER}` and `{TARGET}` set to the
+user. A zero is only meaningful with a control: the census above must show the user was active.
+
 ## Clicks
 
 Click events carry their own `type` (for example `ClicksPermitted`, `ClicksBlocked`). Query the
@@ -47,6 +89,13 @@ Proofpoint | where ['@proofpoint.type'] startswith "Click"
 
 An empty result means no click events were captured for that window, which is not proof of no
 click.
+
+## Per-recipient delivery
+
+No query: one Proofpoint event carries one `recipient`, so `proofpoint_verdict.py` reports
+`delivery_by_recipient` from query 1. `toAddresses` and `ccAddresses` are header fields and can
+list people who have no event of their own; only the `recipient` field shows who the gateway
+processed.
 
 ## Which types exist
 

@@ -1,6 +1,6 @@
 ---
 name: proofpoint-investigation
-version: 1.0.0
+version: 1.1.0
 description: >-
   Investigate one Proofpoint email message or case from the tenant's own Proofpoint event table
   and say what really happened: who sent it, who received it, inbound or outbound, whether it
@@ -42,6 +42,9 @@ the risk score or the cluster name.
 - **Old threats.** A `threatTime` far before the message (the script flags more than 30 days)
   usually means a known indicator was matched again, often a link shortener or a legitimate
   tracking domain, not a new attack. Say so.
+- **Per recipient.** `toAddresses` and `ccAddresses` are header lists; the gateway processes one
+  `recipient` per event. Judge delivery from `delivery_by_recipient`, and say if a header
+  recipient has no event.
 - **Duplicates.** Proofpoint rows are re-emitted. The script removes exact duplicate rows and
   reports the count; do not count rows as messages.
 - Report CC and BCC exactly. If a field is empty, say it is empty.
@@ -70,9 +73,15 @@ hold customer email addresses and subjects.
    messageID, or by recipient/sender and day). Save as `events.json`.
 2. **Blast radius (optional):** other messages that share the threat id or URL, the sender or the
    subject. Save as `related.json`. Treat it as support, not as facts about this message.
-3. **Behavior summary (optional):** `behavior_summary_search` with `searchStr` on the entity,
+3. **Baseline and related mail (recommended):** the threat baseline and the sender / sender-IP
+   queries. They say whether the threat is common noise or part of a campaign. Save as
+   `baseline.json` and read the counts; they are not passed to the script.
+4. **After delivery (when the message was delivered to an internal user):** the Office365 census
+   and `bec_sweep.kql` for that user, from the delivery time. Proofpoint cannot show forwards,
+   inbox rules or deletions.
+5. **Behavior summary (optional):** `behavior_summary_search` with `searchStr` on the entity,
    same window, for the rule, risk and timeline context. Use it only to explain why it was raised.
-4. **Clicks (optional):** the click query in `references/queries.md`. Save as `clicks.json` and
+6. **Clicks (optional):** the click query in `references/queries.md`. Save as `clicks.json` and
    pass it with `--events` as well.
 
 A large `kql_search` result is saved by the harness to a file; use that file. If a query returns

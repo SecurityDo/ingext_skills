@@ -159,6 +159,17 @@ def delivery(pps):
     return {"verdict": "unknown", "confidence": "none", "evidence": []}
 
 
+def delivery_by_recipient(pps):
+    """One Proofpoint event carries one recipient, so a message sent to several people has an event per person. Delivery is judged per person."""
+    out = {}
+    for pp in pps:
+        for r in emails(as_list(pp.get("recipient"))):
+            d = delivery([pp])["verdict"]
+            cur = out.setdefault(r, set())
+            cur.add({True: "delivered", False: "blocked"}.get(d, "unknown"))
+    return {r: ("mixed" if len(v) > 1 else next(iter(v))) for r, v in sorted(out.items())}
+
+
 def direction(senders, recips, internal, source, routing):
     if not internal:
         return {"verdict": "unknown", "confidence": "none", "evidence": ["No internal domain source was available."], "routing_evidence": routing}
@@ -265,6 +276,7 @@ def summarize(rows, internal_arg, case_key, related_rows):
         "local_user_context": local_user(case_key, sender_emails, rcpt, internal, dirn),
         "direction": dirn,
         "delivery": delivery(pps),
+        "delivery_by_recipient": delivery_by_recipient(pps),
         "clicks": {"verdict": True if clicks or click_types else "unknown", "evidence": clicks, "click_event_types": click_types,
                    "note": None if (clicks or click_types) else "No click-related fields were present in the captured records."},
         "threats": threats,
@@ -323,6 +335,9 @@ def render(v, dups):
         L.append("Delivery: mixed. Delivered: %s. Blocked: %s" % ("; ".join(dl["delivered_evidence"]), "; ".join(dl["blocked_evidence"])))
     else:
         L.append("Delivery: %s (%s confidence) %s" % (words(dl["verdict"]), dl["confidence"], "; ".join(dl["evidence"])))
+    per = v["delivery_by_recipient"]
+    if per:
+        L.append("Delivery by recipient: " + ", ".join("%s=%s" % (r, x) for r, x in per.items()))
     L.append("Local user: %s (%s)%s" % (lu["primary_local_user"], lu["primary_role"], "; case key is external, pivot to this user" if lu["pivot_recommended"] else ""))
     ages = threat_age_days(v)
     for t in v["threats"]:
