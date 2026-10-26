@@ -24,8 +24,11 @@ the placeholders listed in SKILL.md "Assets", and is run with `validate_kql` the
 aggregating, no dropped columns (see SKILL.md "Assets") — and add your own queries
 alongside them whenever the ticket needs something they do not cover.
 
-Tables used: `AzureSigninLogs`, `AzureAuditLogs`, `Office365`, `office365User`, and where
-the tenant has them `DuoAuthentication` (3a, 3b) and `WindowsAudit` (3c). Check they
+Tables used: `AzureSigninLogs`, `AzureAuditLogs`, `Office365`, `office365User`,
+`office365ConditionalAccessPolicy` with `office365Group` (3a, "Why did it get through?"),
+and where the tenant has them `DuoAuthentication` (3a, 3b) and `WindowsAudit` (3c).
+`list_data_tables` lists the `office365*` snapshot tables under `resourceTables`: query
+them with `kql_search` like any other table. Check they
 exist with `list_data_tables` first — a tenant without `AzureSigninLogs` needs the
 Office365-only path, and `office-user-investigation` covers it. A tenant without
 `AzureAuditLogs` runs the Office365 fallback queries below. Record any check that
@@ -212,6 +215,36 @@ so it is almost always unique to one user, and that says nothing about where the
 
 GeoIP is a hypothesis too. Private Relay, VPN and corporate NAT all move the pin, and
 a "impossible travel" finding built on an unverified city is manufactured.
+
+**Why did it get through? Read the policies, don't guess them.** Run
+`assets/queries/ca_user_policies.kql` whenever the sign-ins show a correct password that
+Conditional Access blocked (53003, 399218, `Correct password` in `Methods`) and a later
+success, or a success with `AuthRequirement = singleFactorAuthentication` on an account
+with no MFA registered. It lists every enabled or report-only policy that matches the
+user (by object id, by "All", or through a group, included or excluded) with its grant,
+sign-in-risk condition, client apps, target apps and locations. Read the result
+against the blocked and the successful sign-ins:
+
+- Only "All" rows, and the blocking one is the risk-based policy (`SignInRisk` high,
+  grant block): the user is protected only by Microsoft's risk score. A known password
+  from an address with no bad reputation (a residential proxy in the right country)
+  gets a risk of "none" and goes straight through. Say so: the gap is in the policies,
+  and it usually covers every account set up like this one, not just the subject.
+- A location or MFA policy the user's peers are in and the user is not: check what the
+  policy's other members are (`office365User.jobTitle`) before calling it a missed
+  account. On one retail tenant the per-store "Block if not <store IP>" policies named
+  only the stores' shared kiosk PC accounts. Store staff not being in them was the
+  design, not an oversight.
+- An `exclude-*` row on the policy that should have applied: a standing exclusion, the
+  first thing to name in the customer actions.
+
+The sign-ins on Graph-polled tenants leave `appliedConditionalAccessPolicies` empty, so
+"policy X blocked this" is inferred from the inventory and the sign-in's risk level and
+result. Write it as inference. Roles are not matched by the query: if the user holds a
+role (`user_registration.kql`), check the policies scoped by
+`conditions.users.includeRoles` yourself.
+Never write a sentence about how the tenant's Conditional Access works without this
+query's result behind it.
 
 ## 3a′ — Trace the session (stolen-session and token alerts) — *workspace*
 

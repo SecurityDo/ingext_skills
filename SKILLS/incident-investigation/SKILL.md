@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.5.0
+version: 1.5.2
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -679,14 +679,13 @@ control is `ingext-get-profile`'s readability probe (`assets/queries/readability
 in that skill): count the rows and how many carry a non-empty key column. `readable > 0`
 makes the absence real; anything else is a gap, and the closure says "not verified".
 
-**A misspelled column is not an unreadable table either.** A filter on a column that does
-not exist returns a result whose `Columns` list is **empty** — not null columns, no columns
-at all. A lookup on `gsuiteUser | where PrimaryEmail == "…"` (the column is `primaryEmail`)
-came back that way, the run saved "gsuiteUser has no readable fields" as an account note,
-and later runs trusted the note and skipped the table. `Columns: []` means the query named
-something the table does not have: read the schema (`ingext-kql`, or the profile skill's
-query) and run it again before calling anything a gap, and never record a table as
-unreadable without the readability probe.
+**`Columns: []` is just zero rows.** The engine returns it for any empty result: no match
+and a misspelled `where` column look the same. It is not evidence that a table is
+unreadable. After an empty resource-table lookup, use `ingext-get-profile`'s query for the
+table (by object id when the event has one), then run the readability probe once. Do not
+retry with name variants, `take N` (resource tables show only `timestamp` without
+`project`) or `getschema` (unsupported). Never save "<table> is unreadable" as a note
+without the probe.
 
 **A summary's `count` can be lower than the number of real events.** The engine
 dedupes behavior events on a key built from `Key`, `KeyType`, `BehaviorRule` **and

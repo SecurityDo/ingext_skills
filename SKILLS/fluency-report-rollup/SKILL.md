@@ -1,6 +1,6 @@
 ---
 name: fluency-report-rollup
-version: 1.0.0
+version: 1.0.1
 description: >-
   Build a weekly, monthly, quarterly or trend report for a Fluency / Ingext scheduled report
   from its archived daily runs instead of one long run. Each archived scheduled report runs
@@ -77,6 +77,10 @@ Call `list_report_archive` with `name`, `from`, `to`. Read `coverage`:
 - more than one `scriptHashes` → the report script changed inside the range. Days before and
   after may not be comparable; say so, or backfill the old days with `force` to rerun them on
   the current script (only if the user agrees: it replaces those days).
+- more than one `timezones` → the archive timezone changed inside the range (a tenant moved
+  from UTC to its local zone, say). Days before the change keep their old day boundaries, so
+  a few hours around the change are missing or counted twice. Say so on the page with the
+  date of the change; the per-day series is off on that day only.
 
 ### 2b. Backfill
 
