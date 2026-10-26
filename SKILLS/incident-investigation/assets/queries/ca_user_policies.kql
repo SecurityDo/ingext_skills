@@ -1,0 +1,57 @@
+// Which Conditional Access policies cover this user, and what each one enforces. Run it
+// when a correct password was blocked (53003 / 399218) and the user then signed in, or
+// when the account has no MFA: the answer to "why did this one get through?" is often
+// that the user sits outside the policy everyone else is in (a store IP lock, an MFA
+// group). One row per (policy, way the user is matched): directly by object id, by
+// "All", or through a group, included or excluded. A user who matches only "All"
+// policies is protected only by what those enforce.
+// Groups are matched by display name, because office365User lists names and policies
+// list ids (resolved through office365Group). Role-scoped policies are NOT matched here:
+// compare conditions.users.includeRoles with the user's roles yourself.
+// The sign-in rows leave appliedConditionalAccessPolicies empty on Graph-polled tenants,
+// so this inventory is the only way to say which policy applied: name it as inference.
+// Snapshot tables -- no time filter. They can hold a policy or group twice, hence the
+// final summarize (Rows counts the duplicates; it is not a number of sign-ins).
+// Placeholders: {USER} = lower-cased UPN.
+let Policies = office365ConditionalAccessPolicy
+| where state != "disabled"
+| extend Policy = tostring(displayName),
+    Grant = iff(isnull(grantControls), "", strcat_array(grantControls.builtInControls, ",")),
+    SignInRisk = tostring(conditions.signInRiskLevels),
+    ClientApps = tostring(conditions.clientAppTypes),
+    Apps = tostring(conditions.applications.includeApplications),
+    IncludeLocations = tostring(conditions.locations.includeLocations),
+    ExcludeLocations = tostring(conditions.locations.excludeLocations);
+let Groups = office365Group | project GroupId = tostring(id), GroupName = tostring(displayName);
+let ByUser = Policies
+| mv-expand Principal = conditions.users.includeUsers
+| extend Principal = tostring(Principal), How = "include-user"
+| union (Policies
+    | mv-expand Principal = conditions.users.excludeUsers
+    | extend Principal = tostring(Principal), How = "exclude-user")
+| project Policy, state, How, Principal, Grant, SignInRisk, ClientApps, Apps, IncludeLocations, ExcludeLocations;
+let ByGroup = Policies
+| mv-expand GroupId = conditions.users.includeGroups
+| extend GroupId = tostring(GroupId), How = "include-group"
+| union (Policies
+    | mv-expand GroupId = conditions.users.excludeGroups
+    | extend GroupId = tostring(GroupId), How = "exclude-group")
+| join kind=inner Groups on GroupId
+| project Policy, state, How, Principal = GroupName, Grant, SignInRisk, ClientApps, Apps, IncludeLocations, ExcludeLocations;
+let Me = office365User
+| where tolower(userPrincipalName) == "{USER}"
+| project Principal = tostring(id)
+| union (office365User
+    | where tolower(userPrincipalName) == "{USER}"
+    | mv-expand g = groups
+    | project Principal = tostring(g))
+| union (office365User
+    | where tolower(userPrincipalName) == "{USER}"
+    | project Principal = "All");
+ByUser
+| union ByGroup
+| join kind=inner Me on Principal
+| summarize Rows = count() by Policy, state, How, Principal, Grant, SignInRisk, ClientApps, Apps,
+    IncludeLocations, ExcludeLocations
+| order by How asc, Policy asc
+| take 500
