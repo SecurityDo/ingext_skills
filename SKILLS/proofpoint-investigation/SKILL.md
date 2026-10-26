@@ -1,6 +1,6 @@
 ---
 name: proofpoint-investigation
-version: 1.1.0
+version: 1.0.0
 description: >-
   Investigate one Proofpoint email message or case from the tenant's own Proofpoint event table
   and say what really happened: who sent it, who received it, inbound or outbound, whether it
