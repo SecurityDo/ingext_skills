@@ -1,10 +1,10 @@
 ---
 name: health-status-report
-version: 1.1.0
+version: 1.2.0
 description: >-
   Produce an Installed Applications Health report for ONE Ingext/Fluency tenant, using the same
   status logic as the Fluency 9 Applications page: each installed application instance is
-  Running, Error, Attention (inactive, missing component, waiting for consent) or Other, with
+  Running, Error, Attention (inactive, missing component, waiting for consent), Disabled or Other, with
   its last-24-hour traffic in and out, last-active time and error bytes by component.
   Reads the tenant's MCP connector with one list_connector_config call (installed applications,
   live components, errors, last-active, byte counters), removes credentials, evaluates locally, and
@@ -30,8 +30,9 @@ Per installed application instance.
 
 | Status | Condition |
 |---|---|
-| **Error** | Connector state is `Aborted`, or the instance carries `errors` or `errorStates` |
-| **Attention** | Inactive, or a missing component, or state `WaitingForConsent` |
+| **Error** | State `Aborted`, or an error message, or an `errorStates` entry with `errors`, or whose last alert was raised in the hour before the pull (older alerts do not count) |
+| **Disabled** | Any source has `disable` set |
+| **Attention** | Inactive, or a missing component, or state `WaitingForConsent` or `Aborted` |
 | **Running** | Traffic in the last 24 hours, or connector state `Running` |
 | **Other** | Anything else |
 
@@ -43,9 +44,10 @@ Per installed application instance.
 - **Inactive:** not in error, no traffic, and either state `Inactive` or a component (a
   non-resource source, router, pipe or sink) with no entry in `lastActive`, which covers the 24-hour
   window the connector reports.
-- **Missing component:** a resource the application was installed with (source, router, pipe, sink,
-  integration) exists in no installed application's live configuration. A sink shared between
-  applications (the event-watch sink) is live in only one of them, so the check uses all of them.
+- **Missing component:** a pending `action` names a resource that is not a live component of the
+  application. Resource types `collector`, `datalakeIndex`, `resourceGroup` and `routerSource` are
+  ignored; a `routerPipe` id is split on `-` first; an `invitation` counts only while the state is
+  `WaitingForConsent`.
 - **Error bytes** are shown per component but do not change the status, as on the page.
 
 ## Data integrity (non-negotiable)
@@ -123,11 +125,9 @@ text, tables inside the page); otherwise check in print media that each table ha
 
 ## Accuracy discipline
 
-- Not available through the connector, and not claimed: a disabled flag, so the page's Disabled
-  status is not produced.
-- Last-active times and error states come from the connector's own fields. Both were empty or
-  unpopulated on the tenant tested, so the Error path is verified only by its logic, not by a
-  real error.
+- Only the latest alert of each error state is kept, so alert history is not shown.
+- The Error, Disabled and Missing paths are verified on synthetic data built from a real result,
+  not on a real failing application: no tenant tested had an error state.
 - Quote counters; do not paraphrase them.
 
 ## Delivering to the customer

@@ -3,7 +3,7 @@
 
 The raw result carries credentials (client secrets, tokens, URLs) in each application's config and
 integrations. Nothing in this report needs them, so this script keeps only names, ids, types,
-state, errors, last-active times and 24-hour byte totals, and the raw file should be deleted
+state, error states, pending actions, last-active times and 24-hour byte totals, and the raw file should be deleted
 afterwards.
 
   scrub_config.py --config RAW_LIST_CONNECTOR_CONFIG.json --out apps.json
@@ -15,19 +15,32 @@ def uid(res):
     return ((res or {}).get("metadata") or {}).get("uid")
 
 
-def short(v):
-    return json.dumps(v)[:300]
+def clip(v, n=200):
+    return None if v is None else str(v)[:n]
+
+
+def error_states(raw):
+    """Keep what the Applications page reads: per component id, its errors and its last alert."""
+    out = []
+    for es in raw or []:
+        errs = es.get("errors")
+        alerts = es.get("alerts") or []
+        last = alerts[-1] if alerts else {}
+        out.append({"id": es.get("id"),
+                    "errors": ([{"id": x.get("id"), "subject": clip(x.get("subject")), "message": clip(x.get("message"))} for x in errs[:5]]
+                               if isinstance(errs, list) else bool(errs)),
+                    "lastAlert": {"createdOn": last.get("createdOn"), "subject": clip(last.get("subject")), "message": clip(last.get("message"))} if last else None})
+    return out
 
 
 def scrub(e):
     tpl = (e.get("state") or {}).get("appTemplate") or {}
     cfg = (e.get("state") or {}).get("config") or {}
     spec = ((tpl.get("application") or {}).get("spec")) or {}
-    tpl_ids = [uid(r) for k in ("routers", "dataSources", "dataSinks", "pipes", "integrations") for r in (tpl.get(k) or {}).values()]
     sources = []
     for s in e.get("sources") or []:
         plug = s.get("plugin") or {}
-        sources.append({"id": s.get("id"), "name": s.get("name"), "type": s.get("type"), "integration": plug.get("integration") or None})
+        sources.append({"id": s.get("id"), "name": s.get("name"), "type": s.get("type"), "integration": plug.get("integration") or None, "disable": bool(s.get("disable"))})
     traffic = {}
     ends = []
     for m in e.get("metrics") or []:
@@ -42,14 +55,15 @@ def scrub(e):
         "displayName": spec.get("displayName") or e.get("application"),
         "instanceName": cfg.get("displayName"),
         "state": (e.get("state") or {}).get("state"),
-        "errors": short(e["errors"]) if e.get("errors") else None,
-        "errorStates": short(e["errorStates"]) if e.get("errorStates") else None,
+        "errorMsg": clip((e.get("state") or {}).get("errorMsg")) or clip(e.get("errorMsg")),
+        "errorStates": error_states(e.get("errorStates")),
+        "actions": [{"resource": ((a.get("resources") or [{}])[0]).get("resource"), "id": ((a.get("resources") or [{}])[0]).get("id")}
+                    for a in e.get("actions") or [] if isinstance(a, dict)],
         "sources": sources,
         "routers": [{"id": r.get("id"), "name": r.get("name")} for r in e.get("routers") or []],
         "pipes": [{"id": p.get("id"), "name": p.get("name")} for p in e.get("pipes") or []],
         "sinks": [{"id": k.get("id"), "name": k.get("name")} for k in e.get("sinks") or []],
         "integrations": [{"id": i.get("id"), "name": i.get("name")} for i in e.get("integrations") or []],
-        "templateIds": [i for i in tpl_ids if i],
         "lastActive": e.get("lastActive") or {},
         "traffic": traffic,
     }, (max(ends) if ends else None)

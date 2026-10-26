@@ -12,21 +12,27 @@ Evidence files:
   dumps.json  list_resource_dumps (optional; informational freshness of resource sources)
 
 Status, first match wins (as the Applications page does):
-  error      state is Aborted, or the instance carries errors or error states
+  error      state is Aborted, or the instance has an error message, or a component has an error
+             state with errors, or whose last alert was raised in the hour before the pull
+  disabled   any source has disable set
   attention  inactive (state Inactive, or no traffic and a component with no activity in the
-             24 h window), or a missing component, or state WaitingForConsent
+             24 h window), or a missing component, or state WaitingForConsent / Aborted
   running    traffic in the last 24 h, or state Running
   other      anything else
-The page's Disabled status is not produced: the connector does not expose a disabled flag.
+Missing component: a pending action names a resource that is not a live component (types
+collector, datalakeIndex, resourceGroup, routerSource are ignored; an invitation counts only
+while the state is WaitingForConsent).
 """
 import argparse, csv, datetime, html, json, os, sys
 
 # Sources of these integrations write to a resource index, not through a router (constants.js).
 NO_CONNECTION = {"Office365ResourceWatch", "SentinelOne", "LDAP", "Qualys", "TenableCloud", "BlackKite", "Bitwarden",
                  "MSDefenderEndpoint", "FalconResource", "GSuiteResource", "NetskopeResource"}
-KINDS = {"error": ("Error", "#b91c1c"), "attention": ("Attention", "#b45309"),
+KINDS = {"error": ("Error", "#b91c1c"), "attention": ("Attention", "#b45309"), "disabled": ("Disabled", "#64748b"),
          "other": ("Other", "#64748b"), "running": ("Running", "#15803d")}
-ORDER = {"error": 0, "attention": 1, "other": 2, "running": 3}
+ORDER = {"error": 0, "attention": 1, "disabled": 2, "other": 3, "running": 4}
+IGNORED_MISSING = {"collector", "datalakeIndex", "resourceGroup", "routerSource"}  # ApplicationsPage.tsx
+HOUR_MS = 3600000
 
 
 def load(d, name):
@@ -67,11 +73,45 @@ def age(ms, now_ms):
     return "%.0f min ago" % (h * 60) if h < 1 else "%.1f h ago" % h
 
 
-def evaluate(app, live_ids):
+def has_error(app, now_ms):
+    if app.get("state") == "Aborted" or app.get("errorMsg"):
+        return True
+    for es in app.get("errorStates") or []:
+        if es.get("errors"):
+            return True
+        t = (es.get("lastAlert") or {}).get("createdOn")
+        if t:
+            try:
+                if datetime.datetime.fromisoformat(t.replace("Z", "+00:00")).timestamp() * 1000 > now_ms - HOUR_MS:
+                    return True
+            except ValueError:
+                pass
+    return False
+
+
+def has_missing(app, live):
+    for act in app.get("actions") or []:
+        res, rid = act.get("resource"), act.get("id") or ""
+        if not res or res in IGNORED_MISSING:
+            continue
+        if res == "routerPipe":
+            pid = rid.split("-")[1] if "-" in rid else rid
+            if pid and pid not in live:
+                return True
+        elif res == "invitation":
+            if app.get("state") == "WaitingForConsent":
+                return True
+        elif rid and rid not in live:
+            return True
+    return False
+
+
+def evaluate(app, now_ms):
     sources, routers, pipes, sinks = app["sources"], app["routers"], app["pipes"], app["sinks"]
     state = app.get("state") or ""
     tr, last = app.get("traffic") or {}, app.get("lastActive") or {}
-    error = state == "Aborted" or bool(app.get("errors")) or bool(app.get("errorStates"))
+    error = has_error(app, now_ms)
+    disabled = any(s.get("disable") for s in sources)
 
     eligible = [s for s in sources if not is_resource_source(s)]
     resource_only = bool(sources) and not eligible and not routers and not pipes
@@ -82,15 +122,18 @@ def evaluate(app, live_ids):
 
     inactive_components = False
     if not has_traffic:
-        comps = eligible + routers + pipes + sinks
+        comps = [s for s in eligible if not s.get("disable")] + routers + pipes + sinks
         inactive_components = any(c.get("id") and c["id"] not in last for c in comps)
     active = (not error) and has_traffic
     inactive = (not error) and (not active) and (state == "Inactive" or inactive_components)
 
-    missing = any(i not in live_ids for i in app.get("templateIds") or [])
+    live = {x.get("id") for k in ("sources", "routers", "pipes", "sinks", "integrations") for x in app[k]}
+    missing = has_missing(app, live)
     if error:
         kind = "error"
-    elif inactive or missing or state == "WaitingForConsent":
+    elif disabled:
+        kind = "disabled"
+    elif inactive or missing or state in ("WaitingForConsent", "Aborted"):
         kind = "attention"
     elif active or state == "Running":
         kind = "running"
@@ -106,8 +149,18 @@ def evaluate(app, live_ids):
             reasons.append("Missing component")
         if inactive:
             reasons.append("Inactive")
+        if state == "Aborted":
+            reasons.append("Aborted")
         labels = reasons or labels
-    signals = [x for x, on in (("Error", error), ("Missing component", missing or state == "WaitingForConsent"), ("Inactive", inactive)) if on]
+    signals = [x for x, on in (("Error", error), ("Missing component", missing or state == "WaitingForConsent"), ("Disabled source", disabled), ("Inactive", inactive)) if on]
+    err_msgs = []
+    if app.get("errorMsg"):
+        err_msgs.append(("application", app["errorMsg"]))
+    for es in app.get("errorStates") or []:
+        if isinstance(es.get("errors"), list):
+            err_msgs += [(es.get("id"), (x.get("subject") or "") + " " + (x.get("message") or "")) for x in es["errors"]]
+        elif es.get("lastAlert") and (es["lastAlert"].get("subject") or es["lastAlert"].get("message")):
+            err_msgs.append((es.get("id"), (es["lastAlert"].get("subject") or "") + " " + (es["lastAlert"].get("message") or "")))
 
     comp_ids = [("source", s["id"], s["name"]) for s in sources if s.get("id")] + [("router", r["id"], r["name"]) for r in routers if r.get("id")] \
         + [("pipe", p["id"], p["name"]) for p in pipes if p.get("id")] + [("sink", k["id"], k["name"]) for k in sinks if k.get("id")]
@@ -118,7 +171,7 @@ def evaluate(app, live_ids):
             err_rows.append((comp, name, v))
     return dict(kind=kind, labels=labels, signals=signals, input=inp if applicable else None, output=out if applicable else None,
                 error_bytes=sum(v for _, _, v in err_rows), err_rows=err_rows, resource_only=resource_only, state=state,
-                missing=missing, inactive=inactive, last_active=max(last.values()) if last else None)
+                missing=missing, inactive=inactive, disabled=disabled, err_msgs=err_msgs, last_active=max(last.values()) if last else None)
 
 
 def main():
@@ -141,10 +194,6 @@ def main():
     if apps_raw.get("capturedAtMs") and not a.captured_at:
         now = datetime.datetime.fromtimestamp(apps_raw["capturedAtMs"] / 1000.0, datetime.timezone.utc).replace(tzinfo=None, microsecond=0)
     now_ms = apps_raw.get("capturedAtMs") or int((now - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
-    live_ids = set()
-    for app in apps_raw["entries"]:
-        for k in ("sources", "routers", "pipes", "sinks", "integrations"):
-            live_ids.update(x.get("id") for x in app[k])
 
     dump_age = {}
     for e in (dumps or {}).get("entries", []):
@@ -158,7 +207,7 @@ def main():
 
     views = []
     for app in apps_raw["entries"]:
-        v = evaluate(app, live_ids)
+        v = evaluate(app, now_ms)
         v["app"] = app
         views.append(v)
     views.sort(key=lambda v: (ORDER[v["kind"]], v["app"]["displayName"] or "", v["app"]["instance"] or ""))
@@ -189,6 +238,8 @@ def main():
                 t = dump_age.get((s["name"] or "").lower())
                 res_rows.append("<tr><td>%s</td><td>%s</td></tr>" % (esc(s["name"]), esc(("%.1f h ago" % ((now - t).total_seconds() / 3600)) if t else "no dump listed")))
     res_tr = "".join(res_rows) or '<tr><td colspan="2">No resource sources.</td></tr>'
+    msg_tr = "".join("<tr><td>%s</td><td>%s</td><td>%s</td></tr>" % (esc(v["app"]["displayName"]), esc(c or "-"), esc(m.strip() or "(no message)"))
+                     for v in views for c, m in v["err_msgs"]) or '<tr><td colspan="3">No error or recent alert messages.</td></tr>'
     attn = [v for v in views if v["kind"] in ("error", "attention")]
     actions = ["<li><b>%s</b>: %s. %s</li>" % (esc(v["app"]["displayName"]), esc(" · ".join(v["labels"])),
                "Open the application and read its error." if v["kind"] == "error" else "Check the installation and its data sources.") for v in attn] \
@@ -197,7 +248,7 @@ def main():
     head = "no application is in error or needs attention" if not attn else "%d application(s) need attention or are in error" % len(attn)
     kp = "".join('<div class="kpi"><div class="nn" style="color:%s">%s</div><div class="small">%s</div></div>' % (c, v, l) for v, l, c in [
         (len(views), "Installed", "#0f172a"), (cnt["running"], "Running", "#15803d"), (cnt["error"], "Error", "#b91c1c"),
-        (cnt["attention"] + cnt["other"], "Inactive or needs attention", "#b45309"), ("%s / %s" % (size(tot_in), size(tot_out)), "In / out, 24 h", "#0f172a")])
+        (cnt["attention"] + cnt["disabled"] + cnt["other"], "Inactive or needs attention", "#b45309"), ("%s / %s" % (size(tot_in), size(tot_out)), "In / out, 24 h", "#0f172a")])
     doc = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{title}</title><style>
 *{{box-sizing:border-box}}body{{font-family:Inter,Arial,sans-serif;color:#0f172a;margin:0;font-size:13px;line-height:1.5}}
 .wrap{{max-width:7.1in;margin:0 auto}}h1{{font-size:24px;margin:0 0 4px}}
@@ -212,7 +263,7 @@ th{{background:#f1f5f9}}tr{{break-inside:avoid}}.pill{{color:#fff;border-radius:
 </style></head><body><div class="wrap"><h1>{title}</h1>
 <div class="sub">Tenant: {tname} (grid account <code>{tenant}</code>) &middot; Last 24 hours to {now} UTC &middot; Site: {site}</div>
 <div class="lead">
-<p><b>What the evidence shows.</b> {tname} has {n} installed applications: {c_run} running, {c_err} in error, {c_att} needing attention, {c_oth} other. {head}.</p>
+<p><b>What the evidence shows.</b> {tname} has {n} installed applications: {c_run} running, {c_err} in error, {c_att} needing attention, {c_dis} disabled, {c_oth} other. {head}.</p>
 <p><b>Why it matters.</b> An application in error or waiting for consent is a data source the customer believes is monitored but is not delivering.</p>
 <p><b>Result.</b> Status follows the Fluency 9 Applications page: the connector state, recent traffic through the application's sources and sinks, and whether its components exist and have ever carried data.</p>
 <p><b>Evidence strength.</b> Confirmed: connector state, errors, 24-hour traffic and error bytes, and each component\u2019s last activity within the 24-hour window, all from the tenant\u2019s own connector configuration. Unknown: whether a source is disabled, which the connector does not expose.</p></div>
@@ -222,22 +273,24 @@ th{{background:#f1f5f9}}tr{{break-inside:avoid}}.pill{{color:#fff;border-radius:
 <div class="call">Running means the connector reports Running or the application moved data in the last 24 hours. A Running connector does not prove its data is current: a resource source (Office 365 resource watch, Qualys) has no traffic, so check the freshness table below.</div>
 <h2>Error bytes by component</h2>
 <table><colgroup><col style="width:30%"><col style="width:18%"><col style="width:32%"><col style="width:20%"></colgroup><tr><th>Application</th><th>Component</th><th>Name</th><th>Error bytes</th></tr>{err_tr}</table>
+<h2>Error and alert messages</h2>
+<table><colgroup><col style="width:28%"><col style="width:22%"><col style="width:50%"></colgroup><tr><th>Application</th><th>Component id</th><th>Message</th></tr>{msg_tr}</table>
 <h2>Resource sources: freshness</h2>
 <table><colgroup><col style="width:60%"><col style="width:40%"></colgroup><tr><th>Source</th><th>Newest dump written</th></tr>{res_tr}</table>
 <p class="small">Informational only; it does not change an application's status.</p>
 <h2>Recommended actions</h2><ul>{actions}</ul>
 <h2>Limits</h2><ul>
-<li>The connector does not expose a disabled flag, so no application is reported as Disabled.</li>
+<li>An error state counts as Error when it holds errors, or when its last alert was raised in the hour before the pull; an older alert does not. Alert history beyond the latest alert is not available.</li>
 <li>"Inactive" means a component moved no data in the 24-hour window the connector reports; an application that is quiet by nature (for example a syslog listener with no senders) shows as Inactive.</li>
-<li>A missing component means a resource the application was installed with no longer exists in the live configuration.</li></ul>
+<li>A missing component means a pending action of the application names a resource that is not a live component, as on the Applications page.</li></ul>
 <h2>Methodology</h2><p class="small">Read-only calls through the {site} MCP connector against account <code>{tenant}</code> on {now} UTC: the installed applications with their live components, errors, last-active times and 24-hour byte counters, in one connector-configuration call. Credentials in the raw result were removed before use. A per-application CSV accompanies this report.</p>
 </div></body></html>""".format(
         title=esc(title), tname=esc(a.tenant_name), tenant=esc(a.tenant), now=now.strftime("%d %b %Y %H:%M"), site=esc(a.site), n=len(views),
-        c_run=cnt["running"], c_err=cnt["error"], c_att=cnt["attention"], c_oth=cnt["other"], head=head[0].upper() + head[1:],
-        kp=kp, rows=rows, err_tr=err_tr, res_tr=res_tr, actions="".join(actions))
+        c_run=cnt["running"], c_err=cnt["error"], c_att=cnt["attention"], c_dis=cnt["disabled"], c_oth=cnt["other"], head=head[0].upper() + head[1:],
+        kp=kp, msg_tr=msg_tr, rows=rows, err_tr=err_tr, res_tr=res_tr, actions="".join(actions))
     with open(a.out, "w") as f:
         f.write(doc)
-    print("wrote", a.out, a.csv, "| %d apps: %d running, %d error, %d attention, %d other" % (len(views), cnt["running"], cnt["error"], cnt["attention"], cnt["other"]))
+    print("wrote", a.out, a.csv, "| %d apps: %d running, %d error, %d attention, %d disabled, %d other" % (len(views), cnt["running"], cnt["error"], cnt["attention"], cnt["disabled"], cnt["other"]))
 
 
 if __name__ == "__main__":
