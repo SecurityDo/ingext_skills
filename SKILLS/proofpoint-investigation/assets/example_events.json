@@ -1,0 +1,137 @@
+{
+ "data": {
+  "Tables": [
+   {
+    "TableName": "PrimaryResult",
+    "Columns": [
+     {
+      "ColumnName": "timestamp"
+     },
+     {
+      "ColumnName": "@proofpoint.GUID"
+     },
+     {
+      "ColumnName": "@proofpoint.QID"
+     },
+     {
+      "ColumnName": "@proofpoint.messageID"
+     },
+     {
+      "ColumnName": "@proofpoint.type"
+     },
+     {
+      "ColumnName": "@proofpoint.sender"
+     },
+     {
+      "ColumnName": "@proofpoint.fromAddress"
+     },
+     {
+      "ColumnName": "@proofpoint.headerFrom"
+     },
+     {
+      "ColumnName": "@proofpoint.recipient"
+     },
+     {
+      "ColumnName": "@proofpoint.toAddresses"
+     },
+     {
+      "ColumnName": "@proofpoint.ccAddresses"
+     },
+     {
+      "ColumnName": "@proofpoint.cluster"
+     },
+     {
+      "ColumnName": "@proofpoint.policyRoutes"
+     },
+     {
+      "ColumnName": "@proofpoint.modulesRun"
+     },
+     {
+      "ColumnName": "@proofpoint.senderIP"
+     },
+     {
+      "ColumnName": "@proofpoint.quarantineFolder"
+     },
+     {
+      "ColumnName": "@proofpoint.quarantineRule"
+     },
+     {
+      "ColumnName": "@proofpoint.phishScore"
+     },
+     {
+      "ColumnName": "@proofpoint.spamScore"
+     },
+     {
+      "ColumnName": "@proofpoint.malwareScore"
+     },
+     {
+      "ColumnName": "@proofpoint.impostorScore"
+     },
+     {
+      "ColumnName": "@proofpoint.subject"
+     },
+     {
+      "ColumnName": "@proofpoint.messageParts"
+     },
+     {
+      "ColumnName": "@proofpoint.threatsInfoMap"
+     }
+    ],
+    "Rows": [
+     [
+      "2026-10-26T09:00:01Z",
+      "GUID-EXAMPLE-1",
+      "QID-1",
+      "<msg@mail.example.net>",
+      "MessagesDelivered",
+      "billing@vendor.example.net",
+      "[\"billing@vendor.example.net\"]",
+      "Billing <billing@vendor.example.net>",
+      "[\"alex@example.com\"]",
+      "[\"alex@example.com\", \"sam@example.com\"]",
+      "[]",
+      "example_hosted-inbound",
+      "[\"default_inbound\"]",
+      "[\"spam\", \"pdr\"]",
+      "203.0.113.9",
+      null,
+      null,
+      95,
+      10,
+      0,
+      0,
+      "Invoice overdue",
+      "[{\"filename\": \"invoice.html\", \"contentType\": \"text/html\", \"disposition\": \"attached\", \"sha256\": \"00\", \"sandboxStatus\": \"NOT_SUPPORTED\"}]",
+      "[{\"classification\": \"phish\", \"detectionType\": \"NONE\", \"threat\": \"https://login.badsite.example/office\", \"threatID\": \"t-0001\", \"threatStatus\": \"active\", \"threatTime\": \"2026-10-24T08:00:00.000Z\", \"threatType\": \"url\", \"threatUrl\": \"https://threatinsight.example/threat/t-0001\"}]"
+     ],
+     [
+      "2026-10-26T09:00:01Z",
+      "GUID-EXAMPLE-1",
+      "QID-1",
+      "<msg@mail.example.net>",
+      "MessagesBlocked",
+      "billing@vendor.example.net",
+      "[\"billing@vendor.example.net\"]",
+      "Billing <billing@vendor.example.net>",
+      "[\"alex@example.com\"]",
+      "[\"alex@example.com\", \"sam@example.com\"]",
+      "[]",
+      "example_hosted-inbound",
+      "[\"default_inbound\"]",
+      "[\"spam\", \"pdr\"]",
+      "203.0.113.9",
+      "Phish",
+      null,
+      95,
+      10,
+      0,
+      0,
+      "Invoice overdue",
+      "[{\"filename\": \"invoice.html\", \"contentType\": \"text/html\", \"disposition\": \"attached\", \"sha256\": \"00\", \"sandboxStatus\": \"NOT_SUPPORTED\"}]",
+      "[{\"classification\": \"phish\", \"detectionType\": \"NONE\", \"threat\": \"https://login.badsite.example/office\", \"threatID\": \"t-0001\", \"threatStatus\": \"active\", \"threatTime\": \"2026-10-24T08:00:00.000Z\", \"threatType\": \"url\", \"threatUrl\": \"https://threatinsight.example/threat/t-0001\"}]"
+     ]
+    ]
+   }
+  ]
+ }
+}

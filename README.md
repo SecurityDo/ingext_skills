@@ -86,6 +86,7 @@ package in the same change — the validator checks inside the archives and will
 | [endpoint-os-currency](#endpoint-os-currency) | Endpoint OS inventory, end-of-support and build-currency report from an EDR or Entra device dump → HTML + PDF + CSV |
 | [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
+| [proofpoint-investigation](#proofpoint-investigation) | Investigate one Proofpoint email: sender, direction, delivery, threat, clicks and blast radius from the event rows |
 | [office-user-investigation](#office-user-investigation) | Investigate an M365 mailbox user (KQL + GeoIP) |
 | [o365-activity-report](#o365-activity-report) | Account-wide O365/Exchange activity report (KQL: timechart + tables) |
 | [incident-investigation](#incident-investigation) | Triage an escalated behavior incident / AI-assist ticket to a verdict |
@@ -302,6 +303,19 @@ is sign-ins and role/group/password changes.
 - "pull X's sign-in history on Fluency"
 - "what directory changes did X make or receive?"
 - "run the Azure sign-in investigation for jane@corp.com"
+
+### proofpoint-investigation
+
+Investigates one Proofpoint message from the tenant's own Proofpoint events: who sent it, who
+received it, inbound or outbound (from the participants, not the cluster label), whether it was
+delivered or blocked, what Proofpoint flagged, whether there is click evidence, and how many other
+messages share the threat. `scripts/proofpoint_verdict.py` computes the verdict from the saved
+`kql_search` rows and the answer separates confirmed facts, inferences and unknowns. For a general
+behavior incident use incident-investigation.
+
+**Try:**
+- "who sent this Proofpoint email and was it delivered?" (with a GUID or recipient and day)
+- "investigate this Proofpoint alert for <tenant>"
 
 ### office-user-investigation
 
