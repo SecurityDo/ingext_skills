@@ -223,8 +223,9 @@ never says compliant or certified. Lives in [`reports/`](./reports).
 
 Reports the health of every installed application on a tenant with the same status logic as the
 Fluency 9 Applications page: Running, Error, Attention (inactive, missing component, waiting for
-consent, aborted), Disabled or Other, with 24-hour traffic in and out and error bytes by
-component. Credentials in the raw connector results are removed before use. Renders HTML, PDF and
+consent) or Other, with 24-hour traffic in and out, last-active time and error bytes by
+component. It needs the connector's `list_connector_config` tool; credentials in its raw result
+are removed before use. Renders HTML, PDF and
 a per-application CSV. For platform-wide health (logins, queues, egress) use ingext-health-monitor.
 Lives in [`reports/`](./reports).
 

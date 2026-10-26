@@ -7,30 +7,26 @@ Disabled or Other. Every number is computed here from the saved raw tool results
 --evidence-dir; nothing is typed in by hand. Missing evidence is stated, never assumed healthy.
 
 Evidence files:
-  apps.json         scrub_connectors.py output (from list_connectors): state, wiring, resource ids
-  integrations.json scrub_connectors.py output (from list_integrations): live integration ids
-  streams.json      stream_list_configs: live router, pipe, sink and source ids
-  bytes24.json      prom_query, 24 h: sum by (id, component, action) (increase(
-                    platform_component_bytes{action=~"input|output|error"}[24h])) > 0
-  active90.json     prom_query, 90 d: sum by (component, id) (increase(platform_component_bytes[90d])) > 0
-  dumps.json        list_resource_dumps (optional; informational freshness of resource sources)
+  apps.json   scrub_config.py output (from list_connector_config): per application its state,
+              errors, live components, last-active times and 24 h byte totals
+  dumps.json  list_resource_dumps (optional; informational freshness of resource sources)
 
 Status, first match wins (as the Applications page does):
-  error      state is Aborted, or the instance carries an error message
-  disabled   any source of the application is disabled
-  attention  inactive (state Inactive, or no traffic and a component with no recorded activity),
-             or a missing component, or state WaitingForConsent / Aborted
+  error      state is Aborted, or the instance carries errors or error states
+  attention  inactive (state Inactive, or no traffic and a component with no activity in the
+             24 h window), or a missing component, or state WaitingForConsent
   running    traffic in the last 24 h, or state Running
   other      anything else
+The page's Disabled status is not produced: the connector does not expose a disabled flag.
 """
 import argparse, csv, datetime, html, json, os, sys
 
 # Sources of these integrations write to a resource index, not through a router (constants.js).
 NO_CONNECTION = {"Office365ResourceWatch", "SentinelOne", "LDAP", "Qualys", "TenableCloud", "BlackKite", "Bitwarden",
                  "MSDefenderEndpoint", "FalconResource", "GSuiteResource", "NetskopeResource"}
-KINDS = {"error": ("Error", "#b91c1c"), "attention": ("Attention", "#b45309"), "disabled": ("Disabled", "#64748b"),
+KINDS = {"error": ("Error", "#b91c1c"), "attention": ("Attention", "#b45309"),
          "other": ("Other", "#64748b"), "running": ("Running", "#15803d")}
-ORDER = {"error": 0, "attention": 1, "disabled": 2, "other": 3, "running": 4}
+ORDER = {"error": 0, "attention": 1, "other": 2, "running": 3}
 
 
 def load(d, name):
@@ -39,17 +35,6 @@ def load(d, name):
             return json.load(f)
     except (OSError, ValueError):
         return None
-
-
-def prom(raw):
-    """{(component, action, id): value}"""
-    out = {}
-    for s in (raw or {}).get("series", []):
-        m = s.get("metric", {})
-        pts = s.get("points") or [{}]
-        k = (m.get("component"), m.get("action"), m.get("id"))
-        out[k] = out.get(k, 0) + int(pts[-1].get("value", 0) or 0)
-    return out
 
 
 def is_resource_source(s):
@@ -75,36 +60,37 @@ def pill(kind, label):
     return '<span class="pill" style="background:%s">%s</span>' % (KINDS[kind][1], esc(label))
 
 
-def evaluate(app, live_ids, ever_active, b24):
+def age(ms, now_ms):
+    if not ms:
+        return "no activity in 24 h"
+    h = (now_ms - ms) / 3600000.0
+    return "%.0f min ago" % (h * 60) if h < 1 else "%.1f h ago" % h
+
+
+def evaluate(app, live_ids):
     sources, routers, pipes, sinks = app["sources"], app["routers"], app["pipes"], app["sinks"]
     state = app.get("state") or ""
-    error = state == "Aborted" or bool(app.get("errorMsg"))
-    disabled = any(s.get("disabled") for s in sources)
+    tr, last = app.get("traffic") or {}, app.get("lastActive") or {}
+    error = state == "Aborted" or bool(app.get("errors")) or bool(app.get("errorStates"))
 
-    eligible = [s for s in sources if not is_resource_source(s) or s.get("router")]
+    eligible = [s for s in sources if not is_resource_source(s)]
     resource_only = bool(sources) and not eligible and not routers and not pipes
     applicable = not resource_only
-    inp = sum(b24.get(("datasource", "input", s["id"]), 0) for s in eligible if s.get("id"))
-    out = sum(b24.get(("datasink", "output", k["id"]), 0) for k in sinks if k.get("id"))
+    inp = sum(tr.get(s["id"], {}).get("input", 0) for s in eligible if s.get("id"))
+    out = sum(tr.get(k["id"], {}).get("output", 0) for k in sinks if k.get("id"))
     has_traffic = applicable and (inp > 0 or out > 0)
 
     inactive_components = False
-    if ever_active is not None and not has_traffic:
-        comps = [s for s in sources if not s.get("disabled") and not is_resource_source(s)] + routers + pipes + sinks
-        inactive_components = any(c.get("id") and c["id"] not in ever_active for c in comps)
+    if not has_traffic:
+        comps = eligible + routers + pipes + sinks
+        inactive_components = any(c.get("id") and c["id"] not in last for c in comps)
     active = (not error) and has_traffic
     inactive = (not error) and (not active) and (state == "Inactive" or inactive_components)
 
-    missing = False
-    if live_ids is not None:
-        for res in sources + routers + pipes + sinks + app["integrations"]:
-            if res.get("id") and res["id"] not in live_ids:
-                missing = True
+    missing = any(i not in live_ids for i in app.get("templateIds") or [])
     if error:
         kind = "error"
-    elif disabled:
-        kind = "disabled"
-    elif inactive or missing or state in ("WaitingForConsent", "Aborted"):
+    elif inactive or missing or state == "WaitingForConsent":
         kind = "attention"
     elif active or state == "Running":
         kind = "running"
@@ -120,24 +106,19 @@ def evaluate(app, live_ids, ever_active, b24):
             reasons.append("Missing component")
         if inactive:
             reasons.append("Inactive")
-        if state == "Aborted":
-            reasons.append("Aborted")
         labels = reasons or labels
-    signals = [x for x, on in (("Error", error), ("Missing component", missing or state == "WaitingForConsent"), ("Disabled source", disabled), ("Inactive", inactive)) if on]
+    signals = [x for x, on in (("Error", error), ("Missing component", missing or state == "WaitingForConsent"), ("Inactive", inactive)) if on]
 
-    comp_ids = [("datasource", s["id"], s["name"]) for s in sources if s.get("id")] + [("router", r["id"], r["name"]) for r in routers if r.get("id")] \
-        + [("pipe", p["id"], p["name"]) for p in pipes if p.get("id")] + [("datasink", k["id"], k["name"]) for k in sinks if k.get("id")]
-    seen, err_rows = set(), []
+    comp_ids = [("source", s["id"], s["name"]) for s in sources if s.get("id")] + [("router", r["id"], r["name"]) for r in routers if r.get("id")] \
+        + [("pipe", p["id"], p["name"]) for p in pipes if p.get("id")] + [("sink", k["id"], k["name"]) for k in sinks if k.get("id")]
+    err_rows = []
     for comp, cid, name in comp_ids:
-        if cid in seen:
-            continue
-        seen.add(cid)
-        v = b24.get((comp, "error", cid), 0)
+        v = tr.get(cid, {}).get("error", 0)
         if v > 0:
             err_rows.append((comp, name, v))
     return dict(kind=kind, labels=labels, signals=signals, input=inp if applicable else None, output=out if applicable else None,
                 error_bytes=sum(v for _, _, v in err_rows), err_rows=err_rows, resource_only=resource_only, state=state,
-                missing=missing, inactive=inactive, disabled=disabled)
+                missing=missing, inactive=inactive, last_active=max(last.values()) if last else None)
 
 
 def main():
@@ -152,26 +133,18 @@ def main():
     a = ap.parse_args()
     d = a.evidence_dir
     now = datetime.datetime.fromisoformat(a.captured_at.replace("Z", "+00:00")).replace(tzinfo=None) if a.captured_at \
-        else datetime.datetime.utcnow().replace(microsecond=0)
+        else datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None, microsecond=0)
 
-    apps_raw, b24_raw = load(d, "apps.json"), load(d, "bytes24.json")
+    apps_raw, dumps = load(d, "apps.json"), load(d, "dumps.json")
     if not apps_raw or not apps_raw.get("entries"):
-        sys.exit("apps.json is missing or lists no applications; run list_connectors and scrub_connectors.py first")
-    if b24_raw is None:
-        sys.exit("bytes24.json is missing; the traffic counters are needed to decide Running vs Inactive")
-    b24 = prom(b24_raw)
-    act_raw = load(d, "active90.json")
-    ever_active = {k[2] for k in prom(act_raw)} if act_raw is not None else None
-    streams, ints, dumps = load(d, "streams.json"), load(d, "integrations.json"), load(d, "dumps.json")
-    live_ids = None
-    if streams is not None and ints is not None:
-        live_ids = set()
-        for r in streams.get("routers", []):
-            live_ids.add(r.get("id"))
-            live_ids.update(p.get("id") for p in r.get("pipes", []))
-        live_ids.update(x.get("id") for x in streams.get("sinks", []))
-        live_ids.update(x.get("id") for x in streams.get("sources", []))
-        live_ids.update(x.get("id") for x in ints.get("entries", []))
+        sys.exit("apps.json is missing or lists no applications; run list_connector_config and scrub_config.py first")
+    if apps_raw.get("capturedAtMs") and not a.captured_at:
+        now = datetime.datetime.fromtimestamp(apps_raw["capturedAtMs"] / 1000.0, datetime.timezone.utc).replace(tzinfo=None, microsecond=0)
+    now_ms = apps_raw.get("capturedAtMs") or int((now - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
+    live_ids = set()
+    for app in apps_raw["entries"]:
+        for k in ("sources", "routers", "pipes", "sinks", "integrations"):
+            live_ids.update(x.get("id") for x in app[k])
 
     dump_age = {}
     for e in (dumps or {}).get("entries", []):
@@ -185,7 +158,7 @@ def main():
 
     views = []
     for app in apps_raw["entries"]:
-        v = evaluate(app, live_ids, ever_active, b24)
+        v = evaluate(app, live_ids)
         v["app"] = app
         views.append(v)
     views.sort(key=lambda v: (ORDER[v["kind"]], v["app"]["displayName"] or "", v["app"]["instance"] or ""))
@@ -205,7 +178,7 @@ def main():
         esc(v["app"]["displayName"]), esc(v["app"]["instanceName"] or v["app"]["instance"] or ""),
         " ".join(pill(v["kind"], l) for l in v["labels"]),
         "n/a" if v["input"] is None else size(v["input"]), "n/a" if v["output"] is None else size(v["output"]),
-        size(v["error_bytes"]), esc(", ".join(v["signals"]) or "-")) for v in views)
+        size(v["error_bytes"]), "n/a" if v["resource_only"] else esc(age(v["last_active"], now_ms))) for v in views)
     err_rows = [(v["app"]["displayName"], c, n, b) for v in views for c, n, b in v["err_rows"]]
     err_tr = "".join("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (esc(x[0]), esc(x[1]), esc(x[2]), size(x[3])) for x in err_rows) \
         or '<tr><td colspan="4">No component reported error bytes in the last 24 hours.</td></tr>'
@@ -224,7 +197,7 @@ def main():
     head = "no application is in error or needs attention" if not attn else "%d application(s) need attention or are in error" % len(attn)
     kp = "".join('<div class="kpi"><div class="nn" style="color:%s">%s</div><div class="small">%s</div></div>' % (c, v, l) for v, l, c in [
         (len(views), "Installed", "#0f172a"), (cnt["running"], "Running", "#15803d"), (cnt["error"], "Error", "#b91c1c"),
-        (cnt["attention"] + cnt["disabled"] + cnt["other"], "Inactive or needs attention", "#b45309"), ("%s / %s" % (size(tot_in), size(tot_out)), "In / out, 24 h", "#0f172a")])
+        (cnt["attention"] + cnt["other"], "Inactive or needs attention", "#b45309"), ("%s / %s" % (size(tot_in), size(tot_out)), "In / out, 24 h", "#0f172a")])
     doc = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{title}</title><style>
 *{{box-sizing:border-box}}body{{font-family:Inter,Arial,sans-serif;color:#0f172a;margin:0;font-size:13px;line-height:1.5}}
 .wrap{{max-width:7.1in;margin:0 auto}}h1{{font-size:24px;margin:0 0 4px}}
@@ -239,13 +212,13 @@ th{{background:#f1f5f9}}tr{{break-inside:avoid}}.pill{{color:#fff;border-radius:
 </style></head><body><div class="wrap"><h1>{title}</h1>
 <div class="sub">Tenant: {tname} (grid account <code>{tenant}</code>) &middot; Last 24 hours to {now} UTC &middot; Site: {site}</div>
 <div class="lead">
-<p><b>What the evidence shows.</b> {tname} has {n} installed applications: {c_run} running, {c_err} in error, {c_att} needing attention, {c_dis} disabled, {c_oth} other. {head}.</p>
+<p><b>What the evidence shows.</b> {tname} has {n} installed applications: {c_run} running, {c_err} in error, {c_att} needing attention, {c_oth} other. {head}.</p>
 <p><b>Why it matters.</b> An application in error or waiting for consent is a data source the customer believes is monitored but is not delivering.</p>
 <p><b>Result.</b> Status follows the Fluency 9 Applications page: the connector state, recent traffic through the application's sources and sinks, and whether its components exist and have ever carried data.</p>
-<p><b>Evidence strength.</b> Confirmed: connector state and 24-hour traffic and error bytes. Inferred: "has ever carried data", from 90 days of platform counters. Unknown: alert history, disabled state and last-active times, which the connector does not expose here.</p></div>
+<p><b>Evidence strength.</b> Confirmed: connector state, errors, 24-hour traffic and error bytes, and each component\u2019s last activity within the 24-hour window, all from the tenant\u2019s own connector configuration. Unknown: whether a source is disabled, which the connector does not expose.</p></div>
 <div class="kpis">{kp}</div>
 <h2>Installed applications</h2>
-<table><colgroup><col style="width:30%"><col style="width:22%"><col style="width:20%"><col style="width:12%"><col style="width:16%"></colgroup><tr><th>Application</th><th>Status</th><th>In / out, 24 h</th><th>Error bytes</th><th>Signals</th></tr>{rows}</table>
+<table><colgroup><col style="width:28%"><col style="width:24%"><col style="width:20%"><col style="width:12%"><col style="width:16%"></colgroup><tr><th>Application</th><th>Status</th><th>In / out, 24 h</th><th>Error bytes</th><th>Last active</th></tr>{rows}</table>
 <div class="call">Running means the connector reports Running or the application moved data in the last 24 hours. A Running connector does not prove its data is current: a resource source (Office 365 resource watch, Qualys) has no traffic, so check the freshness table below.</div>
 <h2>Error bytes by component</h2>
 <table><colgroup><col style="width:30%"><col style="width:18%"><col style="width:32%"><col style="width:20%"></colgroup><tr><th>Application</th><th>Component</th><th>Name</th><th>Error bytes</th></tr>{err_tr}</table>
@@ -254,17 +227,17 @@ th{{background:#f1f5f9}}tr{{break-inside:avoid}}.pill{{color:#fff;border-radius:
 <p class="small">Informational only; it does not change an application's status.</p>
 <h2>Recommended actions</h2><ul>{actions}</ul>
 <h2>Limits</h2><ul>
-<li>Alert and error history for each application, source disabled flags and last-active times are not available through the connector. An application with a recent platform alert but a Running connector therefore shows as Running.</li>
-<li>"Inactive" uses 90 days of platform counters as a stand-in for the page's last-active time.</li>
+<li>The connector does not expose a disabled flag, so no application is reported as Disabled.</li>
+<li>"Inactive" means a component moved no data in the 24-hour window the connector reports; an application that is quiet by nature (for example a syslog listener with no senders) shows as Inactive.</li>
 <li>A missing component means a resource the application was installed with no longer exists in the live configuration.</li></ul>
-<h2>Methodology</h2><p class="small">Read-only calls through the {site} MCP connector against account <code>{tenant}</code> on {now} UTC: installed applications and their wiring, live stream configuration, integrations, and platform byte counters (24 hours and 90 days). Credentials in the raw connector results were removed before use. A per-application CSV accompanies this report.</p>
+<h2>Methodology</h2><p class="small">Read-only calls through the {site} MCP connector against account <code>{tenant}</code> on {now} UTC: the installed applications with their live components, errors, last-active times and 24-hour byte counters, in one connector-configuration call. Credentials in the raw result were removed before use. A per-application CSV accompanies this report.</p>
 </div></body></html>""".format(
         title=esc(title), tname=esc(a.tenant_name), tenant=esc(a.tenant), now=now.strftime("%d %b %Y %H:%M"), site=esc(a.site), n=len(views),
-        c_run=cnt["running"], c_err=cnt["error"], c_att=cnt["attention"], c_dis=cnt["disabled"], c_oth=cnt["other"], head=head[0].upper() + head[1:],
+        c_run=cnt["running"], c_err=cnt["error"], c_att=cnt["attention"], c_oth=cnt["other"], head=head[0].upper() + head[1:],
         kp=kp, rows=rows, err_tr=err_tr, res_tr=res_tr, actions="".join(actions))
     with open(a.out, "w") as f:
         f.write(doc)
-    print("wrote", a.out, a.csv, "| %d apps: %d running, %d error, %d attention, %d disabled, %d other" % (len(views), cnt["running"], cnt["error"], cnt["attention"], cnt["disabled"], cnt["other"]))
+    print("wrote", a.out, a.csv, "| %d apps: %d running, %d error, %d attention, %d other" % (len(views), cnt["running"], cnt["error"], cnt["attention"], cnt["other"]))
 
 
 if __name__ == "__main__":
