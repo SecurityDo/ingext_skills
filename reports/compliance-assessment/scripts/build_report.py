@@ -246,7 +246,15 @@ th{{background:#f1f5f9}}tr{{break-inside:avoid}}td.nw{{white-space:nowrap;font-w
         f.write(doc)
     if a.summary_json:
         with open(a.summary_json, "w") as f:
-            json.dump({"period": a.period, "counts": cnt, "rows": [{"control": c, "title": t, "status": s_, "evidence": e} for c, t, s_, e in rows]}, f, indent=1)
+            facts = {
+                "events": {"office365": o365, "signin": sin, "signin_failed": failed, "signin_users": si["users"] if si else None, "directory_audit": audit, "windows_audit": win_n},
+                "workloads": [[r["Workload"], r["events"]] for r in sorted(wl_rows or [], key=lambda r: -r["events"])],
+                "audit_categories": [[r["Category"], r["events"]] for r in sorted(au_rows or [], key=lambda r: -r["events"])],
+                "users": us, "devices": dv, "qualys_hosts": qualys, "behavior_summaries": beh_total,
+                "conditional_access": ({"total": (ca_all if ca else 0), "enforced": ca_enf or 0, "report_only": ca_rep, "by_state": ca} if ca is not None else None),
+                "note": "Resource-table counts are a snapshot as of the dump, not the report month; event counts are for the month.",
+            }
+            json.dump({"period": a.period, "counts": cnt, "rows": [{"control": c, "title": t, "status": s_, "evidence": e} for c, t, s_, e in rows], "facts": facts}, f, indent=1)
     print(a.out)
 
 

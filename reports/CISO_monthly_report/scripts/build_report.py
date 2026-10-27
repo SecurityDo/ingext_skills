@@ -426,8 +426,39 @@ def render(ev, nar, v, args, logo):
                                                            "Status from the connector state only; traffic and errors were not available." if hl["mode"] == "state_only" else "Status from state, errors, 24-hour traffic and last activity."),
                "; ".join(E("%s / %s: %.0f days old%s" % (f["resource"], f["customer"], f["ageDays"] or 0, ", empty" if f["empty"] else "")) for f in stale) or ("No stale resource feeds" if feeds is not None else "[GAP] resource-feed freshness not collected")]
     rows = [["Coverage &amp; Health", cov[0], cov[1]]]
+    comp_facts = (ev.get("compliance") or {}).get("facts") or {}
+
+    def nn(x):
+        return "{:,}".format(x) if isinstance(x, (int, float)) else "not collected"
+
+    def default_exposure(key):
+        """What the compliance-assessment facts support, used when the narrative gives nothing for this area."""
+        f = comp_facts
+        if not f:
+            return None
+        if key == "o365_hygiene":
+            parts = []
+            if f.get("users"):
+                parts.append("%s directory users (%s enabled)" % (nn(f["users"]["users"]), nn(f["users"]["enabled"])))
+            ca_ = f.get("conditional_access")
+            parts.append("%s Conditional Access policies (%s enforced, %s report-only)" % (nn(ca_["total"]), nn(ca_["enforced"]), nn(ca_["report_only"])) if ca_ else "Conditional Access policies not collected")
+            ev_ = f.get("events") or {}
+            if ev_.get("signin"):
+                parts.append("%s of %s sign-ins failed" % (nn(ev_["signin_failed"]), nn(ev_["signin"])))
+            return {"evidence": "; ".join(parts) + ".", "limit": "A snapshot of the resource tables, not the report month. MFA coverage, stale accounts and guest access were not evaluated."}
+        if key == "environment_changes":
+            cats = f.get("audit_categories") or []
+            if not cats:
+                return None
+            return {"evidence": "Directory audit events by category: " + "; ".join("%s %s" % (c, nn(n_)) for c, n_ in cats[:5]) + ".", "limit": "Counts of audit events, not a list of changes. Who changed what needs a query on the audit table."}
+        if key == "vulnerability_highlights":
+            q = f.get("qualys_hosts")
+            if q:
+                return {"evidence": "The Qualys inventory has %s hosts." % nn(q), "limit": "Vulnerability findings were not queried; only the host inventory was counted."}
+            return {"evidence": "[GAP] no vulnerability scanner data: the tenant has no Qualys host inventory.", "limit": "—"}
+        return None
     for name, key in (("O365 Hygiene", "o365_hygiene"), ("Environment Changes", "environment_changes"), ("Vulnerability Highlights", "vulnerability_highlights")):
-        t = nar.get("exposure", {}).get(key)
+        t = nar.get("exposure", {}).get(key) or default_exposure(key)
         rows.append([name, sub(t["evidence"]) if t else "[GAP] not assessed from this evidence", sub(t["limit"]) if t else "—"])
     A.append(table(["Area", "What the evidence shows", "Limit"], rows, ["20%", "45%", "35%"], {0: "#FBF3DD"} if (stale or attn_apps) else None))
     fig = ([("Applications running", stc.get("running", 0), GRN), ("Applications in error", stc.get("error", 0), RED), ("Applications needing attention", stc.get("attention", 0) + stc.get("disabled", 0) + stc.get("other", 0), AMB)] if hl else []) + \

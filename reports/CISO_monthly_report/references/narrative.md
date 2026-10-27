@@ -13,7 +13,7 @@ Strings may contain HTML (`<strong>`) and `{{placeholders}}`.
 | `trend_notes` | `{ category: text }` for the five rolling-trend categories |
 | `repeat_why` | `{ identifier: reason }` for the repeat-actor tables |
 | `root_causes` | rows `[theme, cases, linked users and assets, evidence, confidence]`, three to five |
-| `exposure` | optional `o365_hygiene`, `environment_changes`, `vulnerability_highlights`, each `{evidence, limit}`; omitted ones render as GAP |
+| `exposure` | optional `o365_hygiene`, `environment_changes`, `vulnerability_highlights`, each `{evidence, limit}`; an omitted one uses the text built from `compliance_summary.json` facts, or a GAP without them |
 | `blind_spots` | rows `[category, source, what cannot be detected, remediation, risk id]`, six fixed categories: missing log sources, partial coverage, protocol limits, architectural gaps, identity gaps, third-party access |
 | `pathways` | three to five breach-pathway paragraphs, narrative not a MITRE table |
 | `risks` | objects `{id, category, name, description, business_impact, likelihood, impact, mitigation}`; the script computes score and band |

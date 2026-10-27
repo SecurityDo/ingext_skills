@@ -101,8 +101,10 @@ python3 scripts/build_report.py --evidence-dir WORKDIR --tenant acme --tenant-na
   --site Develop --period 2026-09 --out WORKDIR/report.html
 ```
 
-Add `--summary-json WORKDIR/compliance_summary.json` to also write the control statuses as JSON. The
-CISO_monthly_report skill reads that file for its compliance section.
+Add `--summary-json WORKDIR/compliance_summary.json` to also write the control statuses and the facts
+behind them (event volumes, sign-in failures, directory users, Conditional Access policies, Qualys hosts,
+audit categories) as JSON. The CISO_monthly_report skill reads that file for its compliance section and
+for its O365 hygiene, environment changes and vulnerability rows.
 
 ## Step 4 — Render and QA
 

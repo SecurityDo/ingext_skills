@@ -47,7 +47,7 @@ real users, hosts and applications). A result the harness saves to a file can be
 | `cases_prev.json` | optional: the same for the prior month; without it the deltas show as GAP |
 | `health.json` | optional: run the **application-health** skill for the tenant (full mode where the connector has `list_connector_config`, else its state-only fallback, plus `list_resource_dumps`). It owns the collection, the credential removal and the Fluency 9 status logic, and `health-status-report` renders the same file |
 | `admins.json` | optional: for each repeat user that looks like an Entra account, `get_azure_user_record(account, username)`; record `{"checked": [upn, …], "admins": {upn: [role names]}}` |
-| `compliance_summary.json` | optional: run the compliance-assessment skill for the same tenant and month with `--summary-json` |
+| `compliance_summary.json` | optional: run the **compliance-assessment** skill for the same tenant and month with `--summary-json`. Besides the control statuses it carries the facts that skill already collected (event volumes, sign-in failures, directory users, Conditional Access policies, Qualys hosts, audit categories), which fill the O365 hygiene, environment changes and vulnerability rows, so this report does not repeat those queries |
 
 **What the behavior summary gives.** Each case carries `status`, `classification`, `behaviorRules`,
 `riskScore`, `incidentDetectionTime`, `updatedOn` and its `comments` (`createdOn`, `username`, `actions`). The script
@@ -102,6 +102,12 @@ PARTIAL flag. Every risk needs a case, source or count from the evidence behind 
 **Remediation.** 5 to 10 actions with owner, calendar due date (never "next week"), priority, linked
 risk and evidence. Client actions are only what the customer must do: confirm activity, patch,
 investigate an account, provide a log source, approve monitoring, supply contacts.
+
+**Operational exposure rows.** O365 hygiene, environment changes and vulnerability highlights take their
+default text from `compliance_summary.json` `facts`: directory users and Conditional Access policies,
+audit events by category, and the Qualys host count. They are counts from resource snapshots and event
+totals, not findings: say so, and add an `exposure` entry to the narrative only where you have checked
+something more (for example an admin lookup). Without the file the three rows show a GAP.
 
 **The compliance section** comes from the compliance-assessment skill's 13 control groups, which map
 this tenant's own telemetry onto NIST SP 800-53 Rev. 5. Without `compliance_summary.json` the section
