@@ -108,6 +108,7 @@ def main():
     ap.add_argument("--site", required=True)
     ap.add_argument("--period", required=True, help="YYYY-MM")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--summary-json", help="also write the control statuses as JSON (used by the CISO_monthly_report skill)")
     a = ap.parse_args()
     d = a.evidence_dir
 
@@ -243,6 +244,9 @@ th{{background:#f1f5f9}}tr{{break-inside:avoid}}td.nw{{white-space:nowrap;font-w
         rep=n(rep_n))
     with open(a.out, "w") as f:
         f.write(doc)
+    if a.summary_json:
+        with open(a.summary_json, "w") as f:
+            json.dump({"period": a.period, "counts": cnt, "rows": [{"control": c, "title": t, "status": s_, "evidence": e} for c, t, s_, e in rows]}, f, indent=1)
     print(a.out)
 
 

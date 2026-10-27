@@ -2,17 +2,17 @@
 name: CISO_monthly_report
 version: 1.0.0
 description: >-
-  Generate the customer-facing CISO Monthly SOC (M-SOC) report for ONE Fluency MSSP tenant and
+  Generate the customer-facing CISO Monthly SOC (M-SOC) report for ONE Fluency / Ingext tenant and
   one calendar month as a single HTML document: an 8-chapter story (executive summary with a
   Green/Amber/Red rating, what happened, patterns, what we can and cannot see, what is at risk,
   how defences performed with a NIST 800-53 compliance add-on, what happens next, what improved)
   and 16 sections. USE THIS SKILL for "M-SOC report", "monthly SOC report", "CISO report",
   "board security report", "monthly security summary", "the SOC story for the month", or an
-  executive report covering a month for a Fluency customer. Reads the tenant through the MSOC
-  (fluency-mssp) connector, computes every figure locally from the saved tool results and
-  marks anything the tools cannot supply as GAP or PARTIAL. Read-only. DO NOT use it for a
-  single incident (incident-investigation), the NIST evidence report alone (compliance-assessment)
-  or invoices (billing-csv).
+  executive report covering a month for a customer. Reads the tenant's behavior summaries (cases),
+  resource-feed freshness, application state and compliance-assessment results through its MCP
+  connector, computes every figure locally and marks what the tools cannot supply as GAP or
+  PARTIAL. Read-only. DO NOT use it for one incident (incident-investigation), the NIST report alone
+  (compliance-assessment) or invoices (billing-csv).
 ---
 
 # M-SOC Monthly Report
@@ -26,46 +26,55 @@ and score from the saved raw tool results, applies the layout and enforces the c
 
 ## Scope and window
 
-1. One tenant (`grid_account`), never an MSSP-wide pull. Resolve it with `list_tenants`; stop if the
-   name is ambiguous.
-2. One calendar month, default the last full month. Use epoch milliseconds for `range_from` (first
-   instant of the month, UTC) and `range_to` (first instant of the next month). Pull the prior month
-   with the same pattern for the month-over-month columns.
+1. One tenant (account). Call `list_accounts` and match the user's name; stop if it is ambiguous.
+2. One calendar month, default the last full month. Use epoch milliseconds for `rangeFrom` (first
+   instant of the month, UTC) and `rangeTo` (first instant of the next month). Pull the prior month the
+   same way for the month-over-month columns.
 3. Confirm tenant and month with the user before pulling.
 
 ## Step 1 — Collect
 
-Save each tool result under the name shown, in a work folder outside the repository (the
-results name real users, hosts and applications). A result the harness saves to a file can be
-copied as it is. A result that arrives inline (the compliance one is about 130,000 characters) can
-be saved trimmed to the fields the script reads, which `references/evidence.md` lists; do not
-alter a value. Keep `capped` and `reported_total` in the metrics files and `reported_total` in
-`cases.json`: the script warns if a call covered fewer cases than the tenant has.
+Save each result under the name shown, in a work folder outside the repository (the results name
+real users, hosts and applications). A result the harness saves to a file can be copied as it is.
 
 | File | Tool and arguments |
 |---|---|
-| `metrics.json`, `metrics_prev.json` | `summarize_case_metrics(grid_account, range_from, range_to)` for the month and the prior month |
-| `fingerprints.json` | `summarize_case_fingerprints(grid_account, range_from, range_to, min_cases=1)` |
-| `repeat.json`, `repeat_prev.json` | `categorize_repeat_actors(grid_account, range_from, range_to)` for the month and the prior month |
-| `cases.json` | `list_cases(grid_account, range_from, range_to, status=["*"], limit=100, include_fingerprint=true)`; page with `offset` if `reported_total` exceeds 100 and merge the `cases` arrays |
-| `cases_prev.json` | optional: the same for the prior month; without it the rolling-trend deltas show as GAP |
-| `sources.json` | `evaluate_data_sources(grid_account)` |
-| `compliance.json` | `assess_compliance_posture(grid_account, evidence_window={"from":…,"to":…})`; slow (about a minute). Skip if it fails: the section says no evidence was collected |
+| `cases.json` | `behavior_summary_search(account, rangeFrom, rangeTo, searchStr="riskScore:[3000 TO *]", limit=100, sortField="to")`. A case is a behavior summary at or above the canonical review score of 3000. If `total` exceeds 100 page with `offset` and merge the results into one JSON array |
+| `cases_prev.json` | optional: the same for the prior month; without it the deltas show as GAP |
+| `dumps.json` | `list_resource_dumps(account)`: the age and record count of each resource feed. Optional |
+| `connectors.json` | `list_connectors(account)` (or `list_connector_config` where the connector has it), reduced with `scripts/reduce_connectors.py`. Optional |
+| `admins.json` | optional: for each repeat user that looks like an Entra account, `get_azure_user_record(account, username)`; record `{"checked": [upn, …], "admins": {upn: [role names]}}` |
+| `compliance_summary.json` | optional: run the compliance-assessment skill for the same tenant and month with `--summary-json` |
 
-Before classifying cases fetch `get_instruction_group("behavior-summaries")` and
-`get_instruction_group("health")` and follow them over this skill if they differ.
-Use `case_count_in_window_live` for fingerprint percentages, never a historical count.
+**Connector credentials.** `list_connectors` and `list_connector_config` return credentials in clear
+text. Never save the raw result in the work folder or the repository, never quote it. Run
+`scripts/reduce_connectors.py --raw RAW --out WORKDIR/connectors.json`, which keeps only each
+application and its state, then delete the raw file.
 
-ATT&CK: the fingerprints result already carries each fingerprint's approved techniques. The appendix
-lists them as supporting material, and shows no technique table when no case is mapped. Chapter 5
-stays narrative, not a technique heat map.
+**What the behavior summary gives.** Each case carries `status`, `classification`, `behaviorRules`,
+`riskScore`, `from`, `updatedOn` and its `comments` (`createdOn`, `username`, `actions`). The script
+computes everything from those:
+
+- **Case shape:** the combination of rules that fired, shown with an 8-character id. There is no
+  connector fingerprint tool, so this is computed locally and does not match any fingerprint hash
+  shown elsewhere.
+- **Repeat actors:** an identifier with two or more cases. Admin status comes from `admins.json`; an
+  account not looked up shows as "admin status not checked".
+- **Time to first response:** from the case's `from` to its first comment. `from` is a two-minute bucket
+  label of the first event, so treat it as approximate. **Comments are written by the automated
+  assistant (`AI-Assistant`) unless a person commented**, so the report separates the first response
+  of the assistant or an analyst from the first analyst response, and counts the closed cases that the
+  assistant closed. A report with no analyst comment on any case says exactly that.
+- **Time to close:** from `from` to the later of `updatedOn` and the last comment, closed cases only.
+- **ATT&CK:** no approved mapping source exists through the connector, so the appendix says so and no
+  technique table is shown.
 
 ## Step 2 — Write the narrative
 
 Write `narrative.json` (field list in `references/narrative.md`). Rules:
 
 - Refer to computed values with placeholders: `{{cases}}`, `{{unacked}}`, `{{mttr_p50}}`,
-  `{{mttr_p50_prev}}`, `{{mttr_p90_h}}` and the rest listed in the reference. The script prints a
+  `{{mttr_p50_prev}}`, `{{human_n}}`, `{{closed_by_ai}}` and the rest listed in the reference. The script prints a
   warning for every other number in the prose, so every typed figure gets checked against the
   evidence. Fix the narrative or the evidence; do not ignore the warning.
 - Chapter 1 has no raw metrics, alert counts, fingerprints or jargon. Conclusion first, two
@@ -93,15 +102,14 @@ PARTIAL flag. Every risk needs a case, source or count from the evidence behind 
 risk and evidence. Client actions are only what the customer must do: confirm activity, patch,
 investigate an account, provide a log source, approve monitoring, supply contacts.
 
-**The compliance counts.** `assess_compliance_posture` projects mapped evidence onto the controls, and
-two different tenants tested returned the same counts (14 supported, 22 partial, 4 not observed,
-the same four controls). Present the posture as what this month's collection supports, not as a
-tenant-specific finding, and say so if a tenant's counts match another's.
+**The compliance section** comes from the compliance-assessment skill's 13 control groups, which map
+this tenant's own telemetry onto NIST SP 800-53 Rev. 5. Without `compliance_summary.json` the section
+shows a GAP; do not write one from memory.
 
-**Not exposed to reporting tools, so shown as GAP, never filled in:** the SOC escalation log, the SOC
-change log, control effectiveness and the processed-versus-escalated alert denominator. Privileged
+**Not available through the connector, so shown as GAP, never filled in:** the SOC escalation log, the SOC
+change log, control effectiveness, the processed-versus-escalated alert denominator and ATT&CK mappings. Privileged
 administrators belong in Admin Watch, never called offenders. `True Positive = 0` is ambiguous when
-classification discipline is weak; say so. Compliance wording: the evidence "supports" a control,
+classification discipline is weak, or when the assistant closed every case; say so. Compliance wording: the evidence "supports" a control,
 never "compliant"; this is an evidence aid, not an attestation.
 
 ## Step 3 — Build

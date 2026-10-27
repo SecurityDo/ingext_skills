@@ -1,6 +1,6 @@
 ---
 name: compliance-assessment
-version: 1.0.0
+version: 1.0.1
 description: >-
   Produce a customer-facing compliance evidence report for ONE Ingext/Fluency tenant and ONE
   calendar month, built from read-only queries through the tenant's MCP connector (KQL over
@@ -19,13 +19,9 @@ Turn a tenant's own telemetry into an honest, executive-ready compliance evidenc
 states what the evidence **supports**, what is only **partial**, and what was **not observed**.
 It is read-only: it never changes the tenant.
 
-This skill works directly on the tenant's MCP connector (for example the **Develop** connector).
-It does not need the Fluency MSSP compliance engine. If a connector also serves
-`assess_compliance_posture` or `export_compliance_assessment_package`, those produce the full
-40-control package and companion views (CSF, 800-171, CMMC, ISO 27001, FICA); this skill is the
-reduced, evidence-led view, and the report says so. Check the engine's output before trusting it:
-if `assessment_type` is `static_registry_projection` or the evidence window is empty, it is a
-skeleton, not an assessment.
+This skill works directly on the tenant's MCP connector (for example the **Develop** connector). The
+report is the reduced, evidence-led view: 13 control groups from the tenant's own telemetry, not a
+full control package, and the report says so.
 
 ## Data integrity (non-negotiable)
 
@@ -104,6 +100,9 @@ retyping it. Do not substitute a different table for one that is absent.
 python3 scripts/build_report.py --evidence-dir WORKDIR --tenant acme --tenant-name "Example Corp" \
   --site Develop --period 2026-09 --out WORKDIR/report.html
 ```
+
+Add `--summary-json WORKDIR/compliance_summary.json` to also write the control statuses as JSON. The
+CISO_monthly_report skill reads that file for its compliance section.
 
 ## Step 4 — Render and QA
 

@@ -226,9 +226,11 @@ never says compliant or certified. Lives in [`reports/`](./reports).
 Builds the monthly SOC story for one tenant as a single HTML report for a CISO: an executive summary
 with a Green, Amber or Red rating, what happened, repeat patterns, what can and cannot be seen, a
 risk register, response performance, a NIST SP 800-53 evidence add-on and a remediation plan. It
-reads the tenant through the MSOC (fluency-mssp) connector; `scripts/build_report.py` computes every
-figure from the saved tool results and marks anything the tools cannot supply as GAP or PARTIAL. The
-analyst writes only the narrative. Lives in [`reports/`](./reports).
+reads the tenant's behavior summaries (cases), resource-dump freshness, installed-application state
+and the compliance-assessment results through its MCP connector; `scripts/build_report.py` computes every
+figure from the saved results and marks anything the connector cannot supply as GAP or PARTIAL. The
+report separates the automated assistant's first response from an analyst's. The analyst writes only
+the narrative. Lives in [`reports/`](./reports).
 
 **Try:**
 - "run the CISO monthly report for <tenant> for September"

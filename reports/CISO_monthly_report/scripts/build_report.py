@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render the CISO Monthly SOC (M-SOC) report for one tenant and one month.
 
-Every figure, table row count, chart and score is computed here from the saved raw tool results
+Every figure, table row count, chart and score is computed here from the saved tool results
 in --evidence-dir. The analyst writes only the narrative (narrative.json); it may refer to
 computed values with {{name}} placeholders, and any other number it contains is listed as a
 warning so it can be checked against the evidence.
@@ -9,17 +9,17 @@ warning so it can be checked against the evidence.
   build_report.py --evidence-dir DIR --narrative narrative.json --tenant acme --tenant-name "Example Corp" \
                   --month 2026-09 --out report.html [--prepared YYYY-MM-DD] [--logo assets/fluency_logo.svg]
 
-Evidence files in DIR (each a saved tool result, see references/evidence.md):
-  metrics.json  metrics_prev.json   summarize_case_metrics, current and prior month
-  fingerprints.json                 summarize_case_fingerprints (min_cases 1), current month
-  repeat.json   repeat_prev.json    categorize_repeat_actors, current and prior month
-  cases.json    cases_prev.json     list_cases, status ["*"], current and (optional) prior month
-  sources.json                      evaluate_data_sources
-  compliance.json                   assess_compliance_posture
-A missing required file stops the run. A missing optional file (prior-month ones, compliance) turns
-the sections that need it into a visible GAP; nothing is filled in.
+Evidence files in DIR (see references/evidence.md):
+  cases.json          behavior_summary_search, riskScore >= 3000, the month (one result, or an array of pages)
+  cases_prev.json     the same for the prior month (optional; without it the deltas show as GAP)
+  connectors.json     list_connectors reduced to {"entries": [{"application", "state"}]} (optional)
+  dumps.json          list_resource_dumps (optional; freshness of the resource feeds)
+  admins.json         {"checked": [upn], "admins": {upn: [role]}} from get_azure_user_record (optional)
+  compliance_summary.json   written by compliance-assessment's build_report.py --summary-json (optional)
+Only cases.json is required. A missing optional file turns the sections that need it into a visible
+GAP; nothing is filled in.
 """
-import argparse, calendar, collections, datetime, html, json, os, re, sys
+import argparse, calendar, collections, datetime, hashlib, html, json, os, re, sys
 
 E = html.escape
 MONO = "'IBM Plex Mono',ui-monospace,Menlo,monospace"
@@ -28,6 +28,7 @@ NAVY, RED, AMB, GRN, GRY = "#1C2B45", "#AD0015", "#C9962B", "#4E7A5D", "#8B93A3"
 RAG = {"Green": GRN, "Amber": AMB, "Red": RED}
 TREND = {"improving": "↑ Improving", "stable": "→ Stable", "declining": "↓ Declining"}
 MIN_WORDS = 150
+ASSISTANT = "AI-Assistant"
 # keyword -> category for the five rolling-trend categories (matched against behaviorRules text)
 CATEGORIES = [
     ("Threat & Attack", ("phish", "malware", "brute", "lateral", "exploit", "threat_intelligence", "threat_management", "risky", "highrisk", "high_risk", "spray", "unauthorized_api", "root_console_login_failed")),
@@ -143,6 +144,15 @@ def heatmap(risks):
 
 
 # ---------- computation ----------
+def parse_iso(t):
+    try:
+        txt = re.sub(r"(\.\d{6})\d+", r"\1", str(t).replace("Z", "+00:00"))
+        d = datetime.datetime.fromisoformat(txt)
+        return d if d.tzinfo else d.replace(tzinfo=datetime.timezone.utc)
+    except ValueError:
+        return None
+
+
 def classify(case):
     rules = " ".join(case.get("behaviorRules") or []).lower()
     hits = [name for name, kws in CATEGORIES if any(k in rules for k in kws)]
@@ -154,47 +164,110 @@ def short_class(c):
     return "Benign Positive" if c.startswith("Benign") else "False Positive" if c.startswith("False") else "True Positive" if c.startswith("True") else "Undetermined" if c.startswith("Undeterm") else "Unclassified"
 
 
+def norm_cases(res):
+    """Cases (the _source of each behavior summary) from one result or an array of pages; plus the reported total."""
+    if res is None:
+        return None, None
+    pages = res if isinstance(res, list) else [res]
+    cases, total = [], None
+    for pg in pages:
+        for d in pg.get("documents", []):
+            c = dict(d.get("source") or d.get("_source") or {})
+            if c:
+                cases.append(c)
+        total = pg.get("total", total)
+    return cases, total
+
+
+def ms(x):
+    try:
+        return int(x)
+    except (TypeError, ValueError):
+        return None
+
+
+def pctile(vals, p):
+    if not vals:
+        return None
+    v = sorted(vals)
+    return v[min(len(v) - 1, max(0, int(round(p / 100.0 * len(v) + 0.5)) - 1))]
+
+
+def case_times(c):
+    """Seconds to first response (any comment), to first human response, and to close."""
+    start = ms(c.get("from"))
+    cm = sorted(((ms(x.get("createdOn")), x.get("username") or "", x.get("actions") or []) for x in c.get("comments") or [] if ms(x.get("createdOn")) is not None), key=lambda t: t[0])
+    first = (max(0, cm[0][0] - start) / 1000.0) if cm and start is not None else None
+    human = next((max(0, t[0] - start) / 1000.0 for t in cm if t[1] != ASSISTANT), None) if start is not None else None
+    close, by_ai = None, None
+    if c.get("status") in ("closed", "resolved") and start is not None:
+        end = max([ms(c.get("updatedOn")) or 0] + [t[0] for t in cm])
+        close = max(0, end - start) / 1000.0
+        closing = [t for t in cm if any("closed" in str(a).lower() and "status" in str(a).lower() for a in t[2])]
+        by_ai = bool(closing) and closing[-1][1] == ASSISTANT
+    return first, human, close, by_ai
+
+
+def case_metrics(cases):
+    m = {"cases": len(cases), "unacked": sum(1 for c in cases if c.get("status") == "new")}
+    closed = [c for c in cases if c.get("status") in ("closed", "resolved")]
+    m["closed"] = len(closed)
+    cl = collections.Counter(short_class(c.get("classification")) for c in closed)
+    m.update(tp=cl.get("True Positive", 0), fp=cl.get("False Positive", 0), bp=cl.get("Benign Positive", 0), und=cl.get("Undetermined", 0), unclassified=cl.get("Unclassified", 0))
+    t = [case_times(c) for c in cases]
+    firsts, humans = [x[0] for x in t if x[0] is not None], [x[1] for x in t if x[1] is not None]
+    closes = [x[2] for x in t if x[2] is not None]
+    m.update(mttr_p50=pctile(firsts, 50), mttr_p90=pctile(firsts, 90), mttr_samples=len(firsts), human_n=len(humans), human_p50=pctile(humans, 50), human_p90=pctile(humans, 90),
+             mttc_p50=pctile(closes, 50), mttc_p90=pctile(closes, 90), closed_by_ai=sum(1 for x in t if x[3]), no_human=sum(1 for x in t if x[1] is None))
+    return m
+
+
+def shape_id(c):
+    return hashlib.md5("|".join(sorted(c.get("behaviorRules") or [])).encode()).hexdigest()[:8]
+
+
 def compute(ev, month):
-    y, m = map(int, month.split("-"))
-    last = calendar.monthrange(y, m)[1]
-    v = {"year": y, "month": m, "month_name": calendar.month_name[m], "last_day": last}
-    cur, prev = ev["metrics"], ev.get("metrics_prev")
-    for label, m in (("metrics.json", cur), ("metrics_prev.json", prev)):
-        if m and (m.get("capped") or m.get("reported_total", m["case_count"]) != m["case_count"]):
-            warnings.append("%s covers %s of %s cases (the call was capped); pull it again with a higher sample_cap or the totals and response times are partial" % (label, m["case_count"], m.get("reported_total")))
-    cl_cases = (ev.get("cases") or {})
-    if cl_cases.get("reported_total") is not None and cl_cases["reported_total"] != len(cl_cases.get("cases", [])):
-        warnings.append("cases.json holds %d of %s cases; page with offset and merge" % (len(cl_cases.get("cases", [])), cl_cases["reported_total"]))
-    mt = cur["metrics"]
-    v.update(cases=cur["case_count"], unacked=cur["unacked_count"], closed=cur["closed_count"], mttr_p50=mt["mttr"]["p50_seconds"], mttr_p90=mt["mttr"]["p90_seconds"],
-             mttc_p50=mt["mttc"]["p50_seconds"], mttc_p90=mt["mttc"]["p90_seconds"], mttr_samples=mt["mttr"]["sample_n"])
-    cl = cur["effective_classifications"]["counts"]
-    v.update(tp=cl.get("True Positive", 0), fp=cl.get("False Positive", 0), bp=cl.get("Benign Positive", 0), und=cl.get("Undetermined", 0))
-    v["open_status_new"] = v["unacked"]
-    if prev:
-        pm = prev["metrics"]
-        pc = prev["effective_classifications"]["counts"]
-        v.update(cases_prev=prev["case_count"], unacked_prev=prev["unacked_count"], closed_prev=prev["closed_count"], mttr_p50_prev=pm["mttr"]["p50_seconds"], mttr_p90_prev=pm["mttr"]["p90_seconds"],
-                 mttc_p50_prev=pm["mttc"]["p50_seconds"], mttc_p90_prev=pm["mttc"]["p90_seconds"], tp_prev=pc.get("True Positive", 0), fp_prev=pc.get("False Positive", 0), bp_prev=pc.get("Benign Positive", 0))
-    cases = (ev.get("cases") or {}).get("cases", [])
+    y, mo = map(int, month.split("-"))
+    v = {"year": y, "month": mo, "month_name": calendar.month_name[mo], "last_day": calendar.monthrange(y, mo)[1]}
+    cases, total = norm_cases(ev["cases"])
+    if not cases:
+        sys.exit("cases.json holds no behavior summaries; a month with no flagged case needs no report from this skill")
+    if total is not None and total != len(cases) and total < 10000:
+        warnings.append("cases.json holds %d of %s cases; page with offset and merge the results into one array" % (len(cases), total))
+    pcases, ptotal = norm_cases(ev.get("cases_prev"))
+    if pcases is not None and ptotal is not None and ptotal != len(pcases) and ptotal < 10000:
+        warnings.append("cases_prev.json holds %d of %s cases; page with offset and merge" % (len(pcases), ptotal))
+    for c in cases:
+        c["_shape"] = shape_id(c)
+    v.update(case_metrics(cases))
     v["case_rows"] = cases
-    v["days"] = collections.Counter(int(str(c["dayIndex"])[-2:]) for c in cases)
+    v["days"] = collections.Counter(int(str(c["dayIndex"])[-2:]) for c in cases if c.get("dayIndex"))
     v["cat_cur"] = collections.Counter(classify(c) for c in cases)
-    pcases = (ev.get("cases_prev") or {}).get("cases")
-    v["cat_prev"] = collections.Counter(classify(c) for c in pcases) if pcases is not None else None
+    if pcases is not None:
+        pm = case_metrics(pcases)
+        v.update({k + "_prev": val for k, val in pm.items()})
+        v["cat_prev"] = collections.Counter(classify(c) for c in pcases)
+        v["prev_rows"] = pcases
+    else:
+        v["cat_prev"] = None
     for name, _ in CATEGORIES + [("Other", ())]:
         slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
         v["cat_" + slug] = v["cat_cur"].get(name, 0)
         if v["cat_prev"] is not None:
             v["cat_prev_" + slug] = v["cat_prev"].get(name, 0)
-    v["mttr_note_mismatch"] = v["unacked"] > 0 and mt["mttr"]["sample_n"] >= v["cases"] and v["unacked"] > 0
-    # numbers the narrative may legitimately cite
+    shapes = collections.defaultdict(lambda: {"n": 0, "rules": None, "closed": 0, "new": 0})
+    for c in cases:
+        sh = shapes[c["_shape"]]
+        sh["n"] += 1
+        sh["rules"] = ", ".join(sorted(c.get("behaviorRules") or [])) or "(no rule)"
+        sh["new" if c.get("status") == "new" else "closed"] += 1
+    v["shapes"] = sorted(shapes.items(), key=lambda kv: (-kv[1]["n"], kv[0]))
     known = {}
     for k, val in v.items():
         if isinstance(val, (int, float)):
             known[k] = val
-    for k in ("mttr_p50", "mttr_p90", "mttc_p50", "mttc_p90", "mttr_p50_prev", "mttr_p90_prev", "mttc_p50_prev", "mttc_p90_prev"):
-        if k in v:
+    for k in list(v):
+        if k.startswith(("mttr_p", "mttc_p", "human_p")) and isinstance(v.get(k), (int, float)):
             known[k + "_h"] = hours(v[k])
     return v, known
 
@@ -295,28 +368,25 @@ def render(ev, nar, v, args, logo):
     # chapter 3
     c3 = analysis(3)
     A.append(chap(3, "What The Patterns Tell Us") + lead(sub(c3["intro"])) + sec(4, "Repeat Offenders"))
-    rep, repp = ev["repeat"], ev.get("repeat_prev")
-    coh = rep["cohorts"]
-    if not rep.get("admin_lookup_ok", True):
-        A.append(gap("The administrator lookup failed, so admin accounts could not be separated from other repeat actors.", "GAP"))
-    pmap = {}
-    if repp:
-        for grp in ("admin_watch", "repeat_offenders", "unclassified"):
-            for a in repp["cohorts"].get(grp, []):
-                pmap[a["key"]] = a["case_count"]
+    cnt_cur = collections.Counter(c.get("key") for c in v["case_rows"])
+    cnt_prev = collections.Counter(c.get("key") for c in v.get("prev_rows", [])) if pv else None
+    adm = ev.get("admins")
+    admins, checked = (adm.get("admins", {}), set(adm.get("checked", [])) | set(adm.get("admins", {}))) if adm else ({}, set())
+    actors = sorted([k for k, n in cnt_cur.items() if n >= 2], key=lambda k: (-cnt_cur[k], k))
+    cohorts = {"Admin Watch": [k for k in actors if k in admins], "Repeat Offender": [k for k in actors if k in checked and k not in admins],
+               "Repeat actor (admin status not checked)": [k for k in actors if k not in checked]}
+    if not adm:
+        A.append(gap("No administrator lookup was supplied (admins.json), so admin accounts are not separated from other repeat actors.", "GAP"))
     why = nar.get("repeat_why", {})
-    for grp, label in (("admin_watch", "Admin Watch"), ("repeat_offenders", "Repeat Offender"), ("unclassified", "Unclassified")):
-        rows = []
-        for a in coh.get(grp, []):
-            pc = pmap.get(a["key"])
-            rows.append([E(a["key"]), label, str(a["case_count"]), "—" if repp is None else str(pc if pc is not None else "below threshold"), signed(a["case_count"], pc) if pc is not None else "n/a",
-                         sub(why.get(a["key"], "—"))])
-        if rows:
+    for label, keys in cohorts.items():
+        if keys:
+            rows = [[E(k), label, str(cnt_cur[k]), "—" if cnt_prev is None else (str(cnt_prev[k]) if cnt_prev[k] else "below threshold"), signed(cnt_cur[k], cnt_prev[k]) if cnt_prev is not None and cnt_prev[k] else "n/a", sub(why.get(k, "—"))] for k in keys]
             A.append(table(["Identifier", "Category", "This month", "Prior month", "Delta", "Why it repeats"], rows, ["27%", "13%", "9%", "14%", "7%", "30%"]))
-        elif grp != "unclassified":
-            A.append('<p style="font-size:13px;color:#4A5262;margin:0 0 8px"><strong>%s:</strong> none identified%s.</p>' % (label, " (the administrator lookup succeeded, so this is a real result)" if grp == "admin_watch" and rep.get("admin_lookup_ok", True) else ""))
-    fps = sorted(ev["fingerprints"]["fingerprints"], key=lambda f: -f["case_count_in_window_live"])[:7]
-    A.append(figure("Most repeated case shapes (fingerprints), %s" % mname, hbars([(f["rules_str"][:46] + ("…" if len(f["rules_str"]) > 46 else ""), f["case_count_in_window_live"]) for f in fps], label_w=330)))
+        elif label in ("Admin Watch", "Repeat Offender") and adm:
+            A.append('<p style="font-size:13px;color:#4A5262;margin:0 0 8px"><strong>%s:</strong> none identified among the accounts checked.</p>' % label)
+    if not actors:
+        A.append('<p style="font-size:13px;color:#4A5262;margin:0 0 8px">No user, host or application had two or more cases this month.</p>')
+    A.append(figure("Most repeated case shapes (same rule combination), %s" % mname, hbars([(sh["rules"][:46] + ("…" if len(sh["rules"]) > 46 else ""), sh["n"]) for _, sh in v["shapes"][:7]], label_w=330)))
     A.append(paras(c3["analysis"]) + callouts([sub(x) for x in c3["callouts"]]))
     A.append(sec(5, "Root-Cause Themes", "PARTIAL"))
     A.append(table(["Theme", "Cases", "Linked users and assets", "Evidence", "Confidence"], [[E(r[0]), E(str(r[1])), E(r[2]), E(r[3]), E(r[4])] for r in nar["root_causes"]], ["23%", "8%", "29%", "28%", "12%"]))
@@ -325,19 +395,31 @@ def render(ev, nar, v, args, logo):
 
     # chapter 4
     c4 = analysis(4)
-    src = next(iter(ev["sources"]["tenants"].values()))
-    bh = src.get("by_health", {})
-    stale = [f for f in src.get("findings", []) if f.get("kind") == "source_stale_resources"]
-    rf = src.get("resource_freshness", [])
+    conns = (ev.get("connectors") or {}).get("entries") if ev.get("connectors") else None
+    dumps = (ev.get("dumps") or {}).get("entries") if ev.get("dumps") else None
+    running = [c for c in (conns or []) if str(c.get("state")) == "Running"]
+    not_running = [c for c in (conns or []) if str(c.get("state")) != "Running"]
+    now_ms = int(datetime.datetime(v["year"] + (v["month"] == 12), v["month"] % 12 + 1, 1, tzinfo=datetime.timezone.utc).timestamp() * 1000)
+    rf = []
+    for d in dumps or []:
+        t = parse_iso(d.get("createdOn"))
+        label = " / ".join(x for x in (d.get("resource"), d.get("customer")) if x) or d.get("name") or "resource"
+        age_d = (datetime.datetime.now(datetime.timezone.utc) - t).total_seconds() / 86400.0 if t else None
+        rf.append({"resource": label, "age_days": age_d, "count": d.get("count"), "empty": d.get("count") == 0, "stale": (age_d is not None and age_d > 1) or d.get("count") == 0})
+    stale = [r for r in rf if r["stale"]]
     A.append(chap(4, "What We Can And Cannot See") + lead(sub(c4["intro"])) + sec(6, "Operational Exposure"))
-    rows = [["Coverage &amp; Health", "%d configured source(s): %d ok, %d warning, %d error, %d inactive in the last 24 hours. Platform verdict: %s." % (src.get("configured_source_count", 0), bh.get("ok", 0), bh.get("warning", 0), bh.get("error", 0), bh.get("inactive", 0), E(str(src.get("verdict")))),
-             "; ".join(E("%s %s: %s" % (f.get("integration"), f.get("resource_type"), f.get("probe_age_human") or "stale")) for f in stale) or "No stale resource feeds"]]
+    if conns is None:
+        cov = ["[GAP] installed-application state was not collected (connectors.json)", "—"]
+    else:
+        cov = ["%d installed application(s): %d running, %d not running%s." % (len(conns), len(running), len(not_running), (" (" + ", ".join(E("%s %s" % (c.get("application"), c.get("state"))) for c in not_running) + ")") if not_running else ""),
+               "; ".join(E("%s: %.0f days old%s" % (r["resource"], r["age_days"] or 0, ", empty" if r["empty"] else "")) for r in stale) or ("No stale resource feeds" if dumps is not None else "[GAP] resource freshness not collected (dumps.json)")]
+    rows = [["Coverage &amp; Health", cov[0], cov[1]]]
     for name, key in (("O365 Hygiene", "o365_hygiene"), ("Environment Changes", "environment_changes"), ("Vulnerability Highlights", "vulnerability_highlights")):
         t = nar.get("exposure", {}).get(key)
         rows.append([name, sub(t["evidence"]) if t else "[GAP] not assessed from this evidence", sub(t["limit"]) if t else "—"])
-    A.append(table(["Area", "What the evidence shows", "Limit"], rows, ["20%", "45%", "35%"], {0: "#FBF3DD"} if stale else None))
-    A.append(figure("Data-source health, last 24 h", hbars([("OK", bh.get("ok", 0), GRN), ("Warning", bh.get("warning", 0), AMB), ("Error", bh.get("error", 0), RED), ("Inactive", bh.get("inactive", 0), GRY), ("Stale resource feeds", len(stale), RED),
-                                                            ("Empty resource feeds", sum(1 for r in rf if r.get("status") == "empty"), AMB)], label_w=190)))
+    A.append(table(["Area", "What the evidence shows", "Limit"], rows, ["20%", "45%", "35%"], {0: "#FBF3DD"} if (stale or not_running) else None))
+    A.append(figure("Installed applications and resource feeds", hbars(([("Applications running", len(running), GRN), ("Applications not running", len(not_running), RED)] if conns is not None else []) + ([("Resource feeds current", len(rf) - len(stale), GRN), ("Resource feeds stale or empty", len(stale), RED)] if dumps is not None else []) or [("Nothing collected", 0, GRY)], label_w=240),
+                    "Per-application health detail comes from the health-status-report skill; this report uses installed-application state and the age of each resource feed."))
     A.append(paras(c4["analysis"]) + callouts([sub(x) for x in c4["callouts"]]))
     A.append(sec(7, "Monitoring Blind Spots", "PARTIAL"))
     A.append(table(["Category", "Source", "What cannot be detected", "Remediation", "Risk"], [[E(r[0]), sub(r[1]), sub(r[2]), sub(r[3]), E(r[4])] for r in nar["blind_spots"]], ["18%", "24%", "24%", "26%", "8%"]))
@@ -371,35 +453,32 @@ def render(ev, nar, v, args, logo):
             return "n/a"
         ch = (a - b) * 100.0 / b
         return "%.0f%% %s" % (abs(ch), "faster" if ch < 0 else "slower")
-    rows = [["Time to detect (MTTD)", "0 s", "0 s", "Not meaningful: cases are created at the first event"]]
-    for lab, k in (("Time to first response, median", "mttr_p50"), ("Time to first response, slowest 10%", "mttr_p90"), ("Time to close, median", "mttc_p50"), ("Time to close, slowest 10%", "mttc_p90")):
-        rows.append([lab, hm(v[k]), hm(v.get(k + "_prev")) if pv else "[GAP]", faster(v[k], v.get(k + "_prev")) if pv else "[GAP]"])
+    rows = [["Time to detect (MTTD)", "0 s", "0 s", "Not meaningful: a case is created at its first event"]]
+    for lab, k in (("Time to first response (assistant or analyst), median", "mttr_p50"), ("Time to first response, slowest 10%", "mttr_p90"), ("Time to first analyst response, median", "human_p50"), ("Time to close, median", "mttc_p50"), ("Time to close, slowest 10%", "mttc_p90")):
+        rows.append([lab, hm(v.get(k)), hm(v.get(k + "_prev")) if pv else "[GAP]", faster(v.get(k), v.get(k + "_prev")) if pv else "[GAP]"])
+    rows.append(["Cases with an analyst (not assistant) comment", "%d of %d" % (v["human_n"], v["cases"]), ("%d of %d" % (v["human_n_prev"], v["cases_prev"])) if pv else "[GAP]", "—"])
+    rows.append(["Closed cases closed by the automated assistant", "%d of %d" % (v["closed_by_ai"], v["closed"]), ("%d of %d" % (v["closed_by_ai_prev"], v["closed_prev"])) if pv else "[GAP]", "—"])
     rows.append(["True positives (of closed)", "%d of %d" % (v["tp"], v["closed"]), "%d of %d" % (v["tp_prev"], v["closed_prev"]) if pv else "[GAP]", "—"])
-    A.append(table(["Measure", mname.split()[0], "Prior month", "Note"], rows, ["30%", "18%", "18%", "34%"]))
-    bars = [("Median response", hours(v["mttr_p50"]), NAVY)] + ([("Prior median response", hours(v["mttr_p50_prev"]), GRY)] if pv else []) + [("Slowest-10% response", hours(v["mttr_p90"]), NAVY)] + ([("Prior slowest-10% response", hours(v["mttr_p90_prev"]), GRY)] if pv else [])
+    A.append(table(["Measure", mname.split()[0], "Prior month", "Note"], rows, ["34%", "16%", "16%", "34%"]))
+    bars = [("Median first response", hours(v["mttr_p50"]) if v.get("mttr_p50") is not None else 0, NAVY)] + ([("Prior median first response", hours(v["mttr_p50_prev"]), GRY)] if pv and v.get("mttr_p50_prev") is not None else []) + ([("Slowest-10% first response", hours(v["mttr_p90"]), NAVY)] if v.get("mttr_p90") is not None else []) + ([("Prior slowest-10%", hours(v["mttr_p90_prev"]), GRY)] if pv and v.get("mttr_p90_prev") is not None else [])
     A.append(figure("Time to first response, hours", hbars(bars, label_w=230, fmt=lambda x: "%.1f h" % x)))
     A.append(paras(c6["analysis"]) + callouts([sub(x) for x in c6["callouts"]]))
-    if v["mttr_note_mismatch"]:
-        A.append(gap("Every case has a response time (%d of %d) although %d are still status new, so automated assistant comments may be counted as a response. The analyst response time may be longer." % (v["mttr_samples"], v["cases"], v["unacked"]), "NOTE"))
+    A.append(gap("A response here means the first comment on a case, by the automated assistant (%s) or an analyst. %d of %d cases have no analyst comment, and %d of %d closed cases were closed by the assistant; read the first-response times as the assistant's, not the SOC team's." % (ASSISTANT, v["no_human"], v["cases"], v["closed_by_ai"], v["closed"]), "NOTE"))
     A.append(sec(12, "Escalation Log", "GAP"))
     A.append(gap("The SOC escalation log is not exposed to reporting tools. No escalations are listed and none are inferred.", "GAP"))
     A.append('<div style="display:flex;align-items:baseline;gap:14px;margin:36px 0 12px"><h2 style="margin:0;font-size:20px;font-weight:700;color:%s">Governance &amp; Compliance Posture</h2><span style="font:600 11px/1 %s;color:#8A6508;background:#FBF3DD;border:1px solid #E5CF8E;padding:5px 10px">NIST SP 800-53 REV. 5 · EVIDENCE AID</span></div>' % (NAVY, MONO))
     comp = ev.get("compliance")
-    if not comp or comp.get("assessment_type") == "assessment_skeleton_no_fluency_calls" or not (comp.get("live_collection") or {}).get("counts", {}).get("collected"):
-        A.append(gap("No live compliance evidence was collected, so no posture is shown. A skeleton is never rendered as a result.", "GAP"))
+    rows_c = (comp or {}).get("rows") or []
+    if not rows_c:
+        A.append(gap("No compliance evidence was supplied (compliance_summary.json from the compliance-assessment skill), so no posture is shown.", "GAP"))
         comp = None
     else:
-        cc = comp["counts"]
-        lc = comp["live_collection"]["counts"]
-        total = sum(cc.values())
-        A.append(figure("Control posture, %d root controls" % total, hbars([("Supported", cc.get("supported", 0), GRN), ("Partial", cc.get("partial", 0), AMB), ("Not observed", cc.get("not_observed", 0), GRY), ("Unsupported", cc.get("unsupported", 0), RED)], label_w=150)))
-        notobs = re.findall(r"\n\s+([A-Z]{2}-\d+),([^,]+),[^,]*,not_observed", "\n" + comp.get("findings_toon", ""))
-        failed = [s for s in comp["live_collection"].get("collection_log", []) if s.get("status") in ("failed", "error")]
-        A.append(para("The evidence <strong>supports %d, partly supports %d and did not observe %d</strong> of %d mapped controls; %d are unsupported. Not observed: %s. Collection succeeded for %d source(s), failed for %d and skipped %d. A failed or skipped source is a collection gap, not a verdict." %
-                      (cc.get("supported", 0), cc.get("partial", 0), cc.get("not_observed", 0), total, cc.get("unsupported", 0), E(", ".join("%s (%s)" % (a, b.strip()) for a, b in notobs) or "none"), lc.get("collected", 0), lc.get("failed", 0), lc.get("skipped", 0))))
-        for fs in failed:
-            A.append(gap("Collection failed: %s. Treat the controls that depend on it as a gap." % E(str(fs.get("source_key"))), "GAP"))
-    A.append(gap("This is an evidence analysis aid, not certification or attestation. 'Supported' means the evidence supports the control, never that the tenant is compliant. Movement against the prior month needs a prior assessment (compare_compliance_assessments).", "NOTE"))
+        ccount = collections.Counter(r["status"] for r in rows_c)
+        A.append(figure("Control groups assessed: %d (NIST SP 800-53 Rev. 5)" % len(rows_c), hbars([("Supported", ccount.get("supported", 0), GRN), ("Partial", ccount.get("partial", 0), AMB), ("Not observed", ccount.get("not_observed", 0), GRY), ("Needs manual review", ccount.get("needs_manual_review", 0), NAVY)], label_w=170)))
+        notobs = [r for r in rows_c if r["status"] == "not_observed"]
+        A.append(para("The evidence <strong>supports %d, partly supports %d and did not observe %d</strong> of %d control groups; %d need customer documentation. Not observed: %s. These come from the compliance-assessment skill, which maps the tenant's own telemetry onto the controls; a control that is not observed means evidence was not collected, not that the control failed." %
+                      (ccount.get("supported", 0), ccount.get("partial", 0), ccount.get("not_observed", 0), len(rows_c), ccount.get("needs_manual_review", 0), E(", ".join("%s (%s)" % (r["control"], r["title"]) for r in notobs) or "none"))))
+    A.append(gap("This is an evidence analysis aid, not certification or attestation. 'Supported' means the evidence supports the control, never that the tenant is compliant. Movement against the prior month needs the compliance-assessment run for that month.", "NOTE"))
     A.append("</section>")
 
     # chapter 7
@@ -423,22 +502,20 @@ def render(ev, nar, v, args, logo):
     A.append(gap("The SOC change log (tuning, new detections, log sources onboarded, playbook updates) is not exposed to reporting tools. No changes are listed and none are inferred.", "GAP"))
     A.append(sec(16, "Appendix"))
     h3 = '<h3 style="font-size:16px;color:%s;margin:16px 0 8px">%s</h3>'
-    inv = [["Configured sources", "%d: %d ok, %d warning, %d error, %d inactive" % (src.get("configured_source_count", 0), bh.get("ok", 0), bh.get("warning", 0), bh.get("error", 0), bh.get("inactive", 0))],
-           ["Integrations", E(", ".join(src.get("configured_integrations", [])) or "none")]]
+    inv = []
+    if conns is not None:
+        inv.append(["Installed applications", "%d: %d running, %d not running" % (len(conns), len(running), len(not_running))])
+        for c in conns:
+            inv.append([E(str(c.get("application"))), E(str(c.get("state")))])
     for r in rf:
-        inv.append([E("%s %s" % (r.get("integration"), r.get("resource_type"))), E("%s%s" % (r.get("status"), (", " + r["age_human"]) if r.get("age_human") else ""))])
+        inv.append([E("%s (resource feed)" % r["resource"]), E("%s%s" % ("stale, " if r["stale"] else "current, ", ("%.1f days old" % r["age_days"]) if r["age_days"] is not None else "age unknown"))])
+    if not inv:
+        inv.append(["Inventory", "[GAP] not collected"])
     A.append(h3 % (NAVY, "A. Log source inventory") + table(["Item", "Status"], inv, ["40%", "60%"]))
-    A.append(h3 % (NAVY, "B. Fingerprints cited") + table(["Hash", "Rules", "Cases"], [[E(f["hash"][:8]), E(f["rules_str"]), str(f["case_count_in_window_live"])] for f in sorted(ev["fingerprints"]["fingerprints"], key=lambda f: -f["case_count_in_window_live"])], ["14%", "74%", "12%"]))
-    mit = sum(f["mitre_attack"]["mapped_case_count"] for f in ev["fingerprints"]["fingerprints"])
-    techs = collections.Counter()
-    for f in ev["fingerprints"]["fingerprints"]:
-        for t in f.get("mitre_attack", {}).get("techniques", []) or []:
-            techs[(t.get("tactic"), t.get("technique_id"), t.get("technique_name"))] += t.get("case_count", 0)
-    A.append(h3 % (NAVY, "C. ATT&CK") + '<p style="font-size:13px;color:#4A5262;max-width:860px">%d of %d cases map to approved ATT&amp;CK techniques. %s</p>' % (mit, v["cases"], "No technique table is shown." if mit == 0 else "Supporting material only: a technique counts once per case that carries it, and only approved local mappings count as coverage."))
-    if techs:
-        A.append(table(["Tactic", "Technique", "Cases"], [[E(str(a)), E("%s %s" % (b, c)), str(n)] for (a, b, c), n in sorted(techs.items(), key=lambda x: (-x[1], str(x[0])))], ["26%", "56%", "18%"]))
-    tools = "summarize_case_metrics, summarize_case_fingerprints, categorize_repeat_actors, list_cases, evaluate_data_sources" + (", assess_compliance_posture" if comp else "")
-    A.append(h3 % (NAVY, "D. Methodology") + '<p style="font-size:13px;line-height:1.65;color:#4A5262;max-width:860px">Scope: tenant %s. Window: 1–%d %s %d UTC%s. Read-only calls: %s. Sections marked GAP or PARTIAL could not be computed from these tools. A case is a cluster of events for one user, host or application on one day; a fingerprint is the combination of rules that fired; a benign positive is activity that looked suspicious but was expected.</p>'
+    A.append(h3 % (NAVY, "B. Case shapes cited") + table(["Shape id", "Rules", "Cases"], [[E(h), E(sh["rules"]), str(sh["n"])] for h, sh in v["shapes"]], ["14%", "74%", "12%"]))
+    A.append(h3 % (NAVY, "C. ATT&CK") + '<p style="font-size:13px;color:#4A5262;max-width:860px">[GAP] No approved ATT&amp;CK mapping source is available through the connector, so no technique table is shown and no coverage is claimed.</p>')
+    tools = "behavior_summary_search" + (", list_connectors" if conns is not None else "") + (", list_resource_dumps" if dumps is not None else "") + (", get_azure_user_record" if adm else "") + (", and the compliance-assessment evidence" if comp else "")
+    A.append(h3 % (NAVY, "D. Methodology") + '<p style="font-size:13px;line-height:1.65;color:#4A5262;max-width:860px">Scope: tenant %s. Window: 1–%d %s %d UTC%s. Read-only calls: %s. Sections marked GAP or PARTIAL could not be computed from these tools. A case is a cluster of events for one user, host or application on one day; a case shape is the combination of rules that fired; a benign positive is activity that looked suspicious but was expected.</p>'
              % (E(tenant), v["last_day"], v["month_name"], v["year"], "; prior month compared" if pv else "", tools))
     A.append('</section><footer style="margin-top:40px;padding:22px 72px;border-top:3px solid %s;font:400 11px/1.6 %s;color:#6B7484">Fluency Managed SOC · %s · %s · Generated from read-only telemetry. Not a certification or attestation.</footer></div></body></html>' % (NAVY, MONO, E(tname), E(mname)))
     return "".join(A)
@@ -478,8 +555,8 @@ def main():
     ap.add_argument("--logo", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "fluency_logo.svg"))
     a = ap.parse_args()
     d = a.evidence_dir
-    ev = {"metrics": load(d, "metrics.json", True), "metrics_prev": load(d, "metrics_prev.json"), "fingerprints": load(d, "fingerprints.json", True), "repeat": load(d, "repeat.json", True),
-          "repeat_prev": load(d, "repeat_prev.json"), "cases": load(d, "cases.json", True), "cases_prev": load(d, "cases_prev.json"), "sources": load(d, "sources.json", True), "compliance": load(d, "compliance.json")}
+    ev = {"cases": load(d, "cases.json", True), "cases_prev": load(d, "cases_prev.json"), "connectors": load(d, "connectors.json"), "dumps": load(d, "dumps.json"),
+          "admins": load(d, "admins.json"), "compliance": load(d, "compliance_summary.json")}
     try:
         with open(a.narrative) as f:
             nar = json.load(f)
