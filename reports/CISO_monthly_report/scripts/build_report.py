@@ -243,7 +243,7 @@ def shape_id(c):
 
 
 def events_ingested(res):
-    """Total and per-index datalake ingest exactly as a prom_query result returns it."""
+    """Total and per-index datalake ingest as a prom_query result returns it, without the behavior index (the engine's own output, not ingested events)."""
     if not res or not res.get("series"):
         return None
     by = {}
@@ -252,6 +252,7 @@ def events_ingested(res):
         pts = sr.get("points") or []
         if pts:
             by[idx] = int(round(float(pts[-1]["value"])))
+    by = {k: v for k, v in by.items() if "behavior" not in k.lower()}
     return {"total": sum(by.values()), "by_index": sorted(by.items(), key=lambda kv: -kv[1])}
 
 
@@ -392,7 +393,7 @@ def render(ev, nar, v, args, logo):
     A.append(table(["Measure", mname.split()[0], "Prior month", "Change"], rows, ["46%", "18%", "18%", "18%"], {3: "#FBF3DD", 5: "#FBF3DD"}))
     funnel = ([("Events written to the datalake", v["events_total"], GRY)] if v["events_total"] is not None else []) + [("Tickets flagged (3,000 or more)", v["cases"], NAVY), ("Processed by the AI assistant", v["ai_processed"], NAVY), ("Closed", v["closed"], GRN), ("Escalated: still new after the AI ran", v["escalated"], RED)]
     A.append(figure("From events to escalated tickets, %s" % mname, hbars(funnel, label_w=290, fmt=lambda x: "{:,}".format(x)),
-                    "Tickets below a score of 3,000 are not counted. An escalated ticket is one still new after the AI assistant ran on it. Events are the lake_ingress_count values for every index, as the metric returns them; an event written to more than one index appears in each."))
+                    "Tickets below a score of 3,000 are not counted. An escalated ticket is one still new after the AI assistant ran on it. Events are the lake_ingress_count values by index as the metric returns them, without the behavior index; an event written to more than one index appears in each."))
     A.append(figure("Cases by day, %s" % mname, hbars([("%s %02d" % (v["month_name"][:3], d), n) for d, n in sorted(v["days"].items())], label_w=70), "Days with no flagged case are omitted. The day is the case's dayIndex."))
     A.append(paras(c2["analysis"]) + callouts([sub(x) for x in c2["callouts"]]))
     A.append(sec(3, "Rolling Trends", "PARTIAL" if not v["cat_prev"] else ""))
