@@ -7,7 +7,7 @@ Prints one line per dump: account, resource, customer, record count and the file
 get_resource_dump_url(account, resource, customer) for each, then
   curl -sf -o DIR/<account>/<file> "<url>"
 The link expires in 15 minutes; never read it into the conversation. An account with none of the four
-resources needs nothing.
+resources, or only empty ones, needs nothing.
 """
 import argparse, json, os, re, sys
 
@@ -29,7 +29,7 @@ def main():
         except (OSError, ValueError):
             print("%s: no resources.json (save the list_resource_dumps result first)" % ac["name"])
             continue
-        want = [e for e in res.get("entries", []) if e.get("resource") in WANTED]
+        want = [e for e in res.get("entries", []) if e.get("resource") in WANTED and e.get("count")]   # an empty dump holds nothing to download
         if not want:
             print("%s: no office365User or EDR dump listed" % ac["name"])
         for e in want:
