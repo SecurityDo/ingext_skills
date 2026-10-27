@@ -1,0 +1,21 @@
+// Is each address a device that sends us logs? A firewall, VPN concentrator,
+// router or proxy that forwards syslog appears as '@sender' (and often as
+// '@source') on its own events. Such an address is infrastructure: traffic it
+// passes on can arrive at a server with this address as the source (source NAT,
+// a VIP / port forward, a reverse proxy), so every client behind it — attackers
+// on the internet and staff on the VPN alike — shares it. No row is the normal
+// answer for an ordinary host; it proves only that the address sends nothing to
+// the default index. eventType / parser / device name the product.
+// '@sender' must stay bracket-quoted: a bare @sender silently returns null.
+// Placeholders: {IPS} = quoted, comma-separated list of addresses; {WFROM}/{WTO}.
+default
+| where timestamp between (datetime("{WFROM}") .. datetime("{WTO}"))
+| extend sender = tostring(['@sender']), src = tostring(['@source'])
+| where sender in ({IPS}) or src in ({IPS})
+| summarize events = count(), first = min(timestamp), last = max(timestamp),
+            device = take_any(tostring(['@fortigate.devname'])),
+            sources = make_set(src, 5)
+    by ip = iff(sender in ({IPS}), sender, src),
+       eventType = tostring(['@eventType']), parser = tostring(['@parser'])
+| order by ip asc, events desc
+| take 1000
