@@ -82,6 +82,7 @@ package in the same change — the validator checks inside the archives and will
 | [fluency-report-rollup](#fluency-report-rollup) | Monthly / quarterly / trend report assembled from a scheduled report's archived daily runs |
 | [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
 | [fpl-report-dashboard](#fpl-report-dashboard) | Build, test, deploy and release a dashboard report: panels, layout, metric charts |
+| [CISO_monthly_report](#ciso_monthly_report) | Customer-facing CISO Monthly SOC report for one tenant: 8 chapters, 16 sections, computed figures, GAP and PARTIAL marked → HTML |
 | [health-status-report](#health-status-report) | Installed applications health for a tenant, using the Fluency 9 Applications-page status logic → HTML + PDF + CSV |
 | [endpoint-os-currency](#endpoint-os-currency) | Endpoint OS inventory, end-of-support and build-currency report from an EDR or Entra device dump → HTML + PDF + CSV |
 | [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
@@ -219,6 +220,19 @@ never says compliant or certified. Lives in [`reports/`](./reports).
 
 **Try:**
 - "run the compliance assessment for <tenant> for September on the Develop connector"
+
+### CISO_monthly_report
+
+Builds the monthly SOC story for one tenant as a single HTML report for a CISO: an executive summary
+with a Green, Amber or Red rating, what happened, repeat patterns, what can and cannot be seen, a
+risk register, response performance, a NIST SP 800-53 evidence add-on and a remediation plan. It
+reads the tenant through the MSOC (fluency-mssp) connector; `scripts/build_report.py` computes every
+figure from the saved tool results and marks anything the tools cannot supply as GAP or PARTIAL. The
+analyst writes only the narrative. Lives in [`reports/`](./reports).
+
+**Try:**
+- "run the CISO monthly report for <tenant> for September"
+- "build the M-SOC monthly report for <tenant>"
 
 ### health-status-report
 
