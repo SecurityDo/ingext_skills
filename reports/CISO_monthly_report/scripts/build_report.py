@@ -74,7 +74,7 @@ def band(score):
 
 
 def pill(t, col):
-    return '<span style="display:inline-block;background:%s;color:#fff;font:600 10.5px/1 %s;padding:4px 8px;letter-spacing:.06em">%s</span>' % (col, MONO, E(t))
+    return '<span style="display:inline-block;background:%s;color:#fff;font:600 10.5px/1 %s;padding:4px 8px;letter-spacing:.06em;white-space:nowrap">%s</span>' % (col, MONO, E(t))
 
 
 # ---------- html helpers ----------
@@ -364,7 +364,7 @@ def render(ev, nar, v, args, logo):
     A.append(table(["Measure", mname.split()[0], "Prior month" if pv else "Prior month", "Change"], rows, ["46%", "18%", "18%", "18%"], {2: "#FBF3DD"}))
     A.append(figure("Cases by day, %s" % mname, hbars([("%s %02d" % (v["month_name"][:3], d), n) for d, n in sorted(v["days"].items())], label_w=70), "Days with no flagged case are omitted. The day is the case's dayIndex."))
     A.append(paras(c2["analysis"]) + callouts([sub(x) for x in c2["callouts"]]))
-    A.append(gap("Alerts processed versus escalated is not exposed to reporting tools, so the denominator behind the flagged cases is unknown.", "GAP"))
+    A.append(gap("Alerts processed versus escalated is not available through the connector, so the denominator behind the flagged cases is unknown.", "GAP"))
     A.append(sec(3, "Rolling Trends", "PARTIAL" if not v["cat_prev"] else ""))
     trows = []
     for name, _ in CATEGORIES:
@@ -406,7 +406,7 @@ def render(ev, nar, v, args, logo):
     A.append(paras(c3["analysis"]) + callouts([sub(x) for x in c3["callouts"]]))
     A.append(sec(5, "Root-Cause Themes", "PARTIAL"))
     A.append(table(["Theme", "Cases", "Linked users and assets", "Evidence", "Confidence"], [[E(r[0]), E(str(r[1])), E(r[2]), E(r[3]), E(r[4])] for r in nar["root_causes"]], ["23%", "8%", "29%", "28%", "12%"]))
-    A.append(gap("Backend root-cause support does not exist yet. These themes are an analyst grouping of the top fingerprints and repeat actors; the counts can overlap.", "PARTIAL"))
+    A.append(gap("No root-cause source exists on the connector. These themes are an analyst grouping of the top fingerprints and repeat actors; the counts can overlap.", "PARTIAL"))
     A.append("</section>")
 
     # chapter 4
@@ -451,17 +451,17 @@ def render(ev, nar, v, args, logo):
     A.append(sec(9, "Telemetry-Derived Risk Register", "PARTIAL"))
     A.append(table(["ID", "Category", "Risk", "Description", "Business impact", "L", "I", "Score", "Band", "Mitigation"],
                    [[E(r["id"]), E(r["category"]), E(r["name"]), sub(r["description"]), sub(r["business_impact"]), str(r["likelihood"]), str(r["impact"]), "<b>%d</b>" % r["score"], pill(*band(r["score"])), sub(r["mitigation"])] for r in risks],
-                   ["5%", "11%", "13%", "15%", "11%", "4%", "4%", "6%", "8%", "23%"]))
+                   ["5%", "11%", "12%", "14%", "11%", "4%", "4%", "6%", "10%", "23%"]))
     bc = collections.Counter(band(r["score"])[0] for r in risks)
     A.append(figure("Risk register heat map (likelihood × impact)", heatmap(risks), "Likelihood and impact are analyst-entered. Bands: 1–5 Low, 6–10 Medium, 11–17 High, 18–25 Critical. This register: %s." % ", ".join("%d %s" % (n, b) for b, n in sorted(bc.items(), key=lambda x: -["Low", "Medium", "High", "Critical"].index(x[0])))))
     A.append(paras(c5["analysis"]) + callouts([sub(x) for x in c5["callouts"]]))
-    A.append(gap("Backend telemetry-risk scoring is not available. Likelihood and impact are analyst placeholders.", "PARTIAL"))
+    A.append(gap("The connector has no telemetry-risk scoring. Likelihood and impact are analyst placeholders.", "PARTIAL"))
     A.append("</section>")
 
     # chapter 6
     c6 = analysis(6)
     A.append(chap(6, "How Our Defences Performed") + lead(sub(c6["intro"])) + sec(10, "Control Effectiveness", "GAP"))
-    A.append(gap("Control effectiveness (controls doing the most work, exclusions, stale agents) is not exposed to reporting tools. The structure is kept; no rows are invented.", "GAP"))
+    A.append(gap("Control effectiveness (controls doing the most work, exclusions, stale agents) is not available through the connector. The structure is kept; no rows are invented.", "GAP"))
     A.append(sec(11, "Response Performance"))
 
     def faster(a, b):
@@ -478,13 +478,14 @@ def render(ev, nar, v, args, logo):
     rows.append(["Closed cases closed by the automated assistant", "%d of %d" % (v["closed_by_ai"], v["closed"]), ("%d of %d" % (v["closed_by_ai_prev"], v["closed_prev"])) if pv else "[GAP]", "—"])
     rows.append(["True positives (of closed)", "%d of %d" % (v["tp"], v["closed"]), "%d of %d" % (v["tp_prev"], v["closed_prev"]) if pv else "[GAP]", "—"])
     A.append(table(["Measure", mname.split()[0], "Prior month", "Note"], rows, ["34%", "16%", "16%", "34%"]))
-    bars = [("Median first response", hours(v["mttr_p50"]) if v.get("mttr_p50") is not None else 0, NAVY)] + ([("Prior median first response", hours(v["mttr_p50_prev"]), GRY)] if pv and v.get("mttr_p50_prev") is not None and v.get("mttr_samples_prev", 0) >= 3 else []) + ([("Slowest-10% first response", hours(v["mttr_p90"]), NAVY)] if v.get("mttr_p90") is not None else []) + ([("Prior slowest-10%", hours(v["mttr_p90_prev"]), GRY)] if pv and v.get("mttr_p90_prev") is not None and v.get("mttr_samples_prev", 0) >= 3 else [])
-    A.append(figure("Time to first response, hours", hbars(bars, label_w=230, fmt=lambda x: "%.1f h" % x)))
+    ok_prev = pv and v.get("mttr_samples_prev", 0) >= 3
+    bars = [("Median first response", v["mttr_p50"] or 0, NAVY)] + ([("Prior median first response", v["mttr_p50_prev"], GRY)] if ok_prev and v.get("mttr_p50_prev") is not None else []) + ([("Slowest-10% first response", v["mttr_p90"], NAVY)] if v.get("mttr_p90") is not None else []) + ([("Prior slowest-10%", v["mttr_p90_prev"], GRY)] if ok_prev and v.get("mttr_p90_prev") is not None else [])
+    A.append(figure("Time to first response", hbars(bars, label_w=230, fmt=hm)))
     A.append(paras(c6["analysis"]) + callouts([sub(x) for x in c6["callouts"]]))
     A.append(gap("Response and close times run from incidentDetectionTime and use only the cases that carry it: %d of %d this month%s." % (v["cases"] - v["no_detection_time"], v["cases"], (", %d of %d last month" % (v["cases_prev"] - v["no_detection_time_prev"], v["cases_prev"])) if pv else ""), "NOTE"))
     A.append(gap("A response here means the first comment on a case, by the automated assistant (%s) or an analyst. %d of %d cases have no analyst comment, and %d of %d closed cases were closed by the assistant; read the first-response times as the assistant's, not the SOC team's." % (ASSISTANT, v["no_human"], v["cases"], v["closed_by_ai"], v["closed"]), "NOTE"))
     A.append(sec(12, "Escalation Log", "GAP"))
-    A.append(gap("The SOC escalation log is not exposed to reporting tools. No escalations are listed and none are inferred.", "GAP"))
+    A.append(gap("The SOC escalation log is not available through the connector. No escalations are listed and none are inferred.", "GAP"))
     A.append('<div style="display:flex;align-items:baseline;gap:14px;margin:36px 0 12px"><h2 style="margin:0;font-size:20px;font-weight:700;color:%s">Governance &amp; Compliance Posture</h2><span style="font:600 11px/1 %s;color:#8A6508;background:#FBF3DD;border:1px solid #E5CF8E;padding:5px 10px">NIST SP 800-53 REV. 5 · EVIDENCE AID</span></div>' % (NAVY, MONO))
     comp = ev.get("compliance")
     rows_c = (comp or {}).get("rows") or []
@@ -518,14 +519,14 @@ def render(ev, nar, v, args, logo):
     # chapter 8
     A.append(chap(8, "How We're Moving Forward") + sec(15, "What We Improved This Month", "GAP"))
     A.append(paras(nar.get("improvements", [])))
-    A.append(gap("The SOC change log (tuning, new detections, log sources onboarded, playbook updates) is not exposed to reporting tools. No changes are listed and none are inferred.", "GAP"))
+    A.append(gap("The SOC change log (tuning, new detections, log sources onboarded, playbook updates) is not available through the connector. No changes are listed and none are inferred.", "GAP"))
     A.append(sec(16, "Appendix"))
     h3 = '<h3 style="font-size:16px;color:%s;margin:16px 0 8px">%s</h3>'
     inv = []
     if conns is not None:
         inv.append(["Installed applications", "%d: %d running, %d not running" % (len(conns), len(running), len(not_running))])
         for c in conns:
-            inv.append([E(str(c.get("application"))), E(str(c.get("state")))])
+            inv.append([E(str(c.get("application")) + ((" (" + str(c["instance"]) + ")") if c.get("instance") else "")), E(str(c.get("state")))])
     for r in rf:
         inv.append([E("%s (resource feed)" % r["resource"]), E("%s%s" % ("stale, " if r["stale"] else "current, ", ("%.1f days old" % r["age_days"]) if r["age_days"] is not None else "age unknown"))])
     if not inv:
