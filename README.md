@@ -83,6 +83,7 @@ package in the same change — the validator checks inside the archives and will
 | [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
 | [fpl-report-dashboard](#fpl-report-dashboard) | Build, test, deploy and release a dashboard report: panels, layout, metric charts |
 | [CISO_monthly_report](#ciso_monthly_report) | Customer-facing CISO Monthly SOC report for one tenant: 8 chapters, 16 sections, computed figures, GAP and PARTIAL marked → HTML |
+| [application-health](#application-health) | Health of every installed application on a tenant (Fluency 9 Applications-page logic) saved as health.json for reports to reuse |
 | [health-status-report](#health-status-report) | Installed applications health for a tenant, using the Fluency 9 Applications-page status logic → HTML + PDF + CSV |
 | [endpoint-os-currency](#endpoint-os-currency) | Endpoint OS inventory, end-of-support and build-currency report from an EDR or Entra device dump → HTML + PDF + CSV |
 | [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
@@ -226,8 +227,8 @@ never says compliant or certified. Lives in [`reports/`](./reports).
 Builds the monthly SOC story for one tenant as a single HTML report for a CISO: an executive summary
 with a Green, Amber or Red rating, what happened, repeat patterns, what can and cannot be seen, a
 risk register, response performance, a NIST SP 800-53 evidence add-on and a remediation plan. It
-reads the tenant's behavior summaries (cases), resource-dump freshness, installed-application state
-and the compliance-assessment results through its MCP connector; `scripts/build_report.py` computes every
+reads the tenant's behavior summaries (cases), the application-health result and the
+compliance-assessment results through its MCP connector; `scripts/build_report.py` computes every
 figure from the saved results and marks anything the connector cannot supply as GAP or PARTIAL. The
 report separates the automated assistant's first response from an analyst's. The analyst writes only
 the narrative. Lives in [`reports/`](./reports).
@@ -236,15 +237,24 @@ the narrative. Lives in [`reports/`](./reports).
 - "run the CISO monthly report for <tenant> for September"
 - "build the M-SOC monthly report for <tenant>"
 
+### application-health
+
+Works out whether each installed application on a tenant is Running, in Error, needs Attention, has a
+Disabled source or is Other, with the same status logic as the Fluency 9 Applications page, and saves it as
+`health.json`. Full mode reads `list_connector_config` (state, errors, last-active, 24-hour traffic); where a
+connector lacks that tool a state-only fallback reads `list_connectors`. Credentials in the raw results are
+removed before use. `health-status-report` and `CISO_monthly_report` both build on it.
+
+**Try:**
+- "are all the applications on <tenant> running?"
+- "which installed applications on <tenant> are in error?"
+
 ### health-status-report
 
-Reports the health of every installed application on a tenant with the same status logic as the
-Fluency 9 Applications page: Running, Error, Attention (inactive, missing component, waiting for
-consent), Disabled or Other, with 24-hour traffic in and out, last-active time and error bytes by
-component. It needs the connector's `list_connector_config` tool; credentials in its raw result
-are removed before use. Renders HTML, PDF and
-a per-application CSV. For platform-wide health (logins, queues, egress) use ingext-health-monitor.
-Lives in [`reports/`](./reports).
+Reports the health of every installed application on a tenant as HTML, PDF and a per-application CSV,
+with the same status logic as the Fluency 9 Applications page. It renders the `health.json` that the
+application-health skill produces, so the report agrees with every other consumer of that file. For
+platform-wide health (logins, queues, egress) use ingext-health-monitor. Lives in [`reports/`](./reports).
 
 **Try:**
 - "run the installed applications health report for <tenant>"

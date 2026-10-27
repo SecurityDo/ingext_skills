@@ -12,8 +12,7 @@ warning so it can be checked against the evidence.
 Evidence files in DIR (see references/evidence.md):
   cases.json          behavior_summary_search, riskScore >= 3000, the month (one result, or an array of pages)
   cases_prev.json     the same for the prior month (optional; without it the deltas show as GAP)
-  connectors.json     list_connectors reduced to {"entries": [{"application", "state"}]} (optional)
-  dumps.json          list_resource_dumps (optional; freshness of the resource feeds)
+  health.json         from the application-health skill: installed-application status and resource-feed ages (optional)
   admins.json         {"checked": [upn], "admins": {upn: [role]}} from get_azure_user_record (optional)
   compliance_summary.json   written by compliance-assessment's build_report.py --summary-json (optional)
 Only cases.json is required. A missing optional file turns the sections that need it into a visible
@@ -411,31 +410,30 @@ def render(ev, nar, v, args, logo):
 
     # chapter 4
     c4 = analysis(4)
-    conns = (ev.get("connectors") or {}).get("entries") if ev.get("connectors") else None
-    dumps = (ev.get("dumps") or {}).get("entries") if ev.get("dumps") else None
-    running = [c for c in (conns or []) if str(c.get("state")) == "Running"]
-    not_running = [c for c in (conns or []) if str(c.get("state")) != "Running"]
-    now_ms = int(datetime.datetime(v["year"] + (v["month"] == 12), v["month"] % 12 + 1, 1, tzinfo=datetime.timezone.utc).timestamp() * 1000)
-    rf = []
-    for d in dumps or []:
-        t = parse_iso(d.get("createdOn"))
-        label = " / ".join(x for x in (d.get("resource"), d.get("customer")) if x) or d.get("name") or "resource"
-        age_d = (datetime.datetime.now(datetime.timezone.utc) - t).total_seconds() / 86400.0 if t else None
-        rf.append({"resource": label, "age_days": age_d, "count": d.get("count"), "empty": d.get("count") == 0, "stale": (age_d is not None and age_d > 1) or d.get("count") == 0})
-    stale = [r for r in rf if r["stale"]]
+    hl = ev.get("health")
+    apps_h = hl["applications"] if hl else None
+    stc = (hl or {}).get("counts", {})
+    attn_apps = [r for r in (apps_h or []) if r["status"] != "running"]
+    feeds = hl.get("resourceFeeds") if hl else None
+    stale = [f for f in (feeds or []) if f["stale"]]
     A.append(chap(4, "What We Can And Cannot See") + lead(sub(c4["intro"])) + sec(6, "Operational Exposure"))
-    if conns is None:
-        cov = ["[GAP] installed-application state was not collected (connectors.json)", "—"]
+    if hl is None:
+        cov = ["[GAP] installed-application health was not collected (health.json from the application-health skill)", "—"]
     else:
-        cov = ["%d installed application(s): %d running, %d not running%s." % (len(conns), len(running), len(not_running), (" (" + ", ".join(E("%s %s" % (c.get("application"), c.get("state"))) for c in not_running) + ")") if not_running else ""),
-               "; ".join(E("%s: %.0f days old%s" % (r["resource"], r["age_days"] or 0, ", empty" if r["empty"] else "")) for r in stale) or ("No stale resource feeds" if dumps is not None else "[GAP] resource freshness not collected (dumps.json)")]
+        parts = ["%d running" % stc.get("running", 0)] + ["%d %s" % (stc[k], k) for k in ("error", "attention", "disabled", "other") if stc.get(k)]
+        cov = ["%d installed application(s): %s%s. %s" % (len(apps_h), ", ".join(parts),
+                                                           (" (" + "; ".join(E("%s %s: %s" % (r["displayName"], r["status"], ", ".join(r["labels"]))) for r in attn_apps) + ")") if attn_apps else "",
+                                                           "Status from the connector state only; traffic and errors were not available." if hl["mode"] == "state_only" else "Status from state, errors, 24-hour traffic and last activity."),
+               "; ".join(E("%s / %s: %.0f days old%s" % (f["resource"], f["customer"], f["ageDays"] or 0, ", empty" if f["empty"] else "")) for f in stale) or ("No stale resource feeds" if feeds is not None else "[GAP] resource-feed freshness not collected")]
     rows = [["Coverage &amp; Health", cov[0], cov[1]]]
     for name, key in (("O365 Hygiene", "o365_hygiene"), ("Environment Changes", "environment_changes"), ("Vulnerability Highlights", "vulnerability_highlights")):
         t = nar.get("exposure", {}).get(key)
         rows.append([name, sub(t["evidence"]) if t else "[GAP] not assessed from this evidence", sub(t["limit"]) if t else "—"])
-    A.append(table(["Area", "What the evidence shows", "Limit"], rows, ["20%", "45%", "35%"], {0: "#FBF3DD"} if (stale or not_running) else None))
-    A.append(figure("Installed applications and resource feeds", hbars(([("Applications running", len(running), GRN), ("Applications not running", len(not_running), RED)] if conns is not None else []) + ([("Resource feeds current", len(rf) - len(stale), GRN), ("Resource feeds stale or empty", len(stale), RED)] if dumps is not None else []) or [("Nothing collected", 0, GRY)], label_w=240),
-                    "Per-application health detail comes from the health-status-report skill; this report uses installed-application state and the age of each resource feed."))
+    A.append(table(["Area", "What the evidence shows", "Limit"], rows, ["20%", "45%", "35%"], {0: "#FBF3DD"} if (stale or attn_apps) else None))
+    fig = ([("Applications running", stc.get("running", 0), GRN), ("Applications in error", stc.get("error", 0), RED), ("Applications needing attention", stc.get("attention", 0) + stc.get("disabled", 0) + stc.get("other", 0), AMB)] if hl else []) + \
+          ([("Resource feeds current", len(feeds) - len(stale), GRN), ("Resource feeds stale or empty", len(stale), RED)] if feeds is not None else [])
+    A.append(figure("Installed applications and resource feeds", hbars(fig or [("Nothing collected", 0, GRY)], label_w=240),
+                    "Application status follows the Fluency 9 Applications page (application-health skill). A Running application can still feed a stale resource feed."))
     A.append(paras(c4["analysis"]) + callouts([sub(x) for x in c4["callouts"]]))
     A.append(sec(7, "Monitoring Blind Spots", "PARTIAL"))
     A.append(table(["Category", "Source", "What cannot be detected", "Remediation", "Risk"], [[E(r[0]), sub(r[1]), sub(r[2]), sub(r[3]), E(r[4])] for r in nar["blind_spots"]], ["18%", "24%", "24%", "26%", "8%"]))
@@ -523,18 +521,18 @@ def render(ev, nar, v, args, logo):
     A.append(sec(16, "Appendix"))
     h3 = '<h3 style="font-size:16px;color:%s;margin:16px 0 8px">%s</h3>'
     inv = []
-    if conns is not None:
-        inv.append(["Installed applications", "%d: %d running, %d not running" % (len(conns), len(running), len(not_running))])
-        for c in conns:
-            inv.append([E(str(c.get("application")) + ((" (" + str(c["instance"]) + ")") if c.get("instance") else "")), E(str(c.get("state")))])
-    for r in rf:
-        inv.append([E("%s (resource feed)" % r["resource"]), E("%s%s" % ("stale, " if r["stale"] else "current, ", ("%.1f days old" % r["age_days"]) if r["age_days"] is not None else "age unknown"))])
+    if hl:
+        inv.append(["Installed applications", "%d (%s mode)" % (len(apps_h), "state-only" if hl["mode"] == "state_only" else "full")])
+        for r in apps_h:
+            inv.append([E(str(r["application"]) + ((" (" + str(r["instance"]) + ")") if r.get("instance") else "")), E("%s%s" % (r["status"], (": " + ", ".join(r["labels"])) if r["status"] != "running" else ""))])
+    for f in feeds or []:
+        inv.append([E("%s / %s (resource feed)" % (f["resource"], f["customer"])), E("%s%s" % ("stale, " if f["stale"] else "current, ", ("%.1f days old" % f["ageDays"]) if f["ageDays"] is not None else "age unknown"))])
     if not inv:
         inv.append(["Inventory", "[GAP] not collected"])
     A.append(h3 % (NAVY, "A. Log source inventory") + table(["Item", "Status"], inv, ["40%", "60%"]))
     A.append(h3 % (NAVY, "B. Case shapes cited") + table(["Shape id", "Rules", "Cases"], [[E(h), E(sh["rules"]), str(sh["n"])] for h, sh in v["shapes"]], ["14%", "74%", "12%"]))
     A.append(h3 % (NAVY, "C. ATT&CK") + '<p style="font-size:13px;color:#4A5262;max-width:860px">[GAP] No approved ATT&amp;CK mapping source is available through the connector, so no technique table is shown and no coverage is claimed.</p>')
-    tools = "behavior_summary_search" + (", list_connectors" if conns is not None else "") + (", list_resource_dumps" if dumps is not None else "") + (", get_azure_user_record" if adm else "") + (", and the compliance-assessment evidence" if comp else "")
+    tools = "behavior_summary_search" + (", the application-health skill" if hl else "") + (", get_azure_user_record" if adm else "") + (", and the compliance-assessment evidence" if comp else "")
     A.append(h3 % (NAVY, "D. Methodology") + '<p style="font-size:13px;line-height:1.65;color:#4A5262;max-width:860px">Scope: tenant %s. Window: 1–%d %s %d UTC%s. Read-only calls: %s. Sections marked GAP or PARTIAL could not be computed from these tools. A case is a cluster of events for one user, host or application on one day; a case shape is the combination of rules that fired; a benign positive is activity that looked suspicious but was expected.</p>'
              % (E(tenant), v["last_day"], v["month_name"], v["year"], "; prior month compared" if pv else "", tools))
     A.append('</section><footer style="margin-top:40px;padding:22px 72px;border-top:3px solid %s;font:400 11px/1.6 %s;color:#6B7484">Fluency Managed SOC · %s · %s · Generated from read-only telemetry. Not a certification or attestation.</footer></div></body></html>' % (NAVY, MONO, E(tname), E(mname)))
@@ -575,7 +573,7 @@ def main():
     ap.add_argument("--logo", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "fluency_logo.svg"))
     a = ap.parse_args()
     d = a.evidence_dir
-    ev = {"cases": load(d, "cases.json", True), "cases_prev": load(d, "cases_prev.json"), "connectors": load(d, "connectors.json"), "dumps": load(d, "dumps.json"),
+    ev = {"cases": load(d, "cases.json", True), "cases_prev": load(d, "cases_prev.json"), "health": load(d, "health.json"),
           "admins": load(d, "admins.json"), "compliance": load(d, "compliance_summary.json")}
     try:
         with open(a.narrative) as f:

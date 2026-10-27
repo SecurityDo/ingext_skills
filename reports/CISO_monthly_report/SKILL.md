@@ -9,7 +9,7 @@ description: >-
   and 16 sections. USE THIS SKILL for "M-SOC report", "monthly SOC report", "CISO report",
   "board security report", "monthly security summary", "the SOC story for the month", or an
   executive report covering a month for a customer. Reads the tenant's behavior summaries (cases),
-  resource-feed freshness, application state and compliance-assessment results through its MCP
+  application health (from application-health) and compliance-assessment results through its MCP
   connector, computes every figure locally and marks what the tools cannot supply as GAP or
   PARTIAL. Read-only. DO NOT use it for one incident (incident-investigation), the NIST report alone
   (compliance-assessment) or invoices (billing-csv).
@@ -41,15 +41,9 @@ real users, hosts and applications). A result the harness saves to a file can be
 |---|---|
 | `cases.json` | `behavior_summary_search(account, rangeFrom, rangeTo, searchStr="riskScore:[3000 TO *]", limit=100, sortField="to")`. A case is a behavior summary at or above the canonical review score of 3000. If `total` exceeds 100 page with `offset` and merge the results into one JSON array |
 | `cases_prev.json` | optional: the same for the prior month; without it the deltas show as GAP |
-| `dumps.json` | `list_resource_dumps(account)`: the age and record count of each resource feed. Optional |
-| `connectors.json` | `list_connectors(account)` (or `list_connector_config` where the connector has it), reduced with `scripts/reduce_connectors.py`. Optional |
+| `health.json` | optional: run the **application-health** skill for the tenant (full mode where the connector has `list_connector_config`, else its state-only fallback, plus `list_resource_dumps`). It owns the collection, the credential removal and the Fluency 9 status logic, and `health-status-report` renders the same file |
 | `admins.json` | optional: for each repeat user that looks like an Entra account, `get_azure_user_record(account, username)`; record `{"checked": [upn, …], "admins": {upn: [role names]}}` |
 | `compliance_summary.json` | optional: run the compliance-assessment skill for the same tenant and month with `--summary-json` |
-
-**Connector credentials.** `list_connectors` and `list_connector_config` return credentials in clear
-text. Never save the raw result in the work folder or the repository, never quote it. Run
-`scripts/reduce_connectors.py --raw RAW --out WORKDIR/connectors.json`, which keeps only each
-application and its state, then delete the raw file.
 
 **What the behavior summary gives.** Each case carries `status`, `classification`, `behaviorRules`,
 `riskScore`, `incidentDetectionTime`, `updatedOn` and its `comments` (`createdOn`, `username`, `actions`). The script

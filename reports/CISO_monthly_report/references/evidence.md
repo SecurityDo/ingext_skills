@@ -6,8 +6,7 @@ only the fields below; other fields are ignored.
 | File | Fields read |
 |---|---|
 | `cases.json`, `cases_prev.json` | one `behavior_summary_search` result, or an array of paged results: `total`, `documents[].source` with `key`, `keyType`, `dayIndex`, `riskScore`, `status`, `classification`, `behaviorRules`, `incidentDetectionTime`, `updatedOn`, `comments[]` (`createdOn`, `username`, `actions`) |
-| `connectors.json` | `entries[]`: `application`, `state` (written by `scripts/reduce_connectors.py`) |
-| `dumps.json` | `list_resource_dumps` result: `entries[]` with `resource`, `customer`, `createdOn`, `count` |
+| `health.json` | written by the application-health skill: `mode`, `counts`, `applications[]` (`application`, `instance`, `state`, `status`, `labels`), `resourceFeeds[]` (`resource`, `customer`, `ageDays`, `empty`, `stale`) |
 | `admins.json` | `{"checked": [upn], "admins": {upn: [role]}}` from `get_azure_user_record` |
 | `compliance_summary.json` | written by compliance-assessment `build_report.py --summary-json`: `rows[]` with `control`, `title`, `status` |
 
