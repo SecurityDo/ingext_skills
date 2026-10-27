@@ -88,6 +88,7 @@ package in the same change — the validator checks inside the archives and will
 | [mssp-ops-sitrep](#mssp-ops-sitrep) | Shift-handoff SitRep across a connector's accounts: queue, escalations, health, product posture, four team lanes → HTML |
 | [office365-posture-review](#office365-posture-review) | Office 365 / Entra posture from resource dumps: users, app registrations and devices, ranked by severity → HTML + CSV |
 | [nist-compliance-analysis](#nist-compliance-analysis) | NIST SP 800-53 control-by-control analysis from compliance-assessment results, with CSF 2.0 and 800-171 child views → HTML + CSV |
+| [iso-cmmc-compliance-analysis](#iso-cmmc-compliance-analysis) | ISO/IEC 27001:2022 and CMMC 2.0 companion view of the 800-53 evidence, related not equivalent → HTML + CSV |
 | [endpoint-os-currency](#endpoint-os-currency) | Endpoint OS inventory, end-of-support and build-currency report from an EDR or Entra device dump → HTML + PDF + CSV |
 | [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
@@ -303,6 +304,18 @@ Lives in [`reports/`](./reports).
 **Try:**
 - "give me the NIST 800-53 control-by-control analysis for <tenant>"
 - "which controls lack evidence, and what should we collect next?"
+
+### iso-cmmc-compliance-analysis
+
+Reads the result of `compliance-assessment` and expresses the 800-53-rooted evidence in ISO/IEC 27001:2022
+Annex A and CMMC 2.0 Level 2 language: each control or practice with its related 800-53 groups and their
+statuses, a caveat, the strongest mapped areas and the evidence still needed. Rows are related, never
+equivalent, and nothing is a certification or assessment result. It collects nothing itself. Prerequisite:
+`compliance-assessment`. Lives in [`reports/`](./reports).
+
+**Try:**
+- "show our compliance evidence in ISO 27001 terms"
+- "map the NIST findings to CMMC practices for <tenant>"
 
 ### endpoint-os-currency
 
