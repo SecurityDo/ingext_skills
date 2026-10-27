@@ -84,6 +84,7 @@ package in the same change — the validator checks inside the archives and will
 | [fpl-report-dashboard](#fpl-report-dashboard) | Build, test, deploy and release a dashboard report: panels, layout, metric charts |
 | [CISO_monthly_report](#ciso_monthly_report) | Customer-facing CISO Monthly SOC report for one tenant: 8 chapters, 16 sections, computed figures, GAP and PARTIAL marked → HTML |
 | [health-status-report](#health-status-report) | Installed applications health for a tenant, using the Fluency 9 Applications-page status logic → HTML + PDF + CSV |
+| [mssp-coverage-map](#mssp-coverage-map) | Fleet map of licensed Microsoft 365 seats against EDR endpoints and users per tenant, with the gaps ranked → HTML + CSV |
 | [endpoint-os-currency](#endpoint-os-currency) | Endpoint OS inventory, end-of-support and build-currency report from an EDR or Entra device dump → HTML + PDF + CSV |
 | [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
@@ -249,6 +250,19 @@ platform-wide health (logins, queues, egress) use ingext-health-monitor. Lives i
 **Try:**
 - "run the installed applications health report for <tenant>"
 - "which of <tenant>'s applications are in error or need attention?"
+
+### mssp-coverage-map
+
+Compares, for every tenant a provider can act on, the licensed Microsoft 365 seats with the endpoints and
+users in its EDR dumps (CrowdStrike Falcon, SentinelOne, Microsoft Defender), flags the gap and sorts
+tenants into EDR under-coverage, aligned, identity-blind, endpoint-blind and not assessable. It reads one
+`list_resource_dumps` per account and downloads the `office365User` and EDR dumps of the accounts that have
+them; a script computes every figure and writes an HTML map and a CSV. The gap is directional, not exact.
+Lives in [`reports/`](./reports).
+
+**Try:**
+- "which of my customers have EDR coverage gaps?"
+- "build the identity versus endpoint coverage map for all tenants"
 
 ### endpoint-os-currency
 
