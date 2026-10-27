@@ -85,6 +85,7 @@ package in the same change — the validator checks inside the archives and will
 | [CISO_monthly_report](#ciso_monthly_report) | Customer-facing CISO Monthly SOC report for one tenant: 8 chapters, 16 sections, computed figures, GAP and PARTIAL marked → HTML |
 | [health-status-report](#health-status-report) | Installed applications health for a tenant, using the Fluency 9 Applications-page status logic → HTML + PDF + CSV |
 | [mssp-coverage-map](#mssp-coverage-map) | Fleet map of licensed Microsoft 365 seats against EDR endpoints and users per tenant, with the gaps ranked → HTML + CSV |
+| [mssp-ops-sitrep](#mssp-ops-sitrep) | Shift-handoff SitRep across a connector's accounts: queue, escalations, health, product posture, four team lanes → HTML |
 | [endpoint-os-currency](#endpoint-os-currency) | Endpoint OS inventory, end-of-support and build-currency report from an EDR or Entra device dump → HTML + PDF + CSV |
 | [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
@@ -263,6 +264,19 @@ Lives in [`reports/`](./reports).
 **Try:**
 - "which of my customers have EDR coverage gaps?"
 - "build the identity versus endpoint coverage map for all tenants"
+
+### mssp-ops-sitrep
+
+A shift-handoff page for the team running a portfolio of tenants. It reads each account's behavior summaries
+(tickets scored 3,000 or more), plus the optional health-status-report and mssp-coverage-map results, and
+shows the queue, unworked and escalated tickets, application health, product posture for Office365,
+CrowdStrike Falcon and SentinelOne, and what the SOC Manager, Administrator, Operator and Investigator
+lanes should do next. Everything is computed by a script; anything not collected says so. It keeps no
+state. Lives in [`reports/`](./reports).
+
+**Try:**
+- "give me the operations sitrep for all accounts on <connector>"
+- "what is escalated or unworked across my customers this week?"
 
 ### endpoint-os-currency
 
