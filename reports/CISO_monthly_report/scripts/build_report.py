@@ -12,6 +12,8 @@ warning so it can be checked against the evidence.
 Evidence files in DIR (see references/evidence.md):
   cases.json          behavior_summary_search, riskScore >= 3000, the month (one result, or an array of pages)
   cases_prev.json     the same for the prior month (optional; without it the deltas show as GAP)
+  events.json         prom_query: sum by (index) (increase(lake_ingress_count[<days>d])) at the start of the next month (optional)
+  events_prev.json    the same for the prior month (optional; the metrics store may not reach back that far)
   health.json         from the health-status-report skill: installed-application status and resource-feed ages (optional)
   admins.json         {"checked": [upn], "admins": {upn: [role]}} from get_azure_user_record (optional)
   compliance_summary.json   written by compliance-assessment's build_report.py --summary-json (optional)
@@ -227,6 +229,9 @@ def case_metrics(cases):
     firsts, humans = [x[0] for x in t if x[0] is not None], [x[1] for x in t if x[1] is not None]
     closes = [x[2] for x in t if x[2] is not None]
     m["no_detection_time"] = sum(1 for c in cases if not detection_ms(c)[1])
+    has_ai = lambda c: any((cm.get("username") or "") == ASSISTANT for cm in (c.get("comments") or []))
+    m.update(ai_processed=sum(1 for c in cases if has_ai(c)), escalated=sum(1 for c in cases if c.get("status") == "new" and has_ai(c)),
+             not_run=sum(1 for c in cases if c.get("status") == "new" and not has_ai(c)))
     m.update(mttr_p50=pctile(firsts, 50), mttr_p90=pctile(firsts, 90), mttr_samples=len(firsts), human_p50=pctile(humans, 50), human_p90=pctile(humans, 90),
              mttc_p50=pctile(closes, 50), mttc_p90=pctile(closes, 90), mttc_samples=len(closes), closed_by_ai=sum(1 for x in t if x[3]), no_human=sum(1 for c in cases if not any((cm.get("username") or "") != ASSISTANT for cm in (c.get("comments") or []))))
     m["human_n"] = len(cases) - m["no_human"]
@@ -235,6 +240,20 @@ def case_metrics(cases):
 
 def shape_id(c):
     return hashlib.md5("|".join(sorted(c.get("behaviorRules") or [])).encode()).hexdigest()[:8]
+
+
+def events_ingested(res):
+    """Total and per-index datalake ingest from a prom_query result; the behavior index holds the engine's own output, not ingested events."""
+    if not res or not res.get("series"):
+        return None
+    by = {}
+    for sr in res["series"]:
+        idx = (sr.get("metric") or {}).get("index", "all")
+        pts = sr.get("points") or []
+        if pts:
+            by[idx] = int(round(float(pts[-1]["value"])))
+    ingest = {k: v for k, v in by.items() if "behavior" not in k.lower()}
+    return {"total": sum(ingest.values()), "by_index": sorted(ingest.items(), key=lambda kv: -kv[1]), "behavior_index": sum(v for k, v in by.items() if "behavior" in k.lower())}
 
 
 def compute(ev, month):
@@ -251,6 +270,12 @@ def compute(ev, month):
     for c in cases:
         c["_shape"] = shape_id(c)
     v.update(case_metrics(cases))
+    evi, evp = events_ingested(ev.get("events")), events_ingested(ev.get("events_prev"))
+    v["events_total"] = evi["total"] if evi else None
+    v["events_by_index"] = evi["by_index"] if evi else []
+    if evp:
+        v["events_total_prev"] = evp["total"]
+    v["tickets"] = len(cases)
     if v["no_detection_time"]:
         warnings.append("%d of %d cases have no incidentDetectionTime and are left out of the response and close times" % (v["no_detection_time"], len(cases)))
     v["case_rows"] = cases
@@ -357,13 +382,20 @@ def render(ev, nar, v, args, logo):
     c2 = analysis(2)
     A.append(chap(2, "What Happened This Month") + lead(sub(c2["intro"])) + sec(2, "Security Events Overview"))
     pv = "cases_prev" in v
-    rows = [["Cases flagged for review", "<b>%d</b>" % v["cases"], str(v["cases_prev"]) if pv else "[GAP]", ("%s (%s)" % (signed(v["cases"], v["cases_prev"]), pct_change(v["cases"], v["cases_prev"]))) if pv else "[GAP]"]]
-    for lab, k in (("Closed", "closed"), ("Unacknowledged (open, status new)", "unacked"), ("True positive (of closed)", "tp"), ("False positive (of closed)", "fp"), ("Benign positive (of closed)", "bp")):
+    evp = v.get("events_total_prev")
+    rows = [["Events written to the datalake" + (" (PromQL ingest counter)" if v["events_total"] is not None else ""),
+             ("%s" % "{:,}".format(v["events_total"])) if v["events_total"] is not None else "[GAP]", ("{:,}".format(evp)) if evp is not None else "[GAP]",
+             ("%s (%s)" % (signed(v["events_total"], evp), pct_change(v["events_total"], evp))) if (evp is not None and v["events_total"] is not None) else "[GAP]"]]
+    rows.append(["Tickets flagged for review (score 3,000 or more)", "<b>%d</b>" % v["cases"], str(v["cases_prev"]) if pv else "[GAP]", ("%s (%s)" % (signed(v["cases"], v["cases_prev"]), pct_change(v["cases"], v["cases_prev"]))) if pv else "[GAP]"])
+    for lab, k in (("Processed by the AI assistant (it commented)", "ai_processed"), ("Closed", "closed"), ("Escalated: still new after the AI ran", "escalated"), ("Not yet run by the AI (still new)", "not_run"),
+                   ("True positive (of closed)", "tp"), ("False positive (of closed)", "fp"), ("Benign positive (of closed)", "bp")):
         rows.append([lab, str(v[k]), str(v[k + "_prev"]) if pv else "[GAP]", signed(v[k], v[k + "_prev"]) if pv else "[GAP]"])
-    A.append(table(["Measure", mname.split()[0], "Prior month" if pv else "Prior month", "Change"], rows, ["46%", "18%", "18%", "18%"], {2: "#FBF3DD"}))
+    A.append(table(["Measure", mname.split()[0], "Prior month", "Change"], rows, ["46%", "18%", "18%", "18%"], {3: "#FBF3DD", 5: "#FBF3DD"}))
+    funnel = ([("Events written to the datalake", v["events_total"], GRY)] if v["events_total"] is not None else []) + [("Tickets flagged (3,000 or more)", v["cases"], NAVY), ("Processed by the AI assistant", v["ai_processed"], NAVY), ("Closed", v["closed"], GRN), ("Escalated: still new after the AI ran", v["escalated"], RED)]
+    A.append(figure("From events to escalated tickets, %s" % mname, hbars(funnel, label_w=290, fmt=lambda x: "{:,}".format(x)),
+                    "Tickets below a score of 3,000 are not counted. An escalated ticket is one still new after the AI assistant ran on it. Events are the datalake ingest counter by index, excluding the behavior index, and an event written to two indexes counts twice."))
     A.append(figure("Cases by day, %s" % mname, hbars([("%s %02d" % (v["month_name"][:3], d), n) for d, n in sorted(v["days"].items())], label_w=70), "Days with no flagged case are omitted. The day is the case's dayIndex."))
     A.append(paras(c2["analysis"]) + callouts([sub(x) for x in c2["callouts"]]))
-    A.append(gap("Alerts processed versus escalated is not available through the connector, so the denominator behind the flagged cases is unknown.", "GAP"))
     A.append(sec(3, "Rolling Trends", "PARTIAL" if not v["cat_prev"] else ""))
     trows = []
     for name, _ in CATEGORIES:
@@ -624,7 +656,7 @@ def main():
     ap.add_argument("--logo", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "fluency_logo.svg"))
     a = ap.parse_args()
     d = a.evidence_dir
-    ev = {"cases": load(d, "cases.json", True), "cases_prev": load(d, "cases_prev.json"), "health": load(d, "health.json"),
+    ev = {"cases": load(d, "cases.json", True), "cases_prev": load(d, "cases_prev.json"), "health": load(d, "health.json"), "events": load(d, "events.json"), "events_prev": load(d, "events_prev.json"),
           "admins": load(d, "admins.json"), "compliance": load(d, "compliance_summary.json")}
     try:
         with open(a.narrative) as f:

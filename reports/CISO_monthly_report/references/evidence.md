@@ -6,6 +6,7 @@ only the fields below; other fields are ignored.
 | File | Fields read |
 |---|---|
 | `cases.json`, `cases_prev.json` | one `behavior_summary_search` result, or an array of paged results: `total`, `documents[].source` with `key`, `keyType`, `dayIndex`, `riskScore`, `status`, `classification`, `behaviorRules`, `incidentDetectionTime`, `updatedOn`, `comments[]` (`createdOn`, `username`, `actions`) |
+| `events.json`, `events_prev.json` | one `prom_query` result: `series[]` with `metric.index` and `points[].value` |
 | `health.json` | written by the health-status-report skill (`scripts/evaluate_health.py`): `mode`, `counts`, `applications[]` (`application`, `instance`, `state`, `status`, `labels`), `resourceFeeds[]` (`resource`, `customer`, `ageDays`, `empty`, `stale`) |
 | `admins.json` | `{"checked": [upn], "admins": {upn: [role]}}` from `get_azure_user_record` |
 | `compliance_summary.json` | written by compliance-assessment `build_report.py --summary-json`: `rows[]` (`control`, `title`, `status`) and `facts` (`events`, `workloads`, `audit_categories`, `users`, `hygiene`, `devices`, `qualys_hosts`, `conditional_access`, `cloudtrail`, `sources`, `admins`, `directory_users`) |

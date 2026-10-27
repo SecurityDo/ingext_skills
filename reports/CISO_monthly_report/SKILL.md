@@ -45,9 +45,19 @@ real users, hosts and applications). A result the harness saves to a file can be
 |---|---|
 | `cases.json` | `behavior_summary_search(account, rangeFrom, rangeTo, searchStr="riskScore:[3000 TO *]", limit=100, sortField="to")`. A case is a behavior summary at or above the canonical review score of 3000. If `total` exceeds 100 page with `offset` and merge the results into one JSON array |
 | `cases_prev.json` | optional: the same for the prior month; without it the deltas show as GAP |
+| `events.json`, `events_prev.json` | optional: `prom_query(account, query="sum by (index) (increase(lake_ingress_count[<days>d]))", time="<first instant of the next month, RFC3339>")`, where `<days>` is the number of days in the month. The prior month uses the same call at the first instant of the report month; the metrics store may not reach back that far, and an empty result shows as a GAP |
 | `health.json` | optional: run the **health-status-report** skill for the tenant as far as its evaluation step (Step 2; skip the HTML and PDF). It uses the full mode where the connector has `list_connector_config`, else its state-only fallback, plus `list_resource_dumps`, and owns the collection, the credential removal and the Fluency 9 status logic |
 | `admins.json` | optional: only needed for a repeat user that is not in the user dump (the dump in `compliance_summary.json` already lists every directory account and its roles). Use `get_azure_user_record(account, username)` and record `{"checked": [upn, …], "admins": {upn: [role names]}}` |
 | `compliance_summary.json` | optional: run the **compliance-assessment** skill for the same tenant and month with `--summary-json`. Besides the control statuses it carries the facts that skill already collected (event volumes, sign-in failures, directory users, MFA registration, administrators, devices, Conditional Access policies, CloudTrail counts, Qualys hosts, audit categories), which fill the O365 hygiene, environment changes and vulnerability rows and tell which repeat actors are administrators, so this report does not repeat those queries |
+
+**The events-to-escalation funnel (section 2).** A ticket is a behavior summary scored 3,000 or more;
+smaller ones are not counted anywhere in the report. The report shows, from the case file: tickets flagged,
+tickets the AI assistant ran on (it left a comment), tickets closed, **escalated** tickets (still `new` after
+the AI ran, so they need an analyst), and tickets the AI has not run on yet. The events at the top come from
+`events.json`, the datalake ingest counter by index, with the `behavior` index left out because it holds the
+engine's own output. An event written to two indexes counts twice, and the counter is an estimate that
+differs from a KQL count, so describe it as events written to the datalake. `behavior_event_search` is not
+used: tickets already group the events.
 
 **What the behavior summary gives.** Each case carries `status`, `classification`, `behaviorRules`,
 `riskScore`, `incidentDetectionTime`, `updatedOn` and its `comments` (`createdOn`, `username`, `actions`). The script
@@ -115,7 +125,7 @@ this tenant's own telemetry onto NIST SP 800-53 Rev. 5. Without `compliance_summ
 shows a GAP; do not write one from memory.
 
 **Not available through the connector, so shown as GAP, never filled in:** the SOC escalation log, the SOC
-change log, control effectiveness, the processed-versus-escalated alert denominator and ATT&CK mappings. Privileged
+change log, control effectiveness and ATT&CK mappings. Privileged
 administrators belong in Admin Watch, never called offenders. `True Positive = 0` is ambiguous when
 classification discipline is weak, or when the assistant closed every case; say so. Compliance wording: the evidence "supports" a control,
 never "compliant"; this is an evidence aid, not an attestation.

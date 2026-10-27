@@ -24,7 +24,7 @@ Strings may contain HTML (`<strong>`) and `{{placeholders}}`.
 
 Placeholders computed from the evidence: `cases`, `cases_prev`, `closed`, `closed_prev`, `unacked`,
 `unacked_prev`, `tp`, `tp_prev`, `fp`, `fp_prev`, `bp`, `bp_prev`, `mttr_samples`, `human_n`,
-`closed_by_ai`, `no_human` (each also `_prev`), `mttr_p50`, `mttr_p90`, `mttc_p50`, `mttc_p90`,
+`closed_by_ai`, `no_human`, `ai_processed`, `escalated`, `not_run` (each also `_prev`), `events_total` (and `events_total_prev` when the prior month has data), `mttr_p50`, `mttr_p90`, `mttc_p50`, `mttc_p90`,
 `human_p50` (each also `_prev`), which print as `3h 27m` or `n/a` when there is no sample; add `_h`
 for hours, such as `{{mttr_p50_h}}`. Category counts are `cat_identity_access`,
 `cat_threat_attack`, `cat_endpoint`, `cat_network_perimeter`, `cat_vulnerability` and `cat_other`,
