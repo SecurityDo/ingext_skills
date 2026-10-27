@@ -1,6 +1,6 @@
 ---
 name: compliance-assessment
-version: 1.1.0
+version: 1.5.0
 description: >-
   Produce a customer-facing compliance evidence report for ONE Ingext/Fluency tenant and ONE
   calendar month, built from read-only queries through the tenant's MCP connector (KQL over
@@ -8,7 +8,7 @@ description: >-
   tables the tenant has; behavior summaries; Office 365 and Qualys resource dumps; connector and
   report inventory). Maps the evidence onto 13 NIST SP
   800-53 Rev. 5 control groups as supported, partial, not observed or needs manual review, and
-  renders a self-contained HTML plus a mail-ready PDF. Never claims
+  renders a self-contained HTML plus a mail-ready PDF, with key findings and recommended actions, an evidence-coverage figure and a month-over-month trend. Never claims
   certification or compliance. USE THIS SKILL for "compliance assessment", "NIST 800-53
   posture", "audit-ready evidence report", "control coverage report" for a tenant. DO NOT use it
   for a single incident (incident-investigation) or for a user (office-user-investigation).
@@ -63,6 +63,17 @@ dumps, not queried.
 | `devices.jsonl.gz` | `office365Device` (resource) |
 | `ca_policies.jsonl.gz` | `office365ConditionalAccessPolicy` (resource) |
 | `qualys.jsonl.gz` | `qualysHost` (resource) |
+| `guardduty.jsonl.gz` | `GuarddutyFinding` (resource), optional |
+| `gsuite_users.jsonl.gz` | `gsuiteUser` (resource), optional |
+| `apps.jsonl.gz` | `office365Application` (resource), optional: app registrations, client secrets and requested permissions |
+| `enterprise_apps.jsonl.gz` | `office365InstalledApp` (resource), optional: enterprise applications, which are service principals and not software on devices |
+| `groups.jsonl.gz` | `office365Group` (resource), optional |
+| `mde_machine.jsonl.gz`, `mde_avhealth.jsonl.gz`, `mde_vulnerability.jsonl.gz`, `mde_secureconfig.jsonl.gz`, `mde_recommendation.jsonl.gz`, `mde_securescore.jsonl.gz` | `msDefenderMachine`, `msDefenderAvHealth`, `msDefenderVulnerability`, `msDefenderSecureConfig`, `msDefenderRecommendation`, `msDefenderSecureScore` (resources), optional. Use the dump method, never kql_search, for these. The vulnerability dump can be millions of rows; the report streams it and keeps counts only |
+| `gsuite_groups.jsonl.gz` | `gsuiteGroup` (resource), optional |
+| `tenable_asset.jsonl.gz`, `tenable_agent.jsonl.gz`, `tenable_plugin.jsonl.gz` | `tenableAsset`, `tenableAgent`, `tenablePlugin` (resources), optional. Dump method, never kql_search. Feed RA-5 and CM-8 |
+| `sentinelone_agent.jsonl.gz`, `sentinelone_threat.jsonl.gz` | `sentinelOneAgent`, `sentinelOneThreat` (resources), optional. Feed SI-3 and CM-8 |
+| `falcon_agent.jsonl.gz` | `falconAgent` (resource), optional. Feeds SI-3 and CM-8 |
+| `history_<Table>.json` | the table itself, for history depth (optional) |
 
 A table that is not listed is skipped: no file is saved, the report shows it as not collected,
 and the control it feeds is not observed. Say in the hand-off which tables were absent.
@@ -80,6 +91,9 @@ fails at the proxy is retried once, then left out (it renders as not collected).
 | `ct_*.json`, `src_<Table>.json` | `kql_search`, same window; one narrow query per file (see the note on large tables in `references/queries.md`) |
 | `behavior.json` | `behavior_summary_search`, same window, `limit: 0`, facets `status`, `classification`, `scoreLevel` |
 | `users.jsonl.gz`, `devices.jsonl.gz`, `ca_policies.jsonl.gz`, `qualys.jsonl.gz` | `list_resource_dumps`, then `get_resource_dump_url` per resource (see below). Current snapshot, no time window |
+| `guardduty.jsonl.gz`, `gsuite_users.jsonl.gz` | optional dumps, same download rule as below. Feed SI-4, AC-2 and IA-2/IA-5 and the key findings |
+| `apps.jsonl.gz`, `enterprise_apps.jsonl.gz`, `groups.jsonl.gz`, `gsuite_groups.jsonl.gz` | optional dumps, same download rule. Feed IA-5 (client secret hygiene), AC-2 (groups), CM-8 (enterprise applications) and the key findings |
+| `history_<Table>.json` | optional `kql_search` per event table: `<Table> \| summarize oldest=min(<time column>), newest=max(<time column>)` with `rangeFrom` a year or more before the period. The time column is `TimeGenerated` for the Azure tables and `timestamp` for CloudTrail. Skip a table that times out; never let the query window start inside the period you want to measure (a result that starts at the window edge is reported as "at least") |
 | `connectors.json` | `list_connectors`, reduced to `{"entries": [{"application": ..., "state": ...}]}` before saving (see below) |
 | `reports.json` | `list_reports` |
 
@@ -99,7 +113,7 @@ only that, then delete any raw copy. The report needs nothing else from it.
 **Extra sources.** A tenant's network, endpoint, cloud and identity tables decide how much of SC-7
 (boundary protection), SI-3 (malicious code protection) and AU-2 (logging) can be observed. For every
 listed stream table that matches a class in `references/queries.md`, save `src_<TableName>.json` from
-`<TableName> | summarize events=count()`. A count only shows that telemetry exists; rules, denied traffic,
+`<TableName> | summarize events=count()`. An empty result (`{"total": 0}`) is saved as it came: it is read as zero events, and a connector that shows as Running while its table received nothing becomes a key finding. A count only shows that telemetry exists; rules, denied traffic,
 agent coverage and detections are not evaluated, and the report says so. A table that matches no class is
 not queried.
 
@@ -116,13 +130,32 @@ retyping it. Do not substitute a different table for one that is absent.
 
 ```bash
 python3 scripts/build_report.py --evidence-dir WORKDIR --tenant acme --tenant-name "Example Corp" \
-  --site Develop --period 2026-09 --out WORKDIR/report.html
+  --site Develop --period 2026-09 --out WORKDIR/report.html [--history-dir HISTORY]
 ```
 
 Add `--summary-json WORKDIR/compliance_summary.json` to also write the control statuses and the facts
 behind them (event volumes, sign-in failures, directory users, Conditional Access policies, Qualys hosts,
 audit categories) as JSON. The CISO_monthly_report skill reads that file for its compliance section and
 for its O365 hygiene, environment changes and vulnerability rows.
+
+## Key findings, evidence coverage and trend
+
+- **Key findings** are computed in `build_report.py` from the evidence: root-account activity, administrators
+  or users without MFA, high-severity GuardDuty findings, incidents still new, stale devices, failed-login
+  shares, connectors that are Running but delivered no events, admin-role share and guest accounts. Each has
+  a severity (high, medium, low), the evidence and a recommended action. The thresholds are constants at the
+  top of the script and are the analyst's; they say where to look first, not what is non-compliant.
+- **Evidence coverage** is supported = 1 and partial = 0.5 over the control groups that telemetry can evidence
+  (manual-review groups are left out). It measures how much evidence was observed. It is not a compliance
+  score, and the report says so.
+- **Trend:** save every month's `--summary-json` as `HISTORY/compliance_summary_YYYY-MM.json` and pass
+  `--history-dir HISTORY`. The latest earlier month becomes the prior month: the KPI cards show changes, the
+  control table gets a Change column and a coverage-by-month chart appears. `--prior-summary PATH` compares
+  against one named file instead. Resource-table facts are snapshots, so a prior month is only comparable if its
+  run used the snapshot taken at that time; do not back-fill a past month with today's dumps and treat it as
+  history.
+- **History depth** (AU-4/AU-11) is how far back records exist, measured with the `history_` queries. It is
+  not the configured retention period and can reflect when a source was connected.
 
 ## Step 4 — Render and QA
 
@@ -158,6 +191,9 @@ Before handing the report over, read the gaps list with the user and note anythi
 have collected but did not (retention settings, MFA coverage, vulnerability findings).
 
 ## Accuracy discipline
+
+- Evidence coverage and the key-finding severities are not a compliance score or a finding of non-compliance.
+  Keep the "Read this first" wording that says so.
 
 - Never write "compliant", "certified" or "attested". Write what the evidence supports.
 - Resource-table counts are a snapshot as of the dump (`createdOn` in `list_resource_dumps`; Qualys

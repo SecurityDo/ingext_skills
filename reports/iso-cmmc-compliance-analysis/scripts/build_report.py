@@ -43,6 +43,230 @@ CMMC = [
 NOTE = {"iso": "ISO/IEC 27001:2022 Annex A", "cmmc": "CMMC 2.0 Level 2 practices (aligned to NIST SP 800-171 Rev. 2)"}
 
 
+# ---- Framework-specific checks and evidence coverage (computed from the summary facts; collects nothing) ----
+RES = {"ok": ("No gap seen", GRN), "review": ("Review", AMB), "gap": ("Gap seen", RED), "na": ("Not evaluable", GRY)}
+
+
+def _facts(d):
+    f = d.get("facts") or {}
+    hy = f.get("hygiene") or {}
+    ev = f.get("events") or {}
+    inc = f.get("incidents") or {}
+    ct = f.get("cloudtrail") or {}
+    hist = [h for h in (f.get("history") or []) if h.get("days") is not None]
+    srcs = [v for v in (ev.get("office365"), ev.get("signin"), ev.get("directory_audit"), ev.get("windows_audit"), ct.get("events")) if v]
+    srcs += [x["events"] for x in (f.get("sources") or []) if x.get("events") and x.get("table") != "CloudTrail"]
+    return {"admins": hy.get("admins"), "admin_gap": hy.get("admins_no_mfa"), "enabled": hy.get("enabled"), "user_gap": hy.get("enabled_no_mfa"),
+            "signin": ev.get("signin"), "failed": ev.get("signin_failed"), "root": ct.get("root_events"),
+            "inc_total": inc.get("total"), "inc_new": inc.get("new"), "gd": f.get("guardduty"),
+            "hist_days": min((h["days"] for h in hist), default=None), "hist_bounded": any(h.get("at_least") for h in hist), "sources": len(srcs) if (ev or srcs) else None, "mde": f.get("defender"), "scan": f.get("scanners_endpoint")}
+
+
+def _admin_mfa(F, p):
+    if F["admins"] is None or F["admin_gap"] is None:
+        return "na", "MFA registration of administrators was not collected."
+    if F["admin_gap"] == 0:
+        return "ok", "All %d administrator accounts have MFA registered. Registration is not enforcement." % F["admins"]
+    return "gap", "%d of %d administrator accounts have no MFA registered." % (F["admin_gap"], F["admins"])
+
+
+def _all_mfa(F, p):
+    if F["enabled"] is None or F["user_gap"] is None:
+        return "na", "MFA registration of users was not collected."
+    if F["user_gap"] == 0:
+        return "ok", "All %d enabled users have MFA registered. Registration is not enforcement." % F["enabled"]
+    return "gap", "%d of %d enabled users have no MFA registered." % (F["user_gap"], F["enabled"])
+
+
+def _logons(F, p):
+    if not F["signin"] or F["failed"] is None:
+        return "na", "Sign-in failures were not collected."
+    return "na", "%.1f%% of Entra sign-ins failed (%s of %s). The lockout threshold was not collected, so the limit itself cannot be checked." % (100.0 * F["failed"] / F["signin"], "{:,}".format(F["failed"]), "{:,}".format(F["signin"]))
+
+
+def _log_sources(F, p):
+    k = F["sources"]
+    if k is None:
+        return "na", "Event volumes were not collected."
+    return ("ok" if k >= 2 else "review" if k == 1 else "gap"), "Audit events were collected from %d sources in the period." % k
+
+
+def _triage(F, p):
+    if F["inc_total"] is None:
+        return "na", "Incident status was not collected."
+    if not F["inc_new"]:
+        return "ok", "None of the %d incidents in the window is still new." % F["inc_total"]
+    return ("gap" if F["inc_new"] == F["inc_total"] else "review"), "%d of %d incidents in the window are still marked new." % (F["inc_new"], F["inc_total"])
+
+
+def _threat(F, p):
+    g = F["gd"]
+    if not g:
+        return "na", "No GuardDuty data was collected."
+    if not g.get("high_open"):
+        return "ok", "No high-severity GuardDuty finding is open in the snapshot (%d findings)." % g.get("findings", 0)
+    return "review", "%d high-severity GuardDuty findings are open in the snapshot." % g["high_open"]
+
+
+def _root(F, p):
+    if F["root"] is None:
+        return "na", "Root-account activity was not collected."
+    if not F["root"]:
+        return "ok", "No events by the AWS root identity in the period."
+    return "review", "%s events by the AWS root identity in the period; confirm each was expected." % "{:,}".format(F["root"])
+
+
+def _history(F, p):
+    days = F["hist_days"]
+    if days is None:
+        return "na", "History depth was not measured."
+    if days >= p:
+        return "ok", "The shortest observed history is %d days; %d are asked for. This is what exists, not the configured retention." % (days, p)
+    if F["hist_bounded"]:
+        return "na", "At least %d days observed on the shortest source; the query window limited the measure, and %d are asked for." % (days, p)
+    return "gap", "The shortest observed history is %d days against %d asked for. This is how far back records exist; it can reflect when a source was connected rather than a retention setting." % (days, p)
+
+
+def _scan(F, key):
+    return (F.get("scan") or {}).get(key)
+
+
+def _mde(F, key):
+    return (F.get("mde") or {}).get(key)
+
+
+def _vuln_found(F, p):
+    v = _mde(F, "vuln")
+    t = _scan(F, "tenable")
+    q = _scan(F, "qualys")
+    if not (v or t or q):
+        return "na", "No vulnerability scanner data (Defender, Tenable or Qualys) was collected."
+    parts, gap = [], False
+    if v:
+        parts.append("Defender reports %s findings across %s devices." % ("{:,}".format(v["findings"]), "{:,}".format(v["devices"])))
+    if t:
+        parts.append("Tenable scanned %s of %s assets in the 30 days before the period ended (%s authenticated)." % ("{:,}".format(t.get("scanned_recent", 0)), "{:,}".format(t.get("assets", 0)), "{:,}".format(t.get("authenticated", 0))))
+        if t.get("assets") and t.get("scanned_recent", 0) < 0.95 * t["assets"]:
+            gap = True
+    if q and q.get("hosts"):
+        stale = q.get("never_scanned", 0) + q.get("stale_scan", 0)
+        parts.append("Qualys has %s of %s hosts without a recent scan." % ("{:,}".format(stale), "{:,}".format(q["hosts"])))
+        if stale:
+            gap = True
+    parts.append("Scan cadence and rescans are not evidenced.")
+    return ("review" if gap else "ok"), " ".join(parts)
+
+def _vuln_expl(F, p):
+    v = _mde(F, "vuln")
+    if not v:
+        return "na", "Defender vulnerability data was not collected."
+    if v.get("exploit"):
+        return "gap", "%s findings on %s devices have a verified, public or exploit-kit exploit." % ("{:,}".format(v["exploit"]), "{:,}".format(v["exploit_devices"]))
+    return "ok", "None of the %s findings has a known exploit." % "{:,}".format(v["findings"])
+
+
+def _vuln_aged(F, p):
+    v = _mde(F, "vuln")
+    if not v:
+        return "na", "Defender vulnerability data was not collected."
+    if v.get("critical_aged"):
+        return "review", "%s of %s critical findings were first seen more than 30 days before the period ended. The patching deadline itself is not known." % ("{:,}".format(v["critical_aged"]), "{:,}".format(v["critical"]))
+    return "ok", "No critical finding was first seen more than 30 days before the period ended (%s critical in all)." % "{:,}".format(v.get("critical", 0))
+
+
+def _av_current(F, p):
+    a = _mde(F, "av")
+    s1 = _scan(F, "sentinelone")
+    fc = _scan(F, "falcon")
+    if not ((a and a.get("devices")) or s1 or fc):
+        return "na", "No endpoint-protection health data (Defender, SentinelOne or Falcon) was collected."
+    parts, level = [], "ok"
+    def bump(x):
+        nonlocal level
+        order = ["ok", "review", "gap"]
+        if order.index(x) > order.index(level):
+            level = x
+    if a and a.get("devices"):
+        stale = a.get("sig_stale", 0)
+        parts.append("Defender: %s of %s devices have out-of-date signatures and %s an out-of-date platform." % ("{:,}".format(stale), "{:,}".format(a["devices"]), "{:,}".format(a.get("platform_stale", 0))))
+        bump("gap" if stale >= 0.05 * a["devices"] else ("review" if stale else "ok"))
+    if s1:
+        bad = s1.get("out_of_date", 0) + s1.get("not_protect", 0) + s1.get("infected", 0)
+        parts.append("SentinelOne: %s of %s agents out of date, %s not in protect mode, %s with active threats." % ("{:,}".format(s1.get("out_of_date", 0)), "{:,}".format(s1.get("agents", 0)), "{:,}".format(s1.get("not_protect", 0)), "{:,}".format(s1.get("infected", 0))))
+        bump("gap" if s1.get("agents") and bad >= 0.05 * s1["agents"] else ("review" if bad or s1.get("unresolved") else "ok"))
+    if fc:
+        bad = fc.get("reduced", 0) + fc.get("no_prevention", 0) + fc.get("not_seen_recent", 0)
+        parts.append("Falcon: %s of %s sensors in reduced functionality, %s without a prevention policy." % ("{:,}".format(fc.get("reduced", 0)), "{:,}".format(fc.get("sensors", 0)), "{:,}".format(fc.get("no_prevention", 0))))
+        bump("gap" if fc.get("sensors") and bad >= 0.05 * fc["sensors"] else ("review" if bad else "ok"))
+    return level, " ".join(parts)
+
+def _config(F, p):
+    c = _mde(F, "config")
+    if not c or not c.get("checks"):
+        return "na", "Defender secure-configuration data was not collected."
+    share = 100.0 * c.get("noncompliant", 0) / c["checks"]
+    txt = "%s of %s applicable checks are failing (%.0f%%), across %s devices." % ("{:,}".format(c.get("noncompliant", 0)), "{:,}".format(c["checks"]), share, "{:,}".format(c.get("devices_with_gaps", 0)))
+    return ("review" if share >= 25 else "ok"), txt
+
+
+def _mde_inventory(F, p):
+    m = _mde(F, "machines")
+    t = _scan(F, "tenable")
+    s1 = _scan(F, "sentinelone")
+    fc = _scan(F, "falcon")
+    if not ((m and m.get("devices")) or t or s1 or fc):
+        return "na", "No device inventory (Defender, Tenable, SentinelOne or Falcon) was collected."
+    parts, review = [], False
+    if m and m.get("devices"):
+        parts.append("Defender lists %s devices: %s onboarded, %s can be onboarded, %s with an inactive or impaired sensor." % ("{:,}".format(m["devices"]), "{:,}".format(m.get("onboarded", 0)), "{:,}".format(m.get("can_onboard", 0)), "{:,}".format(m.get("inactive", 0))))
+        review = review or bool(m.get("can_onboard"))
+    for label, x, k in (("Tenable assets", t, "assets"), ("SentinelOne agents", s1, "agents"), ("Falcon sensors", fc, "sensors")):
+        if x and x.get(k):
+            parts.append("%s: %s." % (label, "{:,}".format(x[k])))
+    parts.append("The inventories were not reconciled with one another.")
+    return ("review" if review else "ok"), " ".join(parts)
+
+CHECKFN = {"admin_mfa": _admin_mfa, "all_mfa": _all_mfa, "logons": _logons, "sources": _log_sources, "triage": _triage, "threat": _threat, "root": _root, "history": _history, "vuln_found": _vuln_found, "vuln_expl": _vuln_expl, "vuln_aged": _vuln_aged, "av_current": _av_current, "config": _config, "mde_inventory": _mde_inventory}
+
+
+ISO_CHECKS = [("A.5.9", "Inventory of information and other associated assets", "mde_inventory", None, "Defender's inventory only; not reconciled with other inventories."),
+              ("A.5.26", "Response to information security incidents", "triage", None, "Incident status only; the documented procedure is not evidenced."),
+              ("A.8.5", "Secure authentication: administrators", "admin_mfa", None, "Registration, not enforcement."),
+              ("A.8.5", "Secure authentication: all users", "all_mfa", None, "Registration, not enforcement."),
+              ("A.8.7", "Protection against malware", "av_current", None, "Defender antivirus only."),
+              ("A.8.8", "Technical vulnerabilities: known exploits", "vuln_expl", None, "Management of technical vulnerabilities also needs an exposure-evaluation process."),
+              ("A.8.8", "Technical vulnerabilities: critical findings left open", "vuln_aged", None, "Critical findings only; the remediation deadline is not known."),
+              ("A.8.9", "Configuration management", "config", None, "Defender's secure-configuration checks, not your own baseline."),
+              ("A.8.15", "Logging", "sources", None, "Counts sources with events, not completeness."),
+              ("A.8.16", "Monitoring activities", "threat", None, "Only GuardDuty findings are visible here.")]
+CMMC_CHECKS = [("IA.L2-3.5.3", "Multifactor authentication: privileged accounts", "admin_mfa", None, "Registration, not enforcement."),
+               ("IA.L2-3.5.3", "Multifactor authentication: all users", "all_mfa", None, "Registration, not enforcement."),
+               ("AU.L2-3.3.1", "System auditing", "sources", None, "Counts sources with events; retention is not confirmed."),
+               ("IR.L2-3.6.1", "Incident handling", "triage", None, "Incident status only."),
+               ("CM.L2-3.4.1", "Baseline configurations and inventories", "mde_inventory", None, "Defender's inventory only."),
+               ("CM.L2-3.4.2", "Security configuration settings", "config", None, "Defender's secure-configuration checks only."),
+               ("RA.L2-3.11.2", "Vulnerability scanning", "vuln_found", None, "Scan frequency is not evidenced."),
+               ("SI.L2-3.14.1", "Flaw remediation", "vuln_aged", None, "Critical findings only; the remediation deadline is not known."),
+               ("SI.L2-3.14.2", "Protection from malicious code", "av_current", None, "Defender antivirus only."),
+               ("SI.L2-3.14.6", "Monitoring of systems", "threat", None, "Only GuardDuty findings are visible here.")]
+
+
+def _checks_section(d, fw, num):
+    F = _facts(d)
+    rows = []
+    for key, checks in (("iso", ISO_CHECKS), ("cmmc", CMMC_CHECKS)):
+        if key not in [k for k, _ in fw]:
+            continue
+        for ref, title, fn, prm, cav in checks:
+            res, txt = CHECKFN[fn](F, prm)
+            lbl, col = RES[res]
+            rows.append("<tr><td class='ctl' style='--c:%s'>%s</td><td>%s</td><td><b>%s</b><div class='cav'>%s</div></td><td><span class='pill' style='--c:%s'>%s</span></td><td>%s</td></tr>" % (
+                col, E(ref), "ISO 27001" if key == "iso" else "CMMC", E(title), E(cav), col, E(lbl), E(txt)))
+    return ("<h2><span class='n'>%d</span>Framework-specific checks</h2><p class='sub'>Checks that look at each framework's own wording rather than only the 800-53 status. Thresholds are the analyst's, evidence is one month of telemetry, "
+            "and &lsquo;No gap seen&rsquo; is an observation about the evidence, not a statement that a control is met.</p>"
+            "<div class='tw'><table><thead><tr><th>Reference</th><th>Framework</th><th>Check</th><th>Result</th><th>What the evidence shows</th></tr></thead><tbody>%s</tbody></table></div>" % (num, "".join(rows)))
+
+
 STYLE = """
 :root{--navy:#14213d;--ink:#1f2937;--mut:#64748b;--line:#e2e8f0;--bg:#f4f6fa;--card:#fff;--acc:#2563eb}
 *{box-sizing:border-box}
@@ -57,6 +281,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:-46px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:0 2px 8px rgba(15,26,51,.06);border-top:4px solid var(--c)}
 .kpi b{display:block;font-size:32px;line-height:1.1;color:var(--c)}.kpi span{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.kpi small{display:block;margin-top:4px;font-size:11px;color:var(--mut)}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-top:18px;box-shadow:0 1px 4px rgba(15,26,51,.04)}
 h2{font-size:18px;margin:34px 0 4px;color:var(--navy);display:flex;align-items:center;gap:10px}
 h2 .n{background:var(--navy);color:#fff;border-radius:6px;font-size:12px;padding:2px 8px;font-weight:600}
@@ -79,8 +304,32 @@ td.ctl{border-left:4px solid var(--c);white-space:nowrap;font-family:ui-monospac
 .card b{display:block;color:var(--navy);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;margin-bottom:2px}
 .foot{margin-top:34px;color:var(--mut);font-size:12px;border-top:1px solid var(--line);padding-top:14px}.foot li{margin:3px 0}
 @media (max-width:760px){.kpis,.cards{grid-template-columns:1fr 1fr}.hero h1{font-size:24px}}
-@media print{body{background:#fff}.hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}tr,.card,.kpi,.panel{break-inside:avoid}th{position:static}.kpi,.pill,.bar i,td.ctl,.card,.read{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@media print{h2,h2+p{break-after:avoid}body{background:#fff}.hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}tr,.card,.kpi,.panel{break-inside:avoid}th{position:static}.kpi,.pill,.bar i,td.ctl,.card,.read{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 """
+
+
+def _fw_cov(table, st):
+    vals = []
+    for cid, title, groups, cav in table:
+        sc = [(1.0 if st[g]["status"] == "supported" else 0.5 if st[g]["status"] == "partial" else 0.0) for g in groups if g in st and st[g]["status"] != "needs_manual_review"]
+        if sc:
+            vals.append(sum(sc) / len(sc))
+    return int(round(100.0 * sum(vals) / len(vals))) if vals else None
+
+
+def _fw_kpis(fw, tables, summ, st):
+    t = []
+    for key, table in fw:
+        strong, none, need = summ[key]
+        short = "ISO 27001" if key == "iso" else "CMMC"
+        n = len(table)
+        cov = _fw_cov(table, st)
+        k = lambda col, big, lab, sub: "<div class='kpi' style='--c:%s'><b>%s</b><span>%s %s</span><small>%s</small></div>" % (col, big, short, lab, sub)
+        t += [k(NAVY, ("%d%%" % cov) if cov is not None else "n/a", "evidence coverage", "weighted over %d controls" % n),
+              k(GRN, len(strong), "strongly mapped", "of %d controls" % n),
+              k(AMB, len(need), "needing evidence", "of %d controls" % n),
+              k(GRY, len(none), "not observed", "of %d controls" % n)]
+    return "<div class='kpis'>%s</div>" % "".join(t)
 
 
 def pill(s):
@@ -110,7 +359,8 @@ def main():
              "<h1>ISO/IEC 27001:2022 and CMMC 2.0</h1><p>Companion view of the NIST SP 800-53 evidence</p>"
              "<div class='chips'><span class='chip'>%s</span><span class='chip'>%s</span><span class='chip'>Period %s</span>"
              "<span class='chip'>Related, not equivalent</span></div></div></div><div class='wrap'>" % (E(a.tenant or "Tenant"), E(a.site or "Connector"), E(d.get("period", ""))))
-    o.append("<div class='kpis'>%s</div>" % "".join("<div class='kpi' style='--c:%s'><b>%d</b><span>800-53 %s</span></div>" % (STATUS[k][1], cnt.get(k, 0), STATUS[k][0]) for k in STATUS))
+    kpi_idx = len(o)
+    o.append("")
     o.append("<div class='read'><b>Read this first.</b> The evidence is rooted in NIST SP 800-53 Rev. 5 and was collected by compliance-assessment. "
              "The rows below are <b>mapped or related</b> to it by an indicative analyst crosswalk. They are <b>not equivalent</b>: a related 800-53 status does not show an ISO control or CMMC practice is met. "
              "CMMC wording is advisory. Nothing here is an ISO certification, a CMMC assessment result or an attestation. Not observed means not collected in this run.</div>")
@@ -140,9 +390,12 @@ def main():
             GRN, len(strong), E(", ".join(strong) or "none"), GRY, len(none), E(", ".join(none) or "none"), AMB, len(need), E(", ".join(need) or "none")))
         o.append("<p class='sub'>The stripe shows the weakest related evidence: green when every related 800-53 group is supported, grey when none was observed, amber otherwise.</p>")
         o.append("<div class='tw'><table><thead><tr><th>Control</th><th>Title and caveat</th><th>Related 800-53 groups and status</th></tr></thead><tbody>%s</tbody></table></div>" % "".join(body_rows))
+    o[kpi_idx] = _fw_kpis(fw, None, summ, st)
+    o.append(_checks_section(d, fw, len(fw) + 1))
     o.append("<div class='foot'><b>Limits</b><ul><li>The mapping is the analyst's and is indicative; confirm it against ISO/IEC 27001:2022 Annex A and the CMMC assessment guide before audit use.</li>"
              "<li>The CMMC rows follow Level 2 practices; Level 1 practices are the same wording where the identifier starts L1.</li>"
              "<li>ISO clauses 4 to 10 (the management system) are not evidenced by telemetry and are not covered.</li>"
+             "<li>The checks table reads Not evaluable where the evidence was not collected, for example the Defender rows on a tenant without Defender data.</li>"
              "<li>Statuses are the 800-53 statuses returned by compliance-assessment; a companion row never raises one.</li></ul></div></div></body></html>")
     with open(a.out, "w") as f:
         f.write("\n".join(o))

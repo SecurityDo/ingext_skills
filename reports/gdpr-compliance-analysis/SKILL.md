@@ -1,6 +1,6 @@
 ---
 name: gdpr-compliance-analysis
-version: 1.0.0
+version: 1.3.0
 description: >-
   Express a tenant's NIST 800-53 compliance evidence in GDPR (Regulation (EU) 2016/679) terms as HTML plus CSV: each
   requirement with its related 800-53 control groups and their statuses, a caveat, the strongest
@@ -8,7 +8,7 @@ description: >-
   "GDPR view of our compliance evidence", "map the NIST findings to GDPR", "GDPR readiness
   evidence", "crosswalk to GDPR". It reads the compliance_summary.json that compliance-assessment
   writes and collects nothing itself. PREREQUISITE: install and run compliance-assessment first.
-  Rows are related, never equivalent; it never claims GDPR compliance or certification. DO NOT use
+  Also runs framework-specific checks (MFA, logging, incidents, threat findings, history depth) and shows an evidence-coverage figure with its change since the prior month. Rows are related, never equivalent; it never claims GDPR compliance or certification. DO NOT use
   it for the 800-53 control table (nist-compliance-analysis) or a customer evidence report
   (compliance-assessment).
 ---
@@ -32,6 +32,11 @@ python3 scripts/build_report.py --summary WORKDIR/compliance_summary.json --out 
 ```
 
 ## Reading it
+
+The page opens with an **evidence-coverage** card for this framework (supported = 1, partial = 0.5 over the mapped groups telemetry can evidence). When the summary carries a prior month, the card shows the change. A **Framework-specific checks** table follows the crosswalk: each row reads one of the framework's own requirements against the facts in the summary and returns No gap seen, Review, Gap seen or Not evaluable. The thresholds are the analyst's; No gap seen is an observation about one month of evidence, never a statement that a requirement is met.
+
+When the summary carries Defender evidence (compliance-assessment 1.4.0 or later with the `mde_*` dumps), the checks table also covers known-exploit and aged critical vulnerabilities, antivirus currency, secure configuration and device inventory. Without it those rows read Not evaluable.
+
 
 One table: `Requirement | Title and caveat | Related 800-53 groups and status`. Summarize:
 
