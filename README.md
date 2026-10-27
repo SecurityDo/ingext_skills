@@ -89,6 +89,12 @@ package in the same change — the validator checks inside the archives and will
 | [office365-posture-review](#office365-posture-review) | Office 365 / Entra posture from resource dumps: users, app registrations and devices, ranked by severity → HTML + CSV |
 | [nist-compliance-analysis](#nist-compliance-analysis) | NIST SP 800-53 control-by-control analysis from compliance-assessment results, with CSF 2.0 and 800-171 child views → HTML + CSV |
 | [iso-cmmc-compliance-analysis](#iso-cmmc-compliance-analysis) | ISO/IEC 27001:2022 and CMMC 2.0 companion view of the 800-53 evidence, related not equivalent → HTML + CSV |
+| [pci-dss-compliance-analysis](#pci-dss-compliance-analysis) | PCI DSS v4.0.1 companion view of the 800-53 evidence, related not equivalent → HTML + CSV |
+| [hipaa-compliance-analysis](#hipaa-compliance-analysis) | HIPAA Security Rule companion view of the 800-53 evidence → HTML + CSV |
+| [soc2-compliance-analysis](#soc2-compliance-analysis) | SOC 2 Trust Services Criteria companion view of the 800-53 evidence → HTML + CSV |
+| [cis-compliance-analysis](#cis-compliance-analysis) | CIS Critical Security Controls v8.1 companion view of the 800-53 evidence → HTML + CSV |
+| [fedramp-compliance-analysis](#fedramp-compliance-analysis) | FedRAMP Rev. 5 baseline view of the 800-53 evidence → HTML + CSV |
+| [gdpr-compliance-analysis](#gdpr-compliance-analysis) | GDPR security-of-processing companion view of the 800-53 evidence → HTML + CSV |
 | [endpoint-os-currency](#endpoint-os-currency) | Endpoint OS inventory, end-of-support and build-currency report from an EDR or Entra device dump → HTML + PDF + CSV |
 | [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
@@ -316,6 +322,48 @@ equivalent, and nothing is a certification or assessment result. It collects not
 **Try:**
 - "show our compliance evidence in ISO 27001 terms"
 - "map the NIST findings to CMMC practices for <tenant>"
+
+### pci-dss-compliance-analysis
+
+Reads the result of `compliance-assessment` and expresses the 800-53-rooted evidence in PCI DSS v4.0.1 language (10.x logging, 8.x authentication, 11.3 scans, 1.x network controls, 12.10 incident response): each requirement with its related 800-53 groups and statuses, a caveat, the strongest mapped areas, and what telemetry cannot evidence. Rows are related, never equivalent, and nothing is a certification or compliance finding. It collects nothing itself. Prerequisite: `compliance-assessment`. Lives in [`reports/`](./reports).
+
+**Try:**
+- "show our compliance evidence in PCI DSS v4.0.1 terms"
+
+### hipaa-compliance-analysis
+
+Reads the result of `compliance-assessment` and expresses the 800-53-rooted evidence in the HIPAA Security Rule language (164.312 technical safeguards and the 164.308 administrative standards): each requirement with its related 800-53 groups and statuses, a caveat, the strongest mapped areas, and what telemetry cannot evidence. Rows are related, never equivalent, and nothing is a certification or compliance finding. It collects nothing itself. Prerequisite: `compliance-assessment`. Lives in [`reports/`](./reports).
+
+**Try:**
+- "show our compliance evidence in the HIPAA Security Rule terms"
+
+### soc2-compliance-analysis
+
+Reads the result of `compliance-assessment` and expresses the 800-53-rooted evidence in the SOC 2 Trust Services Criteria language (the Security (Common Criteria) category, CC5 to CC7): each requirement with its related 800-53 groups and statuses, a caveat, the strongest mapped areas, and what telemetry cannot evidence. Rows are related, never equivalent, and nothing is a certification or compliance finding. It collects nothing itself. Prerequisite: `compliance-assessment`. Lives in [`reports/`](./reports).
+
+**Try:**
+- "show our compliance evidence in the SOC 2 Trust Services Criteria terms"
+
+### cis-compliance-analysis
+
+Reads the result of `compliance-assessment` and expresses the 800-53-rooted evidence in CIS Critical Security Controls v8.1 language (safeguards for inventory, accounts, MFA, vulnerabilities, logs, malware and incident response): each requirement with its related 800-53 groups and statuses, a caveat, the strongest mapped areas, and what telemetry cannot evidence. Rows are related, never equivalent, and nothing is a certification or compliance finding. It collects nothing itself. Prerequisite: `compliance-assessment`. Lives in [`reports/`](./reports).
+
+**Try:**
+- "show our compliance evidence in CIS Critical Security Controls v8.1 terms"
+
+### fedramp-compliance-analysis
+
+Reads the result of `compliance-assessment` and expresses the 800-53-rooted evidence in the FedRAMP Rev. 5 baselines language (the 800-53 controls that appear in the Low, Moderate and High baselines): each requirement with its related 800-53 groups and statuses, a caveat, the strongest mapped areas, and what telemetry cannot evidence. Rows are related, never equivalent, and nothing is a certification or compliance finding. It collects nothing itself. Prerequisite: `compliance-assessment`. Lives in [`reports/`](./reports).
+
+**Try:**
+- "show our compliance evidence in the FedRAMP Rev. 5 baselines terms"
+
+### gdpr-compliance-analysis
+
+Reads the result of `compliance-assessment` and expresses the 800-53-rooted evidence in GDPR language (Articles 5, 24, 30, 32, 33 and 34 security-of-processing evidence): each requirement with its related 800-53 groups and statuses, a caveat, the strongest mapped areas, and what telemetry cannot evidence. Rows are related, never equivalent, and nothing is a certification or compliance finding. It collects nothing itself. Prerequisite: `compliance-assessment`. Lives in [`reports/`](./reports).
+
+**Try:**
+- "show our compliance evidence in GDPR terms"
 
 ### endpoint-os-currency
 

@@ -1,0 +1,50 @@
+---
+name: gdpr-compliance-analysis
+version: 1.0.0
+description: >-
+  Express a tenant's NIST 800-53 compliance evidence in GDPR (Regulation (EU) 2016/679) terms as HTML plus CSV: each
+  requirement with its related 800-53 control groups and their statuses, a caveat, the strongest
+  mapped areas, the not-observed areas, and what telemetry cannot evidence. USE THIS SKILL for
+  "GDPR view of our compliance evidence", "map the NIST findings to GDPR", "GDPR readiness
+  evidence", "crosswalk to GDPR". It reads the compliance_summary.json that compliance-assessment
+  writes and collects nothing itself. PREREQUISITE: install and run compliance-assessment first.
+  Rows are related, never equivalent; it never claims GDPR compliance or certification. DO NOT use
+  it for the 800-53 control table (nist-compliance-analysis) or a customer evidence report
+  (compliance-assessment).
+---
+
+# GDPR Compliance Analysis
+
+> **Prerequisite: install `compliance-assessment` and run it for the tenant and month with
+> `--summary-json`.** This skill reads that file and collects nothing. The 800-53 control table itself is
+> `nist-compliance-analysis`; this is its GDPR companion.
+
+Renders the 800-53-rooted evidence in GDPR (Regulation (EU) 2016/679) language. It is read-only.
+
+## Steps
+
+1. Run **compliance-assessment** with `--summary-json WORKDIR/compliance_summary.json`.
+2. Build:
+
+```bash
+python3 scripts/build_report.py --summary WORKDIR/compliance_summary.json --out WORKDIR/report.html \
+  --csv WORKDIR/report.csv --tenant "Example Corp" --site Develop
+```
+
+## Reading it
+
+One table: `Requirement | Title and caveat | Related 800-53 groups and status`. Summarize:
+
+- **Strongest mapped areas:** requirements whose every related 800-53 group is supported.
+- **Not observed:** requirements whose related groups are all not observed (evidence not collected).
+- **Evidence still required:** everything partial, mixed or needing manual review.
+- **Not evidenced by telemetry:** the parts of GDPR that logs and inventories cannot show. Read this list aloud.
+
+## Rules
+
+- Always say rows are **mapped or related** to 800-53-rooted evidence. Never say a GDPR requirement is
+  equivalent to, or met by, a related 800-53 status. Only a supervisory authority, a court or an accredited certification body can issue a finding of GDPR compliance or an Article 42 certification.
+- Keep the 800-53 source group in every row; a row never raises a status.
+- The mapping is the analyst's and indicative; check it against the current text of GDPR (Regulation (EU) 2016/679) before use.
+- Not observed is not a failure. Never write "compliant", "certified" or "attested".
+- The output names the tenant; keep it out of the repository.
