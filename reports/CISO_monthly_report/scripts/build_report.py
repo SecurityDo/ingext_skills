@@ -97,7 +97,7 @@ h3{font-size:15px;color:var(--navy);margin:18px 0 8px}
 .foot{margin-top:36px;padding:16px 0 40px;border-top:1px solid var(--line);color:var(--mut);font-size:12px}
 @media (max-width:900px){.kpis{grid-template-columns:repeat(3,1fr)}.hero-row{flex-wrap:wrap}}
 @media (max-width:620px){.kpis{grid-template-columns:1fr 1fr}.hero h1{font-size:24px}.wrap{padding:0 16px}.dec .cards{grid-template-columns:1fr!important}}
-@media print{body{background:#fff;font-size:12.5px}.hero,.chap,.kpi,.pill,.pill-rag,.posture,.dec .dh,.finding,.caveat,.sec .n,.flag,.gap span,.fig,tr.hl td,th,td:first-child,.logo{-webkit-print-color-adjust:exact;print-color-adjust:exact}tr,.kpi,.fig,.card,.finding,.caveat,.dec,.posture{break-inside:avoid}.chap,.sec,h3{break-after:avoid}th{position:static}.kpi,.fig,.posture,.tw{box-shadow:none}.hero{padding-bottom:70px}}
+@media print{.kpis{margin-top:16px}body{background:#fff;font-size:12.5px}.hero,.chap,.kpi,.pill,.pill-rag,.posture,.dec .dh,.finding,.caveat,.sec .n,.flag,.gap span,.fig,tr.hl td,th,td:first-child,.logo{-webkit-print-color-adjust:exact;print-color-adjust:exact}tr,.kpi,.fig,.card,.finding,.caveat,.dec,.posture{break-inside:avoid}.chap,.sec,h3{break-after:avoid}th{position:static}.kpi,.fig,.posture,.tw{box-shadow:none}.hero{padding-bottom:70px}}
 """
 
 

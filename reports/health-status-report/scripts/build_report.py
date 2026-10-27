@@ -48,7 +48,7 @@ td.app{border-left:4px solid var(--c)}
 .gaps{margin:0;padding-left:20px}.gaps li{margin:5px 0}
 .foot{margin-top:34px;color:var(--mut);font-size:12px;border-top:1px solid var(--line);padding-top:14px}.foot p{margin:4px 0}
 @media (max-width:760px){.kpis{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}.hero h1{font-size:24px}}
-@media print{body{background:#fff}.wrap{max-width:none;padding:0 0 16px}.hero{border-radius:12px;padding:26px 0 62px}.hero .wrap{padding:0 24px}.kpis{grid-template-columns:repeat(var(--k,4),1fr);margin:-46px 14px 0}.two{grid-template-columns:1fr 1fr}tr,.card,.kpi,.panel,.fig,.read{break-inside:avoid}th{position:static}.hero,.kpi,.pill,.bar i,td.app,.read,.n,.legend em,.chip{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@media print{.kpi b.sm{font-size:14px;padding:8px 0}body{background:#fff}.wrap{max-width:none;padding:0 0 16px}.hero{border-radius:12px;padding:26px 0 62px}.hero .wrap{padding:0 24px}.kpis{grid-template-columns:repeat(var(--k,4),1fr);margin:-46px 14px 0}.two{grid-template-columns:1fr 1fr}tr,.card,.kpi,.panel,.fig,.read{break-inside:avoid}th{position:static}.hero,.kpi,.pill,.bar i,td.app,.read,.n,.legend em,.chip{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 """
 
 def load(path):

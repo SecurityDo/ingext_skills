@@ -332,7 +332,7 @@ def main():
 <p><b>Evidence strength.</b> Confirmed: event volumes, incident counts, inventory counts. Inferred: the mapping of evidence to control status. Unknown: retention, MFA coverage, vulnerability findings, policy documents.</p></div>
 <div class="read"><b>Read this first.</b> This is a reduced, evidence-led view of 13 NIST SP 800-53 Rev. 5 control groups, assembled by read-only queries to the {site} connector. It is not the full Compliance Package and does not certify or attest compliance. "Not observed" means evidence was not collected in this run; it is not a failed control.</div>
 <h2><span class="n">1</span>Posture by control group</h2>
-<div class="tw"><table><colgroup><col style="width:15%"><col style="width:22%"><col style="width:13%"><col style="width:50%"></colgroup><thead><tr><th>Control</th><th>Topic</th><th>Status</th><th>What the evidence shows</th></tr></thead><tbody>{trs}</tbody></table></div>
+<div class="tw"><table><colgroup><col style="width:14%"><col style="width:20%"><col style="width:18%"><col style="width:48%"></colgroup><thead><tr><th>Control</th><th>Topic</th><th>Status</th><th>What the evidence shows</th></tr></thead><tbody>{trs}</tbody></table></div>
 <h2><span class="n">2</span>Monitoring coverage</h2>
 <div class="two"><div class="panel fig"><div class="cap">Office 365 events by workload ({o365} total)</div>{wl_chart}</div>
 <div class="panel fig"><div class="cap">Entra directory-audit events by category ({audit} total)</div>{au_chart}</div></div>
