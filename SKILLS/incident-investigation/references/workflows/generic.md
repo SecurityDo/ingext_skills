@@ -145,7 +145,27 @@ account, whether or not it alerted.
 The Office365 workflow does this for sign-in IPs; do the same for whatever the ticket
 carries — destination IPs and ports, domains, hashes, device or account ids.
 
-For every IP address, run `assets/queries/subnet_lookup.kql` first, against each
+**First ask whether the address is a network device that sends us logs.** Run
+`assets/queries/ip_log_sender.kql` on every address the ticket names as a source. A row
+with a firewall, VPN or router parser (`FortiGateNGFW`, `fpl-FortigateFWSyslog`…) means
+the address is that device, not a client:
+
+- **Everyone behind it shares the address.** Source NAT, a VIP / port forward or a
+  reverse proxy makes internet scanners and staff on the VPN arrive at the server as the
+  same IP. Failures and successes from it in the same minute do not link: a spray of
+  dictionary names (`root`, `admin`, `oracle`…) alongside a few first-try successes on
+  accounts the spray never tried is two populations behind one address, not one host
+  that cracked a password. Count per account, not per address.
+- **The question becomes who behind it.** Look for the device's own records of who was
+  connected: VPN tunnel-up and user events, its traffic log for the minute (often not
+  forwarded; then it is a gap), the jump host's logs. When none of them names a person,
+  say so: attribution is a gap and the customer confirms the user. Never ask the
+  customer to "identify the owner" of the device's own address.
+- **Never record the device's address as an attacker** in an account note or the
+  closure. A note saying "internal host X sprays SSH" when X is the firewall misleads
+  every later run on the account.
+
+Then, for every address, run `assets/queries/subnet_lookup.kql`, against each
 `lookupType: CIDR` entity table. A match in the organisation's own subnet inventory is
 the only thing that makes an address "theirs"; hundreds of sources make it shared
 infrastructure, not owned. Grade and word it as `office365.md` 3a says.
