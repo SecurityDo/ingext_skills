@@ -5,7 +5,7 @@ only the fields below; other fields are ignored.
 
 | File | Fields read |
 |---|---|
-| `cases.json`, `cases_prev.json` | one `behavior_summary_search` result, or an array of paged results: `total`, `documents[].source` with `key`, `keyType`, `dayIndex`, `riskScore`, `status`, `classification`, `behaviorRules`, `from`, `updatedOn`, `comments[]` (`createdOn`, `username`, `actions`) |
+| `cases.json`, `cases_prev.json` | one `behavior_summary_search` result, or an array of paged results: `total`, `documents[].source` with `key`, `keyType`, `dayIndex`, `riskScore`, `status`, `classification`, `behaviorRules`, `incidentDetectionTime`, `updatedOn`, `comments[]` (`createdOn`, `username`, `actions`) |
 | `connectors.json` | `entries[]`: `application`, `state` (written by `scripts/reduce_connectors.py`) |
 | `dumps.json` | `list_resource_dumps` result: `entries[]` with `resource`, `customer`, `createdOn`, `count` |
 | `admins.json` | `{"checked": [upn], "admins": {upn: [role]}}` from `get_azure_user_record` |
@@ -16,7 +16,7 @@ Only `cases.json` is required. A month with no case at all stops the run.
 Notes
 
 - MTTD is structurally zero (a case is created at its first event), so the report says it is not meaningful.
-- A case's `from` is a two-minute bucket label of its first event, not an exact time.
+- Response and close times start at `incidentDetectionTime`. A case without it is left out of those times, because the summary's `from` is only a two-minute bucket label of the first event.
 - Comments on a case are written by the automated assistant (`AI-Assistant`) unless a person commented.
   The report separates assistant or analyst first response from analyst first response, and counts
   closed cases closed by the assistant, so a quiet analyst trail is visible instead of hidden.

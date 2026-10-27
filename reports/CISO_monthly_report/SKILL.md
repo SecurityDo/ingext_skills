@@ -52,7 +52,7 @@ text. Never save the raw result in the work folder or the repository, never quot
 application and its state, then delete the raw file.
 
 **What the behavior summary gives.** Each case carries `status`, `classification`, `behaviorRules`,
-`riskScore`, `from`, `updatedOn` and its `comments` (`createdOn`, `username`, `actions`). The script
+`riskScore`, `incidentDetectionTime`, `updatedOn` and its `comments` (`createdOn`, `username`, `actions`). The script
 computes everything from those:
 
 - **Case shape:** the combination of rules that fired, shown with an 8-character id. There is no
@@ -60,12 +60,15 @@ computes everything from those:
   shown elsewhere.
 - **Repeat actors:** an identifier with two or more cases. Admin status comes from `admins.json`; an
   account not looked up shows as "admin status not checked".
-- **Time to first response:** from the case's `from` to its first comment. `from` is a two-minute bucket
-  label of the first event, so treat it as approximate. **Comments are written by the automated
+- **Time to first response:** from the case's `incidentDetectionTime` to its first comment. A case
+  without that field is left out of the times (there is no fallback: the summary's own `from` is only a
+  two-minute bucket label of the first event), and the report says how many cases carry it. A prior
+  month with fewer than three usable cases is not compared. **Comments are written by the automated
   assistant (`AI-Assistant`) unless a person commented**, so the report separates the first response
   of the assistant or an analyst from the first analyst response, and counts the closed cases that the
   assistant closed. A report with no analyst comment on any case says exactly that.
-- **Time to close:** from `from` to the later of `updatedOn` and the last comment, closed cases only.
+- **Time to close:** from `incidentDetectionTime` to the later of `updatedOn` and the last comment,
+  closed cases only.
 - **ATT&CK:** no approved mapping source exists through the connector, so the appendix says so and no
   technique table is shown.
 

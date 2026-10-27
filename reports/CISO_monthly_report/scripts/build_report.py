@@ -193,16 +193,26 @@ def pctile(vals, p):
     return v[min(len(v) - 1, max(0, int(round(p / 100.0 * len(v) + 0.5)) - 1))]
 
 
+def detection_ms(c):
+    """When the incident was detected (incidentDetectionTime), in epoch ms, or None. There is no fallback: the summary's
+    own `from` is a two-minute bucket label of the first event and is not comparable."""
+    t = parse_iso(c.get("incidentDetectionTime"))
+    if t is not None:
+        return int(t.timestamp() * 1000), True
+    return None, False
+
+
 def case_times(c):
-    """Seconds to first response (any comment), to first human response, and to close."""
-    start = ms(c.get("from"))
+    """Seconds to first response (any comment), to first human response, and to close, all from incidentDetectionTime; and whether the assistant closed the case."""
+    start, _ = detection_ms(c)
     cm = sorted(((ms(x.get("createdOn")), x.get("username") or "", x.get("actions") or []) for x in c.get("comments") or [] if ms(x.get("createdOn")) is not None), key=lambda t: t[0])
     first = (max(0, cm[0][0] - start) / 1000.0) if cm and start is not None else None
     human = next((max(0, t[0] - start) / 1000.0 for t in cm if t[1] != ASSISTANT), None) if start is not None else None
     close, by_ai = None, None
-    if c.get("status") in ("closed", "resolved") and start is not None:
-        end = max([ms(c.get("updatedOn")) or 0] + [t[0] for t in cm])
-        close = max(0, end - start) / 1000.0
+    if c.get("status") in ("closed", "resolved"):
+        if start is not None:
+            end = max([ms(c.get("updatedOn")) or 0] + [t[0] for t in cm])
+            close = max(0, end - start) / 1000.0
         closing = [t for t in cm if any("closed" in str(a).lower() and "status" in str(a).lower() for a in t[2])]
         by_ai = bool(closing) and closing[-1][1] == ASSISTANT
     return first, human, close, by_ai
@@ -217,8 +227,10 @@ def case_metrics(cases):
     t = [case_times(c) for c in cases]
     firsts, humans = [x[0] for x in t if x[0] is not None], [x[1] for x in t if x[1] is not None]
     closes = [x[2] for x in t if x[2] is not None]
-    m.update(mttr_p50=pctile(firsts, 50), mttr_p90=pctile(firsts, 90), mttr_samples=len(firsts), human_n=len(humans), human_p50=pctile(humans, 50), human_p90=pctile(humans, 90),
-             mttc_p50=pctile(closes, 50), mttc_p90=pctile(closes, 90), closed_by_ai=sum(1 for x in t if x[3]), no_human=sum(1 for x in t if x[1] is None))
+    m["no_detection_time"] = sum(1 for c in cases if not detection_ms(c)[1])
+    m.update(mttr_p50=pctile(firsts, 50), mttr_p90=pctile(firsts, 90), mttr_samples=len(firsts), human_p50=pctile(humans, 50), human_p90=pctile(humans, 90),
+             mttc_p50=pctile(closes, 50), mttc_p90=pctile(closes, 90), mttc_samples=len(closes), closed_by_ai=sum(1 for x in t if x[3]), no_human=sum(1 for c in cases if not any((cm.get("username") or "") != ASSISTANT for cm in (c.get("comments") or []))))
+    m["human_n"] = len(cases) - m["no_human"]
     return m
 
 
@@ -240,12 +252,16 @@ def compute(ev, month):
     for c in cases:
         c["_shape"] = shape_id(c)
     v.update(case_metrics(cases))
+    if v["no_detection_time"]:
+        warnings.append("%d of %d cases have no incidentDetectionTime and are left out of the response and close times" % (v["no_detection_time"], len(cases)))
     v["case_rows"] = cases
     v["days"] = collections.Counter(int(str(c["dayIndex"])[-2:]) for c in cases if c.get("dayIndex"))
     v["cat_cur"] = collections.Counter(classify(c) for c in cases)
     if pcases is not None:
         pm = case_metrics(pcases)
         v.update({k + "_prev": val for k, val in pm.items()})
+        if pm["no_detection_time"]:
+            warnings.append("prior month: %d of %d cases have no incidentDetectionTime and are left out of its response and close times, so the month-over-month times are not like for like" % (pm["no_detection_time"], len(pcases)))
         v["cat_prev"] = collections.Counter(classify(c) for c in pcases)
         v["prev_rows"] = pcases
     else:
@@ -455,14 +471,17 @@ def render(ev, nar, v, args, logo):
         return "%.0f%% %s" % (abs(ch), "faster" if ch < 0 else "slower")
     rows = [["Time to detect (MTTD)", "0 s", "0 s", "Not meaningful: a case is created at its first event"]]
     for lab, k in (("Time to first response (assistant or analyst), median", "mttr_p50"), ("Time to first response, slowest 10%", "mttr_p90"), ("Time to first analyst response, median", "human_p50"), ("Time to close, median", "mttc_p50"), ("Time to close, slowest 10%", "mttc_p90")):
-        rows.append([lab, hm(v.get(k)), hm(v.get(k + "_prev")) if pv else "[GAP]", faster(v.get(k), v.get(k + "_prev")) if pv else "[GAP]"])
+        n_prev = v.get("mttc_samples_prev" if k.startswith("mttc") else "mttr_samples_prev", 0) if pv else 0
+        usable = pv and n_prev >= 3 and v.get(k + "_prev") is not None
+        rows.append([lab, hm(v.get(k)), (hm(v.get(k + "_prev")) + (" (n=%d)" % n_prev if n_prev < 3 else "")) if pv else "[GAP]", faster(v.get(k), v.get(k + "_prev")) if usable else ("[GAP] too few prior cases carry incidentDetectionTime" if pv else "[GAP]")])
     rows.append(["Cases with an analyst (not assistant) comment", "%d of %d" % (v["human_n"], v["cases"]), ("%d of %d" % (v["human_n_prev"], v["cases_prev"])) if pv else "[GAP]", "—"])
     rows.append(["Closed cases closed by the automated assistant", "%d of %d" % (v["closed_by_ai"], v["closed"]), ("%d of %d" % (v["closed_by_ai_prev"], v["closed_prev"])) if pv else "[GAP]", "—"])
     rows.append(["True positives (of closed)", "%d of %d" % (v["tp"], v["closed"]), "%d of %d" % (v["tp_prev"], v["closed_prev"]) if pv else "[GAP]", "—"])
     A.append(table(["Measure", mname.split()[0], "Prior month", "Note"], rows, ["34%", "16%", "16%", "34%"]))
-    bars = [("Median first response", hours(v["mttr_p50"]) if v.get("mttr_p50") is not None else 0, NAVY)] + ([("Prior median first response", hours(v["mttr_p50_prev"]), GRY)] if pv and v.get("mttr_p50_prev") is not None else []) + ([("Slowest-10% first response", hours(v["mttr_p90"]), NAVY)] if v.get("mttr_p90") is not None else []) + ([("Prior slowest-10%", hours(v["mttr_p90_prev"]), GRY)] if pv and v.get("mttr_p90_prev") is not None else [])
+    bars = [("Median first response", hours(v["mttr_p50"]) if v.get("mttr_p50") is not None else 0, NAVY)] + ([("Prior median first response", hours(v["mttr_p50_prev"]), GRY)] if pv and v.get("mttr_p50_prev") is not None and v.get("mttr_samples_prev", 0) >= 3 else []) + ([("Slowest-10% first response", hours(v["mttr_p90"]), NAVY)] if v.get("mttr_p90") is not None else []) + ([("Prior slowest-10%", hours(v["mttr_p90_prev"]), GRY)] if pv and v.get("mttr_p90_prev") is not None and v.get("mttr_samples_prev", 0) >= 3 else [])
     A.append(figure("Time to first response, hours", hbars(bars, label_w=230, fmt=lambda x: "%.1f h" % x)))
     A.append(paras(c6["analysis"]) + callouts([sub(x) for x in c6["callouts"]]))
+    A.append(gap("Response and close times run from incidentDetectionTime and use only the cases that carry it: %d of %d this month%s." % (v["cases"] - v["no_detection_time"], v["cases"], (", %d of %d last month" % (v["cases_prev"] - v["no_detection_time_prev"], v["cases_prev"])) if pv else ""), "NOTE"))
     A.append(gap("A response here means the first comment on a case, by the automated assistant (%s) or an analyst. %d of %d cases have no analyst comment, and %d of %d closed cases were closed by the assistant; read the first-response times as the assistant's, not the SOC team's." % (ASSISTANT, v["no_human"], v["cases"], v["closed_by_ai"], v["closed"]), "NOTE"))
     A.append(sec(12, "Escalation Log", "GAP"))
     A.append(gap("The SOC escalation log is not exposed to reporting tools. No escalations are listed and none are inferred.", "GAP"))
