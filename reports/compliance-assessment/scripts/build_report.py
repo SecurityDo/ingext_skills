@@ -20,8 +20,16 @@ Evidence files (each is the raw JSON the tool returned; KQL files hold a kql_sea
   qualys.jsonl.gz       resource dump: qualysHost
   connectors.json       list_connectors result reduced to {"entries": [{"application", "state"}]} (no credentials)
   reports.json          list_reports result
+Optional extra sources (run only for tables that list_data_tables shows):
+  src_<Table>.json      kql: <Table> | summarize events=count()   (network, endpoint, cloud or identity tables; the
+                        table name picks its class, see CLASSES; feeds AU-2, SC-7 and SI-3)
+  ct_events.json        kql: CloudTrail | summarize events=count()
+  ct_console.json       kql: CloudTrail | where eventName == "ConsoleLogin" | summarize logins=count(), failed=countif(tostring(responseElements.ConsoleLogin) == "Failure")
+  ct_iam.json           kql: CloudTrail | where eventSource == "iam.amazonaws.com" and not(eventName startswith "Get" or eventName startswith "List" or eventName startswith "Describe") | summarize iam_changes=count()
+  ct_root.json          kql: CloudTrail | where ['userIdentity.type'] == "Root" | summarize root_events=count()
+  ct_errors.json        kql: CloudTrail | where isnotempty(errorCode) | summarize errors=count()
 """
-import argparse, datetime, gzip, html, json, os, sys
+import argparse, datetime, gzip, html, json, os, re, sys
 
 STATUS = {
     "supported": ("Supported", "#15803d"),
@@ -100,6 +108,53 @@ def top_with_other(pairs, keep, other_label):
     return head
 
 
+# A table's class comes from its name; the first class with a matching word wins.
+CLASSES = (("network", ("fortigate", "meraki", "netskope", "zscaler", "zpa", "f5", "palo", "firewall", "cisco")),
+           ("endpoint", ("sentinelone", "falcon", "defender", "cortex", "crowdstrike")),
+           ("cloud", ("cloudtrail", "guardduty")),
+           ("identity", ("duo", "gsuite", "okta", "googleworkspace")))
+
+
+def table_class(name):
+    low = name.lower()
+    for cls, words in CLASSES:
+        if any(w in low for w in words):
+            return cls
+    return "other"
+
+
+def hygiene(u_rec):
+    """Account hygiene counts from the office365User dump (no user names)."""
+    if not u_rec:
+        return None
+    reg = lambda r: r.get("userRegistration") or {}
+    enabled = [r for r in u_rec if r.get("accountEnabled") is True]
+    admins = [r for r in u_rec if reg(r).get("isAdmin") is True or r.get("roles")]
+    known = sum(1 for r in u_rec if r.get("userRegistration"))
+    return {"users": len(u_rec), "enabled": len(enabled), "disabled": sum(1 for r in u_rec if r.get("accountEnabled") is False),
+            "guests": sum(1 for r in u_rec if r.get("userType") == "Guest"), "admins": len(admins),
+            "mfa_known": known > 0,
+            "enabled_mfa_registered": sum(1 for r in enabled if reg(r).get("isMfaRegistered") is True) if known else None,
+            "enabled_no_mfa": sum(1 for r in enabled if reg(r).get("isMfaRegistered") is False) if known else None,
+            "admins_no_mfa": sum(1 for r in admins if r.get("accountEnabled") is True and reg(r).get("isMfaRegistered") is False) if known else None}
+
+
+def device_facts(d_rec, end):
+    if not d_rec:
+        return None
+    def old(r):
+        try:
+            t = datetime.datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", str(r.get("approximateLastSignInDateTime")).replace("Z", "+00:00")))
+            return (end - t).days > 90
+        except ValueError:
+            return False
+    comp_known = any(r.get("isCompliant") is not None for r in d_rec)
+    man_known = any(r.get("isManaged") is not None for r in d_rec)
+    return {"devices": len(d_rec), "managed": sum(1 for r in d_rec if r.get("isManaged") is True) if man_known else None,
+            "non_compliant": sum(1 for r in d_rec if r.get("isCompliant") is False) if comp_known else None,
+            "stale_90d": sum(1 for r in d_rec if old(r))}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--evidence-dir", required=True)
@@ -124,8 +179,11 @@ def main():
     f_status, f_class, f_score = (facet(beh, k) for k in ("status", "classification", "scoreLevel"))
     u_rec = load_dump(d, "users.jsonl.gz", "office365User")
     us = {"users": len(u_rec), "enabled": sum(1 for r in u_rec if r.get("accountEnabled") is True)} if u_rec is not None else None
+    hy = hygiene(u_rec)
     d_rec = load_dump(d, "devices.jsonl.gz", "office365Device")
-    dv = {"devices": len(d_rec), "managed": sum(1 for r in d_rec if r.get("isManaged") is True)} if d_rec is not None else None
+    yy, mm = a.period.split("-")
+    period_end = datetime.datetime(int(yy) + (int(mm) == 12), int(mm) % 12 + 1, 1, tzinfo=datetime.timezone.utc)
+    dv = device_facts(d_rec, period_end) if d_rec is not None else None
     ca_rec = load_dump(d, "ca_policies.jsonl.gz", "office365ConditionalAccessPolicy")
     ca_rows = ca_rec
     ca = None
@@ -135,6 +193,18 @@ def main():
             ca[r.get("state")] = ca.get(r.get("state"), 0) + 1
     q_rec = load_dump(d, "qualys.jsonl.gz", "qualysHost")
     qualys = len(q_rec) if q_rec is not None else None
+    extra = []
+    for fn in sorted(os.listdir(d)):
+        if fn.startswith("src_") and fn.endswith(".json"):
+            r1 = first(load(d, fn))
+            extra.append({"table": fn[4:-5], "class": table_class(fn[4:-5]), "events": r1["events"] if r1 else None})
+    ct = {k: first(load(d, "ct_%s.json" % k)) for k in ("events", "console", "iam", "root", "errors")}
+    ct_events = ct["events"]["events"] if ct["events"] else None
+    ctf = {"events": ct_events, "console_logins": ct["console"]["logins"] if ct["console"] else None, "console_failed": ct["console"]["failed"] if ct["console"] else None,
+           "iam_changes": ct["iam"]["iam_changes"] if ct["iam"] else None, "root_events": ct["root"]["root_events"] if ct["root"] else None,
+           "errors": ct["errors"]["errors"] if ct["errors"] else None} if any(ct.values()) else None
+    net_src = [x for x in extra if x["class"] == "network" and x["events"]]
+    end_src = [x for x in extra if x["class"] == "endpoint" and x["events"]]
     conns = load(d, "connectors.json")
     reps = load(d, "reports.json")
     conn_list = [(c.get("application"), c.get("state")) for c in conns.get("entries", [])] if conns else None
@@ -149,33 +219,45 @@ def main():
     ca_rep = (ca or {}).get("enabledForReportingButNotEnforced", 0)
     ca_all = sum(ca.values()) if ca else None
 
+    mon_name = datetime.date(int(yy), int(mm), 1).strftime("%B")
+    srcs_all = [("Office 365", o365), ("Entra sign-in", sin), ("Entra directory-audit", audit), ("Windows audit", win_n), ("CloudTrail", ct_events)] + [(x["table"], x["events"]) for x in extra if x["table"] != "CloudTrail"]
+    srcs_on = [(lbl, v_) for lbl, v_ in srcs_all if v_]
+
     def logging_status():
-        srcs = [x for x in (o365, sin, audit, win_n) if x]
-        return "supported" if len(srcs) >= 2 else ("partial" if srcs else "not_observed")
+        return "supported" if len(srcs_on) >= 2 else ("partial" if srcs_on else "not_observed")
 
     pct = "%.1f%%" % (100.0 * failed / sin) if sin else None
     rows = [
         ("AU-2 / AU-12", "Event logging and audit record generation", logging_status(),
-         "September events: %s Office 365, %s Entra sign-in, %s Entra directory-audit, %s Windows audit." % (n(o365), n(sin), n(audit), n(win_n))),
+         "%s events: %s." % (mon_name, ", ".join("%s %s" % (n(v_), lbl) for lbl, v_ in srcs_all if v_ is not None) or "none collected")),
         ("SI-4", "System monitoring", "supported" if beh_total else "not_observed",
          "Behavior engine produced %s summaries in the window." % n(beh_total)),
         ("AU-6", "Audit record review and analysis", "partial" if inc_total else "not_observed",
          "%s summaries became incidents; %s closed with a classification, %s still new. No review-cadence record was collected." % (n(inc_total), n(closed_inc), n(new_inc))),
         ("IR-4 / IR-5", "Incident handling and monitoring", "partial" if inc_total else "not_observed",
          "Dispositions: %s. Documented response procedure not supplied." % (", ".join("%s %s" % (v, k) for k, v in (f_class or {}).items()) or "not collected")),
-        ("AC-2", "Account management", "partial" if us else "not_observed",
-         "%s directory users (%s enabled); directory audit categories include user and group management. No account-review cadence evidence." % (n(us["users"]) if us else "not collected", n(us["enabled"]) if us else "not collected")),
-        ("AC-7", "Unsuccessful logon attempts", "partial" if si else "not_observed",
-         "%s of %s sign-ins failed (%s). Lockout and throttling configuration was not collected." % (n(failed), n(sin), pct or "n/a")),
-        ("IA-2 / IA-5", "Authentication and authenticators", "partial" if ca else "not_observed",
-         "%s Conditional Access policies: %s enforced, %s report-only. MFA coverage by user and by admin was not evaluated." % (n(ca_all), n(ca_enf or 0), n(ca_rep))),
+        ("AC-2", "Account management", "partial" if (us or ctf) else "not_observed",
+         "%s directory users (%s enabled%s)%s; directory audit categories include user and group management.%s No account-review cadence evidence." % (
+             n(us["users"]) if us else "not collected", n(us["enabled"]) if us else "not collected",
+             (", %s disabled, %s guests, %s with an admin role" % (n(hy["disabled"]), n(hy["guests"]), n(hy["admins"]))) if hy else "", "",
+             (" CloudTrail shows %s IAM change events and %s root-account events." % (n(ctf["iam_changes"]), n(ctf["root_events"]))) if ctf and ctf["iam_changes"] is not None else "")),
+        ("AC-7", "Unsuccessful logon attempts", "partial" if (si or (ctf and ctf["console_logins"] is not None)) else "not_observed",
+         "%s of %s Entra sign-ins failed (%s).%s Lockout and throttling configuration was not collected." % (n(failed), n(sin), pct or "n/a",
+             (" CloudTrail: %s of %s console logins failed." % (n(ctf["console_failed"]), n(ctf["console_logins"]))) if ctf and ctf["console_logins"] is not None else "")),
+        ("IA-2 / IA-5", "Authentication and authenticators", "partial" if (ca or (hy and hy["mfa_known"])) else "not_observed",
+         "%s%s" % ((("%s Conditional Access policies: %s enforced, %s report-only." % (n(ca_all or 0), n(ca_enf or 0), n(ca_rep))) if ca is not None else "Conditional Access policies were not collected."),
+             (" %s of %s enabled users have registered MFA; %s of %s administrators lack it. Registration is not enforcement." % (n(hy["enabled_mfa_registered"]), n(hy["enabled"]), n(hy["admins_no_mfa"]), n(hy["admins"]))) if hy and hy["mfa_known"] else " MFA coverage was not collected.")),
         ("CM-8", "System component inventory", "partial" if (dv or qualys) else "not_observed",
-         "%s directory devices (%s managed); %s Qualys hosts. The inventories were not reconciled." % (n(dv["devices"]) if dv else "not collected", n(dv["managed"]) if dv else "not collected", n(qualys))),
+         "%s directory devices%s; %s The inventories were not reconciled." % (n(dv["devices"]) if dv else "not collected",
+             (" (%s with no sign-in in the 90 days before the period ended%s%s)" % (n(dv["stale_90d"]), (", %s non-compliant" % n(dv["non_compliant"])) if dv["non_compliant"] is not None else "", (", %s managed" % n(dv["managed"])) if dv["managed"] is not None else "")) if dv else "",
+             ("%s Qualys hosts." % n(qualys)) if qualys is not None else "no Qualys host inventory.")),
         ("RA-5", "Vulnerability monitoring", "partial" if qualys else "not_observed",
-         "Qualys inventory has %s hosts. Vulnerability findings were not queried." % n(qualys)),
+         ("Qualys inventory has %s hosts. Vulnerability findings were not queried." % n(qualys)) if qualys else "No Qualys host inventory was collected, so vulnerability monitoring is not observed."),
         ("AU-4 / AU-11", "Log storage and retention", "not_observed", "Retention period and storage capacity were not collected in this run."),
-        ("SC-7", "Boundary protection", "not_observed", "No firewall or network telemetry table is present on this tenant."),
-        ("SI-3", "Malicious code protection", "not_observed", "No endpoint-protection data source is connected on this tenant."),
+        ("SC-7", "Boundary protection", "partial" if net_src else "not_observed",
+         ("Network telemetry present: %s. Rules, denied traffic and segmentation were not evaluated." % ", ".join("%s %s events" % (x["table"], n(x["events"])) for x in net_src)) if net_src else "No firewall or network telemetry table is present on this tenant."),
+        ("SI-3", "Malicious code protection", "partial" if end_src else "not_observed",
+         ("Endpoint telemetry present: %s. Agent coverage and detections were not evaluated." % ", ".join("%s %s events" % (x["table"], n(x["events"])) for x in end_src)) if end_src else "No endpoint-protection data source is connected on this tenant."),
         ("AC-1 / IA-1 / IR-1", "Policy and procedures", "needs_manual_review", "Policy documents are customer-supplied evidence; telemetry cannot prove them."),
     ]
     cnt = {k: sum(1 for r in rows if r[2] == k) for k in STATUS}
@@ -250,8 +332,11 @@ th{{background:#f1f5f9}}tr{{break-inside:avoid}}td.nw{{white-space:nowrap;font-w
                 "events": {"office365": o365, "signin": sin, "signin_failed": failed, "signin_users": si["users"] if si else None, "directory_audit": audit, "windows_audit": win_n},
                 "workloads": [[r["Workload"], r["events"]] for r in sorted(wl_rows or [], key=lambda r: -r["events"])],
                 "audit_categories": [[r["Category"], r["events"]] for r in sorted(au_rows or [], key=lambda r: -r["events"])],
-                "users": us, "devices": dv, "qualys_hosts": qualys, "behavior_summaries": beh_total,
+                "users": us, "hygiene": hy, "devices": dv, "qualys_hosts": qualys, "behavior_summaries": beh_total,
+                "cloudtrail": ctf, "sources": extra,
                 "conditional_access": ({"total": (ca_all if ca else 0), "enforced": ca_enf or 0, "report_only": ca_rep, "by_state": ca} if ca is not None else None),
+                "admins": {r.get("userPrincipalName", "").lower(): sorted(r.get("roles") or []) for r in (u_rec or []) if (r.get("userRegistration") or {}).get("isAdmin") is True or r.get("roles")},
+                "directory_users": sorted((r.get("userPrincipalName") or "").lower() for r in (u_rec or []))[:5000],
                 "note": "Resource-table counts are a snapshot as of the dump, not the report month; event counts are for the month.",
             }
             json.dump({"period": a.period, "counts": cnt, "rows": [{"control": c, "title": t, "status": s_, "evidence": e} for c, t, s_, e in rows], "facts": facts}, f, indent=1)

@@ -214,9 +214,11 @@ result. It also covers ranges the report refuses to run directly, such as a quar
 
 Builds a customer-facing compliance evidence report for one tenant and one month, mapped onto
 13 NIST SP 800-53 Rev. 5 control groups as supported, partial, not observed or needs manual
-review. It checks `list_data_tables` first, queries event tables with KQL, and takes inventory
-tables from resource dumps. Every figure is rendered by a script from saved raw results. It
-never says compliant or certified. Lives in [`reports/`](./reports).
+review. It checks `list_data_tables` first, queries event tables (Office 365, Entra, Windows,
+CloudTrail and any network, endpoint or identity table the tenant has) with KQL, and takes inventory
+and account-hygiene data (MFA registration, administrators, guests, device sign-in age) from resource
+dumps. Every figure is rendered by a script from saved raw results. It never says compliant or
+certified. Lives in [`reports/`](./reports).
 
 **Try:**
 - "run the compliance assessment for <tenant> for September on the Develop connector"

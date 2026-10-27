@@ -1,11 +1,12 @@
 ---
 name: compliance-assessment
-version: 1.0.1
+version: 1.1.0
 description: >-
   Produce a customer-facing compliance evidence report for ONE Ingext/Fluency tenant and ONE
   calendar month, built from read-only queries through the tenant's MCP connector (KQL over
-  Office365, Entra sign-in and audit, Windows audit; behavior summaries; Office 365 and Qualys
-  resource dumps; connector and report inventory). Maps the evidence onto 13 NIST SP
+  Office365, Entra sign-in and audit, Windows audit, CloudTrail and any network or endpoint
+  tables the tenant has; behavior summaries; Office 365 and Qualys resource dumps; connector and
+  report inventory). Maps the evidence onto 13 NIST SP
   800-53 Rev. 5 control groups as supported, partial, not observed or needs manual review, and
   renders a self-contained HTML plus a mail-ready PDF. Never claims
   certification or compliance. USE THIS SKILL for "compliance assessment", "NIST 800-53
@@ -45,7 +46,8 @@ month 00:00 UTC.
 
 Before collecting anything, call `list_data_tables` for the tenant and keep the result. Collect
 from a table only if it is listed. Never probe for a table by running its query. Event tables
-(Office365, AzureSigninLogs, AzureAuditLogs, WindowsAudit) are queried with `kql_search`.
+(Office365, AzureSigninLogs, AzureAuditLogs, WindowsAudit, CloudTrail and the extra sources below) are
+queried with `kql_search`.
 Resource tables (office365User and the rest) are inventory snapshots and are downloaded as
 dumps, not queried.
 
@@ -55,6 +57,8 @@ dumps, not queried.
 | `signin.json` | `AzureSigninLogs` (event) |
 | `audit_categories.json` | `AzureAuditLogs` (event) |
 | `windows.json` | `WindowsAudit` (event) |
+| `ct_events.json`, `ct_console.json`, `ct_iam.json`, `ct_root.json`, `ct_errors.json` | `CloudTrail` (event) |
+| `src_<Table>.json` | any listed stream table whose name matches a class in `references/queries.md` (network, endpoint, cloud or identity) |
 | `users.jsonl.gz` | `office365User` (resource) |
 | `devices.jsonl.gz` | `office365Device` (resource) |
 | `ca_policies.jsonl.gz` | `office365ConditionalAccessPolicy` (resource) |
@@ -73,6 +77,7 @@ fails at the proxy is retried once, then left out (it renders as not collected).
 | File | Tool |
 |---|---|
 | `o365_workloads.json`, `signin.json`, `audit_categories.json`, `windows.json` | `kql_search` with `rangeFrom` and `rangeTo` set to the month |
+| `ct_*.json`, `src_<Table>.json` | `kql_search`, same window; one narrow query per file (see the note on large tables in `references/queries.md`) |
 | `behavior.json` | `behavior_summary_search`, same window, `limit: 0`, facets `status`, `classification`, `scoreLevel` |
 | `users.jsonl.gz`, `devices.jsonl.gz`, `ca_policies.jsonl.gz`, `qualys.jsonl.gz` | `list_resource_dumps`, then `get_resource_dump_url` per resource (see below). Current snapshot, no time window |
 | `connectors.json` | `list_connectors`, reduced to `{"entries": [{"application": ..., "state": ...}]}` before saving (see below) |
@@ -90,6 +95,19 @@ truncated download.
 integration tokens). Never save the raw result to the work folder. Reduce it to the application
 and state of each entry (for example with `python3 -c`, reading the harness-saved file) and save
 only that, then delete any raw copy. The report needs nothing else from it.
+
+**Extra sources.** A tenant's network, endpoint, cloud and identity tables decide how much of SC-7
+(boundary protection), SI-3 (malicious code protection) and AU-2 (logging) can be observed. For every
+listed stream table that matches a class in `references/queries.md`, save `src_<TableName>.json` from
+`<TableName> | summarize events=count()`. A count only shows that telemetry exists; rules, denied traffic,
+agent coverage and detections are not evaluated, and the report says so. A table that matches no class is
+not queried.
+
+**Account hygiene.** The `office365User` dump already carries registration and role data (`userRegistration`
+with MFA registration and admin flag, `roles`, `userType`, `accountEnabled`) and the device dump carries
+last sign-in and compliance flags. The script counts disabled accounts, guests, administrators and
+administrators without MFA, enabled users with and without MFA registration, and devices with no sign-in
+for 90 days, with no further query. MFA registration is not MFA enforcement, and the report says so.
 
 Large results are saved to a file by the harness; copy that file to the name above rather than
 retyping it. Do not substitute a different table for one that is absent.

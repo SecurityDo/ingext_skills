@@ -46,8 +46,8 @@ real users, hosts and applications). A result the harness saves to a file can be
 | `cases.json` | `behavior_summary_search(account, rangeFrom, rangeTo, searchStr="riskScore:[3000 TO *]", limit=100, sortField="to")`. A case is a behavior summary at or above the canonical review score of 3000. If `total` exceeds 100 page with `offset` and merge the results into one JSON array |
 | `cases_prev.json` | optional: the same for the prior month; without it the deltas show as GAP |
 | `health.json` | optional: run the **health-status-report** skill for the tenant as far as its evaluation step (Step 2; skip the HTML and PDF). It uses the full mode where the connector has `list_connector_config`, else its state-only fallback, plus `list_resource_dumps`, and owns the collection, the credential removal and the Fluency 9 status logic |
-| `admins.json` | optional: for each repeat user that looks like an Entra account, `get_azure_user_record(account, username)`; record `{"checked": [upn, …], "admins": {upn: [role names]}}` |
-| `compliance_summary.json` | optional: run the **compliance-assessment** skill for the same tenant and month with `--summary-json`. Besides the control statuses it carries the facts that skill already collected (event volumes, sign-in failures, directory users, Conditional Access policies, Qualys hosts, audit categories), which fill the O365 hygiene, environment changes and vulnerability rows, so this report does not repeat those queries |
+| `admins.json` | optional: only needed for a repeat user that is not in the user dump (the dump in `compliance_summary.json` already lists every directory account and its roles). Use `get_azure_user_record(account, username)` and record `{"checked": [upn, …], "admins": {upn: [role names]}}` |
+| `compliance_summary.json` | optional: run the **compliance-assessment** skill for the same tenant and month with `--summary-json`. Besides the control statuses it carries the facts that skill already collected (event volumes, sign-in failures, directory users, MFA registration, administrators, devices, Conditional Access policies, CloudTrail counts, Qualys hosts, audit categories), which fill the O365 hygiene, environment changes and vulnerability rows and tell which repeat actors are administrators, so this report does not repeat those queries |
 
 **What the behavior summary gives.** Each case carries `status`, `classification`, `behaviorRules`,
 `riskScore`, `incidentDetectionTime`, `updatedOn` and its `comments` (`createdOn`, `username`, `actions`). The script
@@ -104,8 +104,9 @@ risk and evidence. Client actions are only what the customer must do: confirm ac
 investigate an account, provide a log source, approve monitoring, supply contacts.
 
 **Operational exposure rows.** O365 hygiene, environment changes and vulnerability highlights take their
-default text from `compliance_summary.json` `facts`: directory users and Conditional Access policies,
-audit events by category, and the Qualys host count. They are counts from resource snapshots and event
+default text from `compliance_summary.json` `facts`: directory users, MFA registration and administrators,
+Conditional Access policies, device sign-in age, audit events by category, CloudTrail counts and the
+Qualys host count. They are counts from resource snapshots and event
 totals, not findings: say so, and add an `exposure` entry to the narrative only where you have checked
 something more (for example an admin lookup). Without the file the three rows show a GAP.
 

@@ -386,18 +386,24 @@ def render(ev, nar, v, args, logo):
     cnt_cur = collections.Counter(c.get("key") for c in v["case_rows"])
     cnt_prev = collections.Counter(c.get("key") for c in v.get("prev_rows", [])) if pv else None
     adm = ev.get("admins")
-    admins, checked = (adm.get("admins", {}), set(adm.get("checked", [])) | set(adm.get("admins", {}))) if adm else ({}, set())
+    admins = {k.lower(): v for k, v in (adm or {}).get("admins", {}).items()}
+    checked = {k.lower() for k in (adm or {}).get("checked", [])} | set(admins)
+    cf = (ev.get("compliance") or {}).get("facts") or {}
+    if cf.get("directory_users"):               # the user dump covers every directory account
+        for k, roles in (cf.get("admins") or {}).items():
+            admins.setdefault(k.lower(), roles)
+        checked |= {u.lower() for u in cf["directory_users"]} | set(admins)
     actors = sorted([k for k, n in cnt_cur.items() if n >= 2], key=lambda k: (-cnt_cur[k], k))
-    cohorts = {"Admin Watch": [k for k in actors if k in admins], "Repeat Offender": [k for k in actors if k in checked and k not in admins],
-               "Repeat actor (admin status not checked)": [k for k in actors if k not in checked]}
-    if not adm:
-        A.append(gap("No administrator lookup was supplied (admins.json), so admin accounts are not separated from other repeat actors.", "GAP"))
+    cohorts = {"Admin Watch": [k for k in actors if k.lower() in admins], "Repeat Offender": [k for k in actors if k.lower() in checked and k.lower() not in admins],
+               "Repeat actor (admin status not checked)": [k for k in actors if k.lower() not in checked]}
+    if not adm and not cf.get("directory_users"):
+        A.append(gap("No administrator information was supplied (admins.json, or the user dump through compliance_summary.json), so admin accounts are not separated from other repeat actors.", "GAP"))
     why = nar.get("repeat_why", {})
     for label, keys in cohorts.items():
         if keys:
             rows = [[E(k), label, str(cnt_cur[k]), "—" if cnt_prev is None else (str(cnt_prev[k]) if cnt_prev[k] else "below threshold"), signed(cnt_cur[k], cnt_prev[k]) if cnt_prev is not None and cnt_prev[k] else "n/a", sub(why.get(k, "—"))] for k in keys]
             A.append(table(["Identifier", "Category", "This month", "Prior month", "Delta", "Why it repeats"], rows, ["27%", "13%", "9%", "14%", "7%", "30%"]))
-        elif label in ("Admin Watch", "Repeat Offender") and adm:
+        elif label in ("Admin Watch", "Repeat Offender") and (adm or cf.get("directory_users")):
             A.append('<p style="font-size:13px;color:#4A5262;margin:0 0 8px"><strong>%s:</strong> none identified among the accounts checked.</p>' % label)
     if not actors:
         A.append('<p style="font-size:13px;color:#4A5262;margin:0 0 8px">No user, host or application had two or more cases this month.</p>')
@@ -438,19 +444,33 @@ def render(ev, nar, v, args, logo):
             return None
         if key == "o365_hygiene":
             parts = []
-            if f.get("users"):
+            hy_ = f.get("hygiene")
+            if hy_:
+                parts.append("%s directory users (%s enabled, %s disabled, %s guests, %s with an admin role)" % (nn(hy_["users"]), nn(hy_["enabled"]), nn(hy_["disabled"]), nn(hy_["guests"]), nn(hy_["admins"])))
+                if hy_.get("mfa_known"):
+                    parts.append("%s of %s enabled users have registered MFA and %s of %s administrators lack it" % (nn(hy_["enabled_mfa_registered"]), nn(hy_["enabled"]), nn(hy_["admins_no_mfa"]), nn(hy_["admins"])))
+            elif f.get("users"):
                 parts.append("%s directory users (%s enabled)" % (nn(f["users"]["users"]), nn(f["users"]["enabled"])))
             ca_ = f.get("conditional_access")
             parts.append("%s Conditional Access policies (%s enforced, %s report-only)" % (nn(ca_["total"]), nn(ca_["enforced"]), nn(ca_["report_only"])) if ca_ else "Conditional Access policies not collected")
+            dv_ = f.get("devices")
+            if dv_:
+                parts.append("%s of %s directory devices had no sign-in in the 90 days before the period ended" % (nn(dv_["stale_90d"]), nn(dv_["devices"])))
             ev_ = f.get("events") or {}
             if ev_.get("signin"):
                 parts.append("%s of %s sign-ins failed" % (nn(ev_["signin_failed"]), nn(ev_["signin"])))
-            return {"evidence": "; ".join(parts) + ".", "limit": "A snapshot of the resource tables, not the report month. MFA coverage, stale accounts and guest access were not evaluated."}
+            return {"evidence": "; ".join(parts) + ".", "limit": "A snapshot of the resource tables, not the report month. MFA registration is not MFA enforcement, and password age and recent sign-in by user were not evaluated."}
         if key == "environment_changes":
             cats = f.get("audit_categories") or []
-            if not cats:
+            ct_ = f.get("cloudtrail")
+            if not cats and not ct_:
                 return None
-            return {"evidence": "Directory audit events by category: " + "; ".join("%s %s" % (c, nn(n_)) for c, n_ in cats[:5]) + ".", "limit": "Counts of audit events, not a list of changes. Who changed what needs a query on the audit table."}
+            parts = []
+            if cats:
+                parts.append("Directory audit events by category: " + "; ".join("%s %s" % (c, nn(n_)) for c, n_ in cats[:5]))
+            if ct_ and ct_.get("iam_changes") is not None:
+                parts.append("CloudTrail: %s IAM change events and %s root-account events" % (nn(ct_["iam_changes"]), nn(ct_.get("root_events"))))
+            return {"evidence": "; ".join(parts) + ".", "limit": "Counts of audit events, not a list of changes. Who changed what needs a query on the audit table."}
         if key == "vulnerability_highlights":
             q = f.get("qualys_hosts")
             if q:
