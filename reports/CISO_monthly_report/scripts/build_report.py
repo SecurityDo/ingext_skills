@@ -12,7 +12,7 @@ warning so it can be checked against the evidence.
 Evidence files in DIR (see references/evidence.md):
   cases.json          behavior_summary_search, riskScore >= 3000, the month (one result, or an array of pages)
   cases_prev.json     the same for the prior month (optional; without it the deltas show as GAP)
-  health.json         from the application-health skill: installed-application status and resource-feed ages (optional)
+  health.json         from the health-status-report skill: installed-application status and resource-feed ages (optional)
   admins.json         {"checked": [upn], "admins": {upn: [role]}} from get_azure_user_record (optional)
   compliance_summary.json   written by compliance-assessment's build_report.py --summary-json (optional)
 Only cases.json is required. A missing optional file turns the sections that need it into a visible
@@ -418,7 +418,7 @@ def render(ev, nar, v, args, logo):
     stale = [f for f in (feeds or []) if f["stale"]]
     A.append(chap(4, "What We Can And Cannot See") + lead(sub(c4["intro"])) + sec(6, "Operational Exposure"))
     if hl is None:
-        cov = ["[GAP] installed-application health was not collected (health.json from the application-health skill)", "—"]
+        cov = ["[GAP] installed-application health was not collected (health.json from the health-status-report skill)", "—"]
     else:
         parts = ["%d running" % stc.get("running", 0)] + ["%d %s" % (stc[k], k) for k in ("error", "attention", "disabled", "other") if stc.get(k)]
         cov = ["%d installed application(s): %s%s. %s" % (len(apps_h), ", ".join(parts),
@@ -464,7 +464,7 @@ def render(ev, nar, v, args, logo):
     fig = ([("Applications running", stc.get("running", 0), GRN), ("Applications in error", stc.get("error", 0), RED), ("Applications needing attention", stc.get("attention", 0) + stc.get("disabled", 0) + stc.get("other", 0), AMB)] if hl else []) + \
           ([("Resource feeds current", len(feeds) - len(stale), GRN), ("Resource feeds stale or empty", len(stale), RED)] if feeds is not None else [])
     A.append(figure("Installed applications and resource feeds", hbars(fig or [("Nothing collected", 0, GRY)], label_w=240),
-                    "Application status follows the Fluency 9 Applications page (application-health skill). A Running application can still feed a stale resource feed."))
+                    "Application status follows the Fluency 9 Applications page (health-status-report skill). A Running application can still feed a stale resource feed."))
     A.append(paras(c4["analysis"]) + callouts([sub(x) for x in c4["callouts"]]))
     A.append(sec(7, "Monitoring Blind Spots", "PARTIAL"))
     A.append(table(["Category", "Source", "What cannot be detected", "Remediation", "Risk"], [[E(r[0]), sub(r[1]), sub(r[2]), sub(r[3]), E(r[4])] for r in nar["blind_spots"]], ["18%", "24%", "24%", "26%", "8%"]))
@@ -563,7 +563,7 @@ def render(ev, nar, v, args, logo):
     A.append(h3 % (NAVY, "A. Log source inventory") + table(["Item", "Status"], inv, ["40%", "60%"]))
     A.append(h3 % (NAVY, "B. Case shapes cited") + table(["Shape id", "Rules", "Cases"], [[E(h), E(sh["rules"]), str(sh["n"])] for h, sh in v["shapes"]], ["14%", "74%", "12%"]))
     A.append(h3 % (NAVY, "C. ATT&CK") + '<p style="font-size:13px;color:#4A5262;max-width:860px">[GAP] No approved ATT&amp;CK mapping source is available through the connector, so no technique table is shown and no coverage is claimed.</p>')
-    tools = "behavior_summary_search" + (", the application-health skill" if hl else "") + (", get_azure_user_record" if adm else "") + (", and the compliance-assessment evidence" if comp else "")
+    tools = "behavior_summary_search" + (", the health-status-report evaluation" if hl else "") + (", get_azure_user_record" if adm else "") + (", and the compliance-assessment evidence" if comp else "")
     A.append(h3 % (NAVY, "D. Methodology") + '<p style="font-size:13px;line-height:1.65;color:#4A5262;max-width:860px">Scope: tenant %s. Window: 1–%d %s %d UTC%s. Read-only calls: %s. Sections marked GAP or PARTIAL could not be computed from these tools. A case is a cluster of events for one user, host or application on one day; a case shape is the combination of rules that fired; a benign positive is activity that looked suspicious but was expected.</p>'
              % (E(tenant), v["last_day"], v["month_name"], v["year"], "; prior month compared" if pv else "", tools))
     A.append('</section><footer style="margin-top:40px;padding:22px 72px;border-top:3px solid %s;font:400 11px/1.6 %s;color:#6B7484">Fluency Managed SOC · %s · %s · Generated from read-only telemetry. Not a certification or attestation.</footer></div></body></html>' % (NAVY, MONO, E(tname), E(mname)))

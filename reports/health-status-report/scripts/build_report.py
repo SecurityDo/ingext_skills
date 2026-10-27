@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render the Installed Applications Health report (HTML + CSV) from health.json.
 
-health.json is written by the application-health skill (scripts/evaluate_health.py), which applies the
+health.json is written by scripts/evaluate_health.py, which applies the
 Fluency 9 Applications-page status logic. This script only lays the result out; it computes nothing about
 status, so the report and every other consumer of health.json agree. Missing evidence is stated,
 never assumed healthy.
@@ -50,7 +50,7 @@ def age(ms, now_ms):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--health", required=True, help="health.json from the application-health skill")
+    ap.add_argument("--health", required=True, help="health.json from scripts/evaluate_health.py")
     ap.add_argument("--tenant", required=True)
     ap.add_argument("--tenant-name", required=True)
     ap.add_argument("--site", required=True)
@@ -59,7 +59,7 @@ def main():
     a = ap.parse_args()
     h = load(a.health)
     if not h or not h.get("applications"):
-        sys.exit("health.json is missing or lists no applications; run the application-health skill first")
+        sys.exit("health.json is missing or lists no applications; run scripts/evaluate_health.py first")
     now_ms = h["capturedAtMs"]
     now = datetime.datetime.fromtimestamp(now_ms / 1000.0, datetime.timezone.utc).replace(tzinfo=None, microsecond=0)
     state_only = h.get("mode") == "state_only"
@@ -137,7 +137,7 @@ th{{background:#f1f5f9}}tr{{break-inside:avoid}}.pill{{color:#fff;border-radius:
 <p class="small">Informational only; it does not change an application's status.</p>
 <h2>Recommended actions</h2><ul>{actions}</ul>
 <h2>Limits</h2><ul>{limits}</ul>
-<h2>Methodology</h2><p class="small">Read-only calls through the {site} MCP connector against account <code>{tenant}</code> on {now} UTC, evaluated by the application-health skill ({mode}). Credentials in the raw result were removed before use. A per-application CSV accompanies this report.</p>
+<h2>Methodology</h2><p class="small">Read-only calls through the {site} MCP connector against account <code>{tenant}</code> on {now} UTC, evaluated by scripts/evaluate_health.py ({mode}). Credentials in the raw result were removed before use. A per-application CSV accompanies this report.</p>
 </div></body></html>""".format(
         title=esc(title), tname=esc(a.tenant_name), tenant=esc(a.tenant), now=now.strftime("%d %b %Y %H:%M"), site=esc(a.site), n=len(views),
         c_run=cnt["running"], c_err=cnt["error"], c_att=cnt["attention"], c_dis=cnt["disabled"], c_oth=cnt["other"], head=head[0].upper() + head[1:],

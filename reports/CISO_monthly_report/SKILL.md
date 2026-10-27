@@ -8,16 +8,16 @@ description: >-
   add-on, next steps, improvements) and 16 sections. USE THIS SKILL for "M-SOC report", "monthly SOC
   report", "CISO report", "board security report", "monthly security summary", or an executive
   report covering a month for a customer. Reads the tenant's behavior summaries (cases) through its
-  MCP connector, plus application-health and compliance-assessment results; computes every figure
+  MCP connector, plus health-status-report and compliance-assessment results; computes every figure
   locally and marks what the tools cannot supply as GAP or PARTIAL. Read-only. PREREQUISITES: install
-  the application-health and compliance-assessment skills first. DO NOT use it for one incident
+  the health-status-report and compliance-assessment skills first. DO NOT use it for one incident
   (incident-investigation) or invoices (billing-csv).
 ---
 
 # M-SOC Monthly Report
 
-> **Prerequisites: install the `application-health` and `compliance-assessment` skills before using this
-> one.** The coverage and health section reads the `health.json` that `application-health` writes, and
+> **Prerequisites: install the `health-status-report` and `compliance-assessment` skills before using this
+> one.** The coverage and health section reads the `health.json` that `health-status-report` writes, and
 > the compliance section reads the `compliance_summary.json` that `compliance-assessment` writes. Without
 > them those sections show a GAP instead of a result.
 
@@ -45,7 +45,7 @@ real users, hosts and applications). A result the harness saves to a file can be
 |---|---|
 | `cases.json` | `behavior_summary_search(account, rangeFrom, rangeTo, searchStr="riskScore:[3000 TO *]", limit=100, sortField="to")`. A case is a behavior summary at or above the canonical review score of 3000. If `total` exceeds 100 page with `offset` and merge the results into one JSON array |
 | `cases_prev.json` | optional: the same for the prior month; without it the deltas show as GAP |
-| `health.json` | optional: run the **application-health** skill for the tenant (full mode where the connector has `list_connector_config`, else its state-only fallback, plus `list_resource_dumps`). It owns the collection, the credential removal and the Fluency 9 status logic, and `health-status-report` renders the same file |
+| `health.json` | optional: run the **health-status-report** skill for the tenant as far as its evaluation step (Step 2; skip the HTML and PDF). It uses the full mode where the connector has `list_connector_config`, else its state-only fallback, plus `list_resource_dumps`, and owns the collection, the credential removal and the Fluency 9 status logic |
 | `admins.json` | optional: for each repeat user that looks like an Entra account, `get_azure_user_record(account, username)`; record `{"checked": [upn, …], "admins": {upn: [role names]}}` |
 | `compliance_summary.json` | optional: run the **compliance-assessment** skill for the same tenant and month with `--summary-json`. Besides the control statuses it carries the facts that skill already collected (event volumes, sign-in failures, directory users, Conditional Access policies, Qualys hosts, audit categories), which fill the O365 hygiene, environment changes and vulnerability rows, so this report does not repeat those queries |
 
