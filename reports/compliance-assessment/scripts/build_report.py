@@ -32,11 +32,48 @@ Optional extra sources (run only for tables that list_data_tables shows):
 import argparse, datetime, gzip, html, json, os, re, sys
 
 STATUS = {
-    "supported": ("Supported", "#15803d"),
-    "partial": ("Partial", "#b45309"),
-    "not_observed": ("Not observed", "#64748b"),
-    "needs_manual_review": ("Manual review", "#6d28d9"),
+    "supported": ("Supported", "#15803D"),
+    "partial": ("Partial", "#B45309"),
+    "not_observed": ("Not observed", "#64748B"),
+    "needs_manual_review": ("Manual review", "#1D4ED8"),
 }
+
+
+CSS = """:root{--navy:#14213d;--ink:#1f2937;--mut:#64748b;--line:#e2e8f0;--bg:#f4f6fa;--card:#fff;--acc:#1d4ed8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
+.wrap{max-width:1060px;margin:0 auto;padding:0 28px 48px}
+.hero{background:linear-gradient(135deg,#0f1a33 0%,#1d3461 100%);color:#fff;padding:38px 0 70px}
+.hero .wrap{padding-bottom:0}
+.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#9db4e0;font-weight:600}
+.hero h1{margin:6px 0 4px;font-size:30px;font-weight:700;letter-spacing:-.01em}
+.chips{margin-top:18px}.chip{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#e6edfb;border-radius:999px;padding:3px 12px;font-size:12px;margin:0 8px 6px 0}
+.chip code{font-family:ui-monospace,Menlo,Consolas,monospace}
+.kpis{display:grid;grid-template-columns:repeat(var(--k,4),1fr);gap:14px;margin-top:-46px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:0 2px 8px rgba(15,26,51,.06);border-top:4px solid var(--c)}
+.kpi b{display:block;font-size:32px;line-height:1.1;color:var(--c)}.kpi span{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-top:18px;box-shadow:0 1px 4px rgba(15,26,51,.04)}
+.panel p{margin:6px 0}.panel p:first-child{margin-top:0}.panel p:last-child{margin-bottom:0}
+h2{font-size:18px;margin:34px 0 4px;color:var(--navy);display:flex;align-items:center;gap:10px;break-after:avoid;page-break-after:avoid}
+h2 .n{background:var(--navy);color:#fff;border-radius:6px;font-size:12px;padding:2px 8px;font-weight:600}
+.read{border-left:4px solid var(--acc);background:#eff4ff;border-radius:0 10px 10px 0;padding:14px 18px;margin-top:18px;color:#1e3a8a;break-inside:avoid}
+.bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line);margin:10px 0 6px}.bar i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:16px;color:var(--mut);font-size:12px}.legend em{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+table{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;font-size:13px}
+th{background:#f1f5f9;color:#475569;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;padding:10px 12px;border-bottom:1px solid var(--line);position:sticky;top:0}
+td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+tr:last-child td{border-bottom:0}tbody tr:hover td{background:#f8fafc}
+td.ctl{border-left:4px solid var(--c);font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:600;color:var(--navy)}
+.tw{border:1px solid var(--line);border-radius:12px;overflow:hidden;overflow:clip;background:var(--card);margin-top:10px}
+.pill{display:inline-block;color:#fff;border-radius:999px;padding:2px 11px;font-size:11px;font-weight:600;white-space:nowrap;background:var(--c)}
+.small{font-size:12px;color:var(--mut)}.cap{font-size:12px;color:var(--navy);margin-bottom:4px;font-weight:600}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px;align-items:start}.two>div{min-width:0}
+.two .panel{margin-top:0}.fig{break-inside:avoid}.fig svg{display:block;max-width:100%;height:auto}
+.gaps{margin:0;padding-left:20px}.gaps li{margin:5px 0}
+.foot{margin-top:34px;color:var(--mut);font-size:12px;border-top:1px solid var(--line);padding-top:14px}.foot p{margin:4px 0}
+@media (max-width:760px){.kpis{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}.hero h1{font-size:24px}}
+@media print{body{background:#fff}.wrap{max-width:none;padding:0 0 16px}.hero{border-radius:12px;padding:26px 0 62px}.hero .wrap{padding:0 24px}.kpis{grid-template-columns:repeat(var(--k,4),1fr);margin:-46px 14px 0}.two{grid-template-columns:1fr 1fr}tr,.card,.kpi,.panel,.fig,.read{break-inside:avoid}th{position:static}.hero,.kpi,.pill,.bar i,td.ctl,.read,.n,.legend em,.chip{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+"""
 
 
 def load(d, name):
@@ -262,14 +299,18 @@ def main():
     ]
     cnt = {k: sum(1 for r in rows if r[2] == k) for k in STATUS}
     esc = html.escape
-    trs = "".join('<tr><td class="nw">%s</td><td>%s</td><td><span class="pill" style="background:%s">%s</span></td><td>%s</td></tr>'
-                  % (esc(c), esc(t), STATUS[s][1], STATUS[s][0], esc(e)) for c, t, s, e in rows)
-    kp = "".join('<div class="kpi"><div class="nn" style="color:%s">%d</div><div>%s</div></div>' % (STATUS[k][1], cnt[k], STATUS[k][0]) for k in STATUS)
+    trs = "".join('<tr><td class="ctl" style="--c:%s">%s</td><td><b>%s</b></td><td><span class="pill" style="--c:%s">%s</span></td><td>%s</td></tr>'
+                  % (STATUS[s][1], esc(c), esc(t), STATUS[s][1], STATUS[s][0], esc(e)) for c, t, s, e in rows)
+    kp = "".join('<div class="kpi" style="--c:%s"><b>%d</b><span>%s</span></div>' % (STATUS[k][1], cnt[k], STATUS[k][0]) for k in STATUS)
+    nrows = len(rows) or 1
+    pbar = '<div class="bar" aria-hidden="true">%s</div><div class="legend">%s</div>' % (
+        "".join('<i style="width:%.1f%%;background:%s"></i>' % (100.0 * cnt[k] / nrows, STATUS[k][1]) for k in STATUS if cnt[k]),
+        "".join('<span><em style="background:%s"></em>%s %d</span>' % (STATUS[k][1], STATUS[k][0], cnt[k]) for k in STATUS))
     ctr = "".join("<tr><td>%s</td><td>%s</td></tr>" % (esc(str(x)), esc(str(y))) for x, y in (conn_list or [])) or '<tr><td colspan="2">Connector list not collected.</td></tr>'
-    wl_chart = bars(top_with_other([(r["Workload"], r["events"]) for r in wl_rows], 5, "Other") if wl_rows else [], "#0f766e")
-    au_chart = bars(top_with_other([(r["Category"], r["events"]) for r in au_rows], 5, "Other") if au_rows else [], "#1d4ed8")
+    wl_chart = bars(top_with_other([(r["Workload"], r["events"]) for r in wl_rows], 5, "Other") if wl_rows else [], "#1D4ED8")
+    au_chart = bars(top_with_other([(r["Category"], r["events"]) for r in au_rows], 5, "Other") if au_rows else [], "#14213D")
     order = ["0", "<1000", "1000 - 2000", "2000 - 4000", "4000 - 8000", ">8000"]
-    sc_chart = bars([(k, f_score[k]) for k in order if k in (f_score or {})] if f_score else [], "#b45309")
+    sc_chart = bars([(k, f_score[k]) for k in order if k in (f_score or {})] if f_score else [], "#B45309")
     disp = "".join("<tr><td>%s</td><td>%s</td></tr>" % (esc(k), v) for k, v in (f_class or {}).items())
     if new_inc is not None:
         disp += "<tr><td>Still new (not triaged)</td><td>%s</td></tr>" % new_inc
@@ -279,47 +320,36 @@ def main():
     title = "%s Compliance Evidence Report - %s" % (a.tenant_name, month)
     today = datetime.date.today().strftime("%d %B %Y")
     lead_new = ("%s of %s incidents in the window are still marked new. " % (n(new_inc), n(inc_total))) if inc_total else ""
-    doc = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{title}</title><style>
-*{{box-sizing:border-box}}body{{font-family:Inter,Arial,sans-serif;color:#0f172a;margin:0;font-size:13px;line-height:1.5}}
-.wrap{{max-width:7.1in;margin:0 auto}}h1{{font-size:24px;margin:0 0 4px}}
-h2{{font-size:16px;margin:22px 0 8px;border-bottom:2px solid #0f766e;padding-bottom:4px;break-after:avoid;page-break-after:avoid}}
-.sub{{color:#475569;margin-bottom:12px}}.lead{{border-left:5px solid #0f766e;background:#f0fdfa;padding:10px 14px;margin:10px 0;break-inside:avoid}}
-.lead b{{color:#0f766e}}.lead p{{margin:4px 0}}.kpis{{display:flex;gap:10px;margin:10px 0}}
-.kpi{{flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:8px;text-align:center;break-inside:avoid}}.kpi .nn{{font-size:26px;font-weight:700}}
-.call{{border:1px solid #fcd34d;background:#fffbeb;border-radius:6px;padding:8px 12px;margin:10px 0;break-inside:avoid}}.call.red{{border-color:#fca5a5;background:#fef2f2}}
-table{{width:100%;border-collapse:collapse;table-layout:fixed;font-size:11.5px}}th,td{{border-bottom:1px solid #e2e8f0;padding:5px 6px;text-align:left;vertical-align:top;word-wrap:break-word}}
-th{{background:#f1f5f9}}tr{{break-inside:avoid}}td.nw{{white-space:nowrap;font-weight:600}}
-.pill{{color:#fff;border-radius:10px;padding:1px 8px;font-size:10.5px;white-space:nowrap}}
-.two{{display:flex;gap:16px}}.two>div{{flex:1;break-inside:avoid}}.fig{{break-inside:avoid;margin:8px 0}}.cap{{font-size:11px;color:#475569;margin-bottom:2px;font-weight:600}}
-.small{{font-size:11px;color:#475569}}ul{{margin:4px 0 4px 18px;padding:0}}h2+*{{break-before:avoid;page-break-before:avoid}}
-</style></head><body><div class="wrap"><h1>{title}</h1>
-<div class="sub">Tenant: {tname} (grid account <code>{tenant}</code>) &middot; Site: {site} &middot; Evidence window: {month} &middot; Prepared {today}</div>
-<div class="lead">
+    doc = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>{css}</style></head><body>
+<div class="hero"><div class="wrap"><div class="eyebrow">Compliance evidence report</div><h1>{title}</h1><div class="chips"><span class="chip">Tenant: {tname} (grid account <code>{tenant}</code>)</span><span class="chip">Site: {site}</span><span class="chip">Evidence window: {month}</span><span class="chip">Prepared {today}</span></div></div></div>
+<div class="wrap">
+<div class="kpis">{kp}</div>
+<div class="panel"><b>Evidence picture</b>{pbar}</div>
+<div class="panel">
 <p><b>What the evidence shows.</b> {logging_line}</p>
 <p><b>Why it matters.</b> Controls that depend on review, identity configuration, inventory and vulnerability data are only partly evidenced, and any control with no data source on this tenant is reported as not observed.</p>
 <p><b>Result.</b> 13 control groups assessed: {c_s} supported, {c_p} partial, {c_n} not observed, {c_m} needing customer documentation. {lead_new}</p>
 <p><b>Evidence strength.</b> Confirmed: event volumes, incident counts, inventory counts. Inferred: the mapping of evidence to control status. Unknown: retention, MFA coverage, vulnerability findings, policy documents.</p></div>
-<div class="kpis">{kp}</div>
-<div class="call red"><b>Read this first.</b> This is a reduced, evidence-led view of 13 NIST SP 800-53 Rev. 5 control groups, assembled by read-only queries to the {site} connector. It is not the full Compliance Package and does not certify or attest compliance. "Not observed" means evidence was not collected in this run; it is not a failed control.</div>
-<h2>Posture by control group</h2>
-<table><colgroup><col style="width:13%"><col style="width:22%"><col style="width:13%"><col style="width:52%"></colgroup><tr><th>Control</th><th>Topic</th><th>Status</th><th>What the evidence shows</th></tr>{trs}</table>
-<h2>Monitoring coverage</h2>
-<div class="two"><div class="fig"><div class="cap">Office 365 events by workload ({o365} total)</div>{wl_chart}</div>
-<div class="fig"><div class="cap">Entra directory-audit events by category ({audit} total)</div>{au_chart}</div></div>
-<table><colgroup><col style="width:50%"><col style="width:50%"></colgroup><tr><th>Installed connector</th><th>State</th></tr>{ctr}</table>
-<h2>Detection and incident handling</h2>
-<div class="two"><div class="fig"><div class="cap">Behavior summaries by risk score ({beh} total)</div>{sc_chart}</div>
-<div><div class="cap">Incident disposition</div><table><colgroup><col style="width:68%"><col style="width:32%"></colgroup><tr><th>Disposition</th><th>Count</th></tr>{disp}</table></div></div>
-<h2>Gaps and next evidence</h2><ul>
+<div class="read"><b>Read this first.</b> This is a reduced, evidence-led view of 13 NIST SP 800-53 Rev. 5 control groups, assembled by read-only queries to the {site} connector. It is not the full Compliance Package and does not certify or attest compliance. "Not observed" means evidence was not collected in this run; it is not a failed control.</div>
+<h2><span class="n">1</span>Posture by control group</h2>
+<div class="tw"><table><colgroup><col style="width:15%"><col style="width:22%"><col style="width:13%"><col style="width:50%"></colgroup><thead><tr><th>Control</th><th>Topic</th><th>Status</th><th>What the evidence shows</th></tr></thead><tbody>{trs}</tbody></table></div>
+<h2><span class="n">2</span>Monitoring coverage</h2>
+<div class="two"><div class="panel fig"><div class="cap">Office 365 events by workload ({o365} total)</div>{wl_chart}</div>
+<div class="panel fig"><div class="cap">Entra directory-audit events by category ({audit} total)</div>{au_chart}</div></div>
+<div class="tw"><table><colgroup><col style="width:50%"><col style="width:50%"></colgroup><thead><tr><th>Installed connector</th><th>State</th></tr></thead><tbody>{ctr}</tbody></table></div>
+<h2><span class="n">3</span>Detection and incident handling</h2>
+<div class="two"><div class="panel fig"><div class="cap">Behavior summaries by risk score ({beh} total)</div>{sc_chart}</div>
+<div><div class="cap">Incident disposition</div><div class="tw" style="margin-top:0"><table><colgroup><col style="width:68%"><col style="width:32%"></colgroup><thead><tr><th>Disposition</th><th>Count</th></tr></thead><tbody>{disp}</tbody></table></div></div></div>
+<h2><span class="n">4</span>Gaps and next evidence</h2><div class="panel"><ul class="gaps">
 <li><b>Log retention and capacity (AU-4, AU-11):</b> confirm retention settings for each index.</li>
 <li><b>MFA and admin protection (IA-2, IA-5):</b> evaluate which Conditional Access policies enforce MFA and for whom.</li>
 <li><b>Vulnerability findings (RA-5, SI-2):</b> pull findings, severity and age from the scanner.</li>
 <li><b>Network boundary and endpoint protection (SC-7, SI-3):</b> needs a firewall or EDR data source.</li>
 <li><b>Configuration evidence (CM-2, CM-6):</b> {rep} saved reports exist on the tenant; none was run for configuration evidence.</li>
-<li><b>Policies and procedures (AC-1, IA-1, IR-1):</b> supplied by the customer.</li></ul>
-<h2>Methodology</h2><p class="small">Evidence was gathered on {today} by read-only queries through the {site} MCP connector against account <code>{tenant}</code>: KQL over Office365, AzureSigninLogs, AzureAuditLogs and WindowsAudit; behavior-summary search; resource dumps of office365User, office365Device, office365ConditionalAccessPolicy and qualysHost; connector and report inventory. Event and incident counts are for {month}; resource-table counts are current snapshots. Control status is an analyst mapping of that evidence onto NIST SP 800-53 Rev. 5 and is not the output of the Fluency compliance engine. Companion frameworks were not produced. Individual users, case ids and comments are deliberately omitted.</p>
+<li><b>Policies and procedures (AC-1, IA-1, IR-1):</b> supplied by the customer.</li></ul></div>
+<div class="foot"><h2><span class="n">5</span>Methodology</h2><p>Evidence was gathered on {today} by read-only queries through the {site} MCP connector against account <code>{tenant}</code>: KQL over Office365, AzureSigninLogs, AzureAuditLogs and WindowsAudit; behavior-summary search; resource dumps of office365User, office365Device, office365ConditionalAccessPolicy and qualysHost; connector and report inventory. Event and incident counts are for {month}; resource-table counts are current snapshots. Control status is an analyst mapping of that evidence onto NIST SP 800-53 Rev. 5 and is not the output of the Fluency compliance engine. Companion frameworks were not produced. Individual users, case ids and comments are deliberately omitted.</p></div>
 </div></body></html>""".format(
-        title=esc(title), tname=esc(a.tenant_name), tenant=esc(a.tenant), site=esc(a.site), month=month, today=today,
+        css=CSS, pbar=pbar, title=esc(title), tname=esc(a.tenant_name), tenant=esc(a.tenant), site=esc(a.site), month=month, today=today,
         logging_line=("Audit logging and monitoring were active in the window." if logging_status() == "supported" else "Audit logging evidence in the window is limited."),
         c_s=cnt["supported"], c_p=cnt["partial"], c_n=cnt["not_observed"], c_m=cnt["needs_manual_review"], lead_new=lead_new, kp=kp, trs=trs,
         o365=n(o365), audit=n(audit), wl_chart=wl_chart, au_chart=au_chart, ctr=ctr, beh=n(beh_total), sc_chart=sc_chart, disp=disp,

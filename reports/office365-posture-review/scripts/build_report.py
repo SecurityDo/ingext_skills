@@ -25,7 +25,7 @@ Rules (ported from the three local posture reports; thresholds are constants bel
 import argparse, collections, csv, datetime, glob, gzip, html, json, os, re, sys
 
 E = html.escape
-NAVY, RED, AMB, GRN, GRY = "#1C2B45", "#B91C1C", "#B45309", "#15803D", "#64748B"
+NAVY, RED, AMB, GRN, GRY, BLU = "#14213d", "#B91C1C", "#B45309", "#15803D", "#64748B", "#1D4ED8"
 PRIV_ROLES = {"Global Administrator", "Company Administrator", "Security Administrator", "Privileged Role Administrator",
               "User Administrator", "Exchange Administrator", "SharePoint Service Administrator"}
 WEAK_FACTORS = {"email", "mobilephone"}   # compared lower-case with underscores removed: dumps carry mobilePhone, the old report MOBILE_PHONE
@@ -214,7 +214,7 @@ def listed(ev_dir):
 
 
 def pill(t, c):
-    return '<span style="background:%s;color:#fff;border-radius:3px;padding:1px 7px;font-size:11px">%s</span>' % (c, E(t))
+    return '<span class="pill" style="--c:%s">%s</span>' % (c, E(t))
 
 
 def main():
@@ -231,17 +231,18 @@ def main():
     names = sorted(set(fd) | set(ls))
     if not names:
         sys.exit("no users__*, apps__* or devices__* dump files and no resources.json in %s" % a.evidence_dir)
-    warns, csv_rows, body = [], [], []
-    for cust in names:
-        body.append("<h2>Feed: %s</h2>" % E(cust))
+    warns, csv_rows, body, sevcount = [], [], [], collections.Counter()
+    for fi, cust in enumerate(names, 1):
+        body.append("<h2><span class='n'>%d</span>Feed: %s</h2>" % (fi, E(cust)))
         for area, issues in AREAS:
             path, meta = fd.get(cust, {}).get(area), ls.get(cust, {}).get(area)
-            body.append("<h3>%s</h3>" % area.capitalize())
+            body.append("<div class='panel'><h3>%s</h3>" % area.capitalize())
             if path is None:
                 body.append("<p class='muted'><b>%s.</b> %s</p>" % (
                     "Not collected" if meta else "No dump",
                     "The dump is listed (%s records) but was not downloaded; no result is shown." % meta.get("count") if meta else
                     "This feed has no %s dump, so this area is not assessed. That is a coverage gap, not a clean result." % area))
+                body.append("</div>")
                 continue
             key = {"users": "office365User", "applications": "office365Application", "devices": "office365Device"}[area]
             recs = records(path, key)
@@ -262,32 +263,69 @@ def main():
                 p = {i for i, _, _ in res.get("priv", [])}
                 comp = sorted(p & ({i for i, _, _ in res.get("weakmfa", [])} | {i for i, _, _ in res.get("token", [])} | {i for i, _, _ in res.get("pwnone", [])}))
                 if comp:
-                    body.append("<p><b>Compound risk:</b> %d privileged account(s) also have weak MFA, a stale token baseline or password policy None: %s.</p>"
+                    body.append("<div class='read'><b>Compound risk:</b> %d privileged account(s) also have weak MFA, a stale token baseline or password policy None: %s.</div>"
                                 % (len(comp), E(", ".join(comp[:10]))))
             rows.sort(key=lambda r: (["Critical", "High", "Medium", "Low"].index(r[1]), -len(r[4] or [])))
-            t = "<table><thead><tr><th>Severity</th><th>Finding</th><th>Count</th><th>Why it matters</th></tr></thead><tbody>"
-            for k, sev, label, why, items in rows:
-                t += "<tr><td>%s</td><td>%s</td><td><b>%s</b></td><td>%s</td></tr>" % (pill(sev, SEV[sev]), E(label), "n/a" if items is None else len(items), E(why))
-            body.append(t + "</tbody></table>")
+            t = "<div class='tw'><table><thead><tr><th>Severity</th><th>Finding</th><th>Count</th><th>Why it matters</th></tr></thead><tbody>"
             for k, sev, label, why, items in rows:
                 if items:
-                    body.append("<details><summary>%s (%d)</summary><table><tbody>%s</tbody></table>%s</details>" % (
+                    sevcount[sev] += 1
+                t += "<tr><td class='sev' style='--c:%s'>%s</td><td>%s</td><td><b>%s</b></td><td>%s</td></tr>" % (SEV[sev], pill(sev, SEV[sev]), E(label), "n/a" if items is None else len(items), E(why))
+            body.append(t + "</tbody></table></div>")
+            for k, sev, label, why, items in rows:
+                if items:
+                    body.append("<details><summary>%s (%d)</summary><div class='tw'><table><tbody>%s</tbody></table></div>%s</details>" % (
                         E(label), len(items), "".join("<tr><td>%s</td><td>%s</td><td>%s</td></tr>" % (E(n), E(i), E(d)) for i, n, d in items[:SHOW]),
                         "<p class='muted'>%d more in the CSV.</p>" % (len(items) - SHOW) if len(items) > SHOW else ""))
-    css = ("body{font-family:Arial,Helvetica,sans-serif;color:#1e293b;max-width:1000px;margin:24px auto;padding:0 16px;font-size:13px}"
-           "h1{color:%s;margin:0}h2{color:%s;border-bottom:2px solid %s;padding-bottom:4px;margin-top:30px}h3{margin:18px 0 4px}"
-           "table{border-collapse:collapse;width:100%%;margin:6px 0}th,td{border:1px solid #cbd5e1;padding:4px 8px;text-align:left;vertical-align:top}"
-           "th{background:#f1f5f9}.muted{color:%s}details{margin:4px 0}summary{cursor:pointer}") % (NAVY, NAVY, NAVY, GRY)
-    head = "<h1>Office 365 Posture Review</h1><p class='muted'>%s &middot; %s &middot; as of %s UTC</p>" % (E(a.tenant), E(a.site), now.strftime("%Y-%m-%d %H:%M"))
-    tail = ("<h2>Limits</h2><ul><li>This is resource posture from inventory snapshots, not activity. It does not say whether a risk was exploited; "
+            body.append("</div>")
+    css = """
+:root{--navy:#14213d;--ink:#1f2937;--mut:#64748b;--line:#e2e8f0;--bg:#f4f6fa;--card:#fff;--acc:#1d4ed8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
+.wrap{max-width:1060px;margin:0 auto;padding:0 28px 48px}
+.hero{background:linear-gradient(135deg,#0f1a33 0%,#1d3461 100%);color:#fff;padding:38px 0 70px}
+.hero .wrap{padding-bottom:0}
+.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#9db4e0;font-weight:600}
+.hero h1{margin:6px 0 4px;font-size:30px;font-weight:700;letter-spacing:-.01em}
+.hero p{margin:0;color:#c7d4ee;font-size:14px}
+.chips{margin-top:18px}.chip{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#e6edfb;border-radius:999px;padding:3px 12px;font-size:12px;margin:0 8px 6px 0}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:-46px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:0 2px 8px rgba(15,26,51,.06);border-top:4px solid var(--c)}
+.kpi b{display:block;font-size:32px;line-height:1.1;color:var(--c)}.kpi span{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-top:18px;box-shadow:0 1px 4px rgba(15,26,51,.04)}
+h2{font-size:18px;margin:34px 0 4px;color:var(--navy);display:flex;align-items:center;gap:10px}
+h2 .n{background:var(--navy);color:#fff;border-radius:6px;font-size:12px;padding:2px 8px;font-weight:600}
+h3{font-size:15px;margin:0 0 4px;color:var(--navy)}
+.muted{color:var(--mut);margin:0 0 12px;font-size:13px}
+.read{border-left:4px solid var(--acc);background:#eff4ff;border-radius:0 10px 10px 0;padding:14px 18px;margin:12px 0;color:#1e3a8a}
+.warn{border-left:4px solid #B91C1C;background:#fef2f2;border-radius:0 10px 10px 0;padding:14px 18px;margin-top:18px;color:#7f1d1d}
+.bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line);margin:10px 0 6px}.bar i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:16px;color:var(--mut);font-size:12px}.legend em{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
+th{background:#f1f5f9;color:#475569;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;padding:10px 12px;border-bottom:1px solid var(--line);position:sticky;top:0}
+td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+tr:last-child td{border-bottom:0}tbody tr:hover td{background:#f8fafc}
+td.sev{border-left:4px solid var(--c);white-space:nowrap}
+.tw{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);margin-top:10px}
+.pill{display:inline-block;color:#fff;border-radius:999px;padding:2px 11px;font-size:11px;font-weight:600;white-space:nowrap;background:var(--c)}
+details{margin:8px 0}summary{cursor:pointer;font-weight:600;color:var(--navy)}
+.foot{margin-top:34px;color:var(--mut);font-size:12px;border-top:1px solid var(--line);padding-top:14px}.foot li{margin:3px 0}.foot h2{font-size:14px;margin:0 0 6px}
+@media (max-width:760px){.kpis{grid-template-columns:1fr 1fr}.hero h1{font-size:24px}}
+@media print{body{background:#fff}.hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}tr,.kpi,.panel,.tw{break-inside:avoid}th{position:static}.kpi,.pill,.bar i,td.sev,.read,.warn{-webkit-print-color-adjust:exact;print-color-adjust:exact}details>.tw{break-inside:auto}}
+"""
+    sub = "%s &middot; %s &middot; as of %s UTC" % (E(a.tenant), E(a.site), now.strftime("%Y-%m-%d %H:%M"))
+    kp = "".join("<div class='kpi' style='--c:%s'><b>%d</b><span>%s</span></div>" % (c, sevcount[k], k + " findings raised") for k, c in (("Critical", RED), ("High", RED), ("Medium", AMB), ("Low", GRY)))
+    head = ("<div class='hero'><div class='wrap'><div class='eyebrow'>Resource posture</div><h1>Office 365 Posture Review</h1><p>%s</p></div></div>"
+            "<div class='wrap'><div class='kpis'>%s</div>") % (sub, kp)
+    tail = ("<div class='foot'><h2>Limits</h2><ul><li>This is resource posture from inventory snapshots, not activity. It does not say whether a risk was exploited; "
             "use sign-in, audit or incident tools for that.</li>"
             "<li>MFA registration is not MFA enforcement, and Conditional Access policy state is not evaluated here.</li>"
             "<li>Counts are as of the dump time shown, not a time window. Each feed is assessed on its own and not summed with another.</li>"
             "<li>Some findings are expected: service or federated accounts (password policy None), public-client apps (no credentials), stale devices.</li>"
-            "<li>Never read these counts as compliance or compromise.</li></ul>")
-    wn = "".join("<p><b>Warning:</b> %s</p>" % E(w) for w in warns)
+            "<li>Never read these counts as compliance or compromise.</li></ul></div></div>")
+    wn = "".join("<div class='warn'><b>Warning:</b> %s</div>" % E(w) for w in warns)
     with open(a.out, "w") as f:
-        f.write("<!doctype html><html><head><meta charset='utf-8'><title>Office 365 Posture Review</title><style>%s</style></head><body>%s%s%s%s</body></html>" % (css, head, wn, "".join(body), tail))
+        f.write("<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Office 365 Posture Review</title><style>%s</style></head><body>%s%s%s%s</body></html>" % (css, head, wn, "".join(body), tail))
     if a.csv:
         with open(a.csv, "w", newline="") as f:
             w = csv.writer(f)

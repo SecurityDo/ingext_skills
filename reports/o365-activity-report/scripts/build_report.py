@@ -131,13 +131,15 @@ def fmt_ts(v):
     d = parse_ts(v)
     return d.strftime("%Y-%m-%d %H:%M") if d else esc(v)
 
-PALETTE = ["#4493f8", "#3fb950", "#f0a020", "#f85149", "#a371f7",
-           "#39c5cf", "#db61a2", "#e3b341", "#7ee787", "#ff9bce"]
+PALETTE = ["#1D4ED8", "#15803D", "#B45309", "#B91C1C", "#7C3AED",
+           "#0E7490", "#BE185D", "#A16207", "#4D7C0F", "#64748B"]
 
 # ----------------------------- panels ---------------------------------------
+_SEC = [0]
+
 def panel(title, body, accent=""):
-    cls = "r" if accent == "r" else ""
-    return f'<section><h3 class="{cls}">{esc(title)}</h3>{body}</section>'
+    _SEC[0] += 1
+    return f'<section><h2><span class="n">{_SEC[0]}</span>{esc(title)}</h2><div class="panel">{body}</div></section>'
 
 def nodata(msg="No data returned for this panel in the selected window."):
     return f'<p class="note nd">&#9679; {esc(msg)}</p>'
@@ -152,9 +154,9 @@ def render_kpis(rows):
         if not is_number(val):
             continue
         low = str(col).lower()
-        cls = "warn" if ("fail" in low or "external" in low) and num(val) > 0 else ""
+        warn = ("fail" in low or "external" in low) and num(val) > 0
         cards.append(
-            f'<div class="kpi {cls}"><div class="n">{fmt_num(val)}</div>'
+            f'<div class="kpi" style="--c:{"#B45309" if warn else "#1D4ED8"}"><div class="n">{fmt_num(val)}</div>'
             f'<div class="l">{esc(humanize(col))}</div></div>'
         )
     if not cards:
@@ -274,8 +276,9 @@ def render_table(rows, bar_col=None, ts_cols=("lastSeen", "firstSeen", "timestam
             else:
                 mono = "mono" if any(k in c.lower() for k in ("ip", "user", "mailbox", "id")) else ""
                 cells.append(f'<td class="{mono}">{esc(v)}</td>')
+        cells[0] = cells[0].replace("<td", '<td style="border-left:4px solid #1D4ED8"', 1)
         body.append(f"<tr>{''.join(cells)}</tr>")
-    return f'<table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table>'
+    return f'<div class="tw"><table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div>'
 
 # ----------------------------- report ---------------------------------------
 FOCUS_TITLES = {
@@ -386,8 +389,8 @@ def build(a):
         f"<tr><td class=mono>{esc(f)}</td><td>{n:,}</td><td>{STLAB[s]}</td></tr>"
         for f, n, s in manifest)
     appendix = panel("Data sources",
-                     f'<table><thead><tr><th>Query file</th><th>Rows</th><th>Status</th></tr></thead>'
-                     f'<tbody>{src_rows}</tbody></table>'
+                     f'<div class="tw"><table><thead><tr><th>Query file</th><th>Rows</th><th>Status</th></tr></thead>'
+                     f'<tbody>{src_rows}</tbody></table></div>'
                      f'<p class="note">Every figure above is rendered directly from these saved KQL '
                      f'results. <b>empty</b> = the query ran and returned no rows for the window. '
                      f'<b>MISSING</b> = the result was never saved to file, so its panel is blank for a '
@@ -411,61 +414,68 @@ def build(a):
     HTML = f"""<!DOCTYPE html><html lang=en><head><meta charset=UTF-8>
 <meta name=viewport content="width=device-width, initial-scale=1.0">
 <title>{esc(title)} — {tenant}</title><style>
-:root{{--bg:#0d1117;--panel:#161b22;--panel2:#1c2330;--line:#2a3340;--txt:#e6edf3;--muted:#9aa7b4;--blue:#4493f8;--amber:#f0a020;--red:#f85149;--green:#3fb950}}
-*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px;line-height:1.5}}
-.wrap{{max-width:1000px;margin:0 auto;padding:30px 22px 60px}}
-header{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:22px;flex-wrap:wrap;gap:14px}}
-.brand{{font-weight:700;font-size:17px;letter-spacing:.5px}}.brand span{{color:var(--blue)}}
-h1{{font-size:21px;margin:4px 0 6px}}.sub{{color:var(--muted);font-size:13px;max-width:70ch}}
-.mono{{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace}}
-.meta{{text-align:right;font-size:12px;color:var(--muted)}}.meta b{{color:var(--txt)}}
-.kpis{{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:0 0 26px}}
-.kpi{{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}}
-.kpi .n{{font-size:24px;font-weight:700}}.kpi .l{{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}}
-.kpi.warn .n{{color:var(--amber)}}
-.banner{{background:rgba(248,81,73,.12);border:1px solid var(--red);border-radius:8px;padding:12px 15px;margin:0 0 18px;color:#f7b0ad;font-size:13px;line-height:1.5}}
-section{{margin-bottom:28px}}h3{{font-size:15px;border-left:3px solid var(--blue);padding-left:10px;margin:0 0 13px}}h3.r{{border-color:var(--red)}}
-table{{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}}
-th,td{{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle;overflow-wrap:anywhere}}
-th{{background:var(--panel2);color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px}}
-tbody tr:last-child td{{border-bottom:none}}
+:root{{--navy:#14213d;--ink:#1f2937;--mut:#64748b;--line:#e2e8f0;--bg:#f4f6fa;--card:#fff;--acc:#1d4ed8;--red:#B91C1C;--amber:#B45309}}
+*{{box-sizing:border-box}}
+body{{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif}}
+.wrap{{max-width:1060px;margin:0 auto;padding:0 28px 48px}}
+.hero{{background:linear-gradient(135deg,#0f1a33 0%,#1d3461 100%);color:#fff;padding:38px 0 70px}}
+.hero .wrap{{padding-bottom:0}}
+.eyebrow{{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#9db4e0;font-weight:600}}
+.hero h1{{margin:6px 0 4px;font-size:30px;font-weight:700;letter-spacing:-.01em}}
+.hero p{{margin:0;color:#c7d4ee;font-size:14px}}
+.chips{{margin-top:18px}}.chip{{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#e6edfb;border-radius:999px;padding:3px 12px;font-size:12px;margin:0 8px 6px 0}}.chip b{{font-weight:600;color:#fff}}
+.mono{{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}}
+.kpis{{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-top:-46px}}
+.kpi{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:0 2px 8px rgba(15,26,51,.06);border-top:4px solid var(--c)}}
+.kpi .n{{font-size:32px;line-height:1.1;font-weight:700;color:var(--c)}}.kpi .l{{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}}
+.panel{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-top:10px;box-shadow:0 1px 4px rgba(15,26,51,.04)}}
+h2{{font-size:18px;margin:34px 0 4px;color:var(--navy);display:flex;align-items:center;gap:10px}}
+h2 .n{{background:var(--navy);color:#fff;border-radius:6px;font-size:12px;padding:2px 8px;font-weight:600}}
+.lead{{border-left:4px solid var(--acc);background:#eff4ff;border-radius:0 10px 10px 0;padding:14px 18px;margin-top:18px;color:#1e3a8a}}
+.banner{{border-left:4px solid var(--red);background:#fef2f2;border-radius:0 10px 10px 0;padding:14px 18px;margin-top:18px;color:#7f1d1d;font-size:13px}}
+table{{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}}
+th{{background:#f1f5f9;color:#475569;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;padding:10px 12px;border-bottom:1px solid var(--line);position:sticky;top:0}}
+td{{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle;overflow-wrap:anywhere}}
+tr:last-child td{{border-bottom:0}}tbody tr:hover td{{background:#f8fafc}}
+.tw{{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}}
+.panel .tw{{border-radius:10px}}
 .volwrap{{display:flex;align-items:center;gap:8px;min-width:120px}}
-.vol{{position:relative;flex:1;height:8px;background:var(--panel2);border-radius:5px;overflow:hidden;min-width:50px}}
-.volfill{{position:absolute;left:0;top:0;bottom:0;background:var(--blue);border-radius:5px}}
+.vol{{position:relative;flex:1;height:8px;background:var(--line);border-radius:5px;overflow:hidden;min-width:50px}}
+.volfill{{position:absolute;left:0;top:0;bottom:0;background:var(--acc);border-radius:5px}}
 .voln{{font-variant-numeric:tabular-nums;min-width:52px;text-align:right}}
-.chartwrap{{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 6px 4px}}
+.chartwrap{{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 6px 4px}}
 svg.tc{{width:100%;height:auto;display:block}}
-svg.tc .grid{{stroke:#243040;stroke-width:1}}svg.tc .vg{{stroke-dasharray:2 4}}
-svg.tc .ylab{{fill:var(--muted);font-size:11px;text-anchor:end;font-family:ui-monospace,monospace}}
-svg.tc .xlab{{fill:var(--muted);font-size:11px;font-family:ui-monospace,monospace}}
-.legend{{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:8px 2px 0}}
-.legend i{{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}}
-.note{{color:var(--muted);font-size:12px;margin-top:8px}}.nd{{color:var(--amber)}}
-.lead{{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:8px;padding:12px 15px;margin:0 0 22px}}
-footer{{border-top:1px solid var(--line);margin-top:36px;padding-top:14px;color:var(--muted);font-size:11px}}
-@media(max-width:640px){{.kpis{{grid-template-columns:repeat(2,1fr)}}}}
-</style></head><body><div class=wrap>
-<header>
-<div><div class=brand>FLUENCY<span>&middot;</span>Ingext</div>
+svg.tc .grid{{stroke:#e2e8f0;stroke-width:1}}svg.tc .vg{{stroke-dasharray:2 4}}
+svg.tc .ylab{{fill:var(--mut);font-size:11px;text-anchor:end;font-family:ui-monospace,monospace}}
+svg.tc .xlab{{fill:var(--mut);font-size:11px;font-family:ui-monospace,monospace}}
+.legend{{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:8px 2px 0}}
+.legend i{{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}}
+.note{{color:var(--mut);font-size:12px;margin-top:8px}}.nd{{color:var(--amber)}}
+.foot{{margin-top:34px;color:var(--mut);font-size:12px;border-top:1px solid var(--line);padding-top:14px}}
+@media(max-width:760px){{.kpis{{grid-template-columns:1fr 1fr}}.hero h1{{font-size:24px}}}}
+@media print{{body{{background:#fff}}.hero,.kpi,.volfill,.lead,.banner,td,svg.tc{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}tr,.kpi,.panel,.chartwrap{{break-inside:avoid}}th{{position:static}}}}
+</style></head><body>
+<div class=hero><div class=wrap>
+<div class=eyebrow>FLUENCY<span>&middot;</span>Ingext</div>
 <h1>{esc(title)}</h1>
-<div class="sub">Account-wide Microsoft 365 audit activity, queried from the Office365 datalake with KQL.</div></div>
-<div class=meta><div>Tenant: <b>{tenant}</b></div><div>Window: <b>{win}</b></div>
-<div>Generated: <b>{gen} UTC</b></div><div>Source: <b>Office365 datalake (KQL)</b></div></div>
-</header>
+<p>Account-wide Microsoft 365 audit activity, queried from the Office365 datalake with KQL.</p>
+<div class=chips><span class=chip>Tenant: <b>{tenant}</b></span><span class=chip>Window: <b>{win}</b></span>
+<span class=chip>Generated: <b>{gen} UTC</b></span><span class=chip>Source: <b>Office365 datalake (KQL)</b></span></div>
+</div></div>
+<div class=wrap>
+{kpi_html}
 
 {banner}
 
 <div class="lead">{esc(headline)}</div>
 
-{kpi_html}
-
 {"".join(sections)}
 
 {appendix}
 
-<footer>Generated by the o365-activity-report skill from the Office365 datalake via KQL.
+<div class=foot>Generated by the o365-activity-report skill from the Office365 datalake via KQL.
 Every value is rendered directly from the saved query results; no figures are synthesized.
-Timestamps are UTC.</footer>
+Timestamps are UTC.</div>
 </div></body></html>"""
 
     os.makedirs(os.path.dirname(os.path.abspath(a.output)), exist_ok=True)

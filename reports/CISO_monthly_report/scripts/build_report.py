@@ -23,9 +23,9 @@ GAP; nothing is filled in.
 import argparse, calendar, collections, datetime, hashlib, html, json, os, re, sys
 
 E = html.escape
-MONO = "'IBM Plex Mono',ui-monospace,Menlo,monospace"
-SANS = "'Libre Franklin',Arial,Helvetica,sans-serif"
-NAVY, RED, AMB, GRN, GRY = "#1C2B45", "#AD0015", "#C9962B", "#4E7A5D", "#8B93A3"
+MONO = "ui-monospace,Menlo,Consolas,monospace"
+SANS = "-apple-system,'Segoe UI',Inter,Helvetica,Arial,sans-serif"
+NAVY, RED, AMB, GRN, GRY, BLU = "#14213d", "#B91C1C", "#B45309", "#15803D", "#64748B", "#1D4ED8"
 RAG = {"Green": GRN, "Amber": AMB, "Red": RED}
 TREND = {"improving": "↑ Improving", "stable": "→ Stable", "declining": "↓ Declining"}
 MIN_WORDS = 150
@@ -38,6 +38,67 @@ CATEGORIES = [
     ("Network & Perimeter", ("fortigate", "firewall", "vpn", "dns", "zscaler", "netskope", "meraki", "network", "security_group", "security_configuration")),
     ("Vulnerability", ("vulnerab", "qualys", "cve", "tenable")),
 ]
+
+# House design: navy hero, KPI cards, numbered section headings, rounded tables, pills, print rules. All classes; no external assets.
+CSS = """:root{--navy:#14213d;--ink:#1f2937;--mut:#64748b;--line:#e2e8f0;--bg:#f4f6fa;--card:#fff;--acc:#2563eb;--red:#B91C1C;--amb:#B45309;--grn:#15803D}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,'Segoe UI',Inter,Helvetica,Arial,sans-serif}
+.wrap{max-width:1060px;margin:0 auto;padding:0 28px}
+.hero{background:linear-gradient(135deg,#0f1a33 0%,#1d3461 100%);color:#fff;padding:34px 0 76px}
+.hero-row{display:flex;align-items:center;justify-content:space-between;gap:24px}
+.hero-id{display:flex;align-items:center;gap:18px}
+.logo{background:#fff;border-radius:12px;padding:8px;display:flex;flex:none}.logo svg{display:block;width:52px;height:52px}
+.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#9db4e0;font-weight:600}
+.hero h1{margin:6px 0 4px;font-size:30px;font-weight:700;letter-spacing:-.01em;color:#fff}
+.hero p{margin:0;color:#c7d4ee;font-size:14px}
+.chips{margin-top:18px}.chip{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#e6edfb;border-radius:999px;padding:3px 12px;font-size:12px;margin:0 8px 6px 0}.chip b{color:#fff}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-top:-50px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 14px 12px;box-shadow:0 2px 8px rgba(15,26,51,.06);border-top:4px solid var(--c)}
+.kpi b{display:block;font-size:28px;line-height:1.1;color:var(--c)}.kpi span{display:block;color:var(--mut);font-size:11px;font-weight:600;margin-top:5px;line-height:1.35}
+.posture{display:flex;flex-wrap:wrap;align-items:stretch;margin-top:16px;background:var(--card);border:1px solid var(--line);border-left:6px solid var(--c);border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(15,26,51,.04)}
+.posture>div{display:flex;align-items:center;gap:12px;padding:14px 20px}
+.posture .k{font:700 11px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.14em;color:var(--mut)}
+.posture .big{font-size:20px;font-weight:800;color:var(--c)}
+.posture .pill-rag{background:var(--c);color:#fff;border-radius:999px;padding:4px 16px;font-size:16px;font-weight:800;letter-spacing:.04em}
+.posture .sep{border-left:1px solid var(--line)}
+.posture .facts{flex:1;flex-wrap:wrap;gap:6px 26px;color:#475569;font-size:13.5px}
+.chap{margin:42px 0 0;padding:16px 22px;background:linear-gradient(135deg,#0f1a33 0%,#1d3461 100%);border-radius:12px;display:flex;align-items:baseline;gap:18px;color:#fff}
+.chap .cn{font:600 12px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.16em;color:#9db4e0}.chap .ct{font-size:21px;font-weight:700}
+section{padding:6px 0 4px}
+.sec{display:flex;align-items:center;gap:10px;margin:30px 0 10px;flex-wrap:wrap}
+.sec h2,h2.plain{margin:0;font-size:19px;font-weight:700;color:var(--navy)}
+.sec .n{background:var(--navy);color:#fff;border-radius:6px;font-size:12px;padding:3px 9px;font-weight:600;font-family:ui-monospace,Menlo,Consolas,monospace}
+.flag{font:600 10.5px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:999px;padding:5px 11px}
+p.para{font-size:14.5px;line-height:1.7;color:#334155;margin:0 0 14px;max-width:880px}
+p.lead{font-size:14.5px;line-height:1.7;color:var(--mut);margin:18px 0 0;max-width:880px}
+.finding{border-left:4px solid var(--acc);background:#eff4ff;border-radius:0 10px 10px 0;padding:12px 18px;margin:10px 0;max-width:880px;font-size:14px;line-height:1.6;color:#1e3a8a}
+.caveat{border-left:4px solid var(--amb);background:#fffbeb;border-radius:0 10px 10px 0;padding:12px 18px;margin:12px 0;max-width:880px}.caveat p{margin:0;font-size:13.5px;line-height:1.65;color:#78350f}
+.gap{margin:12px 0;font:400 12px/1.6 ui-monospace,Menlo,Consolas,monospace;color:var(--mut);max-width:880px}
+.gap span{display:inline-block;border:1px solid #cbd5e1;background:#f8fafc;border-radius:999px;padding:1px 9px;font-weight:600;margin-right:6px}
+.tw{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);margin:10px 0 18px}
+table{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;font-size:12.5px}
+th{background:#f1f5f9;color:#475569;text-align:left;font:600 10.5px/1.4 ui-monospace,Menlo,Consolas,monospace;text-transform:uppercase;letter-spacing:.07em;padding:10px 10px;border-bottom:1px solid var(--line);position:sticky;top:0}
+td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.5;color:#334155;overflow-wrap:anywhere}
+tr:last-child td{border-bottom:0}tbody tr:hover td{background:#f8fafc}
+td:first-child{border-left:4px solid var(--navy);font-weight:600;color:var(--navy)}
+tr.hl td{background:#fffbeb}
+.pill{display:inline-block;color:#fff;border-radius:999px;padding:2px 11px;font-size:11px;font-weight:600;white-space:nowrap;background:var(--c)}
+.fig{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:14px 0;box-shadow:0 1px 4px rgba(15,26,51,.04)}
+.fig .ft{font:600 11px/1.4 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:12px}
+.fig svg{display:block;max-width:100%;height:auto}
+.fig p{margin:10px 0 0;font-size:12px;color:var(--mut)}
+.dec{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:20px 0;overflow:hidden}
+.dec .dh{padding:11px 20px;background:var(--navy);font:600 11px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.14em;color:#fff}
+.dec .cards{display:grid;gap:12px;padding:14px}
+.dec .card{border:1px solid var(--line);border-left:4px solid var(--red);border-radius:10px;padding:12px 14px;display:flex;gap:12px;background:#fff}
+.dec .card b{font:700 20px/1 ui-monospace,Menlo,Consolas,monospace;color:var(--red)}.dec .card p{margin:0;font-size:14px;line-height:1.6}
+.note{font-size:13px;color:#475569;margin:0 0 8px;max-width:880px}
+h3{font-size:15px;color:var(--navy);margin:18px 0 8px}
+.foot{margin-top:36px;padding:16px 0 40px;border-top:1px solid var(--line);color:var(--mut);font-size:12px}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(3,1fr)}.hero-row{flex-wrap:wrap}}
+@media (max-width:620px){.kpis{grid-template-columns:1fr 1fr}.hero h1{font-size:24px}.wrap{padding:0 16px}.dec .cards{grid-template-columns:1fr!important}}
+@media print{body{background:#fff;font-size:12.5px}.hero,.chap,.kpi,.pill,.pill-rag,.posture,.dec .dh,.finding,.caveat,.sec .n,.flag,.gap span,.fig,tr.hl td,th,td:first-child,.logo{-webkit-print-color-adjust:exact;print-color-adjust:exact}tr,.kpi,.fig,.card,.finding,.caveat,.dec,.posture{break-inside:avoid}.chap,.sec,h3{break-after:avoid}th{position:static}.kpi,.fig,.posture,.tw{box-shadow:none}.hero{padding-bottom:70px}}
+"""
 
 
 def load(d, name, required=False):
@@ -71,52 +132,50 @@ def signed(a, b):
 
 
 def band(score):
-    return ("Critical", RED) if score >= 18 else ("High", "#D98E32") if score >= 11 else ("Medium", AMB) if score >= 6 else ("Low", GRN)
+    return ("Critical", RED) if score >= 18 else ("High", "#C2410C") if score >= 11 else ("Medium", AMB) if score >= 6 else ("Low", GRN)
 
 
 def pill(t, col):
-    return '<span style="display:inline-block;background:%s;color:#fff;font:600 10.5px/1 %s;padding:4px 8px;letter-spacing:.06em;white-space:nowrap">%s</span>' % (col, MONO, E(t))
+    return '<span class="pill" style="--c:%s">%s</span>' % (col, E(t))
 
 
 # ---------- html helpers ----------
 def chapter(n, title):
-    return ('<div style="margin:48px 0 0;padding:20px 72px;background:%s;display:flex;align-items:baseline;gap:20px"><span style="font:600 13px/1 %s;letter-spacing:.16em;color:#8FA3C8">CHAPTER %d</span>'
-            '<span style="font-size:22px;font-weight:700;color:#fff">%s</span></div><section style="padding:32px 72px 8px">') % (NAVY, MONO, n, E(title))
+    return '<div class="chap"><span class="cn">CHAPTER %d</span><span class="ct">%s</span></div><section>' % (n, E(title))
 
 
 def sec(num, title, flag=""):
-    f = ('<span style="font:600 11px/1 %s;letter-spacing:.1em;color:#8A6508;background:#FBF3DD;border:1px solid #E5CF8E;padding:5px 10px">%s</span>' % (MONO, E(flag))) if flag else ""
-    return '<div style="display:flex;align-items:baseline;gap:14px;margin:36px 0 16px"><span style="font:600 15px/1 %s;color:%s">%02d</span><h2 style="margin:0;font-size:22px;font-weight:700;color:%s">%s</h2>%s</div>' % (MONO, RED, num, NAVY, E(title), f)
+    f = ('<span class="flag">%s</span>' % E(flag)) if flag else ""
+    return '<div class="sec"><span class="n">%02d</span><h2>%s</h2>%s</div>' % (num, E(title), f)
 
 
 def para(t):
-    return '<p style="font-size:15px;line-height:1.7;color:#2E3646;margin:0 0 14px;max-width:860px">%s</p>' % t
+    return '<p class="para">%s</p>' % t
 
 
 def lead(t):
-    return '<p style="font-size:15px;line-height:1.7;color:#4A5262;margin:0 0 8px;max-width:860px">%s</p>' % t
+    return '<p class="lead">%s</p>' % t
 
 
 def callouts(items):
-    return "".join('<div style="border-left:4px solid %s;background:#F4F6FA;padding:12px 18px;margin:10px 0;max-width:860px;font-size:14px;line-height:1.6;color:%s"><strong>Finding —</strong> %s</div>' % (RED, NAVY, t) for t in items)
+    return "".join('<div class="finding"><strong>Finding —</strong> %s</div>' % t for t in items)
 
 
 def gap(t, kind="GAP"):
-    return '<p style="margin:12px 0;font:400 12px/1.6 %s;color:#6B7484;max-width:860px"><span style="border:1px solid #C9CFD9;padding:1px 6px;font-weight:600;margin-right:6px">%s</span>%s</p>' % (MONO, kind, t)
+    return '<p class="gap"><span>%s</span>%s</p>' % (kind, t)
 
 
 def table(heads, rows, widths, hl=None):
-    th = "".join('<th style="text-align:left;font:600 10.5px/1.4 %s;letter-spacing:.08em;text-transform:uppercase;color:#6B7484;padding:8px 10px;border-bottom:2px solid %s;width:%s">%s</th>' % (MONO, NAVY, widths[i], E(h)) for i, h in enumerate(heads))
+    th = "".join('<th style="width:%s">%s</th>' % (widths[i], E(h)) for i, h in enumerate(heads))
     body = ""
     for i, r in enumerate(rows):
-        bg = ' style="background:%s"' % hl[i] if hl and hl.get(i) else ""
-        body += "<tr%s>%s</tr>" % (bg, "".join('<td style="padding:9px 10px;border-bottom:1px solid #E3E7ED;font-size:12.5px;line-height:1.5;color:#2E3646;vertical-align:top;overflow-wrap:anywhere">%s</td>' % c for c in r))
-    return '<table style="border-collapse:collapse;width:100%%;table-layout:fixed;margin:10px 0 18px"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (th, body)
+        cls = ' class="hl"' if hl and hl.get(i) else ""
+        body += "<tr%s>%s</tr>" % (cls, "".join("<td>%s</td>" % c for c in r))
+    return '<div class="tw"><table><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>' % (th, body)
 
 
 def figure(title, svg, note=""):
-    return ('<div style="border:1px solid #DDE1E8;padding:18px 20px;margin:16px 0;max-width:860px"><div style="font:600 11px/1.4 %s;letter-spacing:.1em;text-transform:uppercase;color:#6B7484;margin-bottom:12px">%s</div>%s%s</div>'
-            % (MONO, E(title), svg, ('<p style="margin:10px 0 0;font-size:12px;color:#6B7484">%s</p>' % note) if note else ""))
+    return '<div class="fig"><div class="ft">%s</div>%s%s</div>' % (E(title), svg, ("<p>%s</p>" % note) if note else "")
 
 
 def hbars(data, width=760, label_w=250, color=NAVY, fmt=str):
@@ -125,8 +184,8 @@ def hbars(data, width=760, label_w=250, color=NAVY, fmt=str):
     for i, r in enumerate(data):
         col = r[2] if len(r) > 2 else color
         y, bw = i * 26, (width - label_w - 70) * r[1] / mx
-        out += ('<text x="0" y="%d" font-size="12" fill="#2E3646" font-family="%s">%s</text><rect x="%d" y="%d" width="%.1f" height="16" fill="%s" rx="2"/>'
-                '<text x="%.1f" y="%d" font-size="12" fill="#2E3646" font-family="%s">%s</text>') % (y + 17, SANS, E(r[0]), label_w, y + 4, max(bw, 1), col, label_w + bw + 8, y + 17, MONO, E(fmt(r[1])))
+        out += ('<text x="0" y="%d" font-size="12" fill="#1f2937" font-family="%s">%s</text><rect x="%d" y="%d" width="%d" height="16" fill="#eef2f7" rx="4"/><rect x="%d" y="%d" width="%.1f" height="16" fill="%s" rx="4"/>'
+                '<text x="%.1f" y="%d" font-size="12" fill="#1f2937" font-family="%s">%s</text>') % (y + 17, SANS, E(r[0]), label_w, y + 4, width - label_w - 70, label_w, y + 4, max(bw, 1), col, label_w + bw + 8, y + 17, MONO, E(fmt(r[1])))
     return out + "</svg>"
 
 
@@ -138,10 +197,10 @@ def heatmap(risks):
     for L in range(1, 6):
         for I in range(1, 6):
             x, y = 50 + (I - 1) * 92, 250 - L * 46
-            svg += '<rect x="%d" y="%d" width="88" height="42" fill="%s" opacity="0.22"/><text x="%d" y="%d" font-size="11" fill="#2E3646" font-family="%s" text-anchor="end">%d</text>' % (x, y, band(L * I)[1], x + 84, y + 15, MONO, L * I)
+            svg += '<rect x="%d" y="%d" width="88" height="42" fill="%s" opacity="0.22" rx="6"/><text x="%d" y="%d" font-size="11" fill="#475569" font-family="%s" text-anchor="end">%d</text>' % (x, y, band(L * I)[1], x + 84, y + 15, MONO, L * I)
             if cells.get((L, I)):
                 svg += '<text x="%d" y="%d" font-size="13" font-weight="700" fill="%s" font-family="%s" text-anchor="middle">%s</text>' % (x + 44, y + 32, NAVY, MONO, E(" ".join(cells[(L, I)])))
-    return svg + '<text x="270" y="290" font-size="11" fill="#6B7484" text-anchor="middle" font-family="%s">IMPACT 1 → 5</text><text x="10" y="150" font-size="11" fill="#6B7484" font-family="%s" transform="rotate(-90 10 150)" text-anchor="middle">LIKELIHOOD 1 → 5</text></svg>' % (SANS, SANS)
+    return svg + '<text x="270" y="290" font-size="11" fill="#64748B" text-anchor="middle" font-family="%s">IMPACT 1 → 5</text><text x="10" y="150" font-size="11" fill="#64748B" font-family="%s" transform="rotate(-90 10 150)" text-anchor="middle">LIKELIHOOD 1 → 5</text></svg>' % (SANS, SANS)
 
 
 # ---------- computation ----------
@@ -336,34 +395,32 @@ def render(ev, nar, v, args, logo):
         return "".join(para(sub(x)) for x in lst)
 
     rag, trend = nar["rag"], nar["trend"]
-    A.append('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>%s</title>'
-             '<style>html,body{margin:0;background:#EEF0F4}body{font-family:%s;color:#2E3646}</style></head><body><div style="max-width:1080px;margin:0 auto;background:#fff;box-shadow:0 0 40px rgba(28,43,69,.08)">' % (E("CISO Monthly SOC Report - %s - %s" % (tname, mname)), SANS))
+    A.append('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>%s</title><style>%s</style></head><body>' % (E("CISO Monthly SOC Report - %s - %s" % (tname, mname)), CSS))
     # masthead
-    A.append('<header style="padding:56px 72px 0"><div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:28px;border-bottom:3px solid %s"><div style="display:flex;align-items:center;gap:18px">%s'
-             '<div><div style="font:600 12px/1 %s;letter-spacing:.18em;color:%s;text-transform:uppercase">Managed SOC · Monthly Report</div><h1 style="margin:8px 0 0;font-size:34px;font-weight:800;color:%s">CISO Monthly SOC Report</h1></div></div>'
-             '<div style="text-align:right;font:400 12px/1.8 %s;color:#6B7484"><div style="font-size:20px;font-weight:600;color:%s">%s — %s</div><div>Tenant <strong>%s</strong> · 1–%d %s %d (UTC)</div><div>Prepared %s · Read-only telemetry</div></div></div>'
-             % (NAVY, logo, MONO, RED, NAVY, MONO, NAVY, E(tname), E(mname), E(tenant), v["last_day"], v["month_name"], v["year"], E(prep)))
-    col = RAG[rag]
-    A.append('<div style="display:flex;align-items:stretch;margin-top:24px;border:1px solid %s;background:#FBF3DD"><div style="display:flex;align-items:center;gap:14px;padding:16px 24px;background:%s"><span style="font:700 13px/1 %s;letter-spacing:.14em;color:#fff">POSTURE</span><span style="font-size:22px;font-weight:800;color:#fff">%s</span></div>'
-             '<div style="display:flex;align-items:center;gap:14px;padding:16px 24px;border-right:1px solid %s"><span style="font:600 11px/1 %s;letter-spacing:.14em;color:#6B7484">TREND</span><span style="font-size:16px;font-weight:700;color:%s">%s</span></div>'
-             '<div style="flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:8px 28px;padding:16px 24px;font-size:13.5px;color:#4A5262"><span><strong>%d</strong> cases reviewed</span><span><strong style="color:%s">%d</strong> unacknowledged</span><span><strong>%d</strong> true positives</span></div></div>'
-             % (col, col, MONO, rag.upper(), col, MONO, col, TREND[trend], v["cases"], RED, v["unacked"], v["tp"]))
+    A.append('<header class="hero"><div class="wrap"><div class="hero-row"><div class="hero-id"><div class="logo">%s</div><div><div class="eyebrow">Managed SOC · Monthly Report</div><h1>CISO Monthly SOC Report</h1><p>%s — %s</p></div></div></div>'
+             '<div class="chips"><span class="chip">Tenant <b>%s</b></span><span class="chip">1–%d %s %d (UTC)</span><span class="chip">Prepared %s</span><span class="chip">Read-only telemetry</span></div></div></header><main class="wrap">'
+             % (logo, E(tname), E(mname), E(tenant), v["last_day"], v["month_name"], v["year"], E(prep)))
 
     def kpi(val, label, c=NAVY):
-        return '<div style="background:#fff;padding:16px 14px"><div style="font-size:26px;font-weight:800;color:%s">%s</div><div style="font-size:11px;font-weight:600;color:#6B7484;margin-top:4px;line-height:1.35">%s</div></div>' % (c, val, label)
-    A.append('<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:#DDE1E8;border:1px solid #DDE1E8;margin-top:20px">%s</div></header>' % "".join([
-        kpi(v["cases"], "Cases flagged (riskScore ≥ 3000)"), kpi(v["closed"], "Closed"), kpi(v["unacked"], "Unacknowledged", RED),
-        kpi(hm(v["mttr_p50"]), "Median time to first response"), kpi(hm(v["mttc_p50"]), "Median time to close"), kpi(v["tp"], "True positives (of %d closed)" % v["closed"])]))
+        return '<div class="kpi" style="--c:%s"><b>%s</b><span>%s</span></div>' % (c, val, label)
+    A.append('<div class="kpis">%s</div>' % "".join([
+        kpi(v["cases"], "Cases flagged (riskScore ≥ 3000)"), kpi(v["closed"], "Closed", GRN), kpi(v["unacked"], "Unacknowledged", RED),
+        kpi(hm(v["mttr_p50"]), "Median time to first response", BLU), kpi(hm(v["mttc_p50"]), "Median time to close", BLU), kpi(v["tp"], "True positives (of %d closed)" % v["closed"])]))
+    col = RAG[rag]
+    A.append('<div class="posture" style="--c:%s"><div><span class="k">POSTURE</span><span class="pill-rag">%s</span></div>'
+             '<div class="sep"><span class="k">TREND</span><span class="big" style="font-size:16px">%s</span></div>'
+             '<div class="facts sep"><span><strong>%d</strong> cases reviewed</span><span><strong style="color:%s">%d</strong> unacknowledged</span><span><strong>%d</strong> true positives</span></div></div>'
+             % (col, rag.upper(), TREND[trend], v["cases"], RED, v["unacked"], v["tp"]))
 
     # chapter 1
     A.append(chapter(1, "Where Things Stand") + sec(1, "Executive Summary", "%s · %s" % (rag.upper(), TREND[trend].upper())))
     A.append(paras(nar["exec_summary"]))
     dec = nar["decisions"][:2]
-    A.append('<div style="border:1px solid %s;margin:22px 0;max-width:900px"><div style="padding:12px 22px;background:%s;font:600 12px/1 %s;letter-spacing:.14em;color:#fff">%s</div><div style="display:grid;grid-template-columns:%s">%s</div></div>'
-             % (NAVY, NAVY, MONO, "TWO DECISIONS FOR LEADERSHIP" if len(dec) == 2 else "DECISION FOR LEADERSHIP", "1fr 1fr" if len(dec) == 2 else "1fr",
-                "".join('<div style="padding:18px 22px;display:flex;gap:14px;%s"><span style="font:700 22px/1 %s;color:%s">%d</span><p style="margin:0;font-size:14px;line-height:1.6">%s</p></div>' % ("border-right:1px solid #DDE1E8;" if i == 0 and len(dec) == 2 else "", MONO, RED, i + 1, sub(d)) for i, d in enumerate(dec))))
+    A.append('<div class="dec"><div class="dh">%s</div><div class="cards" style="grid-template-columns:%s">%s</div></div>'
+             % ("TWO DECISIONS FOR LEADERSHIP" if len(dec) == 2 else "DECISION FOR LEADERSHIP", "1fr 1fr" if len(dec) == 2 else "1fr",
+                "".join('<div class="card"><b>%d</b><p>%s</p></div>' % (i + 1, sub(d)) for i, d in enumerate(dec))))
     if nar.get("caveat"):
-        A.append('<div style="border-top:3px solid %s;background:#FBF3DD;padding:14px 22px;max-width:860px"><p style="margin:0;font-size:13.5px;line-height:1.65;color:#5C4A12"><strong>Caveat —</strong> %s</p></div>' % (AMB, sub(nar["caveat"])))
+        A.append('<div class="caveat"><p><strong>Caveat —</strong> %s</p></div>' % sub(nar["caveat"]))
     A.append("</section>")
 
     def chap(n, title):
@@ -390,7 +447,7 @@ def render(ev, nar, v, args, logo):
     for lab, k in (("Processed by the AI assistant", "ai_processed"), ("Closed", "closed"), ("Escalated: still new after the AI ran", "escalated"), ("Not yet run by the AI (still new)", "not_run"),
                    ("True positive (of closed)", "tp"), ("False positive (of closed)", "fp"), ("Benign positive (of closed)", "bp")):
         rows.append([lab, str(v[k]), str(v[k + "_prev"]) if pv else "[GAP]", signed(v[k], v[k + "_prev"]) if pv else "[GAP]"])
-    A.append(table(["Measure", mname.split()[0], "Prior month", "Change"], rows, ["46%", "18%", "18%", "18%"], {3: "#FBF3DD", 5: "#FBF3DD"}))
+    A.append(table(["Measure", mname.split()[0], "Prior month", "Change"], rows, ["46%", "18%", "18%", "18%"], {3: 1, 5: 1}))
     funnel = ([("Events written to the datalake", v["events_total"], GRY)] if v["events_total"] is not None else []) + [("Tickets flagged (3,000 or more)", v["cases"], NAVY), ("Processed by the AI assistant", v["ai_processed"], NAVY), ("Closed", v["closed"], GRN), ("Escalated: still new after the AI ran", v["escalated"], RED)]
     A.append(figure("From events to escalated tickets, %s" % mname, hbars(funnel, label_w=290, fmt=lambda x: "{:,}".format(x)),
                     "Tickets below a score of 3,000 are not counted. An escalated ticket is one still new after the AI assistant ran on it. Events are the lake_ingress_count values by index as the metric returns them, without the behavior index; an event written to more than one index appears in each."))
@@ -436,9 +493,9 @@ def render(ev, nar, v, args, logo):
             rows = [[E(k), label, str(cnt_cur[k]), "—" if cnt_prev is None else (str(cnt_prev[k]) if cnt_prev[k] else "below threshold"), signed(cnt_cur[k], cnt_prev[k]) if cnt_prev is not None and cnt_prev[k] else "n/a", sub(why.get(k, "—"))] for k in keys]
             A.append(table(["Identifier", "Category", "This month", "Prior month", "Delta", "Why it repeats"], rows, ["27%", "13%", "9%", "14%", "7%", "30%"]))
         elif label in ("Admin Watch", "Repeat Offender") and (adm or cf.get("directory_users")):
-            A.append('<p style="font-size:13px;color:#4A5262;margin:0 0 8px"><strong>%s:</strong> none identified among the accounts checked.</p>' % label)
+            A.append('<p class="note"><strong>%s:</strong> none identified among the accounts checked.</p>' % label)
     if not actors:
-        A.append('<p style="font-size:13px;color:#4A5262;margin:0 0 8px">No user, host or application had two or more cases this month.</p>')
+        A.append('<p class="note">No user, host or application had two or more cases this month.</p>')
     A.append(figure("Most repeated case shapes (same rule combination), %s" % mname, hbars([(sh["rules"][:46] + ("…" if len(sh["rules"]) > 46 else ""), sh["n"]) for _, sh in v["shapes"][:7]], label_w=330)))
     A.append(paras(c3["analysis"]) + callouts([sub(x) for x in c3["callouts"]]))
     A.append(sec(5, "Root-Cause Themes", "PARTIAL"))
@@ -512,7 +569,7 @@ def render(ev, nar, v, args, logo):
     for name, key in (("O365 Hygiene", "o365_hygiene"), ("Environment Changes", "environment_changes"), ("Vulnerability Highlights", "vulnerability_highlights")):
         t = nar.get("exposure", {}).get(key) or default_exposure(key)
         rows.append([name, sub(t["evidence"]) if t else "[GAP] not assessed from this evidence", sub(t["limit"]) if t else "—"])
-    A.append(table(["Area", "What the evidence shows", "Limit"], rows, ["20%", "45%", "35%"], {0: "#FBF3DD"} if (stale or attn_apps) else None))
+    A.append(table(["Area", "What the evidence shows", "Limit"], rows, ["20%", "45%", "35%"], {0: 1} if (stale or attn_apps) else None))
     fig = ([("Applications running", stc.get("running", 0), GRN), ("Applications in error", stc.get("error", 0), RED), ("Applications needing attention", stc.get("attention", 0) + stc.get("disabled", 0) + stc.get("other", 0), AMB)] if hl else []) + \
           ([("Resource feeds current", len(feeds) - len(stale), GRN), ("Resource feeds stale or empty", len(stale), RED)] if feeds is not None else [])
     A.append(figure("Installed applications and resource feeds", hbars(fig or [("Nothing collected", 0, GRY)], label_w=240),
@@ -567,7 +624,7 @@ def render(ev, nar, v, args, logo):
     A.append(gap("A response here means the first comment on a case, by the automated assistant (%s) or an analyst. %d of %d cases have no analyst comment, and %d of %d closed cases were closed by the assistant; read the first-response times as the assistant's, not the SOC team's." % (ASSISTANT, v["no_human"], v["cases"], v["closed_by_ai"], v["closed"]), "NOTE"))
     A.append(sec(12, "Escalation Log", "GAP"))
     A.append(gap("The SOC escalation log is not available through the connector. No escalations are listed and none are inferred.", "GAP"))
-    A.append('<div style="display:flex;align-items:baseline;gap:14px;margin:36px 0 12px"><h2 style="margin:0;font-size:20px;font-weight:700;color:%s">Governance &amp; Compliance Posture</h2><span style="font:600 11px/1 %s;color:#8A6508;background:#FBF3DD;border:1px solid #E5CF8E;padding:5px 10px">NIST SP 800-53 REV. 5 · EVIDENCE AID</span></div>' % (NAVY, MONO))
+    A.append('<div class="sec"><h2>Governance &amp; Compliance Posture</h2><span class="flag">NIST SP 800-53 REV. 5 · EVIDENCE AID</span></div>')
     comp = ev.get("compliance")
     rows_c = (comp or {}).get("rows") or []
     if not rows_c:
@@ -602,7 +659,7 @@ def render(ev, nar, v, args, logo):
     A.append(paras(nar.get("improvements", [])))
     A.append(gap("The SOC change log (tuning, new detections, log sources onboarded, playbook updates) is not available through the connector. No changes are listed and none are inferred.", "GAP"))
     A.append(sec(16, "Appendix"))
-    h3 = '<h3 style="font-size:16px;color:%s;margin:16px 0 8px">%s</h3>'
+    h3 = '<h3>%s%s</h3>'
     inv = []
     if hl:
         inv.append(["Installed applications", "%d (%s mode)" % (len(apps_h), "state-only" if hl["mode"] == "state_only" else "full")])
@@ -612,13 +669,13 @@ def render(ev, nar, v, args, logo):
         inv.append([E("%s / %s (resource feed)" % (f["resource"], f["customer"])), E("%s%s" % ("stale, " if f["stale"] else "current, ", ("%.1f days old" % f["ageDays"]) if f["ageDays"] is not None else "age unknown"))])
     if not inv:
         inv.append(["Inventory", "[GAP] not collected"])
-    A.append(h3 % (NAVY, "A. Log source inventory") + table(["Item", "Status"], inv, ["40%", "60%"]))
-    A.append(h3 % (NAVY, "B. Case shapes cited") + table(["Shape id", "Rules", "Cases"], [[E(h), E(sh["rules"]), str(sh["n"])] for h, sh in v["shapes"]], ["14%", "74%", "12%"]))
-    A.append(h3 % (NAVY, "C. ATT&CK") + '<p style="font-size:13px;color:#4A5262;max-width:860px">[GAP] No approved ATT&amp;CK mapping source is available through the connector, so no technique table is shown and no coverage is claimed.</p>')
+    A.append(h3 % ("", "A. Log source inventory") + table(["Item", "Status"], inv, ["40%", "60%"]))
+    A.append(h3 % ("", "B. Case shapes cited") + table(["Shape id", "Rules", "Cases"], [[E(h), E(sh["rules"]), str(sh["n"])] for h, sh in v["shapes"]], ["14%", "74%", "12%"]))
+    A.append(h3 % ("", "C. ATT&CK") + '<p class="note">[GAP] No approved ATT&amp;CK mapping source is available through the connector, so no technique table is shown and no coverage is claimed.</p>')
     tools = "behavior_summary_search" + (", the health-status-report evaluation" if hl else "") + (", get_azure_user_record" if adm else "") + (", and the compliance-assessment evidence" if comp else "")
-    A.append(h3 % (NAVY, "D. Methodology") + '<p style="font-size:13px;line-height:1.65;color:#4A5262;max-width:860px">Scope: tenant %s. Window: 1–%d %s %d UTC%s. Read-only calls: %s. Sections marked GAP or PARTIAL could not be computed from these tools. A case is a cluster of events for one user, host or application on one day; a case shape is the combination of rules that fired; a benign positive is activity that looked suspicious but was expected.</p>'
+    A.append(h3 % ("", "D. Methodology") + '<p class="note" style="line-height:1.65">Scope: tenant %s. Window: 1–%d %s %d UTC%s. Read-only calls: %s. Sections marked GAP or PARTIAL could not be computed from these tools. A case is a cluster of events for one user, host or application on one day; a case shape is the combination of rules that fired; a benign positive is activity that looked suspicious but was expected.</p>'
              % (E(tenant), v["last_day"], v["month_name"], v["year"], "; prior month compared" if pv else "", tools))
-    A.append('</section><footer style="margin-top:40px;padding:22px 72px;border-top:3px solid %s;font:400 11px/1.6 %s;color:#6B7484">Fluency Managed SOC · %s · %s · Generated from read-only telemetry. Not a certification or attestation.</footer></div></body></html>' % (NAVY, MONO, E(tname), E(mname)))
+    A.append('</section><footer class="foot">Fluency Managed SOC · %s · %s · Generated from read-only telemetry. Not a certification or attestation.</footer></main></body></html>' % (E(tname), E(mname)))
     return "".join(A)
 
 
