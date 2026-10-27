@@ -86,6 +86,7 @@ package in the same change — the validator checks inside the archives and will
 | [health-status-report](#health-status-report) | Installed applications health for a tenant, using the Fluency 9 Applications-page status logic → HTML + PDF + CSV |
 | [mssp-coverage-map](#mssp-coverage-map) | Fleet map of licensed Microsoft 365 seats against EDR endpoints and users per tenant, with the gaps ranked → HTML + CSV |
 | [mssp-ops-sitrep](#mssp-ops-sitrep) | Shift-handoff SitRep across a connector's accounts: queue, escalations, health, product posture, four team lanes → HTML |
+| [office365-posture-review](#office365-posture-review) | Office 365 / Entra posture from resource dumps: users, app registrations and devices, ranked by severity → HTML + CSV |
 | [endpoint-os-currency](#endpoint-os-currency) | Endpoint OS inventory, end-of-support and build-currency report from an EDR or Entra device dump → HTML + PDF + CSV |
 | [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
@@ -277,6 +278,18 @@ state. Lives in [`reports/`](./reports).
 **Try:**
 - "give me the operations sitrep for all accounts on <connector>"
 - "what is escalated or unworked across my customers this week?"
+
+### office365-posture-review
+
+Reviews a tenant's Office 365 / Entra inventory for hygiene and misconfiguration: privileged users, weak MFA
+factors, OAuth-connected users, stale token baselines; app registrations with HTTP redirects, implicit grant,
+no verified publisher or no credentials; and rooted, non-compliant, unmanaged, stale or unattributed devices.
+It downloads the `office365User`, `office365Application` and `office365Device` dumps and a script computes
+every finding. It is resource posture, not activity. Lives in [`reports/`](./reports).
+
+**Try:**
+- "do an Office 365 posture review for <tenant>"
+- "which of <tenant>'s app registrations use implicit grant or HTTP redirects?"
 
 ### endpoint-os-currency
 
