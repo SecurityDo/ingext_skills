@@ -87,6 +87,7 @@ package in the same change — the validator checks inside the archives and will
 | [mssp-coverage-map](#mssp-coverage-map) | Fleet map of licensed Microsoft 365 seats against EDR endpoints and users per tenant, with the gaps ranked → HTML + CSV |
 | [mssp-ops-sitrep](#mssp-ops-sitrep) | Shift-handoff SitRep across a connector's accounts: queue, escalations, health, product posture, four team lanes → HTML |
 | [office365-posture-review](#office365-posture-review) | Office 365 / Entra posture from resource dumps: users, app registrations and devices, ranked by severity → HTML + CSV |
+| [nist-compliance-analysis](#nist-compliance-analysis) | NIST SP 800-53 control-by-control analysis from compliance-assessment results, with CSF 2.0 and 800-171 child views → HTML + CSV |
 | [endpoint-os-currency](#endpoint-os-currency) | Endpoint OS inventory, end-of-support and build-currency report from an EDR or Entra device dump → HTML + PDF + CSV |
 | [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
@@ -290,6 +291,18 @@ every finding. It is resource posture, not activity. Lives in [`reports/`](./rep
 **Try:**
 - "do an Office 365 posture review for <tenant>"
 - "which of <tenant>'s app registrations use implicit grant or HTTP redirects?"
+
+### nist-compliance-analysis
+
+Reads the result of `compliance-assessment` and writes a NIST SP 800-53 Rev. 5 control-by-control analysis:
+scope, counts by status, a table of control, status, evidence state and next evidence to collect, and an
+optional CSF 2.0 / SP 800-171 Rev. 3 child view that keeps the 800-53 lineage. It collects nothing itself, uses
+statuses exactly as returned, and never treats "not observed" as a failure. Prerequisite: `compliance-assessment`.
+Lives in [`reports/`](./reports).
+
+**Try:**
+- "give me the NIST 800-53 control-by-control analysis for <tenant>"
+- "which controls lack evidence, and what should we collect next?"
 
 ### endpoint-os-currency
 
