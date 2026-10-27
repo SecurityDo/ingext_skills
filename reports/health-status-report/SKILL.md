@@ -1,6 +1,6 @@
 ---
 name: health-status-report
-version: 1.3.0
+version: 1.2.0
 description: >-
   Produce an Installed Applications Health report for ONE Ingext/Fluency tenant as HTML, PDF and a
   per-application CSV, using the same status logic as the Fluency 9 Applications page: each
@@ -9,10 +9,15 @@ description: >-
   them. Renders the health.json that the application-health skill produces. USE THIS SKILL for
   "health report for tenant X", "which of our applications are in error", "applications status
   report". DO NOT use it for platform-wide health (ingext-health-monitor), for one incident, or to
-  collect and evaluate the health data itself (application-health).
+  collect and evaluate the health data itself (application-health). PREREQUISITE: install the
+  application-health skill first; this report cannot run without its health.json.
 ---
 
 # Installed Applications Health Report
+
+> **Prerequisite: install the `application-health` skill before using this one.** This report does not
+> collect or evaluate anything itself; it renders the `health.json` that `application-health` writes.
+> Without that skill installed there is nothing to render.
 
 Answers: which installed applications are running, which are in error, and which need
 attention? It is read-only and never changes the tenant. The collection and the status logic live in

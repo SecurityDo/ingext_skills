@@ -4,18 +4,22 @@ version: 1.0.0
 description: >-
   Generate the customer-facing CISO Monthly SOC (M-SOC) report for ONE Fluency / Ingext tenant and
   one calendar month as a single HTML document: an 8-chapter story (executive summary with a
-  Green/Amber/Red rating, what happened, patterns, what we can and cannot see, what is at risk,
-  how defences performed with a NIST 800-53 compliance add-on, what happens next, what improved)
-  and 16 sections. USE THIS SKILL for "M-SOC report", "monthly SOC report", "CISO report",
-  "board security report", "monthly security summary", "the SOC story for the month", or an
-  executive report covering a month for a customer. Reads the tenant's behavior summaries (cases),
-  application health (from application-health) and compliance-assessment results through its MCP
-  connector, computes every figure locally and marks what the tools cannot supply as GAP or
-  PARTIAL. Read-only. DO NOT use it for one incident (incident-investigation), the NIST report alone
-  (compliance-assessment) or invoices (billing-csv).
+  Green/Amber/Red rating, what happened, patterns, coverage, risk, defences with a NIST 800-53
+  add-on, next steps, improvements) and 16 sections. USE THIS SKILL for "M-SOC report", "monthly SOC
+  report", "CISO report", "board security report", "monthly security summary", or an executive
+  report covering a month for a customer. Reads the tenant's behavior summaries (cases) through its
+  MCP connector, plus application-health and compliance-assessment results; computes every figure
+  locally and marks what the tools cannot supply as GAP or PARTIAL. Read-only. PREREQUISITES: install
+  the application-health and compliance-assessment skills first. DO NOT use it for one incident
+  (incident-investigation) or invoices (billing-csv).
 ---
 
 # M-SOC Monthly Report
+
+> **Prerequisites: install the `application-health` and `compliance-assessment` skills before using this
+> one.** The coverage and health section reads the `health.json` that `application-health` writes, and
+> the compliance section reads the `compliance_summary.json` that `compliance-assessment` writes. Without
+> them those sections show a GAP instead of a result.
 
 A CISO-grade monthly report that tells the customer's SOC story, readable by someone who was not
 in the SOC that month. It is read-only: use only tools that change nothing, and never post or send the

@@ -231,7 +231,7 @@ reads the tenant's behavior summaries (cases), the application-health result and
 compliance-assessment results through its MCP connector; `scripts/build_report.py` computes every
 figure from the saved results and marks anything the connector cannot supply as GAP or PARTIAL. The
 report separates the automated assistant's first response from an analyst's. The analyst writes only
-the narrative. Lives in [`reports/`](./reports).
+the narrative. **Prerequisites: install the application-health and compliance-assessment skills first.** Lives in [`reports/`](./reports).
 
 **Try:**
 - "run the CISO monthly report for <tenant> for September"
@@ -253,7 +253,8 @@ removed before use. `health-status-report` and `CISO_monthly_report` both build 
 
 Reports the health of every installed application on a tenant as HTML, PDF and a per-application CSV,
 with the same status logic as the Fluency 9 Applications page. It renders the `health.json` that the
-application-health skill produces, so the report agrees with every other consumer of that file. For
+application-health skill produces, so the report agrees with every other consumer of that file.
+**Prerequisite: install the application-health skill first.** For
 platform-wide health (logins, queues, egress) use ingext-health-monitor. Lives in [`reports/`](./reports).
 
 **Try:**
