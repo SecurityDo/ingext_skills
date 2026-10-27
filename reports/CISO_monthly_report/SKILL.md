@@ -54,9 +54,10 @@ real users, hosts and applications). A result the harness saves to a file can be
 smaller ones are not counted anywhere in the report. The report shows, from the case file: tickets flagged,
 tickets the AI assistant ran on (it left a comment), tickets closed, **escalated** tickets (still `new` after
 the AI ran, so they need an analyst), and tickets the AI has not run on yet. The events at the top come from
-`events.json`, the datalake ingest counter by index, with the `behavior` index left out because it holds the
-engine's own output. An event written to two indexes counts twice, and the counter is an estimate that
-differs from a KQL count, so describe it as events written to the datalake. `behavior_event_search` is not
+`events.json`, the datalake ingest counter by index, printed exactly as the metric returns it: every index
+is summed, none is left out or adjusted. An event written to more than one index appears in each, and the
+counter differs from a KQL count, so describe it as events written to the datalake, not as unique events.
+`behavior_event_search` is not
 used: tickets already group the events.
 
 **What the behavior summary gives.** Each case carries `status`, `classification`, `behaviorRules`,

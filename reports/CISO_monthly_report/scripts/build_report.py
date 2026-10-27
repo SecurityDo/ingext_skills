@@ -243,7 +243,7 @@ def shape_id(c):
 
 
 def events_ingested(res):
-    """Total and per-index datalake ingest from a prom_query result; the behavior index holds the engine's own output, not ingested events."""
+    """Total and per-index datalake ingest exactly as a prom_query result returns it."""
     if not res or not res.get("series"):
         return None
     by = {}
@@ -252,8 +252,7 @@ def events_ingested(res):
         pts = sr.get("points") or []
         if pts:
             by[idx] = int(round(float(pts[-1]["value"])))
-    ingest = {k: v for k, v in by.items() if "behavior" not in k.lower()}
-    return {"total": sum(ingest.values()), "by_index": sorted(ingest.items(), key=lambda kv: -kv[1]), "behavior_index": sum(v for k, v in by.items() if "behavior" in k.lower())}
+    return {"total": sum(by.values()), "by_index": sorted(by.items(), key=lambda kv: -kv[1])}
 
 
 def compute(ev, month):
@@ -383,17 +382,17 @@ def render(ev, nar, v, args, logo):
     A.append(chap(2, "What Happened This Month") + lead(sub(c2["intro"])) + sec(2, "Security Events Overview"))
     pv = "cases_prev" in v
     evp = v.get("events_total_prev")
-    rows = [["Events written to the datalake" + (" (PromQL ingest counter)" if v["events_total"] is not None else ""),
+    rows = [["Events written to the datalake",
              ("%s" % "{:,}".format(v["events_total"])) if v["events_total"] is not None else "[GAP]", ("{:,}".format(evp)) if evp is not None else "[GAP]",
              ("%s (%s)" % (signed(v["events_total"], evp), pct_change(v["events_total"], evp))) if (evp is not None and v["events_total"] is not None) else "[GAP]"]]
     rows.append(["Tickets flagged for review (score 3,000 or more)", "<b>%d</b>" % v["cases"], str(v["cases_prev"]) if pv else "[GAP]", ("%s (%s)" % (signed(v["cases"], v["cases_prev"]), pct_change(v["cases"], v["cases_prev"]))) if pv else "[GAP]"])
-    for lab, k in (("Processed by the AI assistant (it commented)", "ai_processed"), ("Closed", "closed"), ("Escalated: still new after the AI ran", "escalated"), ("Not yet run by the AI (still new)", "not_run"),
+    for lab, k in (("Processed by the AI assistant", "ai_processed"), ("Closed", "closed"), ("Escalated: still new after the AI ran", "escalated"), ("Not yet run by the AI (still new)", "not_run"),
                    ("True positive (of closed)", "tp"), ("False positive (of closed)", "fp"), ("Benign positive (of closed)", "bp")):
         rows.append([lab, str(v[k]), str(v[k + "_prev"]) if pv else "[GAP]", signed(v[k], v[k + "_prev"]) if pv else "[GAP]"])
     A.append(table(["Measure", mname.split()[0], "Prior month", "Change"], rows, ["46%", "18%", "18%", "18%"], {3: "#FBF3DD", 5: "#FBF3DD"}))
     funnel = ([("Events written to the datalake", v["events_total"], GRY)] if v["events_total"] is not None else []) + [("Tickets flagged (3,000 or more)", v["cases"], NAVY), ("Processed by the AI assistant", v["ai_processed"], NAVY), ("Closed", v["closed"], GRN), ("Escalated: still new after the AI ran", v["escalated"], RED)]
     A.append(figure("From events to escalated tickets, %s" % mname, hbars(funnel, label_w=290, fmt=lambda x: "{:,}".format(x)),
-                    "Tickets below a score of 3,000 are not counted. An escalated ticket is one still new after the AI assistant ran on it. Events are the datalake ingest counter by index, excluding the behavior index, and an event written to two indexes counts twice."))
+                    "Tickets below a score of 3,000 are not counted. An escalated ticket is one still new after the AI assistant ran on it. Events are the lake_ingress_count values for every index, as the metric returns them; an event written to more than one index appears in each."))
     A.append(figure("Cases by day, %s" % mname, hbars([("%s %02d" % (v["month_name"][:3], d), n) for d, n in sorted(v["days"].items())], label_w=70), "Days with no flagged case are omitted. The day is the case's dayIndex."))
     A.append(paras(c2["analysis"]) + callouts([sub(x) for x in c2["callouts"]]))
     A.append(sec(3, "Rolling Trends", "PARTIAL" if not v["cat_prev"] else ""))
