@@ -9,21 +9,32 @@
 // recipients the audit names. A "SharingLinks.<id>.Flexible..." target is the link's
 // own group, not a person: the people a SpecificPeople link went to are often not in
 // the audit at all, so say so instead of guessing.
+// Endpoint rows (Workload "Endpoint", from Purview endpoint DLP on managed devices) are
+// files leaving the device: uploaded to a cloud service, copied to removable media or a
+// network share, printed, or sent by Bluetooth. They are what an Insider Risk
+// "exfiltration" alert keys on. For them ClientApp is the program (Application) and Site
+// the destination: the cloud domain (TargetDomain) or the target path.
 // Placeholders: {USER} = the UPN, lower-cased; {ONEDRIVE} = the personal-site path
 // with no trailing slash, the UPN with "@" and "." as "_"
 // (e.g. "/personal/first_last_contoso_com"); {WFROM}/{WTO}.
 Office365
 | where timestamp between (datetime("{WFROM}") .. datetime("{WTO}"))
 | where tolower(tostring(UserId)) == "{USER}"
-| where Workload in ("OneDrive", "SharePoint")
-| where Operation startswith "FileUpload" or Operation startswith "FileSyncUpload"
-    or Operation startswith "FileDownload" or Operation startswith "FileSyncDownload"
-    or Operation contains "Sharing" or Operation contains "Link" or Operation == "FileCopied"
-    or Operation == "FileMoved"
-| extend ClientApp = coalesce(tostring(AppAccessContext.ClientAppName),
-                              tostring(ApplicationDisplayName)),
+| where (Workload in ("OneDrive", "SharePoint")
+         and (Operation startswith "FileUpload" or Operation startswith "FileSyncUpload"
+              or Operation startswith "FileDownload" or Operation startswith "FileSyncDownload"
+              or Operation contains "Sharing" or Operation contains "Link"
+              or Operation == "FileCopied" or Operation == "FileMoved"))
+    or (Workload == "Endpoint"
+        and Operation in ("FileUploadedToCloud", "FileCopiedToRemovableMedia",
+                          "FileCopiedToNetworkShare", "FilePrinted", "FileTransferredByBluetooth"))
+| extend IsEndpoint = tostring(Workload) == "Endpoint"
+| extend ClientApp = iff(IsEndpoint, tostring(Application),
+                         coalesce(tostring(AppAccessContext.ClientAppName),
+                                  tostring(ApplicationDisplayName))),
          Agent = tostring(AgentName),
-         Site = tolower(tostring(SiteUrl)),
+         Site = tolower(iff(IsEndpoint, coalesce(tostring(TargetDomain), tostring(TargetFilePath)),
+                            tostring(SiteUrl))),
          Scope = tostring(SharingLinkScope),
          Target = tostring(TargetUserOrGroupName),
          TargetType = tostring(TargetUserOrGroupType)

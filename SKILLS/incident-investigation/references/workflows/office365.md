@@ -627,7 +627,8 @@ they went, and whether anyone outside got them**.
 
 1. **Run `assets/queries/file_movement.kql`** over the incident window, before describing
    the activity. It gives one row per operation, acting app, agent and site, covering
-   uploads, downloads, sync, copy, move and every sharing and link operation.
+   uploads, downloads, sync, copy, move, every sharing and link operation, and the
+   `Endpoint` operations that take a file off a managed device (step 5).
 2. **The app comes before the user.** `ClientApp` is the app that held the token, and
    `Agent` names an AI agent. Copilot acts as the user, so its rows carry the user's
    UPN:
@@ -652,10 +653,23 @@ they went, and whether anyone outside got them**.
    (`FileSyncUploaded*` to an unmanaged device) are the case to escalate. Reads from many
    sites by an agent are normal: it is grounding on what the user can already open.
    Say how many sites and that they are the user's own access.
-5. **Whose session was it?** Tie the agent's work to a sign-in by the user: the same hours,
+5. **An Insider Risk or exfiltration alert gets its own evidence, not only its base rate.**
+   The alert (`MSDefender:Data_Exfil_*`, product "Microsoft Insider Risk Management")
+   names no file and no destination. Run `file_movement.kql` for the subject on the
+   alert's day and read the `Endpoint` rows: `FileUploadedToCloud` with its domain,
+   `FileCopiedToRemovableMedia`, `FileCopiedToNetworkShare`, `FilePrinted`,
+   `FileTransferredByBluetooth`.
+   - Cloud uploads mostly go to the company's own apps (its ERP, Autodesk, DocuSign): judge
+     each domain, don't count it. A personal storage or free-mail domain, or files copied to
+     removable media that aren't the user's routine, is the case to escalate.
+   - No Endpoint rows, and only the user's own OneDrive or company sites, means nothing
+     left the device. Say so, with the counts.
+   - A policy that fires for hundreds of people a week needs tuning. That doesn't clear this
+     user: report the base rate as tuning, and the verdict from the user's own rows.
+6. **Whose session was it?** Tie the agent's work to a sign-in by the user: the same hours,
    their device and address from 3a. Copilot running in a session the user didn't start
    is a stolen session, and 3a′ applies.
-6. **Takeover negatives still run.** Use `bec_sweep.kql` and the directory summary, as
+7. **Takeover negatives still run.** Use `bec_sweep.kql` and the directory summary, as
    in 3c.
 
 | What 3f shows | Verdict |
@@ -663,4 +677,6 @@ they went, and whether anyone outside got them**.
 | Copilot or the user's own clients writing and sharing (SpecificPeople) inside the user's OneDrive, during the user's own session | Benign: name the app and agent, the counts, and that the link recipients are a gap if the audit doesn't name them. Tune the rule to leave out agent-created files |
 | Anonymous or Organization links, an external recipient, or writes to a site or OneDrive outside the user's own | Escalate: the files, the link scope and recipients, and whether the links are still live |
 | An unfamiliar app or agent doing the moving, or the activity outside any sign-in by the user | Treat it as account compromise: check the session (3a′), the app's consent (bec_sweep) and contain |
+| Insider Risk alert; `Endpoint` rows show uploads to a personal or free-mail cloud domain, or removable-media copies outside the user's routine | Escalate as possible data theft: the files, the destination, the device and the time. It is an insider question, not a takeover one, so contain only if the session also fails 3a |
+| Insider Risk alert; no `Endpoint` exfiltration rows, only company sites and the user's own OneDrive | Benign and not actionable: nothing left the device. Report the policy's base rate as tuning |
 
