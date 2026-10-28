@@ -3,8 +3,8 @@
 Run this when the ticket is an **Office365 / Entra ID** incident — its `behaviorRules`
 start with `O365_`, `AzureAD_` or `Fluency_O365_` (see the routing table in SKILL.md
 step 3). It is three checks, usually run in this order, plus **3d** for an outbound-spam
-or sending-limit alert and **3e** for a DLP match; each one's result goes into the step-5
-closure with the index it came from.
+or sending-limit alert, **3e** for a DLP match and **3f** for file uploads, downloads and
+sharing; each one's result goes into the step-5 closure with the index it came from.
 
 > **Guidance, not a script — but every check that applies runs.** These are the checks
 > that settled past tickets of this type, in a sensible order. Add checks or reorder them
@@ -602,4 +602,50 @@ event cannot answer it: its IP, city and message fields are usually `__undefined
 | Sent by the subject to a recipient that asked for it (carrier, provider, auditor), from the subject's usual client and address | Benign: name the recipient domain and the rule mode. The tuning question for the customer is whether that data should go out by plain mail at all |
 | Sent to a recipient with no history, a free-mail domain, or BCC'd outside, by a delegate or client the mailbox doesn't normally use | Escalate: the external domain, the message id for the customer's Message Trace, and whether the rule blocked it |
 | Mail *received* by the subject (`From` external) | Not a leak by the subject. Say who sent it and whether the policy should scan inbound mail |
+
+## 3f — File movement: who moved it, where, and who it was shared with
+
+Run this when the ticket is about files: `O365_SharePoint_OneDrive_FileUploaded_Multiple`,
+a mass download or sync, a sharing or anonymous-link rule, or a Defender data-exfiltration
+alert. "Many uploads" is not the question. The question is **what moved the files, where
+they went, and whether anyone outside got them**.
+
+1. **Run `assets/queries/file_movement.kql`** over the incident window, before describing
+   the activity. It gives one row per operation, acting app, agent and site, covering
+   uploads, downloads, sync, copy, move and every sharing and link operation.
+2. **The app comes before the user.** `ClientApp` is the app that held the token, and
+   `Agent` names an AI agent. Copilot acts as the user, so its rows carry the user's
+   UPN:
+   - `Enterprise Copilot Platform` writes into the user's `Documents/Copilot/Created`;
+   - the M365 Copilot agent reads the source documents through a client app whose
+     name gives nothing away; `Agent` (`AgentName: M365 Copilot`) is what identifies it.
+
+   Name the app and agent behind every count in the closure. A browser or sync client
+   from the user's devices is the user. An app or agent the user doesn't normally use
+   is the finding.
+3. **Read the sharing rows, never only the uploads.** `SharingLinkCreated` with its
+   `scopes` (`SpecificPeople`, `Organization`, `Anonymous`), `AnonymousLinkCreated`,
+   `AddedToSecureLink`, `SharingInvitationCreated`, `SharingSet`.
+   - An anonymous or Organization link, or any external recipient, is the case to escalate.
+   - A `SharingLinks.<id>.Flexible…` target is the link's own group, not a person.
+   - When no row names the recipients of a SpecificPeople link, the closure says
+     "link recipients not in the audit" as a gap. The customer's sharing report for those
+     files answers it.
+4. **Where did the files go?** `own` is the subject's own OneDrive. Writes and links
+   in the subject's own OneDrive stay inside the account. Writes to another person's
+   OneDrive, a site the subject has no history on, or a personal account
+   (`FileSyncUploaded*` to an unmanaged device) are the case to escalate. Reads from many
+   sites by an agent are normal: it is grounding on what the user can already open.
+   Say how many sites and that they are the user's own access.
+5. **Whose session was it?** Tie the agent's work to a sign-in by the user: the same hours,
+   their device and address from 3a. Copilot running in a session the user didn't start
+   is a stolen session, and 3a′ applies.
+6. **Takeover negatives still run.** Use `bec_sweep.kql` and the directory summary, as
+   in 3c.
+
+| What 3f shows | Verdict |
+|---|---|
+| Copilot or the user's own clients writing and sharing (SpecificPeople) inside the user's OneDrive, during the user's own session | Benign: name the app and agent, the counts, and that the link recipients are a gap if the audit doesn't name them. Tune the rule to leave out agent-created files |
+| Anonymous or Organization links, an external recipient, or writes to a site or OneDrive outside the user's own | Escalate: the files, the link scope and recipients, and whether the links are still live |
+| An unfamiliar app or agent doing the moving, or the activity outside any sign-in by the user | Treat it as account compromise: check the session (3a′), the app's consent (bec_sweep) and contain |
 

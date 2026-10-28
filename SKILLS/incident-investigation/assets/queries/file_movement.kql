@@ -1,0 +1,39 @@
+// What moved files for the subject, and who they were shared with. One row per
+// operation, acting app and site. Copilot and other agents act as the user, so the
+// app matters more than the user: ClientApp is the app that held the token
+// (AppAccessContext.ClientAppName, falling back to ApplicationDisplayName), and
+// Agent names an AI agent when there is one (AgentName, e.g. "M365 Copilot").
+// own = the subject's own OneDrive; anything else is another site (sharing rows carry
+// SiteUrl without the trailing slash, uploads with it, so Site is normalized). Scope
+// is the link type (SpecificPeople, Organization, Anonymous). Targets are the
+// recipients the audit names. A "SharingLinks.<id>.Flexible..." target is the link's
+// own group, not a person: the people a SpecificPeople link went to are often not in
+// the audit at all, so say so instead of guessing.
+// Placeholders: {USER} = the UPN, lower-cased; {ONEDRIVE} = the personal-site path
+// with no trailing slash, the UPN with "@" and "." as "_"
+// (e.g. "/personal/first_last_contoso_com"); {WFROM}/{WTO}.
+Office365
+| where timestamp between (datetime("{WFROM}") .. datetime("{WTO}"))
+| where tolower(tostring(UserId)) == "{USER}"
+| where Workload in ("OneDrive", "SharePoint")
+| where Operation startswith "FileUpload" or Operation startswith "FileSyncUpload"
+    or Operation startswith "FileDownload" or Operation startswith "FileSyncDownload"
+    or Operation contains "Sharing" or Operation contains "Link" or Operation == "FileCopied"
+    or Operation == "FileMoved"
+| extend ClientApp = coalesce(tostring(AppAccessContext.ClientAppName),
+                              tostring(ApplicationDisplayName)),
+         Agent = tostring(AgentName),
+         Site = tolower(tostring(SiteUrl)),
+         Scope = tostring(SharingLinkScope),
+         Target = tostring(TargetUserOrGroupName),
+         TargetType = tostring(TargetUserOrGroupType)
+| extend Site = iff(Site endswith "/", substring(Site, 0, strlen(Site) - 1), Site)
+| extend own = Site endswith "{ONEDRIVE}"
+| summarize events = count(), files = dcount(tostring(ObjectId)),
+    first = min(timestamp), last = max(timestamp),
+    ips = make_set(tostring(ClientIP), 5), scopes = make_set(Scope, 5),
+    Targets = make_set(Target, 10), TargetTypes = make_set(TargetType, 5),
+    sample = make_set(tostring(SourceFileName), 5)
+    by Operation, ClientApp, Agent, own, Site
+| order by first asc
+| take 1000

@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.5.4
+version: 1.5.5
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -599,7 +599,7 @@ workflow file:
 
 | `behaviorRules` prefix | Incident type | Workflow |
 |---|---|---|
-| `O365_`, `AzureAD_`, `Fluency_O365_`, `Duo_` on a Microsoft 365 user, and Defender alerts on a user (stolen session, token, Graph reconnaissance) | Office365 / Entra ID | `references/workflows/office365.md` — 3a resolve every address (the tenant's own subnet inventory first, Duo's phone side too), 3a′ trace the session, 3b the approving device (auth incidents only; Duo: was it just enrolled), 3c prove what did not happen, including whether it is contained and, on a hybrid account, who changed the password on-prem, 3d what actually sent the mail (outbound-spam and sending-limit alerts), 3e a DLP match's sender, recipients and rule mode (`dlp_message.kql`) |
+| `O365_`, `AzureAD_`, `Fluency_O365_`, `Duo_` on a Microsoft 365 user, and Defender alerts on a user (stolen session, token, Graph reconnaissance) | Office365 / Entra ID | `references/workflows/office365.md` — 3a resolve every address (the tenant's own subnet inventory first, Duo's phone side too), 3a′ trace the session, 3b the approving device (auth incidents only; Duo: was it just enrolled), 3c prove what did not happen, including whether it is contained and, on a hybrid account, who changed the password on-prem, 3d what actually sent the mail (outbound-spam and sending-limit alerts), 3e a DLP match's sender, recipients and rule mode (`dlp_message.kql`), 3f file movement: the app or agent (Copilot) behind it, sharing links and their scope, and where the files went (`file_movement.kql`) |
 | `MSDefender:` mail bombing, Teams impersonation or Teams phishing titles, `O365_Teams_OnMicrosoft_Tenant_Chat`, `O365_Endpoint_Download_From_Azure_CloudApp`, or a Defender hands-on-keyboard / human-operated / emerging-threat alert on a user with an outside Teams contact the same day (full list in the workflow's H0) | Teams helpdesk impersonation | `references/workflows/helpdesk.md` — H0 clean sign-ins clear nothing, H1 the Teams contact and whether the employee engaged (answered, accepted, replied), H2 mail bombing before it, H3 what ran on the device during and after the call (endpoint downloads, Defender alert evidence, Windows installer and PowerShell events, EDR), H4 containment already done, H5 the same sender's other contacts, H6 the verdict table. Run the Office365 workflow too and keep the findings apart |
 | `okta_` | Okta sign-in / account | `references/workflows/okta.md` — K1 which path every sign-in took, K2 did any of it succeed, K3 the same signature on other accounts, K4 what changed on the account, K5 what the real sign-ins look like, K6 prove what did not happen up to where the data reaches |
 | `SentinelOne:`, `Fluency_SentinelOne_` | SentinelOne EDR alert | `references/workflows/sentinelone.md` — S1 pull each alert whole, S2 running or at rest, S3 agent time and ownership, S4 hash prevalence, origin and earlier verdicts on the same file across hashes, S5 prove what did not run, S6 reconcile counts, S7 score, tuning and side findings |
