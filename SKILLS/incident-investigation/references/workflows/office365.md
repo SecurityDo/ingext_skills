@@ -333,6 +333,21 @@ A benign verdict rests on negatives, and they have to be collected, not assumed.
   responded, run `ingext-log-analytics-evidence` "Is it contained?". Without a
   workspace, read the password events in `AzureAuditLogs` and the next bullet's on-prem
   path, and say the post-containment sign-ins were not verified.
+- **Who reset a cloud password?** A `Reset user password` or `Change user password` row in
+  `AzureAuditLogs` with an empty initiator does not mean "no log names who did it". Run
+  `assets/queries/password_reset_actor.kql` on about 10 minutes either side of that row.
+  The Office365 copy of the event names the actor:
+  - **"Microsoft password reset service"** is a self-service reset (SSPR). Whoever
+    passed the account's SSPR methods (its phone or alternate email) did it. On an
+    admin or service account, that is the finding: anyone holding those methods can
+    reset a privileged password without MFA. Read the sign-ins that follow. Interactive
+    browser sign-ins to admin portals on an account that normally runs only scripts are
+    a person using it.
+  - **An admin's UPN** is an admin reset; check that admin resets passwords routinely.
+  - **A sync account** means an on-prem change: the next bullet.
+
+  On a service account, the closure asks the customer who reset it and recommends
+  SSPR off, no interactive sign-in, and the least role the automation needs.
 - **Who changed the password on a hybrid account?** Entra records an on-prem change as
   `Change user password` / `Update PasswordProfile` initiated by the directory-sync
   account (`ConnectSyncProvisioning_*`, or `Action Client Name: DirectorySync`). That
