@@ -3,8 +3,8 @@
 Run this when the ticket is an **Office365 / Entra ID** incident — its `behaviorRules`
 start with `O365_`, `AzureAD_` or `Fluency_O365_` (see the routing table in SKILL.md
 step 3). It is three checks, usually run in this order, plus **3d** for an outbound-spam
-or sending-limit alert; each one's result goes into the step-5 closure with the index it
-came from.
+or sending-limit alert and **3e** for a DLP match; each one's result goes into the step-5
+closure with the index it came from.
 
 > **Guidance, not a script — but every check that applies runs.** These are the checks
 > that settled past tickets of this type, in a sensible order. Add checks or reorder them
@@ -562,4 +562,44 @@ application that relays through an on-prem server, and a block stops a business 
 | No sign-ins or sends by the subject, no takeover changes, an internal relay carrying the account's mail at its normal weekday volume | Escalate with one question: which system on <relay> sends as this mailbox, and what changed the recipient count? Keep the mailbox restricted until the customer answers; no password reset on this evidence |
 | The subject's own Send rows from SMTP AUTH or a REST client at an address 3a does not resolve to the tenant, or inbox rules / forwarding created around the burst | Account compromise: contain (block sign-in, revoke sessions, change the password, remove the rules), then pull the recipients from Message Trace |
 | The same mailbox restricted on a regular schedule, sent through the relay at the job's usual hour | Benign business process outgrowing a mailbox: the fix is a bulk-mail path for that system, and the restriction is the symptom |
+
+## 3e — DLP match: read the message before describing it
+
+Run this when the ticket is a DLP rule (`O365_DLP_*`, or an `Office365` `DlpRuleMatch`).
+The question the customer has is **did sensitive data leave, and to whom**. The behavior
+event cannot answer it: its IP, city and message fields are usually `__undefined`. The raw
+`DlpRuleMatch` row can.
+
+1. **Run `assets/queries/dlp_message.kql`** over the incident window, before writing a
+   word about the message. It gives one row per message and rule: `From`, `To`, `CC`,
+   `BCC`, subject, policy, rule, `RuleMode`, severity, actions, `AccessScope`, and which
+   sensitive types matched in which attachment or in the body.
+2. **Direction comes from `From`.** `From` equal to the subject mailbox is mail it sent.
+   A subject line's "FW:" or "RE:" says nothing about direction. A run read "FW: …" as
+   mail forwarded *to* a shared mailbox, and it was that mailbox sending an attachment
+   to an outside company.
+3. **Name every external recipient domain.** `AccessScope: IncludeExternalUsers` means at
+   least one recipient is outside the organization; the domains are in `To` / `CC` /
+   `BCC`. "Internal mail" needs every recipient on the tenant's own domains. A gap is
+   not a finding: if the recipients weren't read, the closure says "recipients not
+   verified" and makes no claim about where the mail went.
+4. **Mode and action.** `RuleMode` `TestWithoutNotifyUser` / `TestWithNotifyUser` logs only,
+   so nothing was blocked. `Enable` with an empty `Actions` also blocked nothing. Say
+   which, because it decides whether the data actually left.
+5. **Was the recipient expected?** Look for the request the mail answers: an earlier
+   message from the same external address in the subject's mailbox activity, a thread
+   subject that names the request, or the same recipient on other `dlp_message` rows in
+   30 days. A carrier, payroll provider or benefits administrator asking for exactly what
+   was sent is business. A free-mail address, a domain first seen that day, or a
+   recipient the mailbox has never written to before is the case to escalate.
+6. **Takeover negatives still run.** Use the subject's sign-ins and `bec_sweep.kql` (rules,
+   forwarding, delegates). A shared mailbox has no sign-ins of its own: who sent as it
+   is in `send_audit_ctl.kql`'s client rows. A delegate is not "unconfirmed" just
+   because the mailbox is shared.
+
+| What 3e shows | Verdict |
+|---|---|
+| Sent by the subject to a recipient that asked for it (carrier, provider, auditor), from the subject's usual client and address | Benign: name the recipient domain and the rule mode. The tuning question for the customer is whether that data should go out by plain mail at all |
+| Sent to a recipient with no history, a free-mail domain, or BCC'd outside, by a delegate or client the mailbox doesn't normally use | Escalate: the external domain, the message id for the customer's Message Trace, and whether the rule blocked it |
+| Mail *received* by the subject (`From` external) | Not a leak by the subject. Say who sent it and whether the policy should scan inbound mail |
 

@@ -1,0 +1,31 @@
+// What a DLP match was about: who sent the message, to whom, what matched and in
+// which mode. One row per message and rule. DlpRuleMatch's UserId is the mailbox the
+// policy evaluated, usually the sender; read the direction from From, never from the
+// subject line ("FW:" and "RE:" say nothing about it). AccessScope IncludeExternalUsers
+// means at least one recipient is outside the organization. RuleMode Test* is log only:
+// nothing was blocked and nobody was told. Locations names the attachment or "Message
+// Body" that held each sensitive type. Exchange logs each match twice; the summarize
+// folds the copies, so don't count rows as messages before it.
+// Placeholders: {USER} = the mailbox UPN, lower-cased; {WFROM}/{WTO}.
+Office365
+| where timestamp between (datetime("{WFROM}") .. datetime("{WTO}"))
+| where Operation == "DlpRuleMatch" and tolower(tostring(UserId)) == "{USER}"
+| extend m = parse_json(tostring(ExchangeMetaData))
+| extend From = tostring(m.From), To = tostring(m.To), CC = tostring(m.CC),
+         BCC = tostring(m.BCC), Subject = tostring(m.Subject), Sent = tostring(m.Sent),
+         MessageID = tostring(m.MessageID)
+| mv-expand p = parse_json(tostring(PolicyDetails))
+| mv-expand r = p.Rules
+| extend Policy = tostring(p.PolicyName), Rule = tostring(r.RuleName),
+         RuleMode = tostring(r.RuleMode), Severity = tostring(r.Severity),
+         Actions = tostring(r.Actions),
+         AccessScope = tostring(r.ConditionsMatched.OtherConditions)
+| mv-expand s = r.ConditionsMatched.SensitiveInformation
+| extend SensitiveType = tostring(s.SensitiveInformationTypeName),
+         Location = tostring(s.Location)
+| summarize first = min(timestamp), Types = make_set(SensitiveType),
+    Locations = make_set(Location)
+    by MessageID, Sent, From, To, CC, BCC, Subject, Policy, Rule, RuleMode, Severity,
+       Actions, AccessScope
+| order by first asc
+| take 1000
