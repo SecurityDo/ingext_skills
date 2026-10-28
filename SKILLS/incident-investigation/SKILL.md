@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.6.0
+version: 1.6.1
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -646,6 +646,13 @@ Read the time column from the schema doc for each table — never from the last 
 you queried. For FortiGate, `hostname` exists only on `NetworkFortigateEvent`, and
 session counts and bytes need `references/fortigate.md` before they mean anything.
 
+**The other usual cause: `has` matches whole terms.** A term breaks only at characters
+that are not letters, digits or `_`, so a guest account `JBrown_contoso.com#EXT#@…`
+holds the term `JBrown_contoso`, and `has "contoso"` (or `has "contoso.com"`) misses it.
+One run scanned 30 days of `AzureAuditLogs` this way, about 80 s, for a confident zero.
+A 2-hour query with `contains` then found the invites. Match a guest's domain, a part
+of a UPN or a file name with `contains`; keep `has` for whole words and full addresses.
+
 **The same trap in a projection: a column that does not exist returns null.** A
 `project` over a name the schema lacks yields `null` for every row, indistinguishable
 from a field that is genuinely empty — and unlike the zero case the result set is
@@ -846,7 +853,12 @@ the first thing a reader needs. It is actionable when they have to:
 - fix the setting that made this possible (a Global Admin service account that SSPR can
   reset).
 
-A benign verdict can be actionable, and "routine, nothing to do" is not actionable. Decide
+A benign verdict can be actionable, and "routine, nothing to do" is not actionable. A
+share or invite to an outside party **the tenant already works with** is not actionable
+unless the content is sensitive (personal data, credentials, a bid). Signs of a known
+partner: earlier guests from the same domain, invites by several colleagues on different
+days, mail folders or projects named after them. Name that evidence instead of asking the
+customer to confirm the relationship. Decide
 it on **the risk the rule is about**: data leaving, access granted, a containment holding,
 an account taken over. A clean session alone doesn't settle that: a person can share
 company files with a free-mail address from their own session. Once that question comes
