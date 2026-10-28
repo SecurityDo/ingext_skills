@@ -7,6 +7,10 @@
 // Placeholders: {TARGET} = the UPN as ObjectId spells it, {FROM}/{TO} = epoch ms.
 Office365
 | where timestamp between (unixtime_milliseconds_todatetime({FROM}) .. unixtime_milliseconds_todatetime({TO}))
+// Workload and Operation first: every auth-method effect is an "Update user." row
+// (jedunn, 4 h of 10-26: all StrongAuthentication*/SearchableDeviceKey rows), and
+// filtering on them before the ObjectId text scan is 10x faster (6 h: 8 s, not 76 s).
+| where Workload == "AzureActiveDirectory" and Operation == "Update user."
 | where tostring(ObjectId) contains "{TARGET}"
 | project timestamp, Operation, UserId, ObjectId, ModifiedProperties
 // Dedup: the datalake returns the same event two or more times (one 30-day
