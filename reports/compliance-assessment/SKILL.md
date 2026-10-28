@@ -1,11 +1,11 @@
 ---
 name: compliance-assessment
-version: 1.6.0
+version: 1.7.0
 description: >-
   Produce a customer-facing compliance evidence report for ONE Ingext/Fluency tenant and ONE
   calendar month, built from read-only queries through the tenant's MCP connector (KQL over
-  Office365, Entra sign-in and audit, Windows audit and any network or endpoint
-  tables the tenant has; CloudTrail from its report archive only; behavior summaries; Office 365 and Qualys resource dumps; connector and
+  Windows audit and any network or endpoint tables the tenant has; Office 365, Entra and CloudTrail counts
+  from their report archives only, never searched; behavior summaries; Office 365 and Qualys resource dumps; connector and
   report inventory). Maps the evidence onto 13 NIST SP
   800-53 Rev. 5 control groups as supported, partial, not observed or needs manual review, and
   renders a self-contained HTML plus a mail-ready PDF, with key findings and recommended actions, an evidence-coverage figure and a month-over-month trend. Never claims
@@ -46,16 +46,14 @@ month 00:00 UTC.
 
 Before collecting anything, call `list_data_tables` for the tenant and keep the result. Collect
 from a table only if it is listed. Never probe for a table by running its query. Event tables
-(Office365, AzureSigninLogs, AzureAuditLogs, WindowsAudit and the extra sources below) are
-queried with `kql_search`.
+(WindowsAudit and the extra sources below) are queried with `kql_search`. Office 365, Entra and CloudTrail
+are never queried: they come from report archives.
 Resource tables (office365User and the rest) are inventory snapshots and are downloaded as
 dumps, not queried.
 
 | Evidence file | Table that must be listed |
 |---|---|
-| `o365_workloads.json` | `Office365` (event) |
-| `signin.json` | `AzureSigninLogs` (event) |
-| `audit_categories.json` | `AzureAuditLogs` (event) |
+| `m365_archive.json` | `Office365`, `AzureSigninLogs`, `AzureAuditLogs`, `AADServicePrincipalSignInLogs`, `AADNonInteractiveUserSignInLogs` (events), read from the archive of the scheduled report, never queried (see below). A source the tenant lacks is reported as not available, not as zero |
 | `windows.json` | `WindowsAudit` (event) |
 | `ct_archive.json` | `CloudTrail` (event), read from the archive of the scheduled report, never queried (see below) |
 | `src_<Table>.json` | any listed stream table whose name matches a class in `references/queries.md` (network, endpoint, cloud or identity) |
@@ -87,14 +85,15 @@ fails at the proxy is retried once, then left out (it renders as not collected).
 
 | File | Tool |
 |---|---|
-| `o365_workloads.json`, `signin.json`, `audit_categories.json`, `windows.json` | `kql_search` with `rangeFrom` and `rangeTo` set to the month |
+| `windows.json` | `kql_search` with `rangeFrom` and `rangeTo` set to the month |
+| `m365_archive.json` | `download_report_archive`, never `kql_search` (see **Office 365 and Entra** below) |
 | `src_<Table>.json` (not CloudTrail) | `kql_search`, same window; one narrow query per file (see the note on large tables in `references/queries.md`) |
 | `ct_archive.json` | `download_report_archive`, never `kql_search` (see **CloudTrail** below) |
 | `behavior.json` | `behavior_summary_search`, same window, `limit: 0`, facets `status`, `classification`, `scoreLevel` |
 | `users.jsonl.gz`, `devices.jsonl.gz`, `ca_policies.jsonl.gz`, `qualys.jsonl.gz` | `list_resource_dumps`, then `get_resource_dump_url` per resource (see below). Current snapshot, no time window |
 | `guardduty.jsonl.gz`, `gsuite_users.jsonl.gz` | optional dumps, same download rule as below. Feed SI-4, AC-2 and IA-2/IA-5 and the key findings |
 | `apps.jsonl.gz`, `enterprise_apps.jsonl.gz`, `groups.jsonl.gz`, `gsuite_groups.jsonl.gz` | optional dumps, same download rule. Feed IA-5 (client secret hygiene), AC-2 (groups), CM-8 (enterprise applications) and the key findings |
-| `history_<Table>.json` | optional `kql_search` per event table: `<Table> \| summarize oldest=min(<time column>), newest=max(<time column>)` with `rangeFrom` a year or more before the period. The time column is `TimeGenerated` for the Azure tables and `timestamp` for CloudTrail, which is not measured because it is never searched. Skip a table that times out; never let the query window start inside the period you want to measure (a result that starts at the window edge is reported as "at least") |
+| `history_<Table>.json` | optional `kql_search` per event table other than Office365, AzureSigninLogs, AzureAuditLogs, AADServicePrincipalSignInLogs, AADNonInteractiveUserSignInLogs and CloudTrail (those are never searched, so their history depth is not measured): `<Table> \| summarize oldest=min(<time column>), newest=max(<time column>)` with `rangeFrom` a year or more before the period. Skip a table that times out; never let the query window start inside the period you want to measure (a result that starts at the window edge is reported as "at least") |
 | `connectors.json` | `list_connectors`, reduced to `{"entries": [{"application": ..., "state": ...}]}` before saving (see below) |
 | `reports.json` | `list_reports` |
 
@@ -128,6 +127,26 @@ archive of the scheduled report `CloudTrail_Activity_Report` (see the `aws-cloud
 
 If the tenant has no `CloudTrail` table, skip all of this; CloudTrail renders as not collected.
 
+**Office 365 and Entra (archive only, never searched).** These tables are very large, so their counts come from the
+daily archive of the scheduled report `Office365_Entra_Activity_Report` (see the
+`microsoft365-entra-activity-report` skill). If `list_data_tables` lists any of `Office365`, `AzureSigninLogs`,
+`AzureAuditLogs`, `AADServicePrincipalSignInLogs` or `AADNonInteractiveUserSignInLogs`:
+
+1. `list_report_archive(account, "Office365_Entra_Activity_Report", from, to)` for the month. If the scheduled report does
+   not exist on the tenant, or no day of the month is archived, **stop the Office 365 and Entra part and tell the user the
+   archive is required**: name the missing report or days, say it must be set up (script in the
+   `microsoft365-entra-activity-report` skill's `references/`) and backfilled with `backfill_report_archive`, and offer to
+   continue once that is done. Do not run `kql_search` on any of these tables as a substitute, not even a count, and do not
+   query `history_` files for them.
+2. Otherwise `download_report_archive(account, "Office365_Entra_Activity_Report", from, to, objects=["o365_trend", "o365_facets",
+   "signin_trend", "audit_trend", "audit_facets", "sp_trend", "ni_trend", "sources"])` and save the result as
+   `m365_archive.json` (several files named `m365_archive*.json` are merged).
+3. Run the build with `--require-m365`. If some days are missing it still builds, sums the archived days, labels each source
+   "N of M days archived" and lists the missing days under gaps; tell the user and offer a backfill. A missing day is a gap,
+   never zero, and a table the tenant does not have is shown as not available, never as zero.
+
+The archive holds counts only, so distinct-user figures (for example how many users signed in) are not reported.
+
 **Extra sources.** A tenant's network, endpoint, cloud and identity tables decide how much of SC-7
 (boundary protection), SI-3 (malicious code protection) and AU-2 (logging) can be observed. For every
 listed stream table that matches a class in `references/queries.md`, save `src_<TableName>.json` from
@@ -148,7 +167,7 @@ retyping it. Do not substitute a different table for one that is absent.
 
 ```bash
 python3 scripts/build_report.py --evidence-dir WORKDIR --tenant acme --tenant-name "Example Corp" \
-  --site Develop --period 2026-09 --out WORKDIR/report.html [--history-dir HISTORY]
+  --site Develop --period 2026-09 --out WORKDIR/report.html --require-m365 --require-cloudtrail [--history-dir HISTORY]
 ```
 
 Add `--summary-json WORKDIR/compliance_summary.json` to also write the control statuses and the facts
@@ -159,7 +178,7 @@ for its O365 hygiene, environment changes and vulnerability rows.
 ## Key findings, evidence coverage and trend
 
 - **Key findings** are computed in `build_report.py` from the evidence: root-account activity, administrators
-  or users without MFA, high-severity GuardDuty findings, incidents still new, stale devices, failed-login
+  or users without MFA, service principals failing on expired client secrets, high-severity GuardDuty findings, incidents still new, stale devices, failed-login
   shares, connectors that are Running but delivered no events, admin-role share and guest accounts. Each has
   a severity (high, medium, low), the evidence and a recommended action. The thresholds are constants at the
   top of the script and are the analyst's; they say where to look first, not what is non-compliant.

@@ -10,9 +10,6 @@ Usage:
       [--history-dir DIR | --prior-summary PATH]
 
 Evidence files (each is the raw JSON the tool returned; KQL files hold a kql_search result):
-  o365_workloads.json   kql: Office365 | summarize events=count() by Workload
-  signin.json           kql: AzureSigninLogs | summarize events=count(), failed=countif(ResultType != "0"), users=dcount(UserPrincipalName)
-  audit_categories.json kql: AzureAuditLogs | summarize events=count() by Category
   windows.json          kql: WindowsAudit | summarize events=count()
   behavior.json         behavior_summary_search with limit 0 and facets status, classification, scoreLevel
   users.jsonl.gz        resource dump (get_resource_dump_url): office365User
@@ -45,6 +42,14 @@ Optional extra sources (run only for tables that list_data_tables shows):
                         CloudTrail is never searched: there is no ct_*, src_CloudTrail or history_CloudTrail query.
                         The per-day trend rows are summed over the period; a day not archived is a gap, never zero.
                         With --require-cloudtrail the build stops (exit 3) when no day of the period is archived.
+  m365_archive*.json    Office 365 and Entra counts come ONLY from the daily archive of the scheduled report
+                        Office365_Entra_Activity_Report: download_report_archive for the month, saved as received
+                        (objects o365_trend, o365_facets, signin_trend, audit_trend, audit_facets, sp_trend, ni_trend and
+                        sources keep it small). Office365, AzureSigninLogs, AzureAuditLogs, AADServicePrincipalSignInLogs
+                        and AADNonInteractiveUserSignInLogs are never searched. Trend rows are summed over the period; a
+                        day not archived is a gap, and a table the tenant lacks is "not available", never zero. Distinct
+                        users are not available from an archive and are not reported.
+                        With --require-m365 the build stops (exit 3) when no day of the period is archived.
 """
 import argparse, collections, datetime, gzip, html, json, os, re, sys
 
@@ -63,6 +68,7 @@ SEV = {"high": ("High", "#B91C1C", 0), "medium": ("Medium", "#B45309", 1), "low"
 STALE_SHARE = 0.5      # share of directory devices with no sign-in in 90 days
 CONSOLE_FAIL = 0.10    # share of failed cloud console logins
 SIGNIN_FAIL = 0.05     # share of failed Entra sign-ins
+SP_SECRET_FAIL = 0.01  # share of service-principal sign-ins that failed on an expired or invalid client secret
 ADMIN_SHARE = 0.25     # share of enabled users holding an admin role
 HIGH_SEVERITY = 7.0    # GuardDuty numeric severity at which a finding is High
 CONFIG_FAIL = 0.25     # share of applicable Defender secure-configuration checks failing
@@ -605,6 +611,90 @@ def ct_archive_facts(d, period):
             "trail_changes": tot["trailChanges"], "days_archived": len(days), "days_expected": len(expected),
             "missing_days": [x for x in expected if x not in days], "source": "archive"}
 
+M365_KEYS = {"o365": "Office365", "signin": "AzureSigninLogs", "audit": "AzureAuditLogs",
+             "sp": "AADServicePrincipalSignInLogs", "ni": "AADNonInteractiveUserSignInLogs"}
+
+
+def m365_archive_facts(d, period):
+    """Sum the archived Office365_Entra_Activity_Report trend rows for the period, per source. Returns None when no
+    completed day of the period is in the evidence folder. A missing day is a gap and a source the tenant lacks is
+    "not available"; neither is counted as zero."""
+    yy, mm = [int(x) for x in period.split("-")]
+    d0 = datetime.date(yy, mm, 1)
+    d1 = datetime.date(yy + (mm == 12), mm % 12 + 1, 1)
+    expected = [(d0 + datetime.timedelta(i)).isoformat() for i in range((d1 - d0).days)]
+    days = {}
+    for fn in sorted(os.listdir(d)):
+        if not (fn.startswith("m365_archive") and fn.endswith(".json")):
+            continue
+        res = load(d, fn) or {}
+        for day in res.get("days", []):
+            en = day.get("entry") or {}
+            key = (en.get("rangeFrom") or "")[:10]
+            r = day.get("result")
+            if key not in expected or en.get("state") != "completed" or not r:
+                continue
+            if key in days and (days[key][0] or "") >= (en.get("completedOn") or ""):
+                continue
+            days[key] = (en.get("completedOn"), r.get("objects", []))
+    if not days:
+        return None
+    srcs = {k: {"table": t, "days_ok": 0, "days_not_available": 0, "days_not_collected": 0, "totals": collections.Counter()} for k, t in M365_KEYS.items()}
+    workloads, categories = collections.Counter(), collections.Counter()
+
+    def facet_rows(objs, name, facet):
+        for o in objs:
+            if o.get("name") != name:
+                continue
+            om = (o.get("value") or {}).get("orderedMap") or {}
+            for k_, v_ in zip(om.get("keys", []), om.get("values", [])):
+                if k_ == facet:
+                    return [(str(r.get(facet)), int(r.get("count_") or 0)) for r in ((v_ or {}).get("sx") or {}).get("rows") or []]
+        return []
+    for _, objs in days.values():
+        names = {o.get("name") for o in objs}
+        status = {}
+        for o in objs:
+            if o.get("name") == "sources":
+                for r_ in (o.get("table") or {}).get("rows") or []:
+                    if r_.get("status") == "ok":
+                        status.setdefault(r_.get("source"), "ok")
+                    else:
+                        status[r_.get("source")] = "not available"
+        for k, t in M365_KEYS.items():
+            sr = srcs[k]
+            if k + "_trend" not in names and k + "_facets" not in names:
+                sr["days_not_collected"] += 1
+                continue
+            rows = []
+            for o in objs:
+                if o.get("name") == k + "_trend":
+                    rows = (o.get("table") or {}).get("rows") or []
+            st = status.get(t) or ("ok" if rows else None)
+            if st == "not available":
+                sr["days_not_available"] += 1
+                continue
+            if st is None:
+                sr["days_not_collected"] += 1
+                continue
+            sr["days_ok"] += 1
+            for r_ in rows:
+                for m_, v_ in r_.items():
+                    if m_ != "Date" and isinstance(v_, (int, float)):
+                        sr["totals"][m_] += int(v_)
+            if k == "o365":
+                for v_, c_ in facet_rows(objs, "o365_facets", "workload"):
+                    workloads[v_] += c_
+            if k == "audit":
+                for v_, c_ in facet_rows(objs, "audit_facets", "category"):
+                    categories[v_] += c_
+    for sr in srcs.values():
+        sr["totals"] = dict(sr["totals"])
+        sr["totals"].setdefault("events", 0)
+        sr["totals"].setdefault("failed", 0)
+    return {"sources": srcs, "workloads": dict(workloads), "audit_categories": dict(categories), "days_archived": len(days), "days_expected": len(expected),
+            "missing_days": [x for x in expected if x not in days], "source": "archive"}
+
 
 CONNECTOR_TABLE = {"Office365": "Office365", "AzureAudit": "AzureAuditLogs", "AWSCloudTrail": "CloudTrail",
                    "Duo": "Duo", "GoogleWorkspace": "GSuite", "AmazonGuardDuty": "GuardDuty"}
@@ -621,19 +711,41 @@ def main():
     ap.add_argument("--summary-json", help="also write the control statuses as JSON (used by the CISO_monthly_report skill and the framework companions)")
     ap.add_argument("--history-dir", help="folder of earlier compliance_summary_YYYY-MM.json files; the latest earlier month becomes the prior month and all months feed the trend")
     ap.add_argument("--prior-summary", help="one earlier compliance_summary.json to compare against (overrides --history-dir for the prior month)")
+    ap.add_argument("--require-m365", action="store_true", help="stop with exit 3 when no day of the period is in the Office 365 / Entra archive")
     ap.add_argument("--require-cloudtrail", action="store_true", help="stop with exit 3 when no day of the period is in the CloudTrail archive (use when the tenant has a CloudTrail table)")
     a = ap.parse_args()
     d = a.evidence_dir
 
     used_tables, used_dumps = [], []
-    wl_rows = kql_rows(load(d, "o365_workloads.json"))
-    o365 = sum(r["events"] for r in wl_rows) if wl_rows else None
-    if wl_rows is not None: used_tables.append("Office365")
-    si = first(load(d, "signin.json"))
+    m365 = m365_archive_facts(d, a.period)
+    if m365 is None and a.require_m365:
+        sys.stderr.write("OFFICE 365 / ENTRA ARCHIVE REQUIRED: no completed day of %s was found in the archive of the scheduled report "
+                         "Office365_Entra_Activity_Report (files m365_archive*.json). Office 365 and Entra tables are never searched live. Set up "
+                         "the scheduled report with the archive enabled (microsoft365-entra-activity-report skill, references/archive_format.md) "
+                         "and backfill the period with backfill_report_archive, then run this again.\n" % a.period)
+        sys.exit(3)
+
+    def m365_src(key):
+        s_ = ((m365 or {}).get("sources") or {}).get(key)
+        return s_ if s_ and s_["days_ok"] else None
+    s_o, s_si, s_au, s_sp, s_ni = (m365_src(k) for k in ("o365", "signin", "audit", "sp", "ni"))
+
+    def cov_label(base, s_):
+        if not s_ or s_["days_ok"] >= m365["days_expected"]:
+            return base
+        return "%s (%d of %d days archived)" % (base, s_["days_ok"], m365["days_expected"])
+    o365 = s_o["totals"]["events"] if s_o else None
+    wl_rows = [{"Workload": k_, "events": v_} for k_, v_ in m365["workloads"].items()] if s_o else None
+    if s_o: used_tables.append("Office365")
+    si = {"events": s_si["totals"]["events"], "failed": s_si["totals"]["failed"], "users": None} if s_si else None
     if si: used_tables.append("AzureSigninLogs")
-    au_rows = kql_rows(load(d, "audit_categories.json"))
-    audit = sum(r["events"] for r in au_rows) if au_rows else None
-    if au_rows is not None: used_tables.append("AzureAuditLogs")
+    audit = s_au["totals"]["events"] if s_au else None
+    au_rows = [{"Category": k_, "events": v_} for k_, v_ in m365["audit_categories"].items()] if s_au else None
+    if s_au: used_tables.append("AzureAuditLogs")
+    sp_n = s_sp["totals"]["events"] if s_sp else None
+    ni_n = s_ni["totals"]["events"] if s_ni else None
+    if s_sp: used_tables.append("AADServicePrincipalSignInLogs")
+    if s_ni: used_tables.append("AADNonInteractiveUserSignInLogs")
     win = first(load(d, "windows.json"))
     win_n = win["events"] if win else None
     if win: used_tables.append("WindowsAudit")
@@ -705,7 +817,9 @@ def main():
     ca_all = sum(ca.values()) if ca else None
 
     mon_name = datetime.date(int(yy), int(mm), 1).strftime("%B")
-    srcs_all = [("Office 365", o365), ("Entra sign-in", sin), ("Entra directory-audit", audit), ("Windows audit", win_n), (ct_label, ct_events)] + [(x["table"], x["events"]) for x in extra if x["table"] != "CloudTrail"]
+    srcs_all = [(cov_label("Office 365", s_o), o365), (cov_label("Entra sign-in", s_si), sin), (cov_label("Entra directory-audit", s_au), audit),
+                (cov_label("Entra service-principal sign-in", s_sp), sp_n), (cov_label("Entra non-interactive sign-in", s_ni), ni_n),
+                ("Windows audit", win_n), (ct_label, ct_events)] + [(x["table"], x["events"]) for x in extra if x["table"] != "CloudTrail"]
     srcs_on = [(lbl, v_) for lbl, v_ in srcs_all if v_]
 
     def logging_status():
@@ -736,6 +850,13 @@ def main():
             ("No incident was closed in the window, so there is no classification to report" if not closed_inc else "Classification of the closed incidents was not returned"))
     else:
         au6_text, ir_text = "Incident status was not collected. No review-cadence record was collected.", "Dispositions: not collected. Documented response procedure not supplied."
+    sp_text, ni_text = "", ""
+    if s_sp and sp_n:
+        t_ = s_sp["totals"]
+        sp_text = " Service principals: %s of %s sign-ins failed, %s of them on an expired or invalid client secret; %s used a client secret rather than a certificate or federated credential." % (
+            n(t_.get("failed", 0)), n(sp_n), n(t_.get("secretErrors", 0)), n(t_.get("secretAuth", 0)))
+    if s_ni and ni_n:
+        ni_text = " Non-interactive user sign-ins: %s of %s failed." % (n(s_ni["totals"].get("failed", 0)), n(ni_n))
     gd_text = ""
     if gd:
         gd_text = " GuardDuty snapshot: %s findings, %s open, %s high severity and open, %s updated in the month." % (n(gd["findings"]), n(gd["open"]), n(gd["high_open"]), n(gd["updated_in_period"]))
@@ -755,9 +876,9 @@ def main():
              (", %s disabled, %s guests, %s with an admin role" % (n(hy["disabled"]), n(hy["guests"]), n(hy["admins"]))) if hy else "", "",
              (" CloudTrail shows %s IAM change events and %s root-account events." % (n(ctf["iam_changes"]), n(ctf["root_events"]))) if ctf and ctf["iam_changes"] is not None else "",
              (" Google Workspace holds %s users (%s administrators)." % (n(gw["users"]), n(gw["admins"]))) if gw else "")),
-        ("AC-7", "Unsuccessful logon attempts", "partial" if (si or (ctf and ctf["console_logins"] is not None)) else "not_observed",
-         "%s of %s Entra sign-ins failed (%s).%s Lockout and throttling configuration was not collected." % (n(failed), n(sin), pct or "n/a",
-             (" CloudTrail: %s of %s console logins failed." % (n(ctf["console_failed"]), n(ctf["console_logins"]))) if ctf and ctf["console_logins"] is not None else "")),
+        ("AC-7", "Unsuccessful logon attempts", "partial" if (si or s_sp or s_ni or (ctf and ctf["console_logins"] is not None)) else "not_observed",
+         "%s of %s Entra sign-ins failed (%s).%s%s%s Lockout and throttling configuration was not collected." % (n(failed), n(sin), pct or "n/a",
+             (" CloudTrail: %s of %s console logins failed." % (n(ctf["console_failed"]), n(ctf["console_logins"]))) if ctf and ctf["console_logins"] is not None else "", ni_text, sp_text)),
         ("IA-2 / IA-5", "Authentication and authenticators", "partial" if (ca or (hy and hy["mfa_known"]) or gw) else "not_observed",
          "%s%s%s" % ((("%s Conditional Access policies: %s enforced, %s report-only." % (n(ca_all or 0), n(ca_enf or 0), n(ca_rep))) if ca is not None else "Conditional Access policies were not collected."),
              (" %s of %s enabled users have registered MFA; %s of %s administrators lack it. Registration is not enforcement." % (n(hy["enabled_mfa_registered"]), n(hy["enabled"]), n(hy["admins_no_mfa"]), n(hy["admins"]))) if hy and hy["mfa_known"] else " MFA coverage was not collected.",
@@ -855,6 +976,10 @@ def main():
             "Check the failures for password guessing or a misconfigured user, and require MFA on console access.", "AC-7")
     if sin and failed and failed >= SIGNIN_FAIL * sin:
         add("medium", "High share of failed Entra sign-ins", "%s of %s sign-ins failed (%s)." % (n(failed), n(sin), pct), "Review the failures by user and source address.", "AC-7")
+    if s_sp and sp_n and s_sp["totals"].get("secretErrors", 0) >= SP_SECRET_FAIL * sp_n:
+        add("medium", "Service principals failing on expired client secrets", "%s of %s service-principal sign-ins (%s) failed on an expired or invalid client secret in %s." % (
+            n(s_sp["totals"]["secretErrors"]), n(sp_n), "%.1f%%" % (100.0 * s_sp["totals"]["secretErrors"] / sp_n), mon_name),
+            "Find the integrations behind the failing sign-ins in the Entra service-principal sign-in logs, rotate or retire each expired secret, and prefer certificate or federated credentials.", "IA-5, AC-2")
     for app, tab in sorted(CONNECTOR_TABLE.items()):
         states = [s for ap_, s in (conn_list or []) if ap_ == app]
         ev = events_of(tab)
@@ -1044,6 +1169,14 @@ def main():
         gaps.append("<li><b>CloudTrail archive (AU-2, AU-12):</b> %d of %d days of %s are archived, so the CloudTrail counts cover archived days only (not archived: %s%s). "
                     "Backfill the scheduled report CloudTrail_Activity_Report for those days and rebuild.</li>" % (
                         ctf["days_archived"], ctf["days_expected"], a.period, ", ".join(ctf["missing_days"][:10]), " ..." if len(ctf["missing_days"]) > 10 else ""))
+    if m365 and m365["missing_days"]:
+        gaps.append("<li><b>Office 365 and Entra archive (AU-2, AU-12):</b> %d of %d days of %s are archived, so the Office 365 and Entra counts cover archived days only (not archived: %s%s). "
+                    "Backfill the scheduled report Office365_Entra_Activity_Report for those days and rebuild.</li>" % (
+                        m365["days_archived"], m365["days_expected"], a.period, ", ".join(m365["missing_days"][:10]), " ..." if len(m365["missing_days"]) > 10 else ""))
+    if m365:
+        absent = [sr["table"] for sr in m365["sources"].values() if not sr["days_ok"]]
+        if absent:
+            gaps.append("<li><b>Not in the Office 365 and Entra archive:</b> %s had no data on any archived day (the table is absent on this tenant or the archived script version did not include it). It is not counted as zero.</li>" % ", ".join(absent))
     gaps.append("<li><b>Policies and procedures (AC-1, IA-1, IR-1):</b> supplied by the customer.</li>")
 
     month = datetime.date(int(yy), int(mm), 1).strftime("%B %Y")
@@ -1093,12 +1226,14 @@ def main():
     if a.summary_json:
         with open(a.summary_json, "w") as f:
             facts = {
-                "events": {"office365": o365, "signin": sin, "signin_failed": failed, "signin_users": si["users"] if si else None, "directory_audit": audit, "windows_audit": win_n},
+                "events": {"office365": o365, "signin": sin, "signin_failed": failed, "signin_users": si["users"] if si else None, "directory_audit": audit, "windows_audit": win_n,
+                           "service_principal_signin": sp_n, "service_principal_failed": s_sp["totals"].get("failed") if s_sp else None,
+                           "service_principal_secret_errors": s_sp["totals"].get("secretErrors", 0) if s_sp else None, "non_interactive_signin": ni_n},
                 "workloads": [[r["Workload"], r["events"]] for r in sorted(wl_rows or [], key=lambda r: -r["events"])],
                 "audit_categories": [[r["Category"], r["events"]] for r in sorted(au_rows or [], key=lambda r: -r["events"])],
                 "users": us, "hygiene": hy, "devices": dv, "qualys_hosts": qualys, "behavior_summaries": beh_total,
                 "incidents": {"total": inc_total, "new": new_inc, "closed": closed_inc} if inc_total is not None else None,
-                "cloudtrail": ctf, "sources": extra, "history": hist, "guardduty": gd, "google_workspace": gw,
+                "cloudtrail": ctf, "m365_archive": m365, "sources": extra, "history": hist, "guardduty": gd, "google_workspace": gw,
                 "defender": mdf, "scanners_endpoint": vnd, "app_registrations": apf, "enterprise_apps": spf, "groups": grf, "google_groups": ggf,
                 "conditional_access": ({"total": (ca_all if ca else 0), "enforced": ca_enf or 0, "report_only": ca_rep, "by_state": ca} if ca is not None else None),
                 "admins": {r.get("userPrincipalName", "").lower(): sorted(r.get("roles") or []) for r in (u_rec or []) if (r.get("userRegistration") or {}).get("isAdmin") is True or r.get("roles")},

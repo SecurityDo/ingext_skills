@@ -5,14 +5,11 @@ Set `rangeFrom` / `rangeTo` to the month in epoch milliseconds for the event que
 
 | File | Query |
 |---|---|
-| `o365_workloads.json` | `Office365 \| summarize events=count() by Workload` |
-| `signin.json` | `AzureSigninLogs \| summarize events=count(), failed=countif(ResultType != "0"), users=dcount(UserPrincipalName)` |
-| `audit_categories.json` | `AzureAuditLogs \| summarize events=count() by Category` |
 | `windows.json` | `WindowsAudit \| summarize events=count()` |
 
 ## Extra sources (only for tables that `list_data_tables` lists)
 
-CloudTrail is not here: it is never queried. Its counts come from the archive of the scheduled report `CloudTrail_Activity_Report` (`ct_archive.json`, see SKILL.md).
+CloudTrail, Office 365 and Entra are not here: they are never queried. CloudTrail comes from the archive of the scheduled report `CloudTrail_Activity_Report` (`ct_archive.json`), and Office365, AzureSigninLogs, AzureAuditLogs, AADServicePrincipalSignInLogs and AADNonInteractiveUserSignInLogs from the archive of `Office365_Entra_Activity_Report` (`m365_archive.json`). See SKILL.md.
 
 | File | Query |
 |---|---|
@@ -39,11 +36,11 @@ Notes for these queries:
 
 | File | Query |
 |---|---|
-| `history_<Table>.json` | `<Table> \| summarize oldest=min(TimeGenerated), newest=max(TimeGenerated)` (Azure tables) |
+| `history_<Table>.json` | `<Table> \| summarize oldest=min(TimeGenerated), newest=max(TimeGenerated)` (tables other than the archived ones) |
 
 Use a `rangeFrom` a year or more before the period and `rangeTo` the end of the period. The result is the
-history that exists, not a retention setting. Very large tables (CloudTrail, Office365) time out or return a
-null time column; leave them out. If the oldest record sits at the start of your query window it is reported
+history that exists, not a retention setting. CloudTrail, Office365 and the Entra tables are never searched, so no
+history is measured for them; very large tables time out or return a null time column, leave them out. If the oldest record sits at the start of your query window it is reported
 as "at least".
 
 Resource tables are not queried. Each is a resource dump (`list_resource_dumps`, then
@@ -79,8 +76,6 @@ Resource tables are not queried. Each is a resource dump (`list_resource_dumps`,
 count, which is smaller than `total` (all behavior summaries).
 
 Notes:
-- Office365 is large (millions of rows a month). If the query is closed by the proxy, retry once;
-  if it still fails, narrow to one week and say the figure is partial.
 - `list_data_tables` runs first (SKILL.md Step 1). If a table is absent (no `WindowsAudit`, no
   `qualysHost`), do not run its query: the control it feeds is not observed on that tenant.
 - Control mapping used by the script: AU-2/AU-12 (event volumes), SI-4 (behavior summaries),
