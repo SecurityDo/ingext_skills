@@ -1,6 +1,6 @@
 ---
 name: compliance-assessment
-version: 1.7.0
+version: 1.8.0
 description: >-
   Produce a customer-facing compliance evidence report for ONE Ingext/Fluency tenant and ONE
   calendar month, built from read-only queries through the tenant's MCP connector (KQL over
@@ -72,6 +72,7 @@ dumps, not queried.
 | `sentinelone_agent.jsonl.gz`, `sentinelone_threat.jsonl.gz` | `sentinelOneAgent`, `sentinelOneThreat` (resources), optional. Feed SI-3 and CM-8 |
 | `falcon_agent.jsonl.gz` | `falconAgent` (resource), optional. Feeds SI-3 and CM-8 |
 | `history_<Table>.json` | the table itself, for history depth (optional) |
+| `retention_<Table>_<age>.json` | bounded retention probe, raw `kql_search` result (see Retention probe) |
 
 A table that is not listed is skipped: no file is saved, the report shows it as not collected,
 and the control it feeds is not observed. Say in the hand-off which tables were absent.
@@ -191,6 +192,7 @@ for its O365 hygiene, environment changes and vulnerability rows.
   against one named file instead. Resource-table facts are snapshots, so a prior month is only comparable if its
   run used the snapshot taken at that time; do not back-fill a past month with today's dumps and treat it as
   history.
+- **Retention probe** (AU-4/AU-11, target 365 days). For each archived source (Office365, AzureSigninLogs, AzureAuditLogs, AADServicePrincipalSignInLogs, CloudTrail) run `<Table> | take 1` with `rangeFrom`/`rangeTo` forming a short window that ENDS 90, 180, 270 and 365 days before the period end (save each raw result as `retention_<Table>_<age>.json`). Size the window from the archive's average daily volume: 100000 / avg_daily x 24 h, clamped to 1 h to 24 h, because the work scales with rows in the window. A hit proves records exist at that depth; a miss at 365 means twelve months is not evidenced yet. AU-4/AU-11 is supported only when every probed table hits at 365 days, otherwise partial, with a low finding. It is not the configured retention, and archive counts are not retention evidence.
 - **History depth** (AU-4/AU-11) is how far back records exist, measured with the `history_` queries. It is
   not the configured retention period and can reflect when a source was connected.
 

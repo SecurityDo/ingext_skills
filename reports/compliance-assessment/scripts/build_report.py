@@ -546,6 +546,32 @@ def history_facts(d, period_end):
     return out or None
 
 
+RETENTION_TARGET_DAYS = 365
+
+
+def retention_facts(d, period_end):
+    """Bounded retention probes: files retention_<Table>_<age>.json hold one kql_search ("<Table> | take 1") over a short
+    window that ends <age> days before the period end. A hit proves records exist at that depth. Not a retention setting."""
+    tabs = {}
+    for fn in sorted(os.listdir(d)):
+        m = re.match(r"retention_(.+)_(\d+)\.json$", fn)
+        if not m:
+            continue
+        res = load(d, fn)
+        if not isinstance(res, dict) or res.get("range_to") is None:
+            continue
+        end = datetime.datetime.fromtimestamp(res["range_to"] / 1000, tz=UTC)
+        age = int(round((period_end - end).total_seconds() / 86400.0))
+        tabs.setdefault(m.group(1), {})[age] = (res.get("total") or 0) > 0
+    out = []
+    for t, pr in sorted(tabs.items()):
+        hits = [a for a, h in pr.items() if h]
+        misses = [a for a, h in pr.items() if not h and (not hits or a > max(hits))]
+        out.append({"table": t, "probes": {str(a): pr[a] for a in sorted(pr)}, "deepest_days": max(hits) if hits else None,
+                    "first_miss_days": min(misses) if misses else None, "target_met": pr.get(RETENTION_TARGET_DAYS) is True})
+    return out or None
+
+
 def coverage(rows):
     """Evidence coverage: supported = 1, partial = 0.5, over the groups telemetry could evidence (manual review excluded)."""
     scored = [r for r in rows if r[2] != "needs_manual_review"]
@@ -802,6 +828,7 @@ def main():
     net_src = [x for x in extra if x["class"] == "network" and x["events"]]
     end_src = [x for x in extra if x["class"] == "endpoint" and x["events"]]
     hist = history_facts(d, period_end)
+    ret = retention_facts(d, period_end)
     conns = load(d, "connectors.json")
     reps = load(d, "reports.json")
     conn_list = [(c.get("application"), c.get("state")) for c in conns.get("entries", [])] if conns else None
@@ -837,7 +864,18 @@ def main():
 
     pct = "%.1f%%" % (100.0 * failed / sin) if sin else None
     hist_ok = [h for h in (hist or []) if h.get("days") is not None]
-    if hist_ok:
+    if ret:
+        def _rt(r):
+            if r["deepest_days"] is None:
+                return "%s no records found at any probed depth" % r["table"]
+            miss = ", none at %s days" % r["first_miss_days"] if r["first_miss_days"] else ""
+            return "%s records found back to %s days%s" % (r["table"], r["deepest_days"], miss)
+        ret_status = "supported" if all(r["target_met"] for r in ret) else "partial"
+        ret_text = ("Retention probe (target %s days): %s. Each probe looks for any record in a short window that far before the period end, so it shows how far back records exist, not the configured retention setting. Archive counts are not retention evidence." % (
+            RETENTION_TARGET_DAYS, "; ".join(_rt(r) for r in ret)))
+        if hist_ok:
+            ret_text += " Other sources: " + "; ".join("%s %s%s days" % (h["table"], "at least " if h.get("at_least") else "", n(h["days"])) for h in hist_ok) + "."
+    elif hist_ok:
         ret_status = "partial"
         ret_text = "History observed: %s. This is how far back records exist, not the configured retention period, and it can reflect when a source was connected." % "; ".join(
             "%s %s%s days (oldest %s)" % (h["table"], "at least " if h.get("at_least") else "", n(h["days"]), h["oldest"]) for h in hist_ok)
@@ -953,6 +991,10 @@ def main():
     findings = []
     def add(sev, title, ev, act, ctrl):
         findings.append({"severity": sev, "title": title, "evidence": ev, "action": act, "controls": ctrl})
+    if ret and not all(r["target_met"] for r in ret):
+        short = [r["table"] for r in ret if not r["target_met"]]
+        add("low", "Twelve-month retention not yet evidenced", "No record was found %s days before the period end for: %s." % (RETENTION_TARGET_DAYS, ", ".join(short)),
+            "Confirm the configured retention for these sources. If the source was connected less than a year ago, the probe cannot prove twelve months until it has existed that long; rerun the probe later.", "AU-4, AU-11")
     if ctf and ctf["root_events"]:
         add("high", "Root account activity", "CloudTrail recorded %s events by the AWS root identity in %s." % (n(ctf["root_events"]), mon_name),
             "Confirm each use was expected, enable MFA on the root user, and use IAM roles for routine work.", "AC-2, IA-2")
@@ -1237,7 +1279,7 @@ def main():
                 "audit_categories": [[r["Category"], r["events"]] for r in sorted(au_rows or [], key=lambda r: -r["events"])],
                 "users": us, "hygiene": hy, "devices": dv, "qualys_hosts": qualys, "behavior_summaries": beh_total,
                 "incidents": {"total": inc_total, "new": new_inc, "closed": closed_inc} if inc_total is not None else None,
-                "cloudtrail": ctf, "m365_archive": m365, "sources": extra, "history": hist, "guardduty": gd, "google_workspace": gw,
+                "cloudtrail": ctf, "m365_archive": m365, "sources": extra, "history": hist, "retention": ret, "guardduty": gd, "google_workspace": gw,
                 "defender": mdf, "scanners_endpoint": vnd, "app_registrations": apf, "enterprise_apps": spf, "groups": grf, "google_groups": ggf,
                 "conditional_access": ({"total": (ca_all if ca else 0), "enforced": ca_enf or 0, "report_only": ca_rep, "by_state": ca} if ca is not None else None),
                 "admins": {r.get("userPrincipalName", "").lower(): sorted(r.get("roles") or []) for r in (u_rec or []) if (r.get("userRegistration") or {}).get("isAdmin") is True or r.get("roles")},

@@ -85,3 +85,7 @@ Notes:
   present, then partial; AC-1, IA-1 and IR-1 are always manual review. IA-2/IA-5 is partial from Conditional
   Access policies or from MFA registration in the user dump; AC-2 and AC-7 also use CloudTrail IAM changes
   and failed console logins when present.
+
+## Retention probe (archived sources)
+
+One `kql_search` per table and age (90, 180, 270, 365 days before the period end): `<Table> | take 1`, `rangeFrom`/`rangeTo` a 1 to 24 hour window ending that many days before the period end (window = 100000 / avg daily events x 24 h, clamped). Save as `retention_<Table>_<age>.json`. `take 1` is not cheap on a dense window, so keep it short. The result shows records exist at that depth, not the configured retention.
