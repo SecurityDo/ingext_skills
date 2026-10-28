@@ -1,6 +1,6 @@
 ---
 name: iso-cmmc-compliance-analysis
-version: 1.0.0
+version: 1.2.0
 description: >-
   Express a tenant's NIST 800-53 compliance evidence in ISO/IEC 27001:2022 Annex A and CMMC 2.0
   Level 2 language as HTML plus CSV: each ISO control or CMMC practice with its related 800-53
@@ -39,6 +39,8 @@ One table per framework: `Control | Title | Related 800-53 controls and status |
 - **Strongest mapped areas:** companion controls whose every related 800-53 group is supported.
 - **Not observed:** companion controls whose related groups are all not observed (evidence not collected).
 - **Evidence still required before audit or assessor use:** everything partial, mixed or needing manual review.
+
+After the tables comes a **Framework-specific checks** table with 10 ISO 27001 Annex A checks and 10 CMMC practices (`--framework` limits it to one), each showing No gap seen, Review, Gap seen or Not evaluable. It covers MFA, logging, incidents, threat findings and, when the summary carries Defender evidence (compliance-assessment 1.4.0 or later with the `mde_*` dumps), vulnerabilities, antivirus, secure configuration and device inventory. Without Defender evidence those rows read Not evaluable. No gap seen is an observation about the evidence, never a statement that a control is met.
 
 ## Rules
 
