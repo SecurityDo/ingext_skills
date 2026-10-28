@@ -226,11 +226,18 @@ def brand_footer(c, logo):
 def render(c, logo_path=None):
     label, color = VERDICTS[c["verdict"]["outcome"].lower()]
     meta = "".join(f'<div><dt>{md(m["label"])}</dt><dd>{md(m["value"])}</dd></div>' for m in c["meta"])
+    # Actionable is separate from the outcome: a benign closure can still need the customer to act.
+    action = ""
+    if c["verdict"].get("actionable") is True:
+        what = c["verdict"].get("customer_action") or "see the recommendation."
+        action = f'<br><strong>Action needed:</strong> {md(what)}'
+    elif c["verdict"].get("actionable") is False:
+        action = '<br><em>No action needed.</em>'
     parts = [
         f'<p class="eyebrow">{md(c.get("eyebrow", "Fluency Security · Incident closure · Tier 3 review"))}</p>',
         f'<h1>{md(c["title"])}</h1>',
         f'<p class="lede">{md(c["lede"])}</p>',
-        f'<div class="verdict" style="--vc:{color}"><b>{label}</b><p>{md(c["verdict"]["text"])}</p></div>',
+        f'<div class="verdict" style="--vc:{color}"><b>{label}</b><p>{md(c["verdict"]["text"])}{action}</p></div>',
         f'<dl class="meta">{meta}</dl>',
         render_grounds(c["grounds"]),
     ]

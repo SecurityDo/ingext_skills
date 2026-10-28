@@ -18,6 +18,8 @@ is escaped.
 | `lede` | ✓ | string | One paragraph with three parts: what escalated it, how many grounds were cited, and how many survived testing. |
 | `verdict.outcome` | ✓ | `benign` \| `escalate` \| `confirmed` | Sets the card colour. |
 | `verdict.text` | ✓ | string | Two sentences at most. Give the verdict, then the action. |
+| `verdict.actionable` | – | bool | Whether the customer has to do something now, whatever the outcome (Step 5). Shown on the verdict card. Set it on every closure; leaving it out is "not said". |
+| `verdict.customer_action` | – | string | When `actionable`: the one thing the customer should do, in a sentence. The same text goes to `report_incident_verdict`'s `customer_action`. |
 | `meta[]` | ✓ | `{label, value}` | Always include subject, tenant, window and peak riskScore. `Tenant` is the account's **display name**, as the caller gave it or as the interactive `list_accounts` confirmation returned it (e.g. `Contoso Ltd`), never the connector and never `connector : account`. Add incident days or incident time, the AI-assist verdict when one exists, and rules if useful. Keep it to 6–7 entries. |
 | `grounds.items[]` | ✓ | `{claim, finding}` | `claim` is quoted **verbatim** from the AI-assist workflow. When there is no AI-assist verdict, write the grounds the summary raises. `finding` names the index each number came from and puts counts in bold. |
 | `grounds.title` / `.intro` | – | string | The title defaults to "N grounds for escalation, tested". |

@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.5.6
+version: 1.6.0
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -836,6 +836,23 @@ Three outcomes, and say which:
 - **Escalate** — a specific unanswered question, and what would answer it. Never
   "medium likelihood" with no next step.
 - **Confirmed** — containment first, write-up second.
+
+**And, separately, is it actionable?** The outcome says whether the account was
+compromised. Actionable says whether **the customer has to do something now**, and it is
+the first thing a reader needs. It is actionable when they have to:
+- contain an account;
+- undo or redo a change that did not hold (a disable that sync reverted);
+- confirm one specific fact only they can (a new hire's MFA enrolment);
+- fix the setting that made this possible (a Global Admin service account that SSPR can
+  reset).
+
+A benign verdict can be actionable, and "routine, nothing to do" is not actionable. Decide
+it on **the risk the rule is about**: data leaving, access granted, a containment holding,
+an account taken over. A clean session alone doesn't settle that: a person can share
+company files with a free-mail address from their own session. Once that question comes
+back "nothing to do", stop; further detail is optional and is where cost goes. Put the
+answer in `verdict.actionable` and `verdict.customer_action` (`assets/closure_schema.md`),
+and pass the same to `report_incident_verdict`.
 
 The closure carries five things:
 
