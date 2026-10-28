@@ -1,11 +1,11 @@
 ---
 name: compliance-assessment
-version: 1.5.0
+version: 1.6.0
 description: >-
   Produce a customer-facing compliance evidence report for ONE Ingext/Fluency tenant and ONE
   calendar month, built from read-only queries through the tenant's MCP connector (KQL over
-  Office365, Entra sign-in and audit, Windows audit, CloudTrail and any network or endpoint
-  tables the tenant has; behavior summaries; Office 365 and Qualys resource dumps; connector and
+  Office365, Entra sign-in and audit, Windows audit and any network or endpoint
+  tables the tenant has; CloudTrail from its report archive only; behavior summaries; Office 365 and Qualys resource dumps; connector and
   report inventory). Maps the evidence onto 13 NIST SP
   800-53 Rev. 5 control groups as supported, partial, not observed or needs manual review, and
   renders a self-contained HTML plus a mail-ready PDF, with key findings and recommended actions, an evidence-coverage figure and a month-over-month trend. Never claims
@@ -46,7 +46,7 @@ month 00:00 UTC.
 
 Before collecting anything, call `list_data_tables` for the tenant and keep the result. Collect
 from a table only if it is listed. Never probe for a table by running its query. Event tables
-(Office365, AzureSigninLogs, AzureAuditLogs, WindowsAudit, CloudTrail and the extra sources below) are
+(Office365, AzureSigninLogs, AzureAuditLogs, WindowsAudit and the extra sources below) are
 queried with `kql_search`.
 Resource tables (office365User and the rest) are inventory snapshots and are downloaded as
 dumps, not queried.
@@ -57,7 +57,7 @@ dumps, not queried.
 | `signin.json` | `AzureSigninLogs` (event) |
 | `audit_categories.json` | `AzureAuditLogs` (event) |
 | `windows.json` | `WindowsAudit` (event) |
-| `ct_events.json`, `ct_console.json`, `ct_iam.json`, `ct_root.json`, `ct_errors.json` | `CloudTrail` (event) |
+| `ct_archive.json` | `CloudTrail` (event), read from the archive of the scheduled report, never queried (see below) |
 | `src_<Table>.json` | any listed stream table whose name matches a class in `references/queries.md` (network, endpoint, cloud or identity) |
 | `users.jsonl.gz` | `office365User` (resource) |
 | `devices.jsonl.gz` | `office365Device` (resource) |
@@ -88,12 +88,13 @@ fails at the proxy is retried once, then left out (it renders as not collected).
 | File | Tool |
 |---|---|
 | `o365_workloads.json`, `signin.json`, `audit_categories.json`, `windows.json` | `kql_search` with `rangeFrom` and `rangeTo` set to the month |
-| `ct_*.json`, `src_<Table>.json` | `kql_search`, same window; one narrow query per file (see the note on large tables in `references/queries.md`) |
+| `src_<Table>.json` (not CloudTrail) | `kql_search`, same window; one narrow query per file (see the note on large tables in `references/queries.md`) |
+| `ct_archive.json` | `download_report_archive`, never `kql_search` (see **CloudTrail** below) |
 | `behavior.json` | `behavior_summary_search`, same window, `limit: 0`, facets `status`, `classification`, `scoreLevel` |
 | `users.jsonl.gz`, `devices.jsonl.gz`, `ca_policies.jsonl.gz`, `qualys.jsonl.gz` | `list_resource_dumps`, then `get_resource_dump_url` per resource (see below). Current snapshot, no time window |
 | `guardduty.jsonl.gz`, `gsuite_users.jsonl.gz` | optional dumps, same download rule as below. Feed SI-4, AC-2 and IA-2/IA-5 and the key findings |
 | `apps.jsonl.gz`, `enterprise_apps.jsonl.gz`, `groups.jsonl.gz`, `gsuite_groups.jsonl.gz` | optional dumps, same download rule. Feed IA-5 (client secret hygiene), AC-2 (groups), CM-8 (enterprise applications) and the key findings |
-| `history_<Table>.json` | optional `kql_search` per event table: `<Table> \| summarize oldest=min(<time column>), newest=max(<time column>)` with `rangeFrom` a year or more before the period. The time column is `TimeGenerated` for the Azure tables and `timestamp` for CloudTrail. Skip a table that times out; never let the query window start inside the period you want to measure (a result that starts at the window edge is reported as "at least") |
+| `history_<Table>.json` | optional `kql_search` per event table: `<Table> \| summarize oldest=min(<time column>), newest=max(<time column>)` with `rangeFrom` a year or more before the period. The time column is `TimeGenerated` for the Azure tables and `timestamp` for CloudTrail, which is not measured because it is never searched. Skip a table that times out; never let the query window start inside the period you want to measure (a result that starts at the window edge is reported as "at least") |
 | `connectors.json` | `list_connectors`, reduced to `{"entries": [{"application": ..., "state": ...}]}` before saving (see below) |
 | `reports.json` | `list_reports` |
 
@@ -109,6 +110,23 @@ truncated download.
 integration tokens). Never save the raw result to the work folder. Reduce it to the application
 and state of each entry (for example with `python3 -c`, reading the harness-saved file) and save
 only that, then delete any raw copy. The report needs nothing else from it.
+
+**CloudTrail (archive only, never searched).** CloudTrail is a very large table, so its counts come from the daily
+archive of the scheduled report `CloudTrail_Activity_Report` (see the `aws-cloudtrail-activity-report` skill). If
+`list_data_tables` lists `CloudTrail`:
+
+1. `list_report_archive(account, "CloudTrail_Activity_Report", from, to)` for the month. If the scheduled report does
+   not exist on the tenant, or no day of the month is archived, **stop the CloudTrail part and tell the user the archive
+   is required**: name the missing report or days, say it must be set up (script in the `aws-cloudtrail-activity-report`
+   skill's `references/`) and backfilled with `backfill_report_archive`, and offer to continue once that is done. Do not
+   run `kql_search` on CloudTrail as a substitute, not even a count, and do not query `src_CloudTrail` or `history_CloudTrail`.
+2. Otherwise `download_report_archive(account, "CloudTrail_Activity_Report", from, to, objects=["trend"])` and save the
+   result as `ct_archive.json` (several files named `ct_archive*.json` are merged).
+3. Run the build with `--require-cloudtrail`. If some days are missing it still builds, sums the archived days, labels
+   the source "N of M days archived" and lists the missing days under gaps; tell the user and offer a backfill. A
+   missing day is a gap, never zero.
+
+If the tenant has no `CloudTrail` table, skip all of this; CloudTrail renders as not collected.
 
 **Extra sources.** A tenant's network, endpoint, cloud and identity tables decide how much of SC-7
 (boundary protection), SI-3 (malicious code protection) and AU-2 (logging) can be observed. For every

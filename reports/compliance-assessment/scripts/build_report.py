@@ -40,11 +40,11 @@ Optional extra sources (run only for tables that list_data_tables shows):
                         ({"total": 0}) is read as zero events in the window, which is itself reported.
   history_<Table>.json  kql: <Table> | summarize oldest=min(<time column>), newest=max(<time column>) with a wide
                         rangeFrom (a year or more before the period). Gives the history depth actually observed.
-  ct_events.json        kql: CloudTrail | summarize events=count()
-  ct_console.json       kql: CloudTrail | where eventName == "ConsoleLogin" | summarize logins=count(), failed=countif(tostring(responseElements.ConsoleLogin) == "Failure")
-  ct_iam.json           kql: CloudTrail | where eventSource == "iam.amazonaws.com" and not(eventName startswith "Get" or eventName startswith "List" or eventName startswith "Describe") | summarize iam_changes=count()
-  ct_root.json          kql: CloudTrail | where ['userIdentity.type'] == "Root" | summarize root_events=count()
-  ct_errors.json        kql: CloudTrail | where isnotempty(errorCode) | summarize errors=count()
+  ct_archive*.json      CloudTrail comes ONLY from the daily archive of the scheduled report CloudTrail_Activity_Report:
+                        download_report_archive for the month, saved as received (objects=["trend"] keeps it small).
+                        CloudTrail is never searched: there is no ct_*, src_CloudTrail or history_CloudTrail query.
+                        The per-day trend rows are summed over the period; a day not archived is a gap, never zero.
+                        With --require-cloudtrail the build stops (exit 3) when no day of the period is archived.
 """
 import argparse, collections, datetime, gzip, html, json, os, re, sys
 
@@ -568,6 +568,44 @@ def load_prior(history_dir, prior_path, period):
     return prior, series
 
 
+def ct_archive_facts(d, period):
+    """Sum the archived CloudTrail_Activity_Report trend rows for the period. Returns None when no completed day
+    of the period is in the evidence folder. Missing days are reported, never counted as zero."""
+    yy, mm = [int(x) for x in period.split("-")]
+    d0 = datetime.date(yy, mm, 1)
+    d1 = datetime.date(yy + (mm == 12), mm % 12 + 1, 1)
+    expected = [(d0 + datetime.timedelta(i)).isoformat() for i in range((d1 - d0).days)]
+    days = {}
+    for fn in sorted(os.listdir(d)):
+        if not (fn.startswith("ct_archive") and fn.endswith(".json")):
+            continue
+        res = load(d, fn) or {}
+        for day in res.get("days", []):
+            en = day.get("entry") or {}
+            key = (en.get("rangeFrom") or "")[:10]
+            r = day.get("result")
+            if key not in expected or en.get("state") != "completed" or not r:
+                continue
+            if key in days and (days[key][0] or "") >= (en.get("completedOn") or ""):
+                continue
+            rows = []
+            for o in r.get("objects", []):
+                if o.get("name") == "trend":
+                    rows = (o.get("table") or {}).get("rows") or []
+            days[key] = (en.get("completedOn"), rows)
+    if not days:
+        return None
+    tot = {k: 0 for k in ("events", "consoleLogins", "failedLogins", "iamChanges", "rootEvents", "errors", "accessDenied", "loginsNoMfa", "trailChanges")}
+    for _, rows in days.values():
+        for r_ in rows:
+            for k in tot:
+                tot[k] += int(r_.get(k) or 0)
+    return {"events": tot["events"], "console_logins": tot["consoleLogins"], "console_failed": tot["failedLogins"], "iam_changes": tot["iamChanges"],
+            "root_events": tot["rootEvents"], "errors": tot["errors"], "access_denied": tot["accessDenied"], "logins_no_mfa": tot["loginsNoMfa"],
+            "trail_changes": tot["trailChanges"], "days_archived": len(days), "days_expected": len(expected),
+            "missing_days": [x for x in expected if x not in days], "source": "archive"}
+
+
 CONNECTOR_TABLE = {"Office365": "Office365", "AzureAudit": "AzureAuditLogs", "AWSCloudTrail": "CloudTrail",
                    "Duo": "Duo", "GoogleWorkspace": "GSuite", "AmazonGuardDuty": "GuardDuty"}
 
@@ -583,6 +621,7 @@ def main():
     ap.add_argument("--summary-json", help="also write the control statuses as JSON (used by the CISO_monthly_report skill and the framework companions)")
     ap.add_argument("--history-dir", help="folder of earlier compliance_summary_YYYY-MM.json files; the latest earlier month becomes the prior month and all months feed the trend")
     ap.add_argument("--prior-summary", help="one earlier compliance_summary.json to compare against (overrides --history-dir for the prior month)")
+    ap.add_argument("--require-cloudtrail", action="store_true", help="stop with exit 3 when no day of the period is in the CloudTrail archive (use when the tenant has a CloudTrail table)")
     a = ap.parse_args()
     d = a.evidence_dir
 
@@ -635,14 +674,18 @@ def main():
     vnd = vendor_facts(d, period_end, q_rec, used_dumps)
     extra = []
     for fn in sorted(os.listdir(d)):
-        if fn.startswith("src_") and fn.endswith(".json"):
+        if fn.startswith("src_") and fn.endswith(".json") and fn[4:-5].lower() != "cloudtrail":
             extra.append({"table": fn[4:-5], "class": table_class(fn[4:-5]), "events": kql_events(load(d, fn))})
             used_tables.append(fn[4:-5])
-    ct = {k: first(load(d, "ct_%s.json" % k)) for k in ("events", "console", "iam", "root", "errors")}
-    ct_events = ct["events"]["events"] if ct["events"] else None
-    ctf = {"events": ct_events, "console_logins": ct["console"]["logins"] if ct["console"] else None, "console_failed": ct["console"]["failed"] if ct["console"] else None,
-           "iam_changes": ct["iam"]["iam_changes"] if ct["iam"] else None, "root_events": ct["root"]["root_events"] if ct["root"] else None,
-           "errors": ct["errors"]["errors"] if ct["errors"] else None} if any(ct.values()) else None
+    ctf = ct_archive_facts(d, a.period)
+    if ctf is None and a.require_cloudtrail:
+        sys.stderr.write("CLOUDTRAIL ARCHIVE REQUIRED: no completed day of %s was found in the archive of the scheduled report "
+                         "CloudTrail_Activity_Report (files ct_archive*.json). CloudTrail is never searched live. Set up the scheduled report "
+                         "with the archive enabled (aws-cloudtrail-activity-report skill, references/archive_format.md) and backfill the "
+                         "period with backfill_report_archive, then run this again.\n" % a.period)
+        sys.exit(3)
+    ct_events = ctf["events"] if ctf else None
+    ct_label = "CloudTrail" if not ctf or not ctf["missing_days"] else "CloudTrail (%d of %d days archived)" % (ctf["days_archived"], ctf["days_expected"])
     if ctf: used_tables.append("CloudTrail")
     net_src = [x for x in extra if x["class"] == "network" and x["events"]]
     end_src = [x for x in extra if x["class"] == "endpoint" and x["events"]]
@@ -662,7 +705,7 @@ def main():
     ca_all = sum(ca.values()) if ca else None
 
     mon_name = datetime.date(int(yy), int(mm), 1).strftime("%B")
-    srcs_all = [("Office 365", o365), ("Entra sign-in", sin), ("Entra directory-audit", audit), ("Windows audit", win_n), ("CloudTrail", ct_events)] + [(x["table"], x["events"]) for x in extra if x["table"] != "CloudTrail"]
+    srcs_all = [("Office 365", o365), ("Entra sign-in", sin), ("Entra directory-audit", audit), ("Windows audit", win_n), (ct_label, ct_events)] + [(x["table"], x["events"]) for x in extra if x["table"] != "CloudTrail"]
     srcs_on = [(lbl, v_) for lbl, v_ in srcs_all if v_]
 
     def logging_status():
@@ -997,6 +1040,10 @@ def main():
             "a firewall or EDR" if (not net_src and not end_src) else "a firewall" if not net_src else "an EDR"))
     if rep_n:
         gaps.append("<li><b>Configuration evidence (CM-2, CM-6):</b> %s saved reports exist on the tenant; none was run for configuration evidence.</li>" % rep_n)
+    if ctf and ctf["missing_days"]:
+        gaps.append("<li><b>CloudTrail archive (AU-2, AU-12):</b> %d of %d days of %s are archived, so the CloudTrail counts cover archived days only (not archived: %s%s). "
+                    "Backfill the scheduled report CloudTrail_Activity_Report for those days and rebuild.</li>" % (
+                        ctf["days_archived"], ctf["days_expected"], a.period, ", ".join(ctf["missing_days"][:10]), " ..." if len(ctf["missing_days"]) > 10 else ""))
     gaps.append("<li><b>Policies and procedures (AC-1, IA-1, IR-1):</b> supplied by the customer.</li>")
 
     month = datetime.date(int(yy), int(mm), 1).strftime("%B %Y")

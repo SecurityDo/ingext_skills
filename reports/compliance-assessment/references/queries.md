@@ -12,14 +12,11 @@ Set `rangeFrom` / `rangeTo` to the month in epoch milliseconds for the event que
 
 ## Extra sources (only for tables that `list_data_tables` lists)
 
+CloudTrail is not here: it is never queried. Its counts come from the archive of the scheduled report `CloudTrail_Activity_Report` (`ct_archive.json`, see SKILL.md).
+
 | File | Query |
 |---|---|
 | `src_<Table>.json` | `<Table> \| summarize events=count()` |
-| `ct_events.json` | `CloudTrail \| summarize events=count()` |
-| `ct_console.json` | `CloudTrail \| where eventName == "ConsoleLogin" \| summarize logins=count(), failed=countif(tostring(responseElements.ConsoleLogin) == "Failure")` |
-| `ct_iam.json` | `CloudTrail \| where eventSource == "iam.amazonaws.com" and not(eventName startswith "Get" or eventName startswith "List" or eventName startswith "Describe") \| summarize iam_changes=count()` |
-| `ct_root.json` | `CloudTrail \| where ['userIdentity.type'] == "Root" \| summarize root_events=count()` |
-| `ct_errors.json` | `CloudTrail \| where isnotempty(errorCode) \| summarize errors=count()` |
 
 The class of a `src_` table comes from its name (first class with a matching word wins):
 
@@ -42,7 +39,7 @@ Notes for these queries:
 
 | File | Query |
 |---|---|
-| `history_<Table>.json` | `<Table> \| summarize oldest=min(TimeGenerated), newest=max(TimeGenerated)` (Azure tables) or `min(timestamp)` (CloudTrail) |
+| `history_<Table>.json` | `<Table> \| summarize oldest=min(TimeGenerated), newest=max(TimeGenerated)` (Azure tables) |
 
 Use a `rangeFrom` a year or more before the period and `rangeTo` the end of the period. The result is the
 history that exists, not a retention setting. Very large tables (CloudTrail, Office365) time out or return a
