@@ -1184,7 +1184,11 @@ def main():
     today = datetime.date.today().strftime("%d %B %Y")
     lead_new = ("%s of %s incidents in the window are still marked new. " % (n(new_inc), n(inc_total))) if inc_total and new_inc else ""
     lead_find = ("%d findings need attention (%d high). " % (len(findings), fcnt["high"])) if findings else ""
-    meth_tables = ", ".join(sorted(set(used_tables))) or "no event tables"
+    ARCHIVED = {"Office365", "AzureSigninLogs", "AzureAuditLogs", "AADServicePrincipalSignInLogs", "AADNonInteractiveUserSignInLogs", "CloudTrail"}
+    live_t = sorted(set(t_ for t_ in used_tables if t_ not in ARCHIVED))
+    arch_t = sorted(set(t_ for t_ in used_tables if t_ in ARCHIVED))
+    meth_tables = (("KQL over " + ", ".join(live_t)) if live_t else "no live event queries") + (
+        ("; counts for %s read from the daily archives of the scheduled reports Office365_Entra_Activity_Report and CloudTrail_Activity_Report, never searched" % ", ".join(arch_t)) if arch_t else "")
     meth_dumps = ", ".join(used_dumps) or "no resource dumps"
     doc = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>{css}</style></head><body>
 <div class="hero"><div class="wrap"><div class="eyebrow">Compliance evidence report</div><h1>{title}</h1><div class="chips"><span class="chip">Tenant: {tname} (grid account <code>{tenant}</code>)</span><span class="chip">Site: {site}</span><span class="chip">Evidence window: {month}</span><span class="chip">Prepared {today}</span></div></div></div>
@@ -1212,7 +1216,7 @@ def main():
 <div><div class="cap">Incident disposition</div><div class="tw" style="margin-top:0"><table><colgroup><col style="width:68%"><col style="width:32%"></colgroup><thead><tr><th>Disposition</th><th>Count</th></tr></thead><tbody>{disp}</tbody></table></div></div></div>
 <h2><span class="n">5</span>Gaps and next evidence</h2><div class="panel"><ul class="gaps">
 {gaps}</ul></div>
-<div class="foot"><h2><span class="n">6</span>Methodology</h2><p>Evidence was gathered on {today} by read-only queries through the {site} MCP connector against account <code>{tenant}</code>: KQL over {meth_tables}; behavior-summary search; resource dumps of {meth_dumps}; connector and report inventory. Event and incident counts are for {month}; resource-table counts are current snapshots. Control status is an analyst mapping of that evidence onto NIST SP 800-53 Rev. 5 and is not the output of the Fluency compliance engine. Evidence coverage counts supported as 1 and partial as 0.5 over the control groups telemetry can evidence. Key-finding thresholds are the analyst's. Framework views (NIST, ISO/CMMC, PCI DSS, HIPAA, SOC 2, CIS, FedRAMP, GDPR) are rendered from this run's summary JSON. Individual users, case ids and comments are deliberately omitted.</p></div>
+<div class="foot"><h2><span class="n">6</span>Methodology</h2><p>Evidence was gathered on {today} by read-only queries through the {site} MCP connector against account <code>{tenant}</code>: {meth_tables}; behavior-summary search; resource dumps of {meth_dumps}; connector and report inventory. Event and incident counts are for {month}; resource-table counts are current snapshots. Control status is an analyst mapping of that evidence onto NIST SP 800-53 Rev. 5 and is not the output of the Fluency compliance engine. Evidence coverage counts supported as 1 and partial as 0.5 over the control groups telemetry can evidence. Key-finding thresholds are the analyst's. Framework views (NIST, ISO/CMMC, PCI DSS, HIPAA, SOC 2, CIS, FedRAMP, GDPR) are rendered from this run's summary JSON. Individual users, case ids and comments are deliberately omitted.</p></div>
 </div></body></html>""".format(
         css=CSS, pbar=pbar, title=esc(title), tname=esc(a.tenant_name), tenant=esc(a.tenant), site=esc(a.site), month=month, today=today,
         logging_line=("Audit logging and monitoring were active in the window." if logging_status() == "supported" else "Audit logging evidence in the window is limited."),
