@@ -1,0 +1,208 @@
+<title>Entra Activity Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sticky control bar (source tabs, date range) over KPI strip, one drag-to-select daily chart, facet tables, daily table. Counts only, no user names. */
+:root{--bg:#f6f7f9;--panel:#fff;--ink:#16202e;--muted:#5b6778;--line:#dfe3ea;--accent:#1f5fbf;--accent-soft:#dce8fb;--warn:#c2410c;--warn-soft:#fde9dc;--gap:#aab2bf;--ok:#1f7a4d;
+--sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f151e;--panel:#171f2b;--ink:#e6ebf2;--muted:#9aa6b8;--line:#2a3547;--accent:#6ea2f5;--accent-soft:#1d2d4a;--warn:#f08a54;--warn-soft:#3a2418;--gap:#5a6578;--ok:#5fc08e;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f151e;--panel:#171f2b;--ink:#e6ebf2;--muted:#9aa6b8;--line:#2a3547;--accent:#6ea2f5;--accent-soft:#1d2d4a;--warn:#f08a54;--warn-soft:#3a2418;--gap:#5a6578;--ok:#5fc08e;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));padding-block:0 40px}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:14px 10px;border-bottom:1px solid var(--line)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:13px;margin:2px 0 0}
+.row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin-top:10px}
+.tabs,.chips,.presets{display:flex;flex-wrap:wrap;gap:6px}
+button,input{font:inherit;color:inherit}
+.tab,.chip,.pre{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:5px 10px;cursor:pointer}
+.tab[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip[aria-pressed=true],.pre[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.tab:hover,.chip:hover,.pre:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible,th:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.dates{display:flex;gap:6px;align-items:center;color:var(--muted)}
+input[type=date],input[type=search]{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:4px 8px;font-family:var(--mono);font-size:13px}
+input[type=search]{font-family:var(--sans);min-width:200px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px;margin-top:16px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.kpi .l{color:var(--muted);font-size:12px}
+.kpi .v{font-family:var(--mono);font-size:22px;font-weight:500;font-variant-numeric:tabular-nums}
+.kpi .d{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.kpi .d.up{color:var(--warn)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;margin-top:16px;min-width:0}
+.panel h2{font-size:14px;font-weight:600;margin:0 0 2px}
+.hint{color:var(--muted);font-size:12px;margin:0 0 8px}
+#chart{width:100%;height:240px;display:block;touch-action:pan-y;user-select:none}
+.axis{fill:var(--muted);font-family:var(--mono);font-size:10px}
+.grid{stroke:var(--line);stroke-width:1}
+.bar-ok{fill:var(--accent)}.bar-risk{fill:var(--warn)}.bar-dim{opacity:.28}
+.gapbar{fill:url(#hatch)}
+.sel{fill:var(--accent);opacity:.12}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);padding:6px 9px;border-radius:6px;font-size:12px;z-index:20;font-family:var(--mono);white-space:nowrap}
+.facets{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;margin-top:16px}
+.facets .panel{margin-top:0}
+.fr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:3px 0;font-size:13px;position:relative}
+.fr .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fr .c{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--muted)}
+.fr .b{grid-column:1/-1;height:3px;background:var(--accent-soft);border-radius:2px}
+.fr .b i{display:block;height:100%;background:var(--accent);border-radius:2px}
+.fr.oth .n{color:var(--muted);font-style:italic}
+.more{margin-top:6px;border:0;background:none;color:var(--accent);cursor:pointer;padding:2px 0}
+.tw{overflow-x:auto;margin-top:8px;max-height:420px;overflow-y:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{padding:5px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--panel)}
+th{cursor:pointer;color:var(--muted);font-weight:500;position:sticky;top:0;background:var(--panel)}
+td{font-family:var(--mono);font-variant-numeric:tabular-nums}
+tr.gap td{color:var(--gap)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:6px}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:var(--accent)}
+.legend .g::before{background:repeating-linear-gradient(45deg,var(--gap) 0 2px,transparent 2px 4px);border:1px solid var(--gap)}
+.legend .r::before{background:var(--warn)}
+.note{color:var(--muted);font-size:12px;margin-top:20px;max-width:75ch}
+.empty{color:var(--muted);padding:6px 0}
+</style>
+<div class="wrap">
+<div class="bar">
+ <h1>Microsoft 365 and Entra activity</h1>
+ <p class="sub" id="sub"></p>
+ <div class="row">
+  <div class="tabs" id="tabs" role="group" aria-label="Source"></div>
+ </div>
+ <div class="row">
+  <div class="presets" id="presets" role="group" aria-label="Range"></div>
+  <div class="dates"><label for="d1">From</label><input type="date" id="d1"><label for="d2">to</label><input type="date" id="d2"></div>
+  <input type="search" id="q" placeholder="Filter facet values" aria-label="Filter facet values">
+ </div>
+</div>
+<div class="kpis" id="kpis"></div>
+<section class="panel">
+ <h2 id="ct">Daily</h2>
+ <p class="hint">Pick a measure, hover a day, drag across the chart to select a range.</p>
+ <div class="chips" id="chips" role="group" aria-label="Measure"></div>
+ <svg id="chart" role="img" aria-label="Daily chart"></svg>
+ <div class="legend"><span>Selected range</span><span class="r">Risk measure</span><span class="g">No archived result</span></div>
+</section>
+<div class="facets" id="facets"></div>
+<section class="panel">
+ <h2>Day by day</h2>
+ <p class="hint">Click a column heading to sort.</p>
+ <div class="tw"><table id="tbl"></table></div>
+</section>
+<p class="note">Built from the daily scheduled-report archive. Each day is one stored run for that UTC day, so the page answers any range without searching. It holds counts only, with no user names and no distinct-user figures, since those cannot be added across days. A day with no archived result shows as a gap, never as zero. Facet rows marked (other) are events not covered by the top values the engine keeps each day. This is evidence of activity volume, not a statement of compliance.</p>
+</div>
+<div class="tip" id="tip" hidden></div>
+<script>
+const D=__DATA__;
+const RISK=new Set(["failed","loginsFailed","failedOps","hardDeletes","inboxRuleChanges","mailboxPermissionChanges","securityAlerts","dlpEvents","caFailures","risky","legacyAuth","singleFactorOk"]);
+const days=D.days,fmt=n=>Number(n).toLocaleString("en-US");
+const S={src:D.sources[0].key,metric:null,from:days[0],to:days[days.length-1],ex:{}};
+const $=id=>document.getElementById(id);
+const src=()=>D.sources.find(s=>s.key===S.src);
+const inR=d=>d>=S.from&&d<=S.to;
+function rangeDays(a,b){return days.filter(d=>d>=a&&d<=b)}
+function sum(k,m,ds){let t=0;for(const d of ds){const r=D.d[k][d];if(r)t+=r[m]||0}return t}
+function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+function addDays(d,n){const t=new Date(d+"T00:00:00Z");t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10)}
+function setRange(a,b,pre){S.from=a<days[0]?days[0]:a;S.to=b>days[days.length-1]?days[days.length-1]:b;S.pre=pre||null;render()}
+function head(){
+ $("sub").textContent="Tenant "+D.tenant+" · "+fmt(days.length)+" archived days, "+days[0]+" to "+days[days.length-1]+" (UTC) · counts only";
+ const t=$("tabs");t.replaceChildren();
+ for(const s of D.sources){const b=el("button","tab",s.title);b.setAttribute("aria-pressed",s.key===S.src);b.onclick=()=>{S.src=s.key;S.metric=null;render()};t.appendChild(b)}
+ const p=$("presets");p.replaceChildren();
+ const last=days[days.length-1];
+ [["7 days",6],["30 days",29],["All",null]].forEach(([l,n])=>{const b=el("button","pre",l);const a=n==null?days[0]:addDays(last,-n),act=S.from===(a<days[0]?days[0]:a)&&S.to===last;b.setAttribute("aria-pressed",act);b.onclick=()=>setRange(a,last);p.appendChild(b)});
+ [["September","2026-09"],["October","2026-10"]].forEach(([l,m])=>{const a=m+"-01",e=m+"-31";const lo=days.find(d=>d>=a),hi=[...days].reverse().find(d=>d<=e);const b=el("button","pre",l);b.setAttribute("aria-pressed",S.from===lo&&S.to===hi);b.onclick=()=>setRange(lo,hi);p.appendChild(b)});
+ $("d1").min=$("d2").min=days[0];$("d1").max=$("d2").max=last;$("d1").value=S.from;$("d2").value=S.to;
+}
+function kpis(){
+ const s=src(),ds=rangeDays(S.from,S.to),n=ds.length,prevTo=addDays(S.from,-1),prevFrom=addDays(S.from,-n);
+ const pd=rangeDays(prevFrom,prevTo),box=$("kpis");box.replaceChildren();
+ const ok=ds.filter(d=>D.d[s.key][d]).length;
+ for(const m of s.kpis){
+  const lab=s.metrics.find(x=>x[0]===m)[1],v=sum(s.key,m,ds),k=el("div","kpi");
+  k.appendChild(el("div","l",lab));k.appendChild(el("div","v",fmt(v)));
+  let dl="";
+  if(pd.length===n){const pv=sum(s.key,m,pd);if(pv>0){const c=(v-pv)/pv*100;dl=(c>=0?"+":"")+c.toFixed(0)+"% vs prior "+n+"d";k.appendChild(el("div","d"+(c>0&&RISK.has(m)?" up":""),dl))}else k.appendChild(el("div","d","prior period: 0"))}
+  else k.appendChild(el("div","d","no prior period"));
+  box.appendChild(k);
+ }
+}
+function chips(){
+ const s=src(),c=$("chips");c.replaceChildren();
+ if(!S.metric||!s.metrics.find(m=>m[0]===S.metric))S.metric=s.metrics[0][0];
+ for(const m of s.metrics){const b=el("button","chip",m[1]);b.setAttribute("aria-pressed",m[0]===S.metric);b.onclick=()=>{S.metric=m[0];render()};c.appendChild(b)}
+}
+const NS="http://www.w3.org/2000/svg";
+function sv(t,a,p){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e}
+function chart(){
+ const s=src(),m=S.metric,svg=$("chart");svg.replaceChildren();
+ const W=svg.clientWidth||900,H=240,L=46,R=8,T=10,B=26,pw=W-L-R,ph=H-T-B;
+ svg.setAttribute("viewBox","0 0 "+W+" "+H);
+ const vals=days.map(d=>D.d[s.key][d]?(D.d[s.key][d][m]||0):null);
+ const mx=Math.max(1,...vals.map(v=>v||0));
+ const nice=(x=>{const p=Math.pow(10,Math.floor(Math.log10(x))),f=x/p;return(f<=1?1:f<=2?2:f<=5?5:10)*p})(mx);
+ $("ct").textContent=s.title+" · "+s.metrics.find(x=>x[0]===m)[1]+" per day";
+ const defs=sv("defs",{},svg),pt=sv("pattern",{id:"hatch",width:6,height:6,patternUnits:"userSpaceOnUse",patternTransform:"rotate(45)"},defs);
+ sv("rect",{width:6,height:6,fill:"none"},pt);sv("line",{x1:0,y1:0,x2:0,y2:6,stroke:"var(--gap)","stroke-width":2},pt);
+ for(let i=0;i<=4;i++){const y=T+ph-ph*i/4,v=nice*i/4;sv("line",{x1:L,x2:W-R,y1:y,y2:y,class:"grid"},svg);const t=sv("text",{x:L-6,y:y+3,"text-anchor":"end",class:"axis"},svg);t.textContent=v>=1000?(v/1000)+"k":v}
+ const bw=pw/days.length;
+ days.forEach((d,i)=>{
+  const x=L+i*bw,v=vals[i];
+  if(v==null){sv("rect",{x:x+1,y:T,width:Math.max(1,bw-2),height:ph,class:"gapbar"},svg);return}
+  const h=ph*v/nice;
+  sv("rect",{x:x+1,y:T+ph-h,width:Math.max(1,bw-2),height:Math.max(v>0?1:0,h),class:(RISK.has(m)?"bar-risk":"bar-ok")+(inR(d)?"":" bar-dim")},svg);
+ });
+ const step=Math.ceil(days.length/Math.max(4,Math.floor(pw/70)));
+ days.forEach((d,i)=>{if(i%step===0){const t=sv("text",{x:L+i*bw+bw/2,y:H-8,"text-anchor":"middle",class:"axis"},svg);t.textContent=d.slice(5)}});
+ const sel=sv("rect",{y:T,height:ph,class:"sel",x:0,width:0},svg);
+ const tip=$("tip");
+ const idx=e=>{const r=svg.getBoundingClientRect(),x=(e.clientX-r.left)*(W/r.width)-L;return Math.max(0,Math.min(days.length-1,Math.floor(x/bw)))};
+ let a=null;
+ svg.onpointermove=e=>{const i=idx(e),d=days[i],v=vals[i];tip.hidden=false;tip.textContent=d+"  "+(v==null?"no archived result":fmt(v));tip.style.left=Math.min(innerWidth-170,e.clientX+12)+"px";tip.style.top=(e.clientY-34)+"px";
+  if(a!=null){const lo=Math.min(a,i),hi=Math.max(a,i);sel.setAttribute("x",L+lo*bw);sel.setAttribute("width",(hi-lo+1)*bw)}};
+ svg.onpointerleave=()=>{tip.hidden=true};
+ svg.onpointerdown=e=>{a=idx(e);svg.setPointerCapture(e.pointerId)};
+ svg.onpointerup=e=>{if(a==null)return;const i=idx(e),lo=Math.min(a,i),hi=Math.max(a,i);a=null;if(hi>lo)setRange(days[lo],days[hi]);else{sel.setAttribute("width",0)}};
+}
+function facets(){
+ const s=src(),box=$("facets");box.replaceChildren();
+ const ds=rangeDays(S.from,S.to),q=$("q").value.trim().toLowerCase();
+ const evTot=sum(s.key,"events",ds);
+ for(const [fk,title,sub,kind] of s.facets){
+  const agg={};let tot=0;
+  for(const d of ds){const c=(D.f[s.key][fk]||{})[d];if(!c)continue;for(const v in c){if(v==="(none)"&&kind==="subset")continue;agg[v]=(agg[v]||0)+c[v];tot+=c[v]}}
+  let rows=Object.entries(agg).sort((a,b)=>b[1]-a[1]);
+  if(kind==="full"&&evTot>tot&&evTot-tot>0&&rows.length){rows.push(["(other)",evTot-tot]);tot=evTot}
+  const p=el("section","panel");p.appendChild(el("h2","",title));p.appendChild(el("p","hint",sub));
+  if(q)rows=rows.filter(r=>r[0].toLowerCase().includes(q));
+  if(!rows.length){p.appendChild(el("div","empty",q?"No values match the filter.":"No values in this range."));if(q&&!rows.length){continue}box.appendChild(p);continue}
+  const max=Math.max(...rows.map(r=>r[1])),open=S.ex[s.key+fk]||q,shown=open?rows:rows.slice(0,8);
+  for(const [v,c] of shown){const r=el("div","fr"+(v==="(other)"?" oth":""));r.appendChild(el("span","n",v)).title=v;r.appendChild(el("span","c",fmt(c)+(tot?" · "+(c/tot*100).toFixed(c/tot<.1?1:0)+"%":"")));const b=el("div","b"),i=el("i");i.style.width=(c/max*100)+"%";b.appendChild(i);r.appendChild(b);p.appendChild(r)}
+  if(rows.length>8&&!q){const b=el("button","more",open?"Show top 8":"Show all "+rows.length);b.onclick=()=>{S.ex[s.key+fk]=!open;facets()};p.appendChild(b)}
+  box.appendChild(p);
+ }
+}
+let sortK="date",sortDir=-1;
+function table(){
+ const s=src(),t=$("tbl"),ds=rangeDays(S.from,S.to);t.replaceChildren();
+ const cols=s.metrics,tr=el("tr");
+ const th=(k,l)=>{const h=el("th","",l+(sortK===k?(sortDir<0?" ↓":" ↑"):""));h.tabIndex=0;const go=()=>{if(sortK===k)sortDir=-sortDir;else{sortK=k;sortDir=-1}table()};h.onclick=go;h.onkeydown=e=>{if(e.key==="Enter")go()};tr.appendChild(h)};
+ th("date","Day");cols.forEach(c=>th(c[0],c[1]));
+ const hd=el("thead");hd.appendChild(tr);t.appendChild(hd);
+ const rows=ds.map(d=>({d,r:D.d[s.key][d]||null}));
+ rows.sort((a,b)=>{const x=sortK==="date"?a.d:(a.r?a.r[sortK]||0:-1),y=sortK==="date"?b.d:(b.r?b.r[sortK]||0:-1);return(x>y?1:x<y?-1:0)*sortDir});
+ const tb=el("tbody");
+ for(const {d,r} of rows){const row=el("tr",r?"":"gap");row.appendChild(el("td","",d));cols.forEach(c=>row.appendChild(el("td","",r?fmt(r[c[0]]||0):"gap")));tb.appendChild(row)}
+ const tot=el("tr");tot.appendChild(el("td","","Total"));cols.forEach(c=>tot.appendChild(el("td","",fmt(sum(s.key,c[0],ds)))));tot.style.fontWeight=600;tb.appendChild(tot);
+ t.appendChild(tb);
+}
+function render(){head();kpis();chips();chart();facets();table()}
+$("d1").onchange=()=>{if($("d1").value)setRange($("d1").value,S.to<$("d1").value?$("d1").value:S.to)};
+$("d2").onchange=()=>{if($("d2").value)setRange(S.from>$("d2").value?$("d2").value:S.from,$("d2").value)};
+$("q").oninput=facets;
+let rz;addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(chart,120)});
+render();
+</script>

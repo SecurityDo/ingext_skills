@@ -1,6 +1,6 @@
 ---
 name: microsoft365-entra-activity-report
-version: 1.0.0
+version: 1.1.0
 description: >-
   Produce a Microsoft 365 and Entra Activity report for ONE Ingext/Fluency tenant and a period (a calendar
   month by default) as HTML, PDF and CSV, built ONLY from the archive of the scheduled report
@@ -85,6 +85,22 @@ node scripts/render-html-pdf.mjs --input WORKDIR/report.html --output WORKDIR/re
 It needs Playwright and a Chrome or Chromium binary (override with `--chrome` or `CHROME_PATH`). If `pdftoppm`
 exists, look at every page (footer on every page, no clipped text, tables inside the page); otherwise check in
 print media that each table has `scrollWidth <= clientWidth`. If you cannot look at the pages, say so.
+
+## Optional: interactive explorer (HTML)
+
+Offer this when the user wants to explore the archive instead of reading a fixed report. It is a second output from
+the same downloaded archive files, with no extra search and no extra cost:
+
+```
+python3 scripts/build_explorer.py --archive 'sep.json' --archive 'oct.json' --tenant TENANT --out explorer.html
+```
+
+The page is one self-contained HTML file: source tabs, date presets and pickers, KPI cards with the change against the
+preceding period, a daily chart (hover a day, drag to select a range), facet tables recomputed for the range with a
+filter box, and a sortable day-by-day table. Days with no archived result show as gaps, never zero. It holds counts
+only, so it cannot drill down to raw events and shows no user names or distinct-user figures. Publish it with the
+Artifact tool when the user wants a link to reopen or share (private until they share it). The PDF stays the fixed,
+mail-ready evidence copy.
 
 ## Reading the result
 
