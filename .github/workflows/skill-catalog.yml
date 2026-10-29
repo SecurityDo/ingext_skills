@@ -13,8 +13,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.12'
       - run: python -m pip install -r scripts/requirements-catalog.txt
@@ -22,7 +22,7 @@ jobs:
       - run: python -m unittest discover -s scripts -p 'test_*.py' -v
       - name: Build catalog and Cowork packages from source
         run: python scripts/build_catalog.py --repository "$GITHUB_REPOSITORY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: skill-catalog
           path: dist/
@@ -41,7 +41,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: skill-catalog
           path: dist
