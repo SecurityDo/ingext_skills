@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.6.4
+version: 1.6.5
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -813,6 +813,13 @@ returns null like every other `@` name (see "Bounded queries").
 | `50074` | Strong authentication required | An MFA interrupt inside a normal flow |
 | `70044` | Session expired or invalid | A mobile client re-authenticating |
 | `502xx` | Interrupts in the strong-auth (SAS) flow | Confirm the specific code; not a guess at a password |
+
+**An MFA prompt's outcome is in the rows after it.** A `50074` or `50076` row records the
+prompt, not the answer. The answer is the next seconds on the same address: `Office365`
+`UserLoggedIn` rows with `SAS:BeginAuth` and `SAS:EndAuth` (Success), or a `0` in the
+sign-in logs, mean it was approved. Read the subject's `Office365` rows for a few minutes
+after the prompt before writing "the push was never completed": in one run that phrase
+stood on a single `50074` row, followed a second later by nine successful `SAS:EndAuth`.
 
 Then check *where* they came from. Five `50126` on the user's own Entra-joined,
 compliant, managed laptop from the corporate egress, each followed by success seven

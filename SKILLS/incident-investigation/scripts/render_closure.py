@@ -47,7 +47,10 @@ def section(title, body, intro=None):
     return f'<section><h2>{md(title)}</h2><div class="sec-body">{intro_html}{body}</div></section>'
 
 def callout(c):
-    return f'<aside class="callout"><h3>{md(c["title"])}</h3>{paras(c["body"])}</aside>'
+    if isinstance(c, str):  # a bare string is a body without a heading
+        return f'<aside class="callout">{paras(c)}</aside>'
+    title = f'<h3>{md(c["title"])}</h3>' if c.get("title") else ""
+    return f'<aside class="callout">{title}{paras(c["body"])}</aside>'
 
 def render_grounds(g):
     items = "".join(
