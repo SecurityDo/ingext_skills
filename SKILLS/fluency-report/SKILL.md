@@ -1,6 +1,6 @@
 ---
 name: fluency-report
-version: 1.0.1
+version: 1.0.2
 description: Run a Fluency / Ingext FPL report and turn its result into a single-page HTML summary tailored to the data — KPI cards, charts, tables, and a short written interpretation. Trigger when the user says any phrasing of "run a Fluency report" or "run an Ingext report" — e.g. "run a Fluency report", "run the Ingext IngestionRate report", "give me a Fluency report on top alerted users", "build a Fluency summary for the IngestionRate report". The skill ALWAYS starts by listing the available reports via the FPL `list_reports` tool and matching the user's request against that list. If no report matches, the skill responds that the report doesn't exist and lists what does exist — it never invents or substitutes a report. Once a real match is found, it runs the report, reads the result, and produces a Fluency-branded single-page HTML summary using the bundled `assets/base_template.html` plus the widget recipes in `references/widget_recipes.md`.
 ---
 
@@ -396,18 +396,12 @@ keeps each card, panel, and table row intact across page boundaries, so a
 longer body paginates cleanly. Only collapse to a single page when the user
 asks for it.
 
-If the user wants a PDF, use the **html-to-pdf** skill immediately after
-generating the HTML. The correct flags are:
-
-```bash
-# Standard A4 PDF — multi-page, no scaling; content flows across pages
---format=A4 --margin=12mm,12mm,12mm,12mm
-```
-
-Render multi-page by default — do **not** pass `--one-page` or `--scale`
-unless the user explicitly asked for a single-page output. If they did,
-add `--one-page` (and only then) so the whole report is collapsed onto one
-sheet.
+If the user wants a PDF, use the browser's "Save as PDF" after generating
+the HTML: A4 paper, 12 mm margins, background graphics enabled, and no
+scaling. Let content flow across multiple pages by default. Only fit the
+report onto one page when the user explicitly asks for a single-page output.
+If browser printing is unavailable, deliver the HTML and explain how to save
+it as a PDF with these settings.
 
 ## Failure modes
 

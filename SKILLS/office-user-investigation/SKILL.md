@@ -1,6 +1,6 @@
 ---
 name: office-user-investigation
-version: 1.0.2
+version: 1.0.3
 description: >-
   Investigate a Microsoft 365 mailbox / Office 365 user by querying the Office365 datalake
   table directly with KQL (Exchange, SharePoint, AzureActiveDirectory, DLP). Runs a fixed KQL
@@ -212,8 +212,8 @@ Notes:
   coordinates) — **no IP lookup is performed**. Still caption it as approximate and recommend
   live threat-intel verification before formal attribution.
 - The PDF is rendered with WeasyPrint (no browser needed). If WeasyPrint can't
-  load its system libs, drop `--pdf` and convert the HTML with the
-  `html-to-pdf` skill instead.
+  load its system libs, drop `--pdf` and deliver the HTML; the user can convert it with the
+  browser's "Save as PDF" with background graphics enabled.
 - The script derives the **home country** from the highest-event IP, classifies
   every other-country IP as `foreign`, and any inbox-rule-creating IP as
   `attacker`. Verdict severity is computed from these signals.
@@ -248,4 +248,4 @@ office-user-investigation/
 | No `Office365` table on the tenant | Stop; tell the user this skill needs Office365 datalake data |
 | `ip_summary.json` empty | The user has no ClientIP-bearing events in the window; report "no activity found" |
 | Country outline missing | Rare (all sovereign countries pre-bundled); build still works and dots plot. **Do not look it up** — if a border is worth adding, estimate a rough outline from your own knowledge |
-| WeasyPrint libs missing | Build HTML only; convert via the `html-to-pdf` skill |
+| WeasyPrint libs missing | Build HTML only; use browser "Save as PDF" with background graphics enabled |
