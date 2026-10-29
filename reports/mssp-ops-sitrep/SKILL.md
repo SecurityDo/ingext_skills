@@ -1,6 +1,6 @@
 ---
 name: mssp-ops-sitrep
-version: 1.0.0
+version: 1.0.1
 description: >-
   Generate an MSSP Operations SitRep (shift handoff) across the accounts of one Fluency / Ingext
   connector as a single HTML page: a summary, product posture for Office365, CrowdStrike Falcon and
@@ -10,7 +10,7 @@ description: >-
   account's behavior summaries (tickets scored 3,000 or more) through the connector, plus the optional
   health-status-report and mssp-coverage-map results; computes every figure locally and shows what was
   not collected as "not collected". Read-only; stores nothing. DO NOT use it for one incident
-  (incident-investigation) or a monthly customer report (CISO_monthly_report).
+  (incident-investigation) or a monthly customer report (ciso-monthly-report).
 ---
 
 # MSSP Operations SitRep

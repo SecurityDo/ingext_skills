@@ -734,7 +734,7 @@ def main():
     ap.add_argument("--site", required=True)
     ap.add_argument("--period", required=True, help="YYYY-MM")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--summary-json", help="also write the control statuses as JSON (used by the CISO_monthly_report skill and the framework companions)")
+    ap.add_argument("--summary-json", help="also write the control statuses as JSON (used by the ciso-monthly-report skill and the framework companions)")
     ap.add_argument("--history-dir", help="folder of earlier compliance_summary_YYYY-MM.json files; the latest earlier month becomes the prior month and all months feed the trend")
     ap.add_argument("--prior-summary", help="one earlier compliance_summary.json to compare against (overrides --history-dir for the prior month)")
     ap.add_argument("--require-m365", action="store_true", help="stop with exit 3 when no day of the period is in the Office 365 / Entra archive")

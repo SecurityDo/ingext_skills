@@ -1,6 +1,6 @@
 ---
 name: compliance-assessment
-version: 1.8.0
+version: 1.8.1
 description: >-
   Produce a customer-facing compliance evidence report for ONE Ingext/Fluency tenant and ONE
   calendar month, built from read-only queries through the tenant's MCP connector (KQL over
@@ -173,7 +173,7 @@ python3 scripts/build_report.py --evidence-dir WORKDIR --tenant acme --tenant-na
 
 Add `--summary-json WORKDIR/compliance_summary.json` to also write the control statuses and the facts
 behind them (event volumes, sign-in failures, directory users, Conditional Access policies, Qualys hosts,
-audit categories) as JSON. The CISO_monthly_report skill reads that file for its compliance section and
+audit categories) as JSON. The ciso-monthly-report skill reads that file for its compliance section and
 for its O365 hygiene, environment changes and vulnerability rows.
 
 ## Key findings, evidence coverage and trend

@@ -1,6 +1,8 @@
 ---
-name: CISO_monthly_report
-version: 1.0.0
+name: ciso-monthly-report
+version: 1.0.1
+metadata:
+  aliases: "CISO_monthly_report"
 description: >-
   Generate the customer-facing CISO Monthly SOC (M-SOC) report for ONE Fluency / Ingext tenant and
   one calendar month as a single HTML document: an 8-chapter story (executive summary with a
@@ -15,6 +17,8 @@ description: >-
 ---
 
 # M-SOC Monthly Report
+
+Formerly `CISO_monthly_report`. Requests using that legacy name refer to this skill.
 
 > **Prerequisites: install the `health-status-report` and `compliance-assessment` skills before using this
 > one.** The coverage and health section reads the `health.json` that `health-status-report` writes, and
