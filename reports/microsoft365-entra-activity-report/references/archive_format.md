@@ -50,3 +50,9 @@ are included. Create it with `processor_add` and `create_scheduled_report` (sche
 archive enabled), then `backfill_report_archive` for earlier days. Every scan runs through a `Run()` wrapper that
 catches a table the tenant lacks, so the same script deploys unchanged to tenants with different Entra tables.
 A large tenant can take minutes a day, longer than a synchronous `run_report` waits: launch with syncMode false.
+
+## Actor facets (script version 3)
+
+`o365_facets`: user, failedUser, failedIp, adminActor. `signin_facets`: user, failedUser, failedIp. `audit_facets`:
+actor, failedActor. `sp_facets`: failedIp. `ni_facets`: failedUser, failedIp. user and actor cover every event, the rest
+label events outside the subset "(none)". The engine keeps 100 values a facet a day. They hold personal data.

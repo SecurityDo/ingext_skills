@@ -1,11 +1,14 @@
 // Microsoft 365 and Entra activity report: Office365 audit events, Entra sign-in logs and Entra directory-audit
-// logs, as daily counts plus additive breakdowns. Counts only: no user names, addresses or object names.
+// logs, as daily counts plus additive breakdowns. The actor facets (user, failedUser, failedIp, adminActor, actor,
+// failedActor) carry user names and source IP addresses, so the archive is personal data; the report shared for
+// compliance evidence must not use them.
 // The window is half-open (from <= timestamp < to), so back-to-back daily runs never count a boundary second
 // twice. Every section is additive, so daily runs can be archived and summed over a week, month or quarter.
 // Per table two scans: a trend (counts per interval, whose sum is the period total) and one facet query that
 // returns every breakdown at once as full distributions (the reader takes the top N after merging days).
 // interval is a KQL timespan: "1d" for archived daily runs, "1h" for a single-day view.
-// Not counted on purpose: distinct users or IPs (they cannot be summed across days).
+// Not counted on purpose: distinct users or IPs (they cannot be summed across days). Actor facets are top values
+// per day (the engine keeps 100), so a range total is a lower bound for a user outside a day's top 100.
 
 // Missing data is expected and handled: every scan runs through Run(), which catches a table that does not exist
 // on the tenant (or any query failure) and returns an empty table instead of failing the report. The "sources"
@@ -96,6 +99,7 @@ function GetO365Trend(status, rangeFrom, rangeTo, interval) {
 //   adminOp      operation of admin (UserType Admin or DcAdmin) events
 //   sensitiveOp  operation of mail-rule, permission, delete, sharing and Exchange configuration events
 //   failedOp     operation of failed events
+//   user, failedUser, failedIp, adminActor   UserId and ClientIP of all, failed (incl. UserLoginFailed) and admin events
 // The engine returns at most 100 values per facet; rarer values are lost (operation can exceed 100).
 function GetO365Facets(status, rangeFrom, rangeTo) {
     let query = `
@@ -111,7 +115,10 @@ function GetO365Facets(status, rangeFrom, rangeTo) {
     | extend isSensitive = Operation in ("UpdateInboxRules", "New-InboxRule", "Set-InboxRule", "Remove-InboxRule", "ModifyFolderPermissions", "AddFolderPermissions", "Add-MailboxPermission", "Add-RecipientPermission", "HardDelete", "SharingSet", "SharingInvitationCreated", "AnonymousLinkCreated", "AddedToSharingLink", "Set-Mailbox", "Set-ConditionalAccessPolicy", "Set-TransportConfig") or (Workload == "Exchange" and (Operation startswith "New-" or Operation startswith "Remove-" or Operation startswith "Enable-" or Operation startswith "Disable-"))
     | extend isFailed = ResultStatus in ("Failed", "Failure", "False")
     | extend adminOp = iff(isAdmin, operation, "(none)"), sensitiveOp = iff(isSensitive, operation, "(none)"), failedOp = iff(isFailed, operation, "(none)")
-    | facet by workload, operation, userType, country, deviceOS, browser, resultStatus, adminOp, sensitiveOp, failedOp with (take 0)
+    | extend uid = iff(isempty(UserId), "(not recorded)", tolower(UserId)), cip = iff(isempty(ClientIP), "(not recorded)", ClientIP)
+    | extend isFail2 = isFailed or Operation == "UserLoginFailed"
+    | extend user = uid, failedUser = iff(isFail2, uid, "(none)"), failedIp = iff(isFail2, cip, "(none)"), adminActor = iff(isAdmin, uid, "(none)")
+    | facet by workload, operation, userType, country, deviceOS, browser, resultStatus, adminOp, sensitiveOp, failedOp, user, failedUser, failedIp, adminActor with (take 0)
     `
     return Run(status, "Office365", query)
 }
@@ -154,7 +161,9 @@ function GetSigninFacets(status, rangeFrom, rangeTo) {
     | extend deviceOS = iff(isempty(tostring(DeviceDetail.operatingSystem)), "(not recorded)", tostring(DeviceDetail.operatingSystem)), browser = iff(isempty(tostring(DeviceDetail.browser)), "(not recorded)", tostring(DeviceDetail.browser))
     | extend riskLevel = iff(isempty(RiskLevelDuringSignIn), "(not recorded)", RiskLevelDuringSignIn), protocol = iff(isempty(AuthenticationProtocol), "(not recorded)", AuthenticationProtocol)
     | extend failedCode = iff(ResultType != "0", ResultType, "(none)")
-    | facet by app, clientApp, authRequirement, caStatus, country, deviceOS, browser, userType, riskLevel, protocol, failedCode with (take 0)
+    | extend upn = iff(isempty(UserPrincipalName), "(not recorded)", tolower(UserPrincipalName)), ip = iff(isempty(IPAddress), "(not recorded)", IPAddress)
+    | extend user = upn, failedUser = iff(ResultType != "0", upn, "(none)"), failedIp = iff(ResultType != "0", ip, "(none)")
+    | facet by app, clientApp, authRequirement, caStatus, country, deviceOS, browser, userType, riskLevel, protocol, failedCode, user, failedUser, failedIp with (take 0)
     `
     return Run(status, "AzureSigninLogs", query)
 }
@@ -193,7 +202,10 @@ function GetAuditFacets(status, rangeFrom, rangeTo) {
     | extend category = iff(isempty(Category), "(not recorded)", Category), activity = iff(isempty(ActivityDisplayName), "(not recorded)", ActivityDisplayName)
     | extend opType = iff(isempty(AADOperationType), "(not recorded)", AADOperationType), service = iff(isempty(LoggedByService), "(not recorded)", LoggedByService), result = iff(isempty(Result), "(not recorded)", Result)
     | extend failedActivity = iff(Result == "failure", activity, "(none)")
-    | facet by category, activity, opType, service, result, failedActivity with (take 0)
+    | extend who = tostring(coalesce(InitiatedBy.user.userPrincipalName, InitiatedBy.app.displayName))
+    | extend actor = iff(isempty(who), "(not recorded)", tolower(who))
+    | extend failedActor = iff(Result == "failure", actor, "(none)")
+    | facet by category, activity, opType, service, result, failedActivity, actor, failedActor with (take 0)
     `
     return Run(status, "AzureAuditLogs", query)
 }
@@ -227,7 +239,8 @@ function GetSpFacets(status, rangeFrom, rangeTo) {
     | extend app = iff(isempty(ServicePrincipalName), "(not recorded)", ServicePrincipalName), resource = iff(isempty(ResourceDisplayName), "(not recorded)", ResourceDisplayName)
     | extend credential = iff(isempty(ClientCredentialType), "(not recorded)", ClientCredentialType), country = iff(isempty(Location), "(not recorded)", Location)
     | extend failedCode = iff(ResultType != "0", ResultType, "(none)")
-    | facet by app, resource, credential, country, failedCode with (take 0)
+    | extend failedIp = iff(ResultType != "0", iff(isempty(IPAddress), "(not recorded)", IPAddress), "(none)")
+    | facet by app, resource, credential, country, failedCode, failedIp with (take 0)
     `
     return Run(status, "AADServicePrincipalSignInLogs", query)
 }
@@ -256,7 +269,9 @@ function GetNiFacets(status, rangeFrom, rangeTo) {
     | extend app = iff(isempty(AppDisplayName), "(not recorded)", AppDisplayName), clientApp = iff(isempty(ClientAppUsed), "(not recorded)", ClientAppUsed)
     | extend country = iff(isempty(Location), "(not recorded)", Location)
     | extend failedCode = iff(ResultType != "0", ResultType, "(none)")
-    | facet by app, clientApp, country, failedCode with (take 0)
+    | extend upn = iff(isempty(UserPrincipalName), "(not recorded)", tolower(UserPrincipalName)), ip = iff(isempty(IPAddress), "(not recorded)", IPAddress)
+    | extend failedUser = iff(ResultType != "0", upn, "(none)"), failedIp = iff(ResultType != "0", ip, "(none)")
+    | facet by app, clientApp, country, failedCode, failedUser, failedIp with (take 0)
     `
     return Run(status, "AADNonInteractiveUserSignInLogs", query)
 }

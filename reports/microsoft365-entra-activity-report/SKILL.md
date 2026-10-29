@@ -1,6 +1,6 @@
 ---
 name: microsoft365-entra-activity-report
-version: 1.1.0
+version: 2.0.0
 description: >-
   Produce a Microsoft 365 and Entra Activity report for ONE Ingext/Fluency tenant and a period (a calendar
   month by default) as HTML, PDF and CSV, built ONLY from the archive of the scheduled report
@@ -98,7 +98,7 @@ python3 scripts/build_explorer.py --archive 'sep.json' --archive 'oct.json' --te
 The page is one self-contained HTML file: source tabs, date presets and pickers, KPI cards with the change against the
 preceding period, a daily chart (hover a day, drag to select a range), facet tables recomputed for the range with a
 filter box, and a sortable day-by-day table. Days with no archived result show as gaps, never zero. It holds counts
-only, so it cannot drill down to raw events and shows no user names or distinct-user figures. Publish it with the
+only, so it cannot drill down to raw events. It does name users and source IPs (see Actors), and shows no distinct-user figures. Publish it with the
 Artifact tool when the user wants a link to reopen or share (private until they share it). The PDF stays the fixed,
 mail-ready evidence copy.
 
@@ -108,8 +108,9 @@ mail-ready evidence copy.
 - Name the security-relevant counts plainly: failed sign-ins and their error codes, single-factor successes,
   legacy authentication, Conditional Access failures, risky sign-ins, role and policy changes, mailbox hard
   deletes, inbox-rule and mailbox-permission changes, and service-principal secret errors. These are findings to
-  hand to the customer, not verdicts: the report shows counts, never who or from where. Say what to look at
-  next (the user or incident investigation skills), without searching here.
+  hand to the customer, not verdicts. The report also lists the users and source IPs behind failed sign-ins and failed
+  operations, the most active users and the admin actors. Quote the top failed users and IPs, and say the lists are a
+  lower bound (top 100 a day). Say what to look at next (the user or incident investigation skills), without searching here.
 - Service-principal sign-ins are usually most of the Entra volume. Quote their share and the share that used a
   client secret before calling a number high. A steady count of expired-secret errors (codes 7000222, 7000215)
   usually means one integration needs a new secret; the archive does not say which person or app owner to contact.
@@ -125,7 +126,11 @@ mail-ready evidence copy.
   no distinct-user figures for that reason).
 - Facet tables hold at most 100 values a day. For lists that cover every event the `(other)` row is the events
   minus the listed values, so shares add up; subset lists (failed, admin, sensitive) drop `(none)`.
-- Counts only: no user names, addresses or object names appear in the archive or in this report. Do not add them.
+- Actors (script version 3 and later): the archive holds user names and source IP addresses as top-100-a-day facets
+  (user, failedUser, failedIp, adminActor, actor, failedActor). The report and the explorer show them, so both are
+  personal data: say so when delivering, and share with the customer who owns the data. Days archived by an older
+  script (hash 6868647bbbe5b106) have counts only; a backfill with force rebuilds them. The compliance-assessment
+  skill does not read these facets and must not. Never present a list as complete, and never count distinct users.
 - Never read the raw `AzureAudit` or `MSEntra` tables or add them to the parsed Entra tables; they duplicate them.
 - Never write "compliant", "certified" or "attested". Rows are related to controls, not equivalent.
 

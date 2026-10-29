@@ -13,7 +13,10 @@ Five sources are read (Office365, AzureSigninLogs, AzureAuditLogs, AADServicePri
 AADNonInteractiveUserSignInLogs). A source the tenant does not have is reported as "not available" (the archived
 `sources` table says so per day), never as zero. A source whose objects are absent from a day's result (older script
 version) is listed as not collected that day.
-Counts only: the archive holds no user names, addresses or object names, and neither does this report.
+Actors: from archive script version 3 the daily result also holds user names and source IP addresses (top 100 a day:
+most active users, failed users, failed IPs, admin actors). The report and the explorer show them, so both are
+personal data. The compliance assessment does not read them. Days archived by an earlier script version have counts
+only and are missing from those lists.
 """
 import argparse, collections, csv, datetime as dt, glob, html, json, sys
 
@@ -46,7 +49,11 @@ SOURCES = [
          ("country", "By country", "Country of the client address.", "full"),
          ("deviceOS", "By device operating system", "Recorded for a minority of events.", "full"),
          ("browser", "By browser", "Recorded for a minority of events.", "full"),
-         ("resultStatus", "By result status", "Result recorded on the event.", "full")]},
+         ("resultStatus", "By result status", "Result recorded on the event.", "full"),
+         ("user", "Most active users", "UserId on the event. Names appear: treat this report as personal data.", "full"),
+         ("failedUser", "Users with failed operations or logins", "Failed operations and UserLoginFailed, by UserId; (none) is left out.", "subset"),
+         ("failedIp", "Source IPs of failed operations or logins", "Client address of failed operations and UserLoginFailed; (none) is left out.", "subset"),
+         ("adminActor", "Admin operation actors", "UserId of events by Admin or DcAdmin user types; (none) is left out.", "subset")]},
     {"key": "signin", "table": "AzureSigninLogs", "title": "Entra user sign-ins", "eyebrow": "Interactive sign-ins by people",
      "metrics": [
          ("events", "Sign-ins", "Sign-ins", NAVY), ("failed", "Failed", "Failed", AMB), ("interactive", "Interactive", "Interact", BLU),
@@ -67,7 +74,10 @@ SOURCES = [
          ("deviceOS", "By device operating system", "From device detail.", "full"),
          ("browser", "By browser", "From device detail.", "full"),
          ("userType", "By user type", "Member or guest.", "full"),
-         ("riskLevel", "By sign-in risk level", "Identity Protection risk during sign-in.", "full")]},
+         ("riskLevel", "By sign-in risk level", "Identity Protection risk during sign-in.", "full"),
+         ("user", "Most active users", "User principal name; (not recorded) is mostly app-only and failed sign-ins with no user.", "full"),
+         ("failedUser", "Users with failed sign-ins", "User principal name of failed sign-ins; (none) is left out.", "subset"),
+         ("failedIp", "Source IPs of failed sign-ins", "IP address of failed sign-ins; (none) is left out.", "subset")]},
     {"key": "audit", "table": "AzureAuditLogs", "title": "Entra directory audit", "eyebrow": "Changes to users, groups, roles, apps and policies",
      "metrics": [
          ("events", "Changes logged", "Changes", NAVY), ("failed", "Failed", "Failed", AMB), ("userChanges", "User changes", "Users", BLU),
@@ -84,7 +94,9 @@ SOURCES = [
          ("opType", "By operation type", "Add, Update, Delete and others.", "full"),
          ("service", "By logging service", "Service that logged the change.", "full"),
          ("result", "By result", "success or failure.", "full"),
-         ("failedActivity", "Failed activities", "Activity of failed changes; (none) means success and is left out.", "subset")]},
+         ("failedActivity", "Failed activities", "Activity of failed changes; (none) means success and is left out.", "subset"),
+         ("actor", "Who made the changes", "Initiating user principal name, else the initiating app.", "full"),
+         ("failedActor", "Who failed", "Initiator of failed changes; (none) is left out.", "subset")]},
     {"key": "sp", "table": "AADServicePrincipalSignInLogs", "title": "Entra service-principal sign-ins", "eyebrow": "Applications and automation, not people",
      "metrics": [
          ("events", "Sign-ins", "Sign-ins", NAVY), ("failed", "Failed", "Failed", AMB),
@@ -98,7 +110,8 @@ SOURCES = [
          ("resource", "By resource", "API or service the application called.", "full"),
          ("credential", "By credential type", "clientSecret, clientAssertion (certificate or federated) or none.", "full"),
          ("failedCode", "Failed sign-ins by error code", "7000222 and 7000215 are an expired or invalid client secret; (none) is left out.", "subset"),
-         ("country", "By country", "Country of the sign-in.", "full")]},
+         ("country", "By country", "Country of the sign-in.", "full"),
+         ("failedIp", "Source IPs of failed sign-ins", "IP address of failed sign-ins; (none) is left out.", "subset")]},
     {"key": "ni", "table": "AADNonInteractiveUserSignInLogs", "title": "Entra non-interactive user sign-ins", "eyebrow": "Token refreshes and background sign-ins by people",
      "metrics": [("events", "Sign-ins", "Sign-ins", NAVY), ("failed", "Failed", "Failed", AMB), ("guests", "Guest sign-ins", "Guests", BLU)],
      "kpis": ["events", "failed", "guests"],
@@ -108,7 +121,9 @@ SOURCES = [
          ("app", "By application", "Application the user signed in to.", "full"),
          ("clientApp", "By client app", "Client application type.", "full"),
          ("failedCode", "Failed sign-ins by error code", "(none) means the sign-in succeeded; it is left out.", "subset"),
-         ("country", "By country", "Country of the sign-in.", "full")]},
+         ("country", "By country", "Country of the sign-in.", "full"),
+         ("failedUser", "Users with failed sign-ins", "User principal name of failed sign-ins; (none) is left out.", "subset"),
+         ("failedIp", "Source IPs of failed sign-ins", "IP address of failed sign-ins; (none) is left out.", "subset")]},
 ]
 BYKEY = {s["key"]: s for s in SOURCES}
 
@@ -121,7 +136,7 @@ SEC_FAMILY = [  # indicative, related not equivalent
     ("Access policy and risk", "AC-3, AC-17, SI-4", "Conditional Access failures, risky sign-ins, security alerts"),
 ]
 LIMITS = [
-    "Counts only. Who did it, from where and to which object is not in the archive, so nothing here names a person, address or object. Distinct users and addresses are not counted because they cannot be summed across days.",
+    "This report names users and source IP addresses (most active users, failed users, failed IPs, admin actors). Treat it as personal data and share it accordingly. Each list holds at most the top 100 values a day, so a total over several days is a lower bound for a user or address that never reached a day's top 100. Days archived before the actor lists existed are missing from them. Distinct users and addresses are not counted because they cannot be summed across days.",
     "An archived day is a snapshot taken a few hours after the day ended; events that arrive later are not added.",
     "Facet tables hold at most 100 values each. Rarer values appear in the (other) row, computed as the day's events minus the listed values (full-coverage lists only).",
     "A day missing from the archive is a gap, not zero activity. A source the tenant does not have is shown as not available, not as zero.",
