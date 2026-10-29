@@ -1,6 +1,6 @@
 ---
 name: o365-activity-report
-version: 1.0.0
+version: 1.0.1
 description: >-
   Produce an account-wide (whole-tenant, NOT a single user) Microsoft 365 / Office 365 activity
   report by querying the Ingext/Fluency Office365 datalake table directly with KQL, rendering a
@@ -284,8 +284,8 @@ no such events); a blank panel whose status is `MISSING` is a build you must fix
 Notes:
 - HTML has **no external assets** (inline CSS, inline SVG chart) so it renders in
   the Cowork/artifact sandbox.
-- PDF via WeasyPrint is optional; if its libs are missing, drop `--pdf` and use
-  the `html-to-pdf` skill on the HTML instead.
+- PDF via WeasyPrint is optional; if its libs are missing, drop `--pdf` and deliver
+  the HTML; the user can use the browser's "Save as PDF" with background graphics enabled.
 
 ---
 
@@ -317,6 +317,6 @@ o365-activity-report/
 | **Tables blank but summary looks right** | You ran the queries but didn't SAVE them — the classic failure. Build exits 3 with an INCOMPLETE banner listing the MISSING files. Go to Step 3.5, save them, rebuild. |
 | Build exits non-zero / INCOMPLETE banner | One or more results were never saved. Re-run + save the MISSING files (often the "Output too large → path" case), then rebuild. Do not deliver. |
 | A query returned zero rows (saved) | Truthful "no data" panel, status `empty`, build stays green — this is fine |
-| WeasyPrint libs missing | Build HTML only; convert via the `html-to-pdf` skill |
+| WeasyPrint libs missing | Build HTML only; use browser "Save as PDF" with background graphics enabled |
 | User named ONE mailbox | Wrong skill — use `office-user-investigation` |
 | User asked for a saved/FPL report | Wrong skill — use `fluency-report` |

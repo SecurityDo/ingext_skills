@@ -1,6 +1,6 @@
 ---
 name: security-agent-deployment-status-report
-version: 1.0.0
+version: 1.0.1
 description: >-
   Build a client-ready security agent deployment status report (HTML + A4 PDF + device CSV) for
   a Fluency / Ingext account from its resource dumps, processed locally in Python. No FPL report,
@@ -146,9 +146,9 @@ Run step 4 again; it picks up `narrative.json` automatically. Rules:
 
 ### 6. PDF and review
 
-If the `html-to-pdf` skill is available, convert with `--format=A4 --margin=12mm,12mm,12mm,12mm` and
-no scaling. Otherwise deliver the HTML; Chrome's "Save as PDF" with background graphics on gives the
-same result.
+For PDF output, use the browser's "Save as PDF" with A4 paper, 12 mm margins, background graphics
+enabled and no scaling. If browser printing is unavailable, deliver the HTML with these print
+settings for the user.
 
 Page 1 holds the KPIs, summary, panels and next steps. Page 2 onwards holds the method and the device
 list. If you can rasterise the pages, look at them before handing over:

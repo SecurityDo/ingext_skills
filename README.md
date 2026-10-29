@@ -114,7 +114,6 @@ package in the same change — the validator checks inside the archives and will
 | [create-ingext-audit-app](#create-ingext-audit-app) | Guide an Entra admin to register the `ingext-audit` app (Graph + O365 audit import) |
 | [create-ingext-audit-app-azcli](#create-ingext-audit-app-azcli) | az CLI variant of `create-ingext-audit-app`: cowork can run it directly when the operator is the tenant's Global Admin |
 | [create-ingext-defender-app](#create-ingext-defender-app) | Guide an Entra admin to register the `ingext-defender` app (Graph Security incidents + alerts) |
-| [html-to-pdf](#html-to-pdf) | Convert an HTML file to a PDF |
 
 ---
 
@@ -408,7 +407,7 @@ SentinelOne, Microsoft Defender for Endpoint, and Entra ID as a reference), matc
 them by Entra device ID and then by hostname, and processes everything locally with a
 standard-library Python script — no FPL report, processor, or search queries. A health check
 stops the run when an inventory is empty or stale, so a broken integration is never reported as
-missing agents. Output is a Fluency-branded HTML page (A4 PDF via **html-to-pdf**) plus a
+missing agents. Output is a Fluency-branded HTML page (A4 PDF via browser print) plus a
 `devices.csv` of every device. The inventories are set in `sources.json`, so adding Intune,
 CrowdStrike, or another agent is a config change.
 
@@ -746,16 +745,3 @@ Fluency's hosted OAuth consent flow use **add-connector**.
 - "walk me through the portal steps to make the ingext-defender app"
 
 ---
-
-## Utilities
-
-### html-to-pdf
-
-Converts an HTML file to a high-fidelity PDF using headless Chromium (Playwright).
-Commonly chained after a skill that produces an HTML report.
-
-**Try:**
-- "convert this HTML to PDF"
-- "save this report as a PDF"
-- "export this to PDF"
-- "I need a PDF version of this dashboard"
