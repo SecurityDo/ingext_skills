@@ -1,0 +1,90 @@
+name: Build and publish skill catalog
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r scripts/requirements-catalog.txt
+      - run: python scripts/validate_skills.py --worktree
+      - run: python -m unittest discover -s scripts -p 'test_*.py' -v
+      - name: Build catalog and Cowork packages from source
+        run: python scripts/build_catalog.py --repository "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skill-catalog
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-skill-catalog
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: skill-catalog
+          path: dist
+      - name: Publish a complete release
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A queued or manually rerun older build must not replace the current catalog.
+          current_sha=$(gh api "repos/$GH_REPO/git/ref/heads/master" --jq '.object.sha')
+          if [[ "$current_sha" != "$GITHUB_SHA" ]]; then
+            echo "Skipping publication: master has moved past this build."
+            exit 0
+          fi
+          release_tag="catalog-$GITHUB_SHA"
+          if gh release view "$release_tag" --json isDraft > release.json; then
+            if [[ $(python -c 'import json; print(json.load(open("release.json"))["isDraft"])') == False ]]; then
+              echo "Release already published; leaving its assets unchanged."
+              exit 0
+            fi
+          else
+            gh release create "$release_tag" --target "$GITHUB_SHA" --draft \
+              --title "Skills catalog ${GITHUB_SHA:0:12}" \
+              --notes "Generated catalog and Cowork packages built from commit $GITHUB_SHA."
+          fi
+          # Resume an interrupted draft safely; readers cannot see it until all uploads finish.
+          gh release upload "$release_tag" dist/* --clobber
+          gh release view "$release_tag" --json assets > assets.json
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          catalog = json.loads(Path('dist/catalog.json').read_text())
+          expected = {p.name: p.stat().st_size for p in Path('dist').iterdir() if p.is_file()}
+          actual = {asset['name']: asset['size'] for asset in json.loads(Path('assets.json').read_text())['assets']}
+          assert actual == expected, 'Release assets do not match the generated artifact set'
+          for skill in catalog['skills']:
+              package = skill['download']
+              content = (Path('dist') / package['filename']).read_bytes()
+              assert hashlib.sha256(content).hexdigest() == package['sha256']
+          PY
+          current_sha=$(gh api "repos/$GH_REPO/git/ref/heads/master" --jq '.object.sha')
+          if [[ "$current_sha" == "$GITHUB_SHA" ]]; then
+            gh release edit "$release_tag" --draft=false --latest
+          else
+            # Keep the completed snapshot downloadable without moving the latest pointer backward.
+            gh release edit "$release_tag" --draft=false --latest=false
+          fi
