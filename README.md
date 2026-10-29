@@ -14,35 +14,75 @@ datalake, running a report, investigating a user, checking site health, and more
 - Packaged, installable skills live in [`cowork/`](./cowork) as `*.skill` files.
 - Change history is in [`release_notes/`](./release_notes).
 
-Each skill's `SKILL.md` frontmatter carries a `version:`. All skills are currently
-at **1.0.0**.
+Each skill is versioned independently in its `SKILL.md` frontmatter. The inventory below
+lists all **46 skills** across `SKILLS/` and `reports/`, with the version, source and
+matching downloadable package. Packages are ZIP archives with a `.skill` extension.
 
 ## Installation
 
-### Step 1 — Connect Claude Code to GitHub
+### Claude Code — install a source folder
 
-Before installing skills, connect Claude Code to GitHub so it can access this repository
-directly.
+Clone this public repository; a GitHub connector or GitHub login is not required:
 
-1. Open Claude Code and go to **Settings → Connectors**.
-2. Click **Add Connector** and search for **GitHub**.
-3. Select the GitHub connector and click **Connect**.
-4. Authenticate via **OAuth login** with your GitHub account.
-5. Once connected, Claude Code can browse and pull files from any repository you have
-   access to.
+```bash
+git clone https://github.com/SecurityDo/ingext_skills.git
+cd ingext_skills
+```
 
-### Step 2 — Install skills from this repository
+Copy the **whole skill folder**, including scripts, references and assets, into a
+Claude Code skills directory. For example, to install `ingext-kql` for your user:
 
-With the GitHub connector active, ask Claude to install the skills directly:
+```bash
+mkdir -p "$HOME/.claude/skills"
+cp -R SKILLS/ingext-kql "$HOME/.claude/skills/"
+```
 
-> "Install the skills from github.com/SecurityDo/ingext_skills"
+For a project-scoped installation, copy it into `.claude/skills/` in that project
+instead. Report skills install the same way; for example:
 
-Claude will browse the repository, download the `.skill` files, and add them to your
-Claude Code plugins automatically.
+```bash
+cp -R reports/ciso-monthly-report "$HOME/.claude/skills/"
+```
 
-Alternatively, install a specific skill by name:
+Install prerequisites named in the skill as well. For `ciso-monthly-report`, those
+are `health-status-report` and `compliance-assessment`. Start Claude Code and use
+`/ingext-kql` or `/ciso-monthly-report`, or describe the task normally.
 
-> "Install the fluency-report skill from github.com/SecurityDo/ingext_skills"
+To update, pull the repository and replace the installed folder with the current
+source folder. Installing only `SKILL.md` omits supporting files the skill needs.
+See [Claude Code's skills documentation](https://code.claude.com/docs/en/skills).
+
+### Claude / Cowork — upload a packaged skill
+
+1. Download the matching file from [`cowork/`](./cowork) using GitHub's **Download raw file** action.
+2. The `.skill` file is already a ZIP archive. If the upload picker requires `.zip`,
+   rename the downloaded file's extension to `.zip`; do not zip the archive again.
+3. Open **Customize → Skills**, select **+ → Create skill → Upload a skill**,
+   upload the archive and enable the skill. Enable code execution and file creation
+   if your account requires it.
+4. Upload and enable any prerequisite skills too, then start a new Cowork session
+   or Claude chat and describe your task.
+
+Cowork uses the skills enabled for your Claude account; it does not read local
+`~/.claude/skills/` folders. To update an uploaded skill, upload the current package
+through the Skills UI and check that the intended version is enabled.
+See [Anthropic's upload instructions](https://support.claude.com/en/articles/12512180-use-skills-in-claude)
+and [Cowork skill loading](https://code.claude.com/docs/en/skills#use-skills-in-cowork-and-cloud-sessions).
+
+### Connect the platform separately
+
+Installing a skill supplies instructions and supporting files. Platform skills also
+need a configured Ingext / Fluency MCP connection with the permissions and data
+sources their instructions require. Installing a skill does not configure that connection.
+
+### Renamed skill: CISO monthly report
+
+`CISO_monthly_report` is now **`ciso-monthly-report`**. The source folder, frontmatter
+name and package use the new name. Its `metadata.aliases` records the old name for
+catalog consumers, and the instructions recognize requests using the legacy name.
+This metadata does not register an old slash command in Claude Code: update automation
+to `/ciso-monthly-report`, install the new folder/package, and remove the old installed
+copy after migration. The former README anchor is retained below for existing links.
 
 ## Editing skills
 
@@ -65,55 +105,59 @@ python3 scripts/validate_skills.py --worktree
 With no flag it validates the **staged** content, which is what the pre-commit hook uses.
 
 Note that `cowork/*.skill` packages embed their own copy of `SKILL.md`. Editing
-`SKILLS/<name>/SKILL.md` (or `reports/<name>/SKILL.md`) alone leaves the package failing at install time, so rebuild the
-package in the same change — the validator checks inside the archives and will catch it.
+`SKILLS/<name>/SKILL.md` (or `reports/<name>/SKILL.md`) requires rebuilding the package in the same change. The validator checks frontmatter
+in both source and archives; it does not check that their full file contents match.
 
 ## Skills at a glance
 
-| Skill | What it does |
-| --- | --- |
-| [customer-onboarding](#customer-onboarding) | Front door for a new customer: menu of applications → route to the right setup skill → verify ingestion |
-| [ingext-kql](#ingext-kql) | Generate a validated KQL query over the datalake |
-| [ingext-promql](#ingext-promql) | Generate / run PromQL for platform metrics |
-| [azure-log-analytics-search](#azure-log-analytics-search) | Search the customer's own Azure Log Analytics / Sentinel workspace live with KQL |
-| [fortigate-bandwidth](#fortigate-bandwidth) | Correct FortiGate bandwidth aggregation rules |
-| [fluency-report](#fluency-report) | Run an existing FPL report → HTML summary |
-| [compliance-assessment](#compliance-assessment) | Per-tenant, per-month NIST SP 800-53 evidence report from the tenant's own telemetry → HTML + PDF |
-| [fluency-report-rollup](#fluency-report-rollup) | Monthly / quarterly / trend report assembled from a scheduled report's archived daily runs |
-| [fpl-report-builder](#fpl-report-builder) | Author an FPL report definition from KQL |
-| [fpl-report-dashboard](#fpl-report-dashboard) | Build, test, deploy and release a dashboard report: panels, layout, metric charts |
-| [CISO_monthly_report](#ciso_monthly_report) | Customer-facing CISO Monthly SOC report for one tenant: 8 chapters, 16 sections, computed figures, GAP and PARTIAL marked → HTML |
-| [health-status-report](#health-status-report) | Installed applications health for a tenant, using the Fluency 9 Applications-page status logic → HTML + PDF + CSV |
-| [mssp-coverage-map](#mssp-coverage-map) | Fleet map of licensed Microsoft 365 seats against EDR endpoints and users per tenant, with the gaps ranked → HTML + CSV |
-| [mssp-ops-sitrep](#mssp-ops-sitrep) | Shift-handoff SitRep across a connector's accounts: queue, escalations, health, product posture, four team lanes → HTML |
-| [office365-posture-review](#office365-posture-review) | Office 365 / Entra posture from resource dumps: users, app registrations and devices, ranked by severity → HTML + CSV |
-| [nist-compliance-analysis](#nist-compliance-analysis) | NIST SP 800-53 control-by-control analysis from compliance-assessment results, with CSF 2.0 and 800-171 child views → HTML + CSV |
-| [iso-cmmc-compliance-analysis](#iso-cmmc-compliance-analysis) | ISO/IEC 27001:2022 and CMMC 2.0 companion view of the 800-53 evidence, related not equivalent → HTML + CSV |
-| [pci-dss-compliance-analysis](#pci-dss-compliance-analysis) | PCI DSS v4.0.1 companion view of the 800-53 evidence, related not equivalent → HTML + CSV |
-| [hipaa-compliance-analysis](#hipaa-compliance-analysis) | HIPAA Security Rule companion view of the 800-53 evidence → HTML + CSV |
-| [soc2-compliance-analysis](#soc2-compliance-analysis) | SOC 2 Trust Services Criteria companion view of the 800-53 evidence → HTML + CSV |
-| [cis-compliance-analysis](#cis-compliance-analysis) | CIS Critical Security Controls v8.1 companion view of the 800-53 evidence → HTML + CSV |
-| [fedramp-compliance-analysis](#fedramp-compliance-analysis) | FedRAMP Rev. 5 baseline view of the 800-53 evidence → HTML + CSV |
-| [gdpr-compliance-analysis](#gdpr-compliance-analysis) | GDPR security-of-processing companion view of the 800-53 evidence → HTML + CSV |
-| [endpoint-os-currency](#endpoint-os-currency) | Endpoint OS inventory, end-of-support and build-currency report from an EDR or Entra device dump → HTML + PDF + CSV |
-| [security-agent-deployment-status-report](#security-agent-deployment-status-report) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
-| [azure-user-signin-investigation](#azure-user-signin-investigation) | Investigate Azure AD sign-ins & directory changes |
-| [proofpoint-investigation](#proofpoint-investigation) | Investigate one Proofpoint email: sender, direction, delivery, threat, clicks and blast radius from the event rows |
-| [office-user-investigation](#office-user-investigation) | Investigate an M365 mailbox user (KQL + GeoIP) |
-| [o365-activity-report](#o365-activity-report) | Account-wide O365/Exchange activity report (KQL: timechart + tables) |
-| [incident-investigation](#incident-investigation) | Triage an escalated behavior incident / AI-assist ticket to a verdict |
-| [ingext-get-profile](#ingext-get-profile) | Resolve a user, group or device to its profile: admin, roles, MFA, status; OS, last user, join state, EDR health |
-| [ingext-log-analytics-evidence](#ingext-log-analytics-evidence) | The incident checks that read a customer's own Log Analytics workspace (few accounts have one): sessions, Graph, containment, endpoint triggers, Azure changes |
-| [ingext-health-monitor](#ingext-health-monitor) | Check whether a site is healthy and ingesting |
-| [add-connector](#add-connector) | Install a new application connector |
-| [deploy-fpl-processor](#deploy-fpl-processor) | Deploy an FPL processor to a tenant and wire it into the running pipeline |
-| [eventwatch-rule](#eventwatch-rule) | Create, test, threshold and deploy an EventWatch behavior / aggregation rule |
-| [parser-rule](#parser-rule) | Create, test, deploy and release a parser rule: a registered rule matched in FPL, emitting into CorrelationService |
-| [setup-aws-cloudtrail-connector](#setup-aws-cloudtrail-connector) | Set up the AWS CloudTrail connector: S3 → SQS notification, cross-account role, real-time import |
-| [setup-aws-guardduty-connector](#setup-aws-guardduty-connector) | Set up the Amazon GuardDuty connector: assume-role, per-region detector check, API poll |
-| [create-ingext-audit-app](#create-ingext-audit-app) | Guide an Entra admin to register the `ingext-audit` app (Graph + O365 audit import) |
-| [create-ingext-audit-app-azcli](#create-ingext-audit-app-azcli) | az CLI variant of `create-ingext-audit-app`: cowork can run it directly when the operator is the tenant's Global Admin |
-| [create-ingext-defender-app](#create-ingext-defender-app) | Guide an Entra admin to register the `ingext-defender` app (Graph Security incidents + alerts) |
+| Skill | Version | Source | Package | What it does |
+| --- | --- | --- | --- | --- |
+| [customer-onboarding](#customer-onboarding) | 1.0.0 | [Source](./SKILLS/customer-onboarding) | [Download](./cowork/customer-onboarding.skill) | Front door for a new customer: menu of applications → route to the right setup skill → verify ingestion |
+| [ingext-kql](#ingext-kql) | 1.1.1 | [Source](./SKILLS/ingext-kql) | [Download](./cowork/ingext-kql.skill) | Generate a validated KQL query over the datalake |
+| [ingext-promql](#ingext-promql) | 1.0.4 | [Source](./SKILLS/ingext-promql) | [Download](./cowork/ingext-promql.skill) | Generate / run PromQL for platform metrics |
+| [azure-log-analytics-search](#azure-log-analytics-search) | 1.0.0 | [Source](./SKILLS/azure-log-analytics-search) | [Download](./cowork/azure-log-analytics-search.skill) | Search the customer's own Azure Log Analytics / Sentinel workspace live with KQL |
+| [fortigate-bandwidth](#fortigate-bandwidth) | 1.0.0 | [Source](./SKILLS/fortigate-bandwidth) | [Download](./cowork/fortigate-bandwidth.skill) | Correct FortiGate bandwidth aggregation rules |
+| [fluency-report](#fluency-report) | 1.0.2 | [Source](./SKILLS/fluency-report) | [Download](./cowork/fluency-report.skill) | Run an existing FPL report → HTML summary |
+| [compliance-assessment](#compliance-assessment) | 1.8.1 | [Source](./reports/compliance-assessment) | [Download](./cowork/compliance-assessment.skill) | Per-tenant, per-month NIST SP 800-53 evidence report from the tenant's own telemetry → HTML + PDF |
+| [fluency-report-rollup](#fluency-report-rollup) | 1.0.1 | [Source](./SKILLS/fluency-report-rollup) | [Download](./cowork/fluency-report-rollup.skill) | Monthly / quarterly / trend report assembled from a scheduled report's archived daily runs |
+| [fpl-report-builder](#fpl-report-builder) | 1.0.1 | [Source](./SKILLS/fpl-report-builder) | [Download](./cowork/fpl-report-builder.skill) | Author an FPL report definition from KQL |
+| [fpl-report-dashboard](#fpl-report-dashboard) | 1.0.0 | [Source](./SKILLS/fpl-report-dashboard) | [Download](./cowork/fpl-report-dashboard.skill) | Build, test, deploy and release a dashboard report: panels, layout, metric charts |
+| [ciso-monthly-report](#ciso-monthly-report) | 1.0.1 | [Source](./reports/ciso-monthly-report) | [Download](./cowork/ciso-monthly-report.skill) | Customer-facing CISO Monthly SOC report for one tenant: 8 chapters, 16 sections, computed figures, GAP and PARTIAL marked → HTML |
+| [health-status-report](#health-status-report) | 1.2.1 | [Source](./reports/health-status-report) | [Download](./cowork/health-status-report.skill) | Installed applications health for a tenant, using the Fluency 9 Applications-page status logic → HTML + PDF + CSV |
+| [mssp-coverage-map](#mssp-coverage-map) | 1.0.0 | [Source](./reports/mssp-coverage-map) | [Download](./cowork/mssp-coverage-map.skill) | Fleet map of licensed Microsoft 365 seats against EDR endpoints and users per tenant, with the gaps ranked → HTML + CSV |
+| [mssp-ops-sitrep](#mssp-ops-sitrep) | 1.0.1 | [Source](./reports/mssp-ops-sitrep) | [Download](./cowork/mssp-ops-sitrep.skill) | Shift-handoff SitRep across a connector's accounts: queue, escalations, health, product posture, four team lanes → HTML |
+| [office365-posture-review](#office365-posture-review) | 1.0.0 | [Source](./reports/office365-posture-review) | [Download](./cowork/office365-posture-review.skill) | Office 365 / Entra posture from resource dumps: users, app registrations and devices, ranked by severity → HTML + CSV |
+| [nist-compliance-analysis](#nist-compliance-analysis) | 1.0.0 | [Source](./reports/nist-compliance-analysis) | [Download](./cowork/nist-compliance-analysis.skill) | NIST SP 800-53 control-by-control analysis from compliance-assessment results, with CSF 2.0 and 800-171 child views → HTML + CSV |
+| [iso-cmmc-compliance-analysis](#iso-cmmc-compliance-analysis) | 1.2.0 | [Source](./reports/iso-cmmc-compliance-analysis) | [Download](./cowork/iso-cmmc-compliance-analysis.skill) | ISO/IEC 27001:2022 and CMMC 2.0 companion view of the 800-53 evidence, related not equivalent → HTML + CSV |
+| [pci-dss-compliance-analysis](#pci-dss-compliance-analysis) | 1.3.0 | [Source](./reports/pci-dss-compliance-analysis) | [Download](./cowork/pci-dss-compliance-analysis.skill) | PCI DSS v4.0.1 companion view of the 800-53 evidence, related not equivalent → HTML + CSV |
+| [hipaa-compliance-analysis](#hipaa-compliance-analysis) | 1.3.0 | [Source](./reports/hipaa-compliance-analysis) | [Download](./cowork/hipaa-compliance-analysis.skill) | HIPAA Security Rule companion view of the 800-53 evidence → HTML + CSV |
+| [soc2-compliance-analysis](#soc2-compliance-analysis) | 1.3.0 | [Source](./reports/soc2-compliance-analysis) | [Download](./cowork/soc2-compliance-analysis.skill) | SOC 2 Trust Services Criteria companion view of the 800-53 evidence → HTML + CSV |
+| [cis-compliance-analysis](#cis-compliance-analysis) | 1.3.0 | [Source](./reports/cis-compliance-analysis) | [Download](./cowork/cis-compliance-analysis.skill) | CIS Critical Security Controls v8.1 companion view of the 800-53 evidence → HTML + CSV |
+| [fedramp-compliance-analysis](#fedramp-compliance-analysis) | 1.3.0 | [Source](./reports/fedramp-compliance-analysis) | [Download](./cowork/fedramp-compliance-analysis.skill) | FedRAMP Rev. 5 baseline view of the 800-53 evidence → HTML + CSV |
+| [gdpr-compliance-analysis](#gdpr-compliance-analysis) | 1.3.0 | [Source](./reports/gdpr-compliance-analysis) | [Download](./cowork/gdpr-compliance-analysis.skill) | GDPR security-of-processing companion view of the 800-53 evidence → HTML + CSV |
+| [endpoint-os-currency](#endpoint-os-currency) | 1.0.0 | [Source](./reports/endpoint-os-currency) | [Download](./cowork/endpoint-os-currency.skill) | Endpoint OS inventory, end-of-support and build-currency report from an EDR or Entra device dump → HTML + PDF + CSV |
+| [security-agent-deployment-status-report](#security-agent-deployment-status-report) | 1.0.1 | [Source](./reports/security-agent-deployment-status-report) | [Download](./cowork/security-agent-deployment-status-report.skill) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
+| [azure-user-signin-investigation](#azure-user-signin-investigation) | 1.0.3 | [Source](./SKILLS/azure-user-signin-investigation) | [Download](./cowork/azure-user-signin-investigation.skill) | Investigate Azure AD sign-ins & directory changes |
+| [proofpoint-investigation](#proofpoint-investigation) | 1.0.0 | [Source](./SKILLS/proofpoint-investigation) | [Download](./cowork/proofpoint-investigation.skill) | Investigate one Proofpoint email: sender, direction, delivery, threat, clicks and blast radius from the event rows |
+| [office-user-investigation](#office-user-investigation) | 1.0.3 | [Source](./SKILLS/office-user-investigation) | [Download](./cowork/office-user-investigation.skill) | Investigate an M365 mailbox user (KQL + GeoIP) |
+| [o365-activity-report](#o365-activity-report) | 1.0.1 | [Source](./reports/o365-activity-report) | [Download](./cowork/o365-activity-report.skill) | Account-wide O365/Exchange activity report (KQL: timechart + tables) |
+| [incident-investigation](#incident-investigation) | 1.6.5 | [Source](./SKILLS/incident-investigation) | [Download](./cowork/incident-investigation.skill) | Triage an escalated behavior incident / AI-assist ticket to a verdict |
+| [ingext-get-profile](#ingext-get-profile) | 1.0.1 | [Source](./SKILLS/ingext-get-profile) | [Download](./cowork/ingext-get-profile.skill) | Resolve a user, group or device to its profile: admin, roles, MFA, status; OS, last user, join state, EDR health |
+| [ingext-log-analytics-evidence](#ingext-log-analytics-evidence) | 1.0.0 | [Source](./SKILLS/ingext-log-analytics-evidence) | [Download](./cowork/ingext-log-analytics-evidence.skill) | The incident checks that read a customer's own Log Analytics workspace (few accounts have one): sessions, Graph, containment, endpoint triggers, Azure changes |
+| [ingext-health-monitor](#ingext-health-monitor) | 1.0.1 | [Source](./SKILLS/ingext-health-monitor) | [Download](./cowork/ingext-health-monitor.skill) | Check whether a site is healthy and ingesting |
+| [add-connector](#add-connector) | 1.0.0 | [Source](./SKILLS/add-connector) | [Download](./cowork/add-connector.skill) | Install a new application connector |
+| [deploy-fpl-processor](#deploy-fpl-processor) | 1.0.0 | [Source](./SKILLS/deploy-fpl-processor) | [Download](./cowork/deploy-fpl-processor.skill) | Deploy an FPL processor to a tenant and wire it into the running pipeline |
+| [eventwatch-rule](#eventwatch-rule) | 1.1.1 | [Source](./SKILLS/eventwatch-rule) | [Download](./cowork/eventwatch-rule.skill) | Create, test, threshold and deploy an EventWatch behavior / aggregation rule |
+| [parser-rule](#parser-rule) | 1.1.0 | [Source](./SKILLS/parser-rule) | [Download](./cowork/parser-rule.skill) | Create, test, deploy and release a parser rule: a registered rule matched in FPL, emitting into CorrelationService |
+| [setup-aws-cloudtrail-connector](#setup-aws-cloudtrail-connector) | 1.0.0 | [Source](./SKILLS/setup-aws-cloudtrail-connector) | [Download](./cowork/setup-aws-cloudtrail-connector.skill) | Set up the AWS CloudTrail connector: S3 → SQS notification, cross-account role, real-time import |
+| [setup-aws-guardduty-connector](#setup-aws-guardduty-connector) | 1.0.0 | [Source](./SKILLS/setup-aws-guardduty-connector) | [Download](./cowork/setup-aws-guardduty-connector.skill) | Set up the Amazon GuardDuty connector: assume-role, per-region detector check, API poll |
+| [create-ingext-audit-app](#create-ingext-audit-app) | 1.0.0 | [Source](./SKILLS/create-ingext-audit-app) | [Download](./cowork/create-ingext-audit-app.skill) | Guide an Entra admin to register the `ingext-audit` app (Graph + O365 audit import) |
+| [create-ingext-audit-app-azcli](#create-ingext-audit-app-azcli) | 1.0.0 | [Source](./SKILLS/create-ingext-audit-app-azcli) | [Download](./cowork/create-ingext-audit-app-azcli.skill) | az CLI variant of `create-ingext-audit-app`: cowork can run it directly when the operator is the tenant's Global Admin |
+| [create-ingext-defender-app](#create-ingext-defender-app) | 1.0.0 | [Source](./SKILLS/create-ingext-defender-app) | [Download](./cowork/create-ingext-defender-app.skill) | Guide an Entra admin to register the `ingext-defender` app (Graph Security incidents + alerts) |
+| [billing-csv](./SKILLS/billing-csv/SKILL.md) | 1.2.0 | [Source](./SKILLS/billing-csv) | [Download](./cowork/billing-csv.skill) | Per-client billing CSV from the daily usage ledger and billable-user inventory |
+| [ingext-entity-tables](./SKILLS/ingext-entity-tables/SKILL.md) | 1.0.0 | [Source](./SKILLS/ingext-entity-tables) | [Download](./cowork/ingext-entity-tables.skill) | Discover and query entity lookup tables, watchlists and reference values |
+| [aws-cloudtrail-activity-report](./reports/aws-cloudtrail-activity-report/SKILL.md) | 1.0.0 | [Source](./reports/aws-cloudtrail-activity-report) | [Download](./cowork/aws-cloudtrail-activity-report.skill) | AWS CloudTrail activity report from archived daily report results |
+| [microsoft365-entra-activity-report](./reports/microsoft365-entra-activity-report/SKILL.md) | 2.0.0 | [Source](./reports/microsoft365-entra-activity-report) | [Download](./cowork/microsoft365-entra-activity-report.skill) | Microsoft 365 and Entra activity report from archived daily report results |
 
 ---
 
@@ -233,7 +277,9 @@ certified. Lives in [`reports/`](./reports).
 **Try:**
 - "run the compliance assessment for <tenant> for September on the Develop connector"
 
-### CISO_monthly_report
+<a id="ciso_monthly_report"></a>
+
+### ciso-monthly-report
 
 Builds the monthly SOC story for one tenant as a single HTML report for a CISO: an executive summary
 with a Green, Amber or Red rating, what happened, repeat patterns, what can and cannot be seen, a
@@ -253,7 +299,7 @@ the narrative. **Prerequisites: install the health-status-report and compliance-
 Reports the health of every installed application on a tenant as HTML, PDF and a per-application CSV,
 with the same status logic as the Fluency 9 Applications page (Running, Error, Attention, Disabled,
 Other). It reads `list_connector_config` where the connector has it, else `list_connectors` (state only),
-removes credentials, and saves the result as `health.json`, which `CISO_monthly_report` reuses. For
+removes credentials, and saves the result as `health.json`, which `ciso-monthly-report` reuses. For
 platform-wide health (logins, queues, egress) use ingext-health-monitor. Lives in [`reports/`](./reports).
 
 **Try:**

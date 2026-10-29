@@ -1,6 +1,6 @@
 ---
 name: health-status-report
-version: 1.2.0
+version: 1.2.1
 description: >-
   Produce an Installed Applications Health report for ONE Ingext/Fluency tenant as HTML, PDF and a
   per-application CSV, using the same status logic as the Fluency 9 Applications page: each
@@ -24,7 +24,7 @@ the product.
 This skill answers the per-application one.
 
 The evaluation writes `health.json` before any report is built. Other skills reuse that file:
-`CISO_monthly_report` reads it for its coverage and health section, so install this skill before using
+`ciso-monthly-report` reads it for its coverage and health section, so install this skill before using
 that one. To get only the data, stop after Step 2.
 
 ## Two modes
