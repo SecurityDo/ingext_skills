@@ -84,6 +84,83 @@ This metadata does not register an old slash command in Claude Code: update auto
 to `/ciso-monthly-report`, install the new folder/package, and remove the old installed
 copy after migration. The former README anchor is retained below for existing links.
 
+## Generated release catalog
+
+Each published catalog release contains **`catalog.json` and one downloadable `.skill`
+archive per source skill**. Packages are built directly from `SKILLS/` and `reports/`,
+so the release does not depend on manually refreshed copies in `cowork/`.
+
+After the first catalog workflow publishes on `master`, API consumers can fetch:
+
+[Latest catalog JSON](https://github.com/SecurityDo/ingext_skills/releases/latest/download/catalog.json)
+· [Published releases and direct downloads](https://github.com/SecurityDo/ingext_skills/releases)
+
+The latest URL follows GitHub's latest release. To keep that URL dedicated to this
+catalog, leave unrelated releases unmarked as latest. These endpoints become available
+when the first catalog release is published; generating a local preview does not publish it.
+
+### API contract
+
+Read `catalog.json` as JSON; there is no need to scan GitHub folders or parse skill
+frontmatter at request time. Its top-level fields are:
+
+| Field | Meaning |
+| --- | --- |
+| `schemaVersion` | Catalog format version, currently `1`; separate from individual skill versions |
+| `repositoryUrl` | Source repository |
+| `sourceRevision` | Full Git commit SHA used for every entry and package |
+| `sourceCommittedAt` | Commit timestamp; deterministic rather than the build's wall-clock time |
+| `releaseTag` | `catalog-` followed by the full source commit SHA |
+| `skills` | All published skills, sorted by `id` |
+
+Every skill entry includes `id`, `name`, `version`, `description`, `category` (`skill`
+or `report`), `aliases`, `sourcePath`, `sourceUrl`, `fileCount` and `download`:
+
+```json
+{
+  "filename": "ciso-monthly-report.skill",
+  "url": "https://github.com/SecurityDo/ingext_skills/releases/download/catalog-FULL_COMMIT_SHA/ciso-monthly-report.skill",
+  "format": "zip",
+  "sha256": "SHA256_OF_THE_ARCHIVE",
+  "sizeBytes": 28569
+}
+```
+
+This is an illustrative `download` object; use the actual URL, checksum and size from
+the catalog. `download.url` is the direct package download, with no GitHub file-preview
+page in between. It names a specific release, so cached catalogs keep pointing at their
+matching packages when a newer catalog appears. `sourceUrl` also names the exact commit.
+Skill versions change independently; `sourceRevision` identifies the complete catalog snapshot.
+
+An API can cache this document, list its entries, resolve legacy IDs through `aliases`,
+and return each `download` object unchanged. Retain the last successfully loaded catalog
+if a refresh fails. A package downloader can verify `sha256` and `sizeBytes` against the
+actual bytes before offering or installing the archive. Catalog discovery does not
+mean a skill is already installed or usable with a particular tenant's permissions.
+
+### Build and publish
+
+```bash
+python3 -m pip install -r scripts/requirements-catalog.txt
+python3 -m unittest discover -s scripts -p 'test_*.py' -v
+python3 scripts/build_catalog.py --output dist
+```
+
+The builder requires committed source skill changes, checks names, versions, descriptions
+and alias collisions, and writes a new or empty output directory. Archives include the
+complete source skill with normalized ZIP timestamps, ordering and permissions, preserving
+executable scripts. `dist/` is ignored by Git. Use a fresh output directory for another build.
+The generated JSON and packages are release assets, not files to commit to `master`.
+
+[The catalog workflow](./.github/workflows/skill-catalog.yml) validates and builds previews
+for pull requests. A successful build on `master` creates a draft GitHub release, uploads
+all packages and `catalog.json`, checks the asset inventory, then publishes the release
+as latest. Readers see the catalog only after its packages are uploaded. Retrying an
+interrupted draft resumes the upload; an already published release is left unchanged.
+Old queued builds do not replace the current catalog. The workflow can also be run
+manually on `master`. It uses the repository's GitHub Actions token with release-write
+permission; no separate API service or GitHub token needs to be distributed to downloaders.
+
 ## Editing skills
 
 Skill frontmatter is validated before it can be committed. Two rules bite most often:
