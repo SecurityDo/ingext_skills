@@ -235,6 +235,8 @@ in both source and archives; it does not check that their full file contents mat
 | [ingext-entity-tables](./SKILLS/ingext-entity-tables/SKILL.md) | 1.0.0 | [Source](./SKILLS/ingext-entity-tables) | [Download](./cowork/ingext-entity-tables.skill) | Discover and query entity lookup tables, watchlists and reference values |
 | [aws-cloudtrail-activity-report](./reports/aws-cloudtrail-activity-report/SKILL.md) | 1.0.0 | [Source](./reports/aws-cloudtrail-activity-report) | [Download](./cowork/aws-cloudtrail-activity-report.skill) | AWS CloudTrail activity report from archived daily report results |
 | [microsoft365-entra-activity-report](./reports/microsoft365-entra-activity-report/SKILL.md) | 2.0.0 | [Source](./reports/microsoft365-entra-activity-report) | [Download](./cowork/microsoft365-entra-activity-report.skill) | Microsoft 365 and Entra activity report from archived daily report results |
+| [windows-server-activity-report](./reports/windows-server-activity-report/SKILL.md) | 1.0.0 | [Source](./reports/windows-server-activity-report) | [Download](./cowork/windows-server-activity-report.skill) | Windows Server activity report from archived daily report results |
+| [fortigate-security-activity-report](./reports/fortigate-security-activity-report/SKILL.md) | 1.0.0 | [Source](./reports/fortigate-security-activity-report) | [Download](./cowork/fortigate-security-activity-report.skill) | FortiGate security activity report from archived daily report results |
 
 ---
 
@@ -599,6 +601,63 @@ shows an explicit "no data" panel; numbers are never synthesized.
 - "report on Office365 Exchange activity in the last 24 hours"
 - "MailItemsAccessed activity report for the account"
 - "account-wide O365 activity timechart by workload today"
+
+### microsoft365-entra-activity-report
+
+Produces a Microsoft 365 and Entra activity report for **one tenant and a period** (a calendar
+month by default) as HTML, PDF and CSV, built **only from the archive** of the scheduled report
+`Office365_Entra_Activity_Report`. It never runs a live search: it lists the archive, downloads the
+archived daily results, merges them and lays out Office 365 audit events, Entra user sign-ins,
+directory-audit changes and service-principal and non-interactive sign-ins, with breakdowns,
+archive coverage, gap days and any table the tenant does not have. Counts add across days;
+distinct counts and top-N lists are labelled as peaks and lower bounds.
+
+**Try:**
+- "Microsoft 365 activity report for last month"
+- "Entra sign-in report for October"
+- "failed sign-ins and mailbox activity last month"
+
+### aws-cloudtrail-activity-report
+
+Produces an AWS CloudTrail activity report for **one tenant and a period** as HTML, PDF and CSV,
+built **only from the archive** of the scheduled report `CloudTrail_Activity_Report`. It merges the
+archived daily results into events, errors, access denied, console logins and MFA, IAM changes,
+root-identity events and CloudTrail changes, with breakdowns by service, region, identity type and
+error code, plus archive coverage and gap days. A gap is shown as a gap, never as zero.
+
+**Try:**
+- "CloudTrail activity report for last month"
+- "root and IAM activity report"
+- "AWS audit activity summary"
+
+### fortigate-security-activity-report
+
+Produces a FortiGate security activity report for **one tenant and a period** as HTML, PDF and CSV,
+built **only from the archive** of the scheduled report `Fortigate_Security_Activity_Report`. It lays
+out failed SSL-VPN logins (by device, country, source address and user, with a spray / brute-force /
+probe pattern), VPN sessions and IPsec tunnels, application-control and web-filter blocks, IPS and DoS
+anomalies, and administrator logins and configuration changes, with archive coverage, gap days and
+the scans the tenant could not run. User and IP tables can be left out with `--no-actors`.
+
+**Try:**
+- "FortiGate activity report for last month"
+- "VPN failed logins last month"
+- "FortiGate admin changes report"
+
+### windows-server-activity-report
+
+Produces a Windows server activity report for **one tenant and a period** as HTML, PDF and CSV,
+built **only from the archive** of the scheduled report `WindowsSrv_Activity_Report` (it reads the
+`WindowsAudit` table). It covers what the older ingress report returns (events and bytes by host and
+by event ID, with names from the `AD_EventID` lookup) and adds user logons and failures, failed-logon
+sources with a spray / brute-force / probe pattern, privileged logons, account and group changes,
+services and scheduled tasks installed, and audit-log clears and policy changes, with archive
+coverage and gap days. User and IP lists can be left out with `--no-actors`.
+
+**Try:**
+- "Windows server activity report for last month"
+- "failed Windows logons last month"
+- "were any audit logs cleared on the domain controllers"
 
 ### incident-investigation
 
