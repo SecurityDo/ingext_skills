@@ -15,8 +15,11 @@ description: >-
   falls back to the last 24 hours; union the let *summaries*, never the two
   raw tables (a second table as a union arm is over-counted); and do not
   join the summaries — fullouter/rightouter joins currently run as inner and
-  drop numbers seen on only one side. Users is built with make_set_if
-  because max()/take_any() over strings do not return the populated value.
+  drop numbers seen on only one side. Users is collected with make_set_if
+  after the union, not inside the let: a dynamic value built inside a let
+  currently reaches the outer query as a string (so strcat_array(make_set())
+  in the let is null), and take_any() can pick the null that union fills in
+  for the arm without the column.
 
   Read the result: Messages well above PhoneAuths means codes or calls
   that never completed a login; Messages with no PhoneAuths and no Users is
