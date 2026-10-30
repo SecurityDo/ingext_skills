@@ -23,10 +23,16 @@ description: >-
   from phone, or the dashes from the other side, before comparing. The telephony
   record is written when Duo places the call/SMS, a few seconds before the
   matching DuoAuthentication record (which is written when the user answers or
-  the attempt times out). Cross-table join/union over these streams is not
-  reliable in the engine (a large DuoAuthentication right side is refused at the
-  row cap, and union over-counts), so pivot in two queries: aggregate telephony
-  per number here, then look the numbers up in DuoAuthentication.
+  the attempt times out). auth_device.name can also be a device label that
+  contains the number ("Adele's Phone (6165550142)"), so normalize both sides
+  to the last 10 digits with non-digits removed. To attribute in one query,
+  summarize each table by that key in its own `let`, union the two summaries
+  and summarize again (see the duo-telephony-by-user query). Engine rules as
+  of 2026-10-30: never union the two raw tables (a second table as a union arm
+  is counted once per parquet file); do not join the summaries (fullouter and
+  rightouter joins run as inner and drop one-sided numbers); and pass the
+  search range (rangeFrom/rangeTo) explicitly, because a time filter inside a
+  `let` does not widen the search window, which falls back to the last 24h.
 
   The schema is flat; fields are referenced bare. timestamp is parsed from the
   Duo epoch-second timestamp (same instant as isotimestamp). Login attempts are

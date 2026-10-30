@@ -1,0 +1,55 @@
+description: >-
+  Attribute Duo telephony to users: calls/SMS and credits per phone number,
+  with the users whose phone_call / sms_passcode logins used that number.
+  DuoTelephony has no user field, so each table is summarized by a normalized
+  key in its own let, the two summaries are unioned, and a final summarize
+  merges them per number. The key is the last 10 digits of the number with
+  every non-digit removed: telephony uses E.164 ("+16165550142") and auth
+  logs use the dashed form ("616-555-0142") or a device label that contains
+  the number ("Adele's Phone (6165550142)"). An empty key collects phone
+  logins with no auth_device.name.
+
+  Engine rules this shape depends on (ingextkql as of 2026-10-30): run it with
+  an explicit search range covering the 7 days (rangeFrom/rangeTo), because a
+  time filter inside a let does not widen the search window, which otherwise
+  falls back to the last 24 hours; union the let *summaries*, never the two
+  raw tables (a second table as a union arm is over-counted); and do not
+  join the summaries — fullouter/rightouter joins currently run as inner and
+  drop numbers seen on only one side. Users is built with make_set_if
+  because max()/take_any() over strings do not return the populated value.
+
+  Read the result: Messages well above PhoneAuths means codes or calls
+  that never completed a login; Messages with no PhoneAuths and no Users is
+  telephony outside user logins (admin-panel SMS, enrollment) or a number no
+  user owns; a number with several Users is a shared phone.
+datatype: DuoTelephony
+kql: |
+  let T = DuoTelephony
+      | where timestamp > ago(7d)
+      | extend Digits = replace_regex(tostring(phone), @"\D", "")
+      | extend PhoneKey = substring(Digits, strlen(Digits) - 10)
+      | summarize Messages = count(), Credits = sum(toint(credits)) by PhoneKey;
+  let A = DuoAuthentication
+      | where timestamp > ago(7d)
+      | where factor in ("phone_call", "sms_passcode")
+      | extend Digits = replace_regex(tostring(auth_device.name), @"\D", "")
+      | extend PhoneKey = substring(Digits, strlen(Digits) - 10),
+               userName = tostring(user.name)
+      | summarize PhoneAuths = count() by PhoneKey, userName;
+  union T, A
+  | summarize Messages = sum(Messages),
+              Credits = sum(Credits),
+              PhoneAuths = sum(PhoneAuths),
+              Users = make_set_if(userName, isnotempty(userName), 5)
+      by PhoneKey
+  | order by Credits desc
+tags: [duo, cisco, telephony, sms, phone, attribution, union, credits]
+expected_output: |
+  Telephony per number with the users behind it, 7-day range passed explicitly (sanitized).
+
+  PhoneKey    Messages  Credits  PhoneAuths  Users
+  6165550142  19        38       19          ["mbowen"]
+  6305550186  34        34       16          ["jsmith"]
+  6165550110  8         8        1           ["avance"]
+  6165550124  2         2        null        []
+              null      null     3           ["jsmith", "lgarcia"]

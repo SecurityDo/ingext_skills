@@ -1,6 +1,6 @@
 ---
 name: ingext-kql
-version: 1.1.2
+version: 1.1.3
 description: >
   Generate a validated KQL query for the Ingext datalake from a natural-language description.
   Use this skill whenever the user asks to query, search, count, aggregate, or report on data
@@ -174,8 +174,10 @@ Emit a single JSON object — no prose wrapper, no markdown fence:
 - **Aggregating:** `summarize count() by col`, `summarize sum(bytes) by col`, `summarize dcount(user) by col`.
 - **Top-N:** `top 10 by count_ desc` (more efficient than `order by ... | take N`).
 - **Sorting raw rows: use `top`, not `order by`.** With no `summarize` before it, `order by` currently runs per shard and the shard results are concatenated without a final sort, so the output is only sorted within each shard, and `order by … | take N` returns the first shard's top N (seen 2026-10-30; a fix is pending in ingextkql). `top N by col desc` sorts correctly on the same rows, and `order by` after `summarize` works. So: aggregate, then `order by`; or `top N by` for a list of raw events.
-- **`coalesce()` over `tostring()` never falls through.** `tostring()` of a missing dynamic key is `""`, and `coalesce(tostring(a.x), tostring(a.y))` returns that `""`. Use `iff(isnotempty(tostring(a.x)), tostring(a.x), tostring(a.y))`.
-- **Cross-table `union` + `summarize` can over-count**, and a `join` whose right side is a large stream table fails at the engine's row cap. To correlate two stream tables, prefer two queries (aggregate one, look the keys up in the other), or put the large table on the left with a tight filter.
+- **`coalesce()` over `tostring()` never falls through (until an ingextkql fix deploys).** `tostring()` of a missing dynamic key is `""`, and the engine currently treats `""` as a value, unlike Kusto. Use `iff(isnotempty(tostring(a.x)), tostring(a.x), tostring(a.y))`, which is correct either way.
+- **Correlating two different tables: union the `let` summaries, never the raw tables.** Summarize each table by the shared key in its own `let`, then `union T1, T2 | summarize ... by Key` (sum the counters; collect strings with `make_set_if(col, isnotempty(col))`). Do **not** `union` a raw second table into a sharded pipeline: that arm is counted once per parquet file, so its numbers are inflated. Do **not** rely on `join kind=fullouter`/`rightouter`/`rightanti`/`rightsemi`: they currently run as an **inner** join and silently drop keys seen on only one side, and `on Key` yields a single `Key` column (no `Key1`). `inner` and `leftouter` joins behave as expected; a raw large stream table on the right of a join fails at the row cap, so summarize it first. Worked example: `references/schemas/DuoTelephony/queries/duo-telephony-by-user.yaml`.
+- **`max()` / `take_any()` over strings don't return the populated value** when some rows hold `""` or null (they returned `""`/null in testing). Use `make_set_if(col, isnotempty(col))` to collect strings in a merge.
+- **Queries with `let` or `union`: pass `rangeFrom`/`rangeTo` explicitly.** The search window is taken only from top-level `where` time filters; a `where timestamp > ago(7d)` inside a `let` or a union arm is ignored and the window falls back to the last 24 hours (fix pending in ingextkql). Set the tool's range to cover the longest lookback in the query.
 - **Time bucketing:** `bin(TimeGenerated, 1h)` for time-series.
 - **Dynamic JSON fields:** use `.` navigation and cast with `tostring()` / `tolong()` before aggregating.
 

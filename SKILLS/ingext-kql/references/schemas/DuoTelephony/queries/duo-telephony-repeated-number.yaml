@@ -7,7 +7,7 @@ description: >-
   for a near-identical number shortly after), or phone/SMS bombing. The record
   has no user, so attribute each number by looking it up in DuoAuthentication
   (auth_device.name is the same number in dashed form, e.g. +16165550142 ->
-  616-555-0142).
+  616-555-0142) — see duo-telephony-by-user.
 datatype: DuoTelephony
 kql: |
   DuoTelephony
