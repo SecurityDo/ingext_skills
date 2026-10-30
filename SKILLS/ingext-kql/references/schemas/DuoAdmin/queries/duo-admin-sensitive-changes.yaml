@@ -24,4 +24,4 @@ expected_output: |
   Sensitive Duo admin changes over the last 30 days (sanitized).
 
   timestamp             username                 action         object       Change                       Detail
-  2026-07-21T14:15:52Z  adele.vance@contoso.com  bypass_create  acontractor  bypass_create -> acontractor {"bypass": "generated", "count": 1, "valid_secs": 3600, "remaining_uses": 1, "auto_generated": true}
+  2026-07-21T14:15:52Z  Adele Vance              bypass_create  acontractor  bypass_create -> acontractor {"bypass": "generated", "count": 1, "valid_secs": 3600, "remaining_uses": 1, "auto_generated": true}

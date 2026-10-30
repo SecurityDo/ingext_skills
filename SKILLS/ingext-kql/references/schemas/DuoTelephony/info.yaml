@@ -1,0 +1,101 @@
+schema: DuoTelephony
+description: >-
+  Cisco Duo telephony log event, imported by Ingext from the Duo Admin API
+  telephony logs (/admin/v1/logs/telephony). One record per phone call or SMS
+  that Duo placed on the account's behalf, and the telephony credits it cost:
+  which number Duo contacted (phone), over which channel (type — "phone" or
+  "sms"), why (context — a user login, an admin login, or an enrollment), and
+  the credit charge (credits).
+
+  This is Duo's billing-side view of the phone factors. It is the only stream
+  that counts every call/SMS sent — including ones that never produced a
+  DuoAuthentication record (an enrollment SMS, an admin-panel login, a call to a
+  mistyped number) — so use it for telephony-credit accounting, for spotting a
+  number being called or texted repeatedly (phone/SMS bombing, a wrong number
+  stuck on a user, SMS toll-fraud), and for finding administrators who sign in
+  to the Admin Panel with an SMS passcode.
+
+  The record carries no user, no application, no IP and no transaction id —
+  only the phone number. To attribute a call or SMS to a person, pivot on the
+  number: phone is E.164 ("+16165550142") while DuoAuthentication.auth_device.name,
+  DuoAdmin.object (phone_* actions) and DuoAdmin.descriptionFields.device
+  (admin_login) use the dashed national form ("616-555-0142"). Strip the "+1"
+  from phone, or the dashes from the other side, before comparing. The telephony
+  record is written when Duo places the call/SMS, a few seconds before the
+  matching DuoAuthentication record (which is written when the user answers or
+  the attempt times out). Cross-table join/union over these streams is not
+  reliable in the engine (a large DuoAuthentication right side is refused at the
+  row cap, and union over-counts), so pivot in two queries: aggregate telephony
+  per number here, then look the numbers up in DuoAuthentication.
+
+  The schema is flat; fields are referenced bare. timestamp is parsed from the
+  Duo epoch-second timestamp (same instant as isotimestamp). Login attempts are
+  DuoAuthentication; administrative changes are DuoAdmin.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Primary time column for range filters (e.g. where timestamp > ago(7d)). The moment Duo placed the call or sent the SMS (UTC)."
+    sampleValues: ["2026-10-30T11:25:10Z"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: isotimestamp
+    type: String
+    description: "Event time as reported by Duo, ISO-8601 with whole seconds and UTC offset. The raw Duo record also carries the same instant as a Unix epoch second in its own `timestamp` field; use the top-level DateTime timestamp for all time filtering."
+    sampleValues: ["2026-10-30T11:25:10+00:00"]
+
+  # ==========================================
+  # WHAT / WHY / WHERE
+  # ==========================================
+  - name: type
+    type: String
+    description: >-
+      The telephony channel. "phone" — Duo placed a voice call (the phone_call
+      factor: the user presses a key to approve); "sms" — Duo sent a text
+      message (an SMS passcode for login, an admin-panel login code, or an
+      enrollment/activation link). Push notifications through Duo Mobile are
+      not telephony and never appear here.
+    sampleValues: ["phone", "sms"]
+
+  - name: context
+    type: String
+    description: >-
+      Why Duo used telephony. "authentication" — a user's MFA login (factor
+      phone_call or sms_passcode in DuoAuthentication); "administrator login" —
+      a Duo administrator signing in to the Admin Panel with an SMS/phone
+      factor (pairs with DuoAdmin action == "admin_login" a few seconds later,
+      whose descriptionFields.factor is "sms"/"phone"); "enrollment" — an
+      activation SMS sent while a phone is being enrolled or re-activated
+      (pairs with DuoAdmin phone_create / phone_update). Note the value
+      contains a space — match it exactly: context == "administrator login".
+    sampleValues: ["authentication", "administrator login", "enrollment"]
+
+  - name: phone
+    type: String
+    description: >-
+      The phone number Duo called or texted, in E.164 form with a leading "+"
+      and country code. The only identity on the record. Other Duo streams use
+      the dashed national form ("616-555-0142") — normalize before comparing:
+      substring(phone, 2) for North-American "+1" numbers, or
+      replace_string(auth_device.name, "-", "") on the other side. A number
+      repeatedly called or texted within minutes, or one that never appears as
+      a DuoAuthentication auth_device.name, is worth review (a mistyped
+      number being sent login codes, or phone/SMS bombing).
+    sampleValues: ["+16165550142", "+16165550187"]
+
+  - name: credits
+    type: Integer
+    description: >-
+      Telephony credits Duo charged for this call/SMS, set by type and
+      destination. For North-American numbers every SMS costs 1 and every
+      voice call 2 (constant across a month of observed data); Duo charges
+      more for many international destinations, so a value outside 1/2 points
+      at a foreign number — a toll-fraud signal when unexpected. Sum it for
+      credit-consumption reporting: sum(toint(credits)).
+    sampleValues: [2, 1]

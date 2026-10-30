@@ -19,7 +19,13 @@ description: >-
   notation and cast with tostring()/toint()/tobool(); mv-expand
   user.groups to enumerate group membership. timestamp is parsed from
   isotimestamp (the epoch-second timestamp field carries the same instant).
-  Administrative changes in Duo are a separate stream — see DuoAdmin.
+  Administrative changes in Duo are a separate stream — see DuoAdmin; the
+  calls and SMS Duo placed for phone factors are DuoTelephony.
+
+  In a typical on-prem deployment most records are Duo for Windows Logon
+  (application "Microsoft RDP") with access_device.ip "0.0.0.0" and no
+  location, and roughly half the successes are remembered_device — so
+  IP/geo analytics only apply to the web/VPN integrations.
 fields:
 
   # ==========================================
@@ -54,21 +60,28 @@ fields:
   # ==========================================
   - name: result
     type: String
-    description: "Outcome of the attempt. \"success\" — the factor was satisfied; \"denied\" — the attempt was rejected (see reason); \"fraud\" — the user explicitly reported it as fraudulent. Count denials per user over a short window to detect MFA push-bombardment."
+    description: "Outcome of the attempt. \"success\" — the factor was satisfied; \"denied\" — the attempt was rejected (see reason); \"fraud\" — the user explicitly reported it as fraudulent. Count denials per user over a short window to detect MFA push-bombardment. Most denials are benign reason == \"no_response\" (the push timed out)."
     sampleValues: ["success", "denied", "fraud"]
 
   - name: reason
     type: String
     description: >-
       Why Duo produced this result. Common values — success side:
-      "user_approved", "allowed_by_policy", "remembered_device",
-      "trusted_network", "bypass_user". Denial side: "user_mistake" (user tapped
-      Deny), "user_marked_fraud" (user reported the push as fraud — a strong
-      compromise signal), "denied_by_policy", "locked_out", "no_response",
-      "invalid_passcode", "out_of_date" (endpoint software), "anonymous_ip",
-      "location_restricted", "no_keys_pressed". Pair with result and factor
-      when triaging.
-    sampleValues: ["remembered_device", "user_approved", "user_marked_fraud", "user_mistake", "denied_by_policy", "no_response"]
+      "user_approved", "valid_passcode", "allowed_by_policy",
+      "remembered_device", "trusted_network", "bypass_user" (the user's Duo
+      status is Bypass — set by an admin, see DuoAdmin user_update — so no
+      factor was asked for at all; factor is null on these). Denial side:
+      "no_response" (push/call not answered before timeout — by far the most
+      common denial), "user_mistake" (user tapped Deny), "user_marked_fraud"
+      (user reported the push as fraud — a strong compromise signal),
+      "invalid_passcode", "call_not_answered", "call_timed_out",
+      "no_keys_pressed" (phone_call answered but not confirmed),
+      "deny_unenrolled_user" (user exists but has no enrolled device),
+      "user_disabled", "no_screen_lock" (Duo Mobile device-health policy),
+      "denied_by_policy", "locked_out", "out_of_date" (endpoint software),
+      "anonymous_ip", "location_restricted". reason can be null on a small
+      number of successes. Pair with result and factor when triaging.
+    sampleValues: ["remembered_device", "user_approved", "no_response", "bypass_user", "valid_passcode", "user_marked_fraud", "user_mistake", "deny_unenrolled_user"]
 
   - name: factor
     type: String
@@ -79,13 +92,20 @@ fields:
       FIDO factors; "remembered_device" and "trusted_network" mean no live factor
       was presented (the session was satisfied by a prior trust decision);
       "bypass_code" is an administratively issued single-use code — worth
-      alerting on. Not present on all denial paths.
-    sampleValues: ["duo_push", "remembered_device", "duo_otp", "webauthn_credential", "bypass_code", "phone_call"]
+      alerting on. Other values seen: "phone_call" (voice call, pairs with a
+      DuoTelephony type "phone" record), "sms_passcode" (pairs with DuoTelephony
+      type "sms"), "duo_mobile_passcode_hotp", "Offline Duo Mobile Passcode"
+      (Windows Logon offline access — note the spaces and capitals), and
+      "not_available" (no factor applied — trusted_network,
+      deny_unenrolled_user, user_disabled). factor is null when
+      reason == "bypass_user", so a filter on factor alone misses bypassed
+      users; filter on reason for them.
+    sampleValues: ["remembered_device", "duo_push", "phone_call", "not_available", "sms_passcode", "Offline Duo Mobile Passcode", "bypass_code", null]
 
   - name: alias
     type: String
-    description: "The username alias the user authenticated with, if the login came in under an alias rather than the canonical Duo username. \"unknown\" when not applicable."
-    sampleValues: ["unknown", "avance@contoso.com"]
+    description: "The username alias the user authenticated with, if the login came in under an alias rather than the canonical Duo username. \"unknown\" or an empty string when not applicable (both appear in the same tenant)."
+    sampleValues: ["unknown", "", "avance@contoso.com"]
 
   - name: email
     type: String
@@ -148,6 +168,8 @@ fields:
           is_password_set — Device Health posture booleans, reported as
           "true"/"false"/"unknown" strings (unknown when the Device Health app
           is not installed).
+        - access_device.management_agents (array) — endpoint management
+          agents Duo detected (Trusted Endpoints); usually empty.
         - access_device.java_version / flash_version — legacy plugin versions,
           usually null.
     sampleValues: ["192.0.2.45", "WKSTN-0142", "DuoWinLogon", "Windows", "10.0.19045.6456", "unknown"]
@@ -159,8 +181,10 @@ fields:
     type: Dynamic
     description: >-
       The device that satisfied the second factor — usually the enrolled phone
-      that received the push. Fields: auth_device.name (phone number or device
-      label), auth_device.key (Duo device identifier), auth_device.type
+      that received the push. Fields: auth_device.name (phone number in dashed
+      national form, e.g. "616-555-0142", or a device label — the pivot to
+      DuoTelephony.phone, which is E.164 "+16165550142"), auth_device.key (Duo
+      device identifier, DP…), auth_device.type
       (e.g. "phone", "token"), auth_device.serial (hardware-token serial),
       auth_device.ip (IP the approval came from), and
       auth_device.location.{city,state,country}. All null when no live factor
@@ -177,12 +201,17 @@ fields:
     type: Dynamic
     description: >-
       Duo Risk-Based Authentication trust assessment for the attempt, keyed by
-      assessment name (e.g. adaptive_trust_assessments.trusted_endpoint,
-      .known_networks, .risk_profile). Each value carries the assessment's
-      trust_level / reason. Empty object ({}) when Risk-Based Authentication is
-      not licensed or no assessment applied — expect it to be empty in most
-      deployments.
-    sampleValues: ["{}"]
+      assessment name. Seen in practice:
+      adaptive_trust_assessments.remember_me (Risk-Based Remembered Devices —
+      trust_level such as "LOW"/"NORMAL"/"UNSET", reason such as
+      "Novel Access IP", policy_enabled, model_version) and
+      adaptive_trust_assessments.more_secure_auth (Risk-Based Factor Selection
+      — trust_level, reason "Not requested", preview_mode_enabled,
+      detected_attack_detectors). trust_level "LOW" with reason
+      "Novel Access IP" marks a login from an IP the user has not used before.
+      Empty object ({}) on remembered_device successes and when Risk-Based
+      Authentication is not licensed.
+    sampleValues: ["{}", "LOW", "Novel Access IP", "UNSET", "Not requested"]
 
   - name: rbfs_triggered_attacks
     type: Dynamic

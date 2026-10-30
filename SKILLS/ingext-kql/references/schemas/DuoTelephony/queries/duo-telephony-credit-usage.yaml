@@ -1,0 +1,25 @@
+description: >-
+  Daily Duo telephony credit consumption, split by channel. Each row is one day
+  and one channel (phone call or SMS) with the number of calls/messages Duo
+  placed, the credits they cost, and how many distinct numbers were contacted.
+  Use it to track credit burn against the account balance, and to spot a day
+  where SMS or call volume jumps without a matching rise in users — the usual
+  shape of a number stuck in a retry loop or of SMS toll fraud.
+datatype: DuoTelephony
+kql: |
+  DuoTelephony
+  | where timestamp > ago(30d)
+  | summarize Events = count(),
+              Credits = sum(toint(credits)),
+              Phones = dcount(phone)
+      by Day = bin(timestamp, 1d), type
+  | order by Day desc, type asc
+tags: [duo, cisco, telephony, sms, phone, credits, billing]
+expected_output: |
+  Telephony calls/SMS and credits per day and channel (sanitized).
+
+  Day                   type   Events  Credits  Phones
+  2026-10-29T00:00:00Z  phone  45      90       18
+  2026-10-29T00:00:00Z  sms    13      13       3
+  2026-10-28T00:00:00Z  phone  48      96       21
+  2026-10-28T00:00:00Z  sms    28      28       6

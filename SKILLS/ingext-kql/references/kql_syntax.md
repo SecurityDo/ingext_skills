@@ -58,6 +58,8 @@ Common aggregators: `count()`, `sum(col)`, `avg(col)`, `min(col)`, `max(col)`, `
 
 `top N by col` is equivalent to `order by col | take N` but more efficient.
 
+**Engine caveat (2026-10-30):** with no `summarize` before it, `order by` runs per shard and the shard results are concatenated unsorted. The output is sorted only within each shard, and `order by … | take N` returns the first shard's top N. A fix is pending in ingextkql; once deployed, it still cannot re-sort when a later `project`/`extend` drops or reassigns the sort key. `top N by col` sorts correctly on the same rows, and `order by` after `summarize` sorts correctly. Until this is fixed, list raw events with `top N by`, and use `order by` only after `summarize`.
+
 ## Time helpers
 
 - `ago(<duration>)` → a point in time N ago. Durations: `1s`, `5m`, `2h`, `1d`, `7d`.

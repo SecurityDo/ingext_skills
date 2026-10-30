@@ -1,0 +1,29 @@
+description: >-
+  Telephony sent outside user logins: Duo Admin Panel sign-ins that used an SMS
+  or phone factor ("administrator login") and phone enrollments
+  ("enrollment"). Administrators authenticating to the MFA control plane with
+  SMS are using the weakest factor Duo offers — a SIM-swap target — so each
+  number in the first group should move to Duo Push or a security key. Each
+  admin-login row pairs with a DuoAdmin action == "admin_login" a few seconds
+  later whose descriptionFields.device is the same number in dashed form;
+  enrollment rows pair with DuoAdmin phone_create / phone_update on that number.
+datatype: DuoTelephony
+kql: |
+  DuoTelephony
+  | where timestamp > ago(30d)
+  | where context in ("administrator login", "enrollment")
+  | summarize Messages = count(),
+              Credits = sum(toint(credits)),
+              Types = make_set(type, 3),
+              FirstSeen = min(timestamp),
+              LastSeen = max(timestamp)
+      by context, phone
+  | order by context asc, Messages desc
+tags: [duo, cisco, telephony, sms, admin, enrollment, weak-mfa, audit]
+expected_output: |
+  Admin-panel SMS logins and enrollment SMS per number (sanitized).
+
+  context              phone         Messages  Credits  Types    FirstSeen             LastSeen
+  administrator login  +16165550110  19        19       ["sms"]  2026-09-30T17:55:46Z  2026-10-28T17:25:41Z
+  administrator login  +16165550124  5         5        ["sms"]  2026-10-08T13:10:50Z  2026-10-27T19:14:58Z
+  enrollment           +16095550188  2         2        ["sms"]  2026-10-20T12:30:33Z  2026-10-20T13:05:49Z

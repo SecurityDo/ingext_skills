@@ -1,31 +1,39 @@
 description: >-
-  Health of Duo's Active Directory user sync, from the ad_sync_finish admin
-  events. Pulls the per-run delta out of descriptionFields (note the
-  human-readable keys with spaces, which require bracket indexing) and flags
-  runs that reported errors or removed users. Errors mean some accounts were not
-  synced — they may be missing MFA coverage entirely — and a nonzero
-  "Users removed" means accounts were dropped from Duo, which silently removes
-  their MFA enrollment. Sorted so problem runs surface first.
+  Daily health of Duo's directory (AD) user sync, from the ad_sync_finish and
+  ad_sync_failed admin events. Per day and directory: how many sync runs
+  happened, how many failed outright (ad_sync_failed — typically the
+  Authentication Proxy not responding, with the reason in
+  descriptionFields.reason), how many finished with per-user errors, and the
+  user delta. A day of failed runs means directory changes (leavers, new
+  hires) are not reaching Duo; a nonzero Removed means accounts were dropped
+  from Duo, which removes their MFA enrollment. Note the descriptionFields keys
+  have their spaces stripped (Usersseen, Usersremoved) — the original
+  "Users seen" spelling returns null.
 datatype: DuoAdmin
 kql: |
   DuoAdmin
   | where timestamp > ago(7d)
-  | where action == "ad_sync_finish"
-  | extend Directory = object,
-           Duration = tostring(descriptionFields["Duration"]),
-           UsersSeen = toint(descriptionFields["Users seen"]),
-           UsersAdded = toint(descriptionFields["Users added"]),
-           UsersModified = toint(descriptionFields["Users modified"]),
-           UsersRemoved = toint(descriptionFields["Users removed"]),
-           Errors = tostring(descriptionFields["Errors"]),
-           SyncRef = tostring(descriptionFields["Sync Ref. Code"])
-  | extend HasError = isnotempty(Errors)
-  | project timestamp, Directory, Duration, UsersSeen, UsersAdded, UsersModified,
-            UsersRemoved, HasError, Errors, SyncRef
-  | order by HasError desc, UsersRemoved desc, timestamp desc
+  | where action in ("ad_sync_finish", "ad_sync_failed")
+  | extend UsersSeen = toint(descriptionFields.Usersseen),
+           UsersAdded = toint(descriptionFields.Usersadded),
+           UsersRemoved = toint(descriptionFields.Usersremoved),
+           SyncErrors = tostring(descriptionFields.Errors),
+           FailReason = tostring(descriptionFields.reason)
+  | summarize Runs = count(),
+              Failed = countif(action == "ad_sync_failed"),
+              WithErrors = countif(isnotempty(SyncErrors)),
+              MaxUsersSeen = max(UsersSeen),
+              Added = sum(UsersAdded),
+              Removed = sum(UsersRemoved),
+              FailReasons = make_set(FailReason, 3),
+              LastRun = max(timestamp)
+      by Day = bin(timestamp, 1d), Directory = object
+  | order by Day desc
 tags: [duo, cisco, admin, directory-sync, active-directory, health, coverage]
 expected_output: |
-  Duo AD sync runs with their deltas and any per-user errors (sanitized).
+  Duo AD sync runs per day, with a day-long Authentication Proxy outage (sanitized).
 
-  timestamp             Directory  Duration  UsersSeen  UsersAdded  UsersModified  UsersRemoved  HasError  Errors                                                          SyncRef
-  2026-07-21T12:08:32Z  AD Sync    0:00:01   6          0           0              0             true      User jsmith-admin (...dc=contoso,dc=local): "jsmith-admin" ...  a1b2c3d4e5f60718293a4b5c6d7e8f90
+  Day                   Directory  Runs  Failed  WithErrors  MaxUsersSeen  Added  Removed  FailReasons                                                   LastRun
+  2026-10-26T00:00:00Z  AD Sync    41    19      0           671           0      0        ["", "The Authentication Proxy did not respond. Please ..."]  2026-10-26T23:46:09Z
+  2026-10-25T00:00:00Z  AD Sync    35    35      0           null          null   null     ["The Authentication Proxy did not respond. Please ..."]      2026-10-25T23:37:02Z
+  2026-10-24T00:00:00Z  AD Sync    47    0       0           671           0      0        [""]                                                          2026-10-24T23:55:54Z

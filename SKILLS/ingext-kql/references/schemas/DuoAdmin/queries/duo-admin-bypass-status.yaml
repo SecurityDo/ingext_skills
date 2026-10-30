@@ -1,0 +1,33 @@
+description: >-
+  Duo users an administrator put into Bypass status. A user_update whose
+  descriptionFields.status is "Bypass" exempts the user from MFA entirely —
+  every login is approved with reason == "bypass_user" and no factor in
+  DuoAuthentication — until someone sets the status back to "Active". Helpdesks
+  use it as a stop-gap for a lost phone or a new hire, and then forget it.
+  Lists every user whose status was changed to Bypass in the window, who did
+  it, and the latest status, so LastStatus == "Bypass" rows are users still
+  exempt from MFA right now. Confirm with DuoAuthentication
+  reason == "bypass_user" for the same user.name.
+datatype: DuoAdmin
+kql: |
+  DuoAdmin
+  | where timestamp > ago(30d)
+  | where action == "user_update"
+  | extend NewStatus = tostring(descriptionFields.status)
+  | where isnotempty(NewStatus)
+  | summarize Changes = count(),
+              Statuses = make_list(NewStatus, 10),
+              Admins = make_set(username, 5),
+              FirstChange = min(timestamp),
+              LastChange = max(timestamp),
+              LastStatus = arg_max(timestamp, NewStatus)
+      by object
+  | where Statuses has "Bypass"
+  | order by LastChange desc
+tags: [duo, cisco, admin, mfa, bypass, coverage, audit, detection]
+expected_output: |
+  Users placed in Bypass in the last 30 days and their current status (sanitized).
+
+  object     Changes  Statuses              Admins             FirstChange           LastChange            LastStatus
+  jsmith     1        ["Bypass"]            ["Adele Vance"]    2026-10-29T21:48:30Z  2026-10-29T21:48:30Z  Bypass
+  mbowen     2        ["Bypass", "Active"]  ["Megan Bowen"]    2026-10-29T18:48:03Z  2026-10-29T19:48:15Z  Active

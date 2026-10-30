@@ -190,7 +190,7 @@ in both source and archives; it does not check that their full file contents mat
 | Skill | Version | Source | Package | What it does |
 | --- | --- | --- | --- | --- |
 | [customer-onboarding](#customer-onboarding) | 1.0.0 | [Source](./SKILLS/customer-onboarding) | [Download](./cowork/customer-onboarding.skill) | Front door for a new customer: menu of applications → route to the right setup skill → verify ingestion |
-| [ingext-kql](#ingext-kql) | 1.1.1 | [Source](./SKILLS/ingext-kql) | [Download](./cowork/ingext-kql.skill) | Generate a validated KQL query over the datalake |
+| [ingext-kql](#ingext-kql) | 1.1.2 | [Source](./SKILLS/ingext-kql) | [Download](./cowork/ingext-kql.skill) | Generate a validated KQL query over the datalake |
 | [ingext-promql](#ingext-promql) | 1.0.4 | [Source](./SKILLS/ingext-promql) | [Download](./cowork/ingext-promql.skill) | Generate / run PromQL for platform metrics |
 | [azure-log-analytics-search](#azure-log-analytics-search) | 1.0.0 | [Source](./SKILLS/azure-log-analytics-search) | [Download](./cowork/azure-log-analytics-search.skill) | Search the customer's own Azure Log Analytics / Sentinel workspace live with KQL |
 | [fortigate-bandwidth](#fortigate-bandwidth) | 1.0.0 | [Source](./SKILLS/fortigate-bandwidth) | [Download](./cowork/fortigate-bandwidth.skill) | Correct FortiGate bandwidth aggregation rules |

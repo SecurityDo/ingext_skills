@@ -1,6 +1,6 @@
 ---
 name: ingext-kql
-version: 1.1.1
+version: 1.1.2
 description: >
   Generate a validated KQL query for the Ingext datalake from a natural-language description.
   Use this skill whenever the user asks to query, search, count, aggregate, or report on data
@@ -173,6 +173,9 @@ Emit a single JSON object — no prose wrapper, no markdown fence:
 - **Filtering:** `==`, `!=`, `contains`, `has`, `startswith`, `in (...)`, `> ago(6h)`.
 - **Aggregating:** `summarize count() by col`, `summarize sum(bytes) by col`, `summarize dcount(user) by col`.
 - **Top-N:** `top 10 by count_ desc` (more efficient than `order by ... | take N`).
+- **Sorting raw rows: use `top`, not `order by`.** With no `summarize` before it, `order by` currently runs per shard and the shard results are concatenated without a final sort, so the output is only sorted within each shard, and `order by … | take N` returns the first shard's top N (seen 2026-10-30; a fix is pending in ingextkql). `top N by col desc` sorts correctly on the same rows, and `order by` after `summarize` works. So: aggregate, then `order by`; or `top N by` for a list of raw events.
+- **`coalesce()` over `tostring()` never falls through.** `tostring()` of a missing dynamic key is `""`, and `coalesce(tostring(a.x), tostring(a.y))` returns that `""`. Use `iff(isnotempty(tostring(a.x)), tostring(a.x), tostring(a.y))`.
+- **Cross-table `union` + `summarize` can over-count**, and a `join` whose right side is a large stream table fails at the engine's row cap. To correlate two stream tables, prefer two queries (aggregate one, look the keys up in the other), or put the large table on the left with a tight filter.
 - **Time bucketing:** `bin(TimeGenerated, 1h)` for time-series.
 - **Dynamic JSON fields:** use `.` navigation and cast with `tostring()` / `tolong()` before aggregating.
 

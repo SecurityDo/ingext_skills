@@ -12,16 +12,24 @@ description: >-
   integration edits (policy_update, integration_update, integration_delete),
   and admin-account changes (admin_create, admin_update,
   admin_2fa_error/admin_login_error). A directory sync also writes here
-  (ad_sync_finish and friends) under a synthetic service username.
+  (ad_sync_finish and friends) under a synthetic service username. A
+  user_update that sets descriptionFields.status to "Bypass" exempts that user
+  from MFA entirely — their logins then show reason == "bypass_user" with a
+  null factor in DuoAuthentication — so it is the single most important change
+  to track.
 
   Note the two representations of the same change detail: description is the
   raw JSON *string* Duo emits (use parse_json() to work with it), while
   descriptionFields is the same content already parsed into a dynamic object —
   prefer descriptionFields and reach in with dot notation. Its keys vary by
-  action, and human-readable keys contain spaces, so index them with bracket
-  syntax: descriptionFields["Users added"]. timestamp is parsed from
-  isotimestamp. MFA login attempts are a separate stream — see
-  DuoAuthentication.
+  action, and the integration strips spaces and dots from Duo's
+  human-readable keys when it builds descriptionFields: "Users added" becomes
+  descriptionFields.Usersadded and "Sync Ref. Code" becomes
+  descriptionFields.SyncRefCode. Indexing descriptionFields with the original
+  spelling (descriptionFields["Users added"]) silently returns null; the
+  original spelling survives only inside the description string. timestamp is
+  parsed from isotimestamp. MFA login attempts are a separate stream — see
+  DuoAuthentication; calls and SMS Duo placed are DuoTelephony.
 fields:
 
   # ==========================================
@@ -50,11 +58,14 @@ fields:
       The actor. For a human administrator this is the Duo admin's name or email
       as shown in the Admin Panel. Automated actors use a descriptive service
       string rather than a real account — e.g.
-      "Active Directory User Sync: AD Sync" for a directory sync, or an API
-      integration name for Admin API calls. Filter out the sync/service actors
+      "Active Directory User Sync: AD Sync" for a directory sync, "System" for
+      changes Duo makes itself (user_delete when a pending deletion completes),
+      or an API integration name for Admin API calls. For admin_login /
+      admin_login_error / admin_2fa_error the admin's email is in
+      descriptionFields.email (errors only) and username is the display name. Filter out the sync/service actors
       when auditing human activity; alert when a human actor appears outside
       expected hours or from an unexpected action set.
-    sampleValues: ["adele.vance@contoso.com", "Active Directory User Sync: AD Sync"]
+    sampleValues: ["Adele Vance", "Active Directory User Sync: AD Sync", "System"]
 
   - name: action
     type: String
@@ -63,7 +74,8 @@ fields:
       group on. Families:
 
         Users / devices: user_create, user_update, user_delete,
-          user_reset_activation, bypass_create, phone_create, phone_update,
+          user_pending_delete, user_restore, user_reset_activation,
+          user_remember_me_revoked, bypass_create, phone_create, phone_update,
           phone_delete, phone_send_sms_activation, token_create, token_delete,
           u2ftoken_create, u2ftoken_delete.
         Admins: admin_create, admin_update, admin_delete, admin_login,
@@ -72,18 +84,25 @@ fields:
           integration_create, integration_update, integration_delete,
           integration_skey_view, group_create, group_update, group_delete,
           customer_update.
-        Directory sync: ad_sync_begin, ad_sync_finish, ad_sync_user,
-          directory_create, directory_update, directory_delete.
+        Directory sync: ad_sync_begin, ad_sync_finish, ad_sync_failed,
+          ad_sync_user, directory_create, directory_update, directory_delete.
+          A sync that cannot reach the Authentication Proxy logs
+          ad_sync_failed (with descriptionFields.reason) instead of
+          ad_sync_finish. Users that disappear from the synced directory
+          get user_pending_delete from the sync actor, then a user_delete by
+          "System" days later.
 
-      bypass_create, integration_skey_view, user_reset_activation and
-      policy/integration deletions are the ones worth alerting on: each can
-      weaken or remove MFA enforcement.
-    sampleValues: ["ad_sync_finish", "admin_login", "user_update", "bypass_create", "policy_update", "integration_delete"]
+      In a typical tenant the stream is dominated by ad_sync_begin /
+      ad_sync_finish (one pair per sync run, roughly every 30 minutes).
+      user_update to status "Bypass", bypass_create, integration_skey_view,
+      user_reset_activation and policy/integration deletions are the ones
+      worth alerting on: each can weaken or remove MFA enforcement.
+    sampleValues: ["ad_sync_finish", "ad_sync_failed", "admin_login", "user_update", "user_pending_delete", "bypass_create", "policy_update"]
 
   - name: object
     type: String
-    description: "The target the action was applied to — the Duo user, phone number, group, policy, integration, directory-sync name, or admin the change affected. Free-form and action-dependent; empty for actions with no distinct target (e.g. admin_login). Combine with action for a readable audit line (action + object)."
-    sampleValues: ["AD Sync", "avance", "Microsoft RDP", "Global Policy", "555-555-0142"]
+    description: "The target the action was applied to — the Duo username, phone number (dashed national form, e.g. \"616-555-0142\", for phone_* actions), group, policy, integration, directory-sync name, or admin the change affected. Free-form and action-dependent; null for actions with no distinct target (admin_login, admin_login_error, admin_2fa_error). Combine with action for a readable audit line (action + object)."
+    sampleValues: ["AD Sync", "avance", "616-555-0142", "Microsoft RDP", "Global Policy", null]
 
   # ==========================================
   # CHANGE DETAIL
@@ -97,32 +116,60 @@ fields:
     type: Dynamic
     description: >-
       The change detail parsed into a dynamic object — the field to query.
-      Its keys vary by action, and many are human-readable with spaces, so use
-      bracket indexing and cast:
-      toint(descriptionFields["Users added"]),
-      tostring(descriptionFields["Errors"]).
+      Its keys vary by action. Duo's human-readable keys arrive here with
+      spaces and dots removed ("Users added" -> Usersadded, "Sync Ref. Code"
+      -> SyncRefCode), so plain dot notation works; cast the value:
+      toint(descriptionFields.Usersadded),
+      tostring(descriptionFields.Errors). The original spelling
+      (descriptionFields["Users added"]) returns null.
 
       Common keys by action family:
 
         ad_sync_finish (directory sync results):
-          - descriptionFields["Duration"] — wall-clock sync time ("0:00:01").
-          - descriptionFields["Users seen"] / ["Users added"] /
-            ["Users modified"] / ["Users removed"] (numbers) — the sync delta.
-            A nonzero "Users removed" means accounts lost MFA coverage; a spike
-            in "Users added" is worth reviewing.
-          - descriptionFields["Errors"] — free text describing per-user sync
-            failures (e.g. an alias collision). Empty string when the sync was
-            clean; filter on isnotempty() to surface broken syncs.
-          - descriptionFields["authproxy_identifiers"] (array) — the
+          - descriptionFields.Duration — wall-clock sync time ("0:00:12").
+          - descriptionFields.Usersseen / Usersadded / Usersmodified /
+            Usersremoved (numbers) — the sync delta. A nonzero Usersremoved
+            means accounts lost MFA coverage; a spike in Usersadded is worth
+            reviewing.
+          - descriptionFields.Errors — free text describing per-user sync
+            failures (e.g. an alias collision). Absent or empty when the sync
+            was clean; filter on isnotempty() to surface broken syncs.
+          - descriptionFields.authproxy_identifiers (array) — the
             Authentication Proxy integration key(s) that ran the sync.
-          - descriptionFields["Sync Ref. Code"] — support reference hash for
-            the sync run; also correlates the ad_sync_begin/ad_sync_finish pair.
+          - descriptionFields.SyncRefCode — support reference hash for the
+            sync run; correlates ad_sync_begin / ad_sync_finish /
+            ad_sync_failed and the user_create / user_pending_delete events
+            the run produced.
 
-        user_create / user_update / admin_update:
-          - the changed attributes as key/value pairs (e.g. ["status"],
-            ["notes"], ["realname"], ["email"], ["groups"]). For updates the
-            value is the new setting; compare consecutive events on the same
+        ad_sync_failed:
+          - descriptionFields.reason — why the run failed (e.g. "The
+            Authentication Proxy did not respond. ..."), plus SyncRefCode.
+
+        admin_login / admin_login_error / admin_2fa_error:
+          - descriptionFields.ip_address — where the admin signed in from.
+          - descriptionFields.role — the admin role ("Owner",
+            "Administrator", "User Manager", ...) on admin_login.
+          - descriptionFields.factor ("push", "sms", "phone") and
+            descriptionFields.device (the phone, dashed national form) on
+            admin_login; an "sms" factor pairs with a DuoTelephony record
+            with context == "administrator login".
+          - descriptionFields.primary_auth_method ("Password", ...).
+          - descriptionFields.email and descriptionFields.error ("Invalid
+            password attempt", "Cancelled by user.") on the error actions.
+
+        user_create / user_update / user_delete / user_pending_delete:
+          - the changed attributes as key/value pairs: status ("Active",
+            "Bypass", "Disabled"), uname, email, realname, notes,
+            groups (array of {name}), phones (object keyed phone1, phone2, …
+            with number/platform/type). For updates the value is the new
+            setting; an update can be an empty object ({}) when only a
+            linked device changed. Compare consecutive events on the same
             object to reconstruct the before/after.
+
+        phone_create / phone_update / phone_delete:
+          - number (E.164), platform/os, type, extension, enrollment_status,
+            and on phone_update an activation regeneration (regen_mobile,
+            deleted_actcode).
 
         bypass_create:
           - ["bypass"] / ["count"] / ["valid_secs"] / ["remaining_uses"] —
@@ -134,4 +181,4 @@ fields:
       Because the key set is action-dependent, restrict to one action before
       reaching for a specific key, or use bag_keys()/mv-expand to discover
       which keys a given action produces in your tenant.
-    sampleValues: ["0:00:01", 6, 0, "a1b2c3d4e5f60718293a4b5c6d7e8f90", "DIAPROXY000000000001"]
+    sampleValues: ["0:00:12", 670, 0, "a1b2c3d4e5f60718293a4b5c6d7e8f90", "DIAPROXY000000000001", "Bypass", "Administrator"]
