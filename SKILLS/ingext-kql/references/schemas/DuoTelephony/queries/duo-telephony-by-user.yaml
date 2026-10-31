@@ -9,17 +9,11 @@ description: >-
   the number ("Adele's Phone (6165550142)"). An empty key collects phone
   logins with no auth_device.name.
 
-  Engine rules this shape depends on (ingextkql as of 2026-10-30): run it with
-  an explicit search range covering the 7 days (rangeFrom/rangeTo), because a
-  time filter inside a let does not widen the search window, which otherwise
-  falls back to the last 24 hours; union the let *summaries*, never the two
-  raw tables (a second table as a union arm is over-counted); and do not
-  join the summaries — fullouter/rightouter joins currently run as inner and
-  drop numbers seen on only one side. Users is collected with make_set_if
-  after the union, not inside the let: a dynamic value built inside a let
-  currently reaches the outer query as a string (so strcat_array(make_set())
-  in the let is null), and take_any() can pick the null that union fills in
-  for the arm without the column.
+  Union the let *summaries*, never the two raw tables: the engine refuses a
+  pipeline that reads a second table directly, because it would be counted
+  once per file. The ago(7d) filters inside the lets set the search window.
+  A join kind=fullouter between the two lets gives the same totals; the
+  union form merges each number into one row without a join key step.
 
   Read the result: Messages well above PhoneAuths means codes or calls
   that never completed a login; Messages with no PhoneAuths and no Users is
@@ -48,7 +42,7 @@ kql: |
   | order by Credits desc
 tags: [duo, cisco, telephony, sms, phone, attribution, union, credits]
 expected_output: |
-  Telephony per number with the users behind it, 7-day range passed explicitly (sanitized).
+  Telephony per number with the users behind it, last 7 days (sanitized).
 
   PhoneKey    Messages  Credits  PhoneAuths  Users
   6165550142  19        38       19          ["mbowen"]

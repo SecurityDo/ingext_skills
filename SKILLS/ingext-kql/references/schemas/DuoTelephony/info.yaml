@@ -27,12 +27,11 @@ description: >-
   contains the number ("Adele's Phone (6165550142)"), so normalize both sides
   to the last 10 digits with non-digits removed. To attribute in one query,
   summarize each table by that key in its own `let`, union the two summaries
-  and summarize again (see the duo-telephony-by-user query). Engine rules as
-  of 2026-10-30: never union the two raw tables (a second table as a union arm
-  is counted once per parquet file); do not join the summaries (fullouter and
-  rightouter joins run as inner and drop one-sided numbers); and pass the
-  search range (rangeFrom/rangeTo) explicitly, because a time filter inside a
-  `let` does not widen the search window, which falls back to the last 24h.
+  and summarize again (see the duo-telephony-by-user query). Union the `let`
+  summaries, not the raw tables: the engine refuses a pipeline that reads
+  both tables directly. A fullouter join between the two `let` summaries also
+  works, but on a join `on PhoneKey` the result has one PhoneKey column, not
+  PhoneKey and PhoneKey1.
 
   The schema is flat; fields are referenced bare. timestamp is parsed from the
   Duo epoch-second timestamp (same instant as isotimestamp). Login attempts are
