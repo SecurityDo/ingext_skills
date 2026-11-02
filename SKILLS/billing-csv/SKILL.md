@@ -1,7 +1,7 @@
 ---
 name: billing-csv
-version: 1.2.0
-description: "Generate a billing CSV for all clients from the tenant's own immutable daily usage ledger (usage_daily), with billable-user counts from the Office365 user resource dump. Trigger whenever the user asks to \"generate a billing CSV\", \"run the billing report\", \"export billing data\", \"create a billing file\", \"billing for [month/period]\", \"usage for the whole provider\", or any phrasing that implies producing a per-client usage summary for invoicing or accounting. The skill enumerates every tenant, reads each tenant's closed daily billing ledger for the period, writes one CSV row per client with a column per meter, adds a provider-wide TOTAL row, and counts billable users (Office365 paid Member users + Google Workspace users) locally."
+version: 1.3.0
+description: "Generate a billing CSV for all clients from the tenant's own immutable daily usage ledger (usage_daily), with billable-user counts from the Office365 user resource dump. Trigger whenever the user asks to \"generate a billing CSV\", \"run the billing report\", \"export billing data\", \"create a billing file\", \"billing for [month/period]\", \"usage for the whole provider\", or any phrasing that implies producing a per-client usage summary for invoicing or accounting. The skill enumerates every tenant, reads each tenant's closed daily billing ledger for the period, writes one CSV row per client with eventwatch and datalake byte columns, adds a provider-wide TOTAL row, and counts billable users (Office365 paid Member users + Google Workspace users) locally."
 ---
 
 # Billing CSV Generator
@@ -36,7 +36,8 @@ always **per tenant, then summed**. Each entry carries the account `name` (the
 (use for the `Client` column).
 
 To bill the whole provider, bill every account returned here and add a TOTAL
-row (Step 5).
+row (Step 5). When the user names several providers/connectors, produce one CSV
+per provider.
 
 ## Step 2 — Billable user count per tenant
 
@@ -108,6 +109,10 @@ user, skuId` can hit the engine's per-table row cap on large tenants. The dump
 is the whole snapshot, so a local `nunique()` over the paid-filtered rows is
 ground truth.
 
+If the dump count cannot be done (many tenants, or a quick run is wanted), fall
+back to the ledger's `paidUsers` on the final billable day and tell the user the
+figure is the ledger's observed seat count, not the dump count.
+
 ## Step 3 — Data volume per tenant from the usage ledger
 
 For each tenant, call `usage_daily` with `account="<name>"` and
@@ -115,37 +120,30 @@ For each tenant, call `usage_daily` with `account="<name>"` and
 current month omit nothing — the tool handles it). This returns a per-day ledger
 plus a precomputed `summary.totals`, one entry per meter.
 
-**Use `summary.totals[*].bytes`** — the whole-month total per meter — for the CSV
-columns. The meters are:
+**Use `summary.totals[*].bytes`** — the whole-month total per meter. Only two
+volumes are written to the CSV:
 
-| Ledger meter | Meaning |
-|---|---|
-| `input_bytes` | Total raw bytes ingested |
-| `platform_datalake_bytes` | Bytes stored to the datalake |
-| `lake_ingress_bytes` | Datalake ingress |
-| `eventwatch_bytes` | Eventwatch volume |
-| `lake_search_bytes` | Datalake search volume |
-| `lake_realtime_search_bytes` | Real-time search volume |
-| `deleted_bytes` | Deleted / dropped volume |
-| `processed_bytes` | Usually 0; include only if non-zero |
+- **`eventwatch_bytes`** = ledger meter `eventwatch_bytes`.
+- **`datalake_bytes`** = `lake_ingress_bytes − eventwatch_bytes`.
 
-> **BILLING CALCULATION — which bytes to charge.** When calculating billing, use
-> these two volumes (not the raw meters one-for-one):
-> - **Eventwatch usage = `eventwatch_bytes`.**
-> - **Datalake usage = `lake_ingress_bytes − eventwatch_bytes`.**
->
-> `eventwatch_bytes` is a subset of `lake_ingress_bytes` (eventwatch is always ≤
-> lake ingress), so subtracting it nets the two buckets and ensures no byte is
-> billed twice. Do **not** bill datalake on `platform_datalake_bytes` — that meter
-> is bytes stored after dedup/compression and is often *lower* than eventwatch,
-> which breaks the "datalake ≥ eventwatch" relationship. The subtraction is always
-> ≥ 0; if a tenant ever shows `eventwatch_bytes > lake_ingress_bytes`, clamp the
-> datalake figure to 0 and flag it as a data anomaly.
+`eventwatch_bytes` is a subset of `lake_ingress_bytes` (eventwatch is always ≤
+lake ingress), so subtracting it nets the two buckets and ensures no byte is
+billed twice. Do **not** use `platform_datalake_bytes` for datalake — that meter
+is bytes stored after dedup/compression and is often *lower* than eventwatch. If a
+tenant ever shows `eventwatch_bytes > lake_ingress_bytes`, clamp `datalake_bytes`
+to 0 and flag it in `Note` as a data anomaly.
+
+The other ledger meters (`input_bytes`, `platform_datalake_bytes`,
+`lake_search_bytes`, `lake_realtime_search_bytes`, `deleted_bytes`,
+`processed_bytes`) are **not** written to the CSV. Include them only if the user
+explicitly asks. For providers with many tenants, delegate batches of
+`usage_daily` calls to subagents that return compact JSON, to avoid context
+overflow.
 
 **READ THE FLAGS before trusting a number:**
 
 - `storeAvailable:false` → the ledger was unreachable for that tenant. Do **not**
-  record zero. Mark the tenant's volume columns as unavailable, and say so.
+  record zero. Leave the tenant's two byte columns blank, and say so.
   (Only if the user explicitly accepts an approximation may you fall back to the
   legacy PromQL queries for that one tenant — label those cells as estimates.)
 - A day with `state:"missing"` had no collection; `summary.missingDays > 0` (or any
@@ -181,26 +179,26 @@ the pipe/router double-count.
 
 ## Step 5 — Write the CSV
 
-**Standard columns** (one row per tenant, then a provider TOTAL row):
+**Columns** (one row per tenant, then a provider TOTAL row):
 
 ```
-Client,Billing From,Billing To,Billed Days,Paid Users (M365),input_bytes,platform_datalake_bytes,lake_ingress_bytes,eventwatch_bytes,lake_search_bytes,lake_realtime_search_bytes,deleted_bytes,Note
+Client,Billing From,Billing To,Billed Days,Paid Users (M365),eventwatch_bytes,datalake_bytes,Note
 ```
 
 - `Client` = the account's `displayName` from Step 1.
 - `Billing From` / `Billing To` = first / last day of the billing cycle (UTC, `YYYY-MM-DD`).
 - `Billed Days` = `summary.billableDays` from the ledger.
 - `Paid Users (M365)` = Step-2 billable users (0 with a `Note` when the tenant has no Office365 user source).
-- The seven meter columns are **raw integers** from `summary.totals[*].bytes` (no unit conversion). A meter absent for a tenant is 0; an unavailable ledger is left blank with a `Note`.
-- `Note` = per-row flags: `LOWER BOUND: N missing days`, `ledger unavailable`, `no M365 user source`, `M365 users observed = 0`, etc.
-- **TOTAL row** `Client = "TOTAL (whole of {provider})"`: sum each meter column across all tenants; sum `Paid Users (M365)`; leave `Billed Days` blank. If **any** tenant was a lower bound or had an unavailable ledger, the TOTAL is a lower bound — say so in its `Note` and name the affected tenant(s).
+- `eventwatch_bytes` and `datalake_bytes` are **raw integers** (no unit conversion), calculated as in Step 3. An unavailable ledger is left blank with a `Note`.
+- `Note` = per-row flags: `LOWER BOUND: N missing days`, `ledger unavailable`, `no M365 user source`, `M365 users observed = 0`, seat provider is not M365, `ANOMALY: eventwatch > lake_ingress; datalake clamped to 0`, etc.
+- **TOTAL row** `Client = "TOTAL (whole of {provider})"`: sum `eventwatch_bytes` and `datalake_bytes` across all tenants. **Leave `Billed Days` and `Paid Users (M365)` blank** (do not total paid users). If **any** tenant was a lower bound or had an unavailable ledger, the TOTAL is a lower bound — say so in its `Note` and name the affected tenant(s); otherwise leave the Note blank.
 - Sort client rows alphabetically by `Client`; the TOTAL row goes last.
 - UTF-8 encoding, Unix line endings.
-- Write to the workspace outputs folder as `billing_{YYYY-MM}_{provider-or-timestamp}.csv`.
+- Write to the workspace outputs folder as `billing_{YYYY-MM}_{provider-or-timestamp}.csv`, one file per provider.
 
 > **Do not bake prices or SKUs into this CSV.** The ledger holds quantities only.
-> If the user wants a single "usage" column or a dollar figure, ask which meter
-> they bill on and (for money) the rate, then add that column — do not infer it.
+> If the user wants a dollar figure, ask which meter they bill on and the rate,
+> then add that column — do not infer it.
 
 ## Failure modes
 
