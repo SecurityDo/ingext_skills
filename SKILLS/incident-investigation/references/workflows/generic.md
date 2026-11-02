@@ -38,6 +38,9 @@ The summary tells you what fired; the raw event tells you what happened.
 - **Read the whole event**, not the summary's attribute list: the actor (user, process,
   service account), its parent, its start time, signer, command line, source and
   destination, and what the product did about it (blocked, killed, excluded, failed).
+  Decode any Base64 argument in the command line and quote the decoded text (see
+  `sentinelone.md` S2, "Decode every encoded argument"); an undecoded argument is not a gap
+  to report, it is a step not yet done.
 - **On a Defender for Endpoint alert, read the trigger from the Log Analytics workspace
   when the account has one** (SKILL.md step 0) — *workspace*. The datalake's Defender
   index holds the alert, not what the device did, and a **custom detection's** alert

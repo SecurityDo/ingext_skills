@@ -202,6 +202,18 @@ quote them in the closure whatever they say.
   encrypted user files. Never call a signed vendor installer "confirmed ransomware" from
   the label and the counters alone.
 
+**Decode every encoded argument before judging the command line.** A Base64 run in
+`cmdLine`, `maliciousProcessArguments` or the `3608` activity's process fields (often after
+`-LaunchArguments`, `-EncodedCommand`/`-enc`/`-e`, `FromBase64String(`, or `base64 -d`) is
+part of the evidence. Decode it in the sandbox (`python3 -c 'import base64,sys;
+print(base64.b64decode(sys.argv[1]+"=="))' '<string>'`; PowerShell's `-EncodedCommand` is
+UTF-16LE, so decode those bytes with `.decode("utf-16-le")`). Quote the decoded text in the
+closure, cut to about 200 characters. It either confirms the reading (an Apple XPC service's
+`-LaunchArguments` decodes to JSON naming its own `com.apple.*` service) or changes it (a
+download cradle, a second layer of encoding, a URL or address). Never list an undecoded
+argument as a gap: decoding costs one command. Text that is not valid Base64, or that
+decodes to binary, is reported as such, with its length.
+
 **Behavioural indicators belong to the storyline, not the file.** Under a behavioural
 engine (`DBT - Executables`) the threat's `indicators[]` are collected across its whole
 `storyline`: the file, its parent, its children, and processes it touched. One installer's
