@@ -151,6 +151,7 @@ function GetSigninTrend(status, rangeFrom, rangeTo, interval) {
 // Facets (every one covers every sign-in; a missing value is "(not recorded)"; failedCode labels successes "(none)"):
 //   app, clientApp, authRequirement, caStatus, country, deviceOS, browser, userType, riskLevel, protocol
 //   failedCode   ResultType of failed sign-ins, "(none)" for successes
+//   user, failedUser   the user principal name; when it is empty, the user object ID (UserId); "(not recorded)" only if both are empty
 function GetSigninFacets(status, rangeFrom, rangeTo) {
     let query = `
     AzureSigninLogs
@@ -161,7 +162,7 @@ function GetSigninFacets(status, rangeFrom, rangeTo) {
     | extend deviceOS = iff(isempty(tostring(DeviceDetail.operatingSystem)), "(not recorded)", tostring(DeviceDetail.operatingSystem)), browser = iff(isempty(tostring(DeviceDetail.browser)), "(not recorded)", tostring(DeviceDetail.browser))
     | extend riskLevel = iff(isempty(RiskLevelDuringSignIn), "(not recorded)", RiskLevelDuringSignIn), protocol = iff(isempty(AuthenticationProtocol), "(not recorded)", AuthenticationProtocol)
     | extend failedCode = iff(ResultType != "0", ResultType, "(none)")
-    | extend upn = iff(isempty(UserPrincipalName), "(not recorded)", tolower(UserPrincipalName)), ip = iff(isempty(IPAddress), "(not recorded)", IPAddress)
+    | extend upn = iff(isnotempty(UserPrincipalName), tolower(UserPrincipalName), iff(isnotempty(UserId), tolower(UserId), "(not recorded)")), ip = iff(isempty(IPAddress), "(not recorded)", IPAddress)
     | extend user = upn, failedUser = iff(ResultType != "0", upn, "(none)"), failedIp = iff(ResultType != "0", ip, "(none)")
     | facet by app, clientApp, authRequirement, caStatus, country, deviceOS, browser, userType, riskLevel, protocol, failedCode, user, failedUser, failedIp with (take 0)
     `
@@ -269,7 +270,7 @@ function GetNiFacets(status, rangeFrom, rangeTo) {
     | extend app = iff(isempty(AppDisplayName), "(not recorded)", AppDisplayName), clientApp = iff(isempty(ClientAppUsed), "(not recorded)", ClientAppUsed)
     | extend country = iff(isempty(Location), "(not recorded)", Location)
     | extend failedCode = iff(ResultType != "0", ResultType, "(none)")
-    | extend upn = iff(isempty(UserPrincipalName), "(not recorded)", tolower(UserPrincipalName)), ip = iff(isempty(IPAddress), "(not recorded)", IPAddress)
+    | extend upn = iff(isnotempty(UserPrincipalName), tolower(UserPrincipalName), iff(isnotempty(UserId), tolower(UserId), "(not recorded)")), ip = iff(isempty(IPAddress), "(not recorded)", IPAddress)
     | extend failedUser = iff(ResultType != "0", upn, "(none)"), failedIp = iff(ResultType != "0", ip, "(none)")
     | facet by app, clientApp, country, failedCode, failedUser, failedIp with (take 0)
     `

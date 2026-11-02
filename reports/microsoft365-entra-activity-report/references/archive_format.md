@@ -21,7 +21,7 @@
   An empty table (no rows, no columns) means no events or no table; the `sources` table says which.
 - `<s>_facets`: `value.orderedMap{keys, values}`. `keys[0]` is `PrimaryResult` (empty); every other key is a
   facet and `values[i].sx.rows` holds `{<facet>: value, count_: n}`. "Full" facets cover every event
-  (`(not recorded)` when empty); "subset" facets (`adminOp`, `sensitiveOp`, `failedOp`, `failedCode`,
+  (`(not recorded)` when empty; the `user` and `failedUser` facets hold the user principal name, or the user object ID when the name is empty, and `(not recorded)` only if both are empty); "subset" facets (`adminOp`, `sensitiveOp`, `failedOp`, `failedCode`,
   `failedActivity`) label the complement `(none)`. The facet lists are in `scripts/build_report.py` (SOURCES).
 - `sources`: `table.rows[]` of `{source, status, detail}`, two rows per table (trend and facets). `status` is `ok`
   or `not available`; `detail` carries the error text ("table not found: <Name>"). An existing but empty table is
