@@ -1,6 +1,6 @@
 ---
 name: microsoft365-entra-activity-report
-version: 2.0.1
+version: 2.0.0
 description: >-
   Produce a Microsoft 365 and Entra Activity report for ONE Ingext/Fluency tenant and a period (a calendar
   month by default) as HTML, PDF and CSV, built ONLY from the archive of the scheduled report
