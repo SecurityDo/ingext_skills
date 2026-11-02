@@ -237,6 +237,7 @@ in both source and archives; it does not check that their full file contents mat
 | [microsoft365-entra-activity-report](./reports/microsoft365-entra-activity-report/SKILL.md) | 2.0.0 | [Source](./reports/microsoft365-entra-activity-report) | [Download](./cowork/microsoft365-entra-activity-report.skill) | Microsoft 365 and Entra activity report from archived daily report results |
 | [windows-server-activity-report](./reports/windows-server-activity-report/SKILL.md) | 1.0.0 | [Source](./reports/windows-server-activity-report) | [Download](./cowork/windows-server-activity-report.skill) | Windows Server activity report from archived daily report results |
 | [fortigate-security-activity-report](./reports/fortigate-security-activity-report/SKILL.md) | 1.0.0 | [Source](./reports/fortigate-security-activity-report) | [Download](./cowork/fortigate-security-activity-report.skill) | FortiGate security activity report from archived daily report results |
+| [microsoft365-resource-inventory-report](./reports/microsoft365-resource-inventory-report/SKILL.md) | 1.0.0 | [Source](./reports/microsoft365-resource-inventory-report) | [Download](./cowork/microsoft365-resource-inventory-report.skill) | Microsoft 365 / Entra directory inventory (users, MFA, devices, apps, groups, licenses) from archived daily snapshots, with an interactive HTML view |
 
 ---
 
@@ -658,6 +659,23 @@ coverage and gap days. User and IP lists can be left out with `--no-actors`.
 - "Windows server activity report for last month"
 - "failed Windows logons last month"
 - "were any audit logs cleared on the domain controllers"
+
+### microsoft365-resource-inventory-report
+
+Produces a Microsoft 365 / Entra resource inventory report for **one tenant** as HTML, PDF and CSV,
+built **only from the archive** of the scheduled report `Office365_Resource_Inventory_Report`. It
+shows users, administrators and MFA registration (naming the enabled users with no MFA, administrators
+first), devices, Conditional Access policies by state, app registrations with client-secret hygiene and
+app-only permissions, enterprise applications, groups, and licensed users with users per license. The
+directory tables are snapshots, so the report shows the latest archived day and a trend over the days
+instead of adding them. `--interactive` also writes a single self-contained HTML file with tabs, search,
+sort and filter on the user lists, CSV export and hover trend charts. User lists can be left out with
+`--no-actors`.
+
+**Try:**
+- "Microsoft 365 resource report for Acme"
+- "which enabled users have no MFA"
+- "administrators without MFA and expired app secrets"
 
 ### incident-investigation
 
