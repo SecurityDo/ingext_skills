@@ -580,15 +580,20 @@ application that relays through an on-prem server, and a block stops a business 
 
 ## 3e — DLP match: read the message before describing it
 
-Run this when the ticket is a DLP rule (`O365_DLP_*`, or an `Office365` `DlpRuleMatch`).
-The question the customer has is **did sensitive data leave, and to whom**. The behavior
-event cannot answer it: its IP, city and message fields are usually `__undefined`. The raw
-`DlpRuleMatch` row can.
+Run this when the ticket is a DLP rule (`O365_DLP_*`, `SCC_Data_Loss_Prevention_*`, or an
+`Office365` DLP rule match). The question the customer has is **did sensitive data leave,
+and to whom**. The behavior event cannot answer it: its IP, city and message fields are
+usually `__undefined`. The raw rule-match row can. Exchange logs it as `DlpRuleMatch`;
+SharePoint, OneDrive and other workloads log `DLPRuleMatch`. Match the operation with
+`=~`: an exact match sees mail only, and a file match comes back as a false zero.
 
 1. **Run `assets/queries/dlp_message.kql`** over the incident window, before writing a
-   word about the message. It gives one row per message and rule: `From`, `To`, `CC`,
-   `BCC`, subject, policy, rule, `RuleMode`, severity, actions, `AccessScope`, and which
-   sensitive types matched in which attachment or in the body.
+   word about the message or file. It gives one row per message or file and rule: for
+   mail `From`, `To`, `CC`, `BCC` and subject; for a file its path (`Object`),
+   `FileOwner`, `SharedBy`, `ExternalVisible` and labels; for both the policy, rule,
+   `RuleMode`, severity, actions, `AccessScope`, which sensitive types matched and a
+   sample of the detected values (`Detected`), which shows a placeholder or test value
+   for what it is. For a file, where it went is step 3f (`file_movement.kql`).
 2. **Direction comes from `From`.** `From` equal to the subject mailbox is mail it sent.
    A subject line's "FW:" or "RE:" says nothing about direction. A run read "FW: …" as
    mail forwarded *to* a shared mailbox, and it was that mailbox sending an attachment
