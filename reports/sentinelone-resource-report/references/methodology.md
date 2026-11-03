@@ -2,42 +2,43 @@
 
 ## Data
 
-Three resource snapshots, each the full inventory at the snapshot hour (`dayIndex`, for example `20261103-04`):
+The scheduled report `SentinelOne_Resource_Report` queries the three SentinelOne resource tables (`sentinelOneAgent`,
+`sentinelOneApplication`, `sentinelOneThreat`) once a day and archives the result. Each archived day is a **snapshot** of
+the console when the run took it; the tables have no time column. The script reads the latest completed day and lists
+the other days in a change table. It never adds days together.
 
-- `sentinelOneAgent`: body under `@sentinelOneAgent`. Key fields: `uuid`, `computerName`, `machineType`, `osName`,
-  `agentVersion`, `isActive`, `lastActiveDate`, `mitigationMode`, `scanFinishedAt`, `appsVulnerabilityStatus`,
-  `infected`, `activeThreats`, `isDecommissioned`, `isUninstalled`.
-- `sentinelOneApplication`: body under `@sentinelOneApplication`. Key fields: `agentUuid`, `name`, `publisher`,
-  `version`, `riskLevel`, `installedAt`, `osType`.
-- `sentinelOneThreat`: body under `@sentinelOneThreat`. Key fields: `threatInfo.*` (name, classification,
-  confidence, analyst verdict, mitigation status, incident status, createdAt) and `agentRealtimeInfo.*` (endpoint
-  name and UUID).
+Tables used: `s1res_summary` (one row of totals, `asOf` is the end of the run window), `s1res_endpoints` (one row per
+endpoint, with the score, status and reasons the report computed), `s1res_agent_versions`, `s1res_apps_risk`,
+`s1res_apps_top` (the 25 applications on the most endpoints), `s1res_threats_class`, `s1res_threats_daily`,
+`s1res_threats_open`, and `sources` (which query ran and whether it succeeded). See the header of
+`Scripts/fplProcessors/code/SentinelOne_Resource_Report.js`.
 
 ## Joins
 
-Applications join to agents on `agentUuid`; threats on `agentRealtimeInfo.agentUuid`, falling back to
-`agentDetectionInfo.agentUuid`. Records that point at an agent that is not in the agent snapshot are counted but not
-attributed. They appear under "Data notes". A threat history that names removed endpoints is normal: the threat list
-keeps history, the agent list does not.
+The join of applications and threats to agents (on `agentUuid`) is done by the scheduled report, in KQL, and arrives as
+columns of `s1res_endpoints` (`riskyApps`, `openThreats`, `activeThreats`). The skill does no join of its own. A threat
+whose endpoint is no longer in the agent list is counted in the totals but cannot be attributed to an endpoint.
 
 ## Endpoints in scope
 
-Agents with `isDecommissioned` or `isUninstalled` set are left out. `isPendingUninstall` agents stay in and are
-counted in Protection health.
+Agents that are decommissioned or uninstalled are left out of `endpoints` (they are counted separately in the summary).
 
 ## Reporting
 
-`isActive` is SentinelOne's own flag. Silent endpoints are bucketed by days since `lastActiveDate`: under 1, 1 to 7,
-8 to 30, over 30. More than 7 days silent counts as stale.
+`isActive` is SentinelOne's own flag. Silent endpoints are bucketed by `daysSinceActive`: under 1, 1 to 7, 8 to 30,
+over 30. More than 7 days silent counts as stale. When the archive has no usable `daysSinceActive` (a tenant whose
+`lastActiveDate` cannot be parsed returns null), the endpoint is shown as "not reporting, last active unknown" and is not
+counted as stale; the report says so under Data notes.
 
 ## Newest agent build
 
-The highest `agentVersion` in the fleet, compared part by part as numbers. It is not the latest SentinelOne release,
-so a fleet that never upgrades reports 100% on the newest build. Say so if the figure looks too good.
+The highest `agentVersion` in the fleet, compared part by part as numbers (the row flagged `isNewest` in
+`s1res_agent_versions`). It is not the latest SentinelOne release, so a fleet that never upgrades reports 100% on the
+newest build. Say so if the figure looks too good.
 
 ## Endpoint score
 
-Points per endpoint, summed:
+Computed by the scheduled report and read as is. Points per endpoint, summed:
 
 | Condition | Points |
 |---|---|
@@ -51,28 +52,31 @@ Points per endpoint, summed:
 | Agent older than the newest build | 1 |
 | Reboot required | 1 |
 
-3 or more is **Needs action**, 1 or 2 is **Watch**, 0 is **Healthy**. The weights are in `analyse()` in the script.
-
-Last full scan age is shown in Protection health but is not scored. In the first tenant tested, 52 of 58 endpoints
-had a full scan older than 30 days, because SentinelOne runs a full disk scan at install and many fleets never
-repeat it. Scoring it made nearly every endpoint "Watch".
+3 or more is **Needs action**, 1 or 2 is **Watch**, 0 is **Healthy**. The weights live in the scheduled report. Scan age
+is not scored: many fleets never repeat the full disk scan SentinelOne runs at install, and scoring it made nearly every
+endpoint "Watch". Because the report works in whole calendar days to the end of the run window, an endpoint that went
+quiet late on the 7th day can score Watch in the archive.
 
 ## Open threat
 
-A threat is open when `threatInfo.mitigationStatus` is not `mitigated`, or `threatInfo.incidentStatus` is not
-`resolved`. A threat can be mitigated and still show an unresolved incident, so check both.
+A threat is open when its mitigation status is not `mitigated`, or its incident status is not `resolved`. A threat can be
+mitigated and still show an unresolved incident, so both are checked. `s1res_threats_open` lists each open threat;
+`s1res_threats_class` gives the history by classification and status; `s1res_threats_daily` gives threats per day, which
+the report rolls up to weeks.
+
+## What the archive does not carry
+
+Scan status and scan age, the confidence and verdict mix of the full threat history, application publishers beyond the
+top 25, a per-application endpoint list, versions per application, last logged-in user, site and domain, duplicate-name
+detail beyond the endpoint names, the reboot-required flag, and pending-uninstall agents. These were in the earlier
+dump-based version of this skill. Extending `SentinelOne_Resource_Report` is the way to bring one back.
 
 ## Known data pitfalls
 
-- **Threat names can be file hashes.** Some detections are named with a SHA-1 and an extension. The chart shortens
-  long names; `threats.csv` keeps them whole.
-- **`signed` is almost always false** in the application inventory (2,458 of 2,462 in the test tenant). It is not
-  used in the report.
-- **Duplicate host names.** Two agent records with the same `computerName` are usually a re-imaged or cloned
-  machine. Both are listed; the report flags the name.
-- **`windows_legacy` application records** come from old Windows installs and are counted in `facts.json`
-  (`applications.windowsLegacy`) but not charted.
-- **A tenant without SentinelOne** answers `resource type not found` to `list_resource_dumps` rather than returning
-  an empty list.
-- **Application counts are installs, not applications.** One application on 57 endpoints is 57 installs and one
-  distinct application. The report shows both.
+- **Threat names can be file hashes.** Some detections are named with a SHA-1 and an extension. The page shortens long
+  names; `open_threats.csv` keeps them whole.
+- **Application counts are installs, not applications.** One application on 57 endpoints is 57 installs and one distinct
+  application. The report shows both. The distinct count is by name and publisher.
+- **Snapshots, not events.** A later archived day replaces an earlier one. Compare days to see change; never sum them.
+- **A tenant without SentinelOne** has no archive entries or a `sources` table that says "not available". Treat that as
+  "no SentinelOne import", not as an error.

@@ -109,21 +109,21 @@ V.ov=()=>{const c=document.createElement('div');
   kpi('Not reporting',A.inactive.toLocaleString(),A.inactive?'#B91C1C':'#15803D',A.inactiveStale+' for over '+D.staleDays+' days','en',{reporting:'Not reporting'}),
   kpi('On newest agent',pct(A.onLatest,A.inScope),A.behindLatest?'#B45309':'#15803D',D.latestVersion,'en'),
   kpi('Need action',E.needsAction.toLocaleString(),E.needsAction?'#B91C1C':'#15803D',E.watch+' more on watch','en',{status:'Needs action'})];
- if(D.present.threat)kp.push(kpi('Open threats',T.open.toLocaleString(),T.open?'#B91C1C':'#15803D',T.total.toLocaleString()+' recorded','th',{open:'Open'}));
- if(D.present.application)kp.push(kpi('Risky app installs',P.highRiskInstances.toLocaleString(),P.highRiskInstances?'#B45309':'#15803D',P.highRiskDistinct+' distinct apps','ap',{risk:'High'}));
+ if(D.present.threat)kp.push(kpi('Open threats',T.open.toLocaleString(),T.open?'#B91C1C':'#15803D',T.total.toLocaleString()+' recorded','th'));
+ if(D.present.application)kp.push(kpi('Risky app installs',P.highRiskInstances.toLocaleString(),P.highRiskInstances?'#B45309':'#15803D',P.highRiskEndpoints+' endpoints','ap'));
  c.innerHTML=`<div class="g k3">${kp.join('')}</div>
-  <div class="p"><h3>Endpoints by reporting state</h3>${stack([['Reporting',A.active,'#15803D']].concat(Object.entries(A.inactiveBuckets).map(([k,v],i)=>['Silent '+k,v,['#B45309','#B91C1C','#7f1d1d','#64748B'][i%4]])),A.inScope)}</div>
+  <div class="p"><h3>Endpoints by reporting state</h3>${stack([['Reporting',A.active,'#15803D']].concat(Object.entries(A.inactiveBuckets).map(([k,v],i)=>[k==='unknown'?'Not reporting, last active unknown':'Silent '+k,v,['#B45309','#B91C1C','#7f1d1d','#64748B'][i%4]])),A.inScope)}</div>
   <div class="g c2" id="g1"></div><div class="g c2" id="g2" style="margin-top:12px"></div>
-  <div class="p read">Snapshot <b>${esc(D.snapshot)}</b>. Click a bar or a tile to open the table behind it. Applications and threats are joined to endpoints by agent UUID. "Newest agent" is the highest version in this fleet, not the latest SentinelOne release.</div>`;
+  <div class="p read">Archived snapshot as of <b>${esc(D.snapshot)}</b>. Click a bar or a tile to open the table behind it. "Newest agent" is the highest version in this fleet, not the latest SentinelOne release.</div>`;
  const g1=c.querySelector('#g1'),g2=c.querySelector('#g2');
  g1.insertAdjacentHTML('beforeend',bars('Agent versions',A.versions.map(v=>[v.name+(v.name===D.latestVersion?' (newest)':''),v.count,'agent',v.name]),'en'));
  g1.insertAdjacentHTML('beforeend',bars('Operating systems',A.os.map(v=>[v.name,v.count,'os',v.name]),'en'));
  g1.insertAdjacentHTML('beforeend',bars('Machine types',A.machineTypes.map(v=>[v.name,v.count,'type',v.name]),'en'));
- g1.insertAdjacentHTML('beforeend',kv('Protection health',[['Mitigation mode not protect',A.notProtect],['Reboot required',A.rebootRequired],['Apps need patching',A.patchRequired],['Infected or active threats',Math.max(A.infected,A.withActiveThreats)],['Full scan older than '+D.scanStaleDays+' days (info only)',A.scanStale],['Pending uninstall',A.pendingUninstall]]));
+ g1.insertAdjacentHTML('beforeend',kv('Protection health',[['Mitigation mode not protect',A.notProtect],['Behind the newest agent',A.behindLatest],['Apps need patching',A.patchRequired],['Infected or active threats',Math.max(A.infected,A.withActiveThreats)],['Endpoints with medium or high-risk apps',P.highRiskEndpoints]]));
  if(D.present.application){
   const order=['critical','high','medium','low'];
   g2.insertAdjacentHTML('beforeend',bars('Application risk',order.filter(k=>P.risk[k]).map(k=>[k[0].toUpperCase()+k.slice(1),P.risk[k],'risk',k[0].toUpperCase()+k.slice(1)]),'ap',P.instances.toLocaleString()+' installs, '+P.distinct.toLocaleString()+' distinct'));
-  g2.insertAdjacentHTML('beforeend',bars('Top publishers',P.topPublishers.map(v=>[v.name,v.count]),null,'by installs'));}
+  }
  else g2.insertAdjacentHTML('beforeend',na('Applications'));
  if(D.present.threat){
   g2.insertAdjacentHTML('beforeend',bars('Threat classification',T.classification.map(v=>[v.name,v.count,'cls',v.name]),'th'));
@@ -139,32 +139,32 @@ function weekly(w){if(!w.length)return'<div class="m sm">No threats recorded.</d
 /* ---------------- Endpoints ---------------- */
 V.en=()=>{const c=document.createElement('div');
  c.innerHTML=`<div class="g k4"><div class="k" style="--c:var(--red)" data-go="en" data-pre='{"status":"Needs action"}'><span>Need action</span><b>${E.needsAction}</b><small>score 3 or more</small></div><div class="k" style="--c:var(--amb)" data-go="en" data-pre='{"status":"Watch"}'><span>Watch</span><b>${E.watch}</b><small>score 1 to 2</small></div><div class="k" style="--c:var(--grn)" data-go="en" data-pre='{"status":"Healthy"}'><span>Healthy</span><b>${E.healthy}</b><small>no open issue</small></div><div class="k" style="--c:var(--navy)" data-go="en" data-pre='{}'><span>All endpoints</span><b>${A.inScope}</b><small>${A.decommissioned+A.uninstalled} decommissioned or uninstalled left out</small></div></div>`;
- const cols=[{k:'name',h:'Endpoint',host:1},{k:'status',h:'Status',pill:1},{k:'reporting',h:'State',pill:1},{k:'type',h:'Type'},{k:'os',h:'OS'},{k:'agent',h:'Agent'},{k:'lastActiveDays',h:'Silent days',num:1},{k:'mitigation',h:'Mode'},{k:'apps',h:'Apps',num:1},{k:'riskyApps',h:'Risky apps',num:1},{k:'threats',h:'Threats',num:1},{k:'openThreats',h:'Open',num:1},{k:'reasons',h:'Why',w:1}];
- if(!D.noActors)cols.splice(1,0,{k:'user',h:'Last user'});
+ const cols=[{k:'name',h:'Endpoint',host:1},{k:'status',h:'Status',pill:1},{k:'reporting',h:'State',pill:1},{k:'type',h:'Type'},{k:'os',h:'OS'},{k:'agent',h:'Agent'},{k:'lastActiveDays',h:'Silent days',num:1},{k:'mitigation',h:'Mode'},{k:'riskyApps',h:'Risky apps',num:1},{k:'openThreats',h:'Open threats',num:1},{k:'reasons',h:'Why',w:1}];
  const t=dt(cols,D.endpoints,{title:'Endpoints',file:'sentinelone_endpoints',sort:'score',dir:-1,pre:PRE.en,
   filters:[{key:'status',label:'Status',opts:['Needs action','Watch','Healthy']},{key:'reporting',label:'State',opts:['Reporting','Not reporting']},{key:'type',label:'Type',opts:uniq(D.endpoints,'type')},{key:'os',label:'OS',opts:uniq(D.endpoints,'os')},{key:'agent',label:'Agent',opts:uniq(D.endpoints,'agent')},{key:'patch',label:'Patching',opts:['Patch required','Up to date']}]});
  c.appendChild(t);return c};
 /* ---------------- Applications ---------------- */
 V.ap=()=>{const c=document.createElement('div');if(!D.present.application){c.innerHTML=na('Applications');return c}
- c.innerHTML=`<div class="g k4">${kpi('Installs',P.instances.toLocaleString(),'#14213d',P.newInWindow.toLocaleString()+' in the last '+P.newWindowDays+' days')}${kpi('Distinct applications',P.distinct.toLocaleString(),'#1D4ED8','name and publisher')}${kpi('Risky installs',P.highRiskInstances.toLocaleString(),P.highRiskInstances?'#B45309':'#15803D','medium, high or critical','ap',{risk:'High'})}${kpi('Endpoints with risky apps',P.highRiskEndpoints.toLocaleString(),P.highRiskEndpoints?'#B45309':'#15803D','of '+A.inScope.toLocaleString())}</div>`;
- const cols=[{k:'name',h:'Application',w:1},{k:'publisher',h:'Publisher',w:1},{k:'risk',h:'Risk',pill:1},{k:'installs',h:'Installs',num:1},{k:'endpoints',h:'Endpoints',num:1},{k:'versions',h:'Versions',w:1},{k:'hosts',h:'Endpoints (risky apps only)',w:1}];
- c.appendChild(dt(cols,D.apps,{title:'Applications',file:'sentinelone_applications',sort:'endpoints',dir:-1,pre:PRE.ap,filters:[{key:'risk',label:'Risk',opts:['Critical','High','Medium','Low','None']}]}));return c};
+ c.innerHTML=`<div class="g k4">${kpi('Installs',P.instances.toLocaleString(),'#14213d',P.newInWindow.toLocaleString()+' in the last '+P.newWindowDays+' days')}${kpi('Distinct applications',P.distinct.toLocaleString(),'#1D4ED8','name and publisher; the table lists the 25 most widespread')}${kpi('Risky installs',P.highRiskInstances.toLocaleString(),P.highRiskInstances?'#B45309':'#15803D','medium, high or critical','ap',{risk:'High'})}${kpi('Endpoints with risky apps',P.highRiskEndpoints.toLocaleString(),P.highRiskEndpoints?'#B45309':'#15803D','of '+A.inScope.toLocaleString())}</div>`;
+ const cols=[{k:'name',h:'Application',w:1},{k:'publisher',h:'Publisher',w:1},{k:'risk',h:'Risk',pill:1},{k:'endpoints',h:'Endpoints',num:1}];
+ c.appendChild(dt(cols,D.apps,{title:'Most widespread applications',file:'sentinelone_applications_top',sort:'endpoints',dir:-1,pre:PRE.ap,filters:[{key:'risk',label:'Risk',opts:['Critical','High','Medium','Low','None']}]}));return c};
 /* ---------------- Threats ---------------- */
 V.th=()=>{const c=document.createElement('div');if(!D.present.threat){c.innerHTML=na('Threats');return c}
- c.innerHTML=`<div class="g k4">${kpi('Threats',T.total.toLocaleString(),'#14213d',esc(T.first)+' to '+esc(T.last))}${kpi('Open',T.open.toLocaleString(),T.open?'#B91C1C':'#15803D','not mitigated or not resolved','th',{open:'Open'})}${kpi('Malicious',(T.malicious||0).toLocaleString(),T.malicious?'#B91C1C':'#15803D','confidence level')}${kpi('Endpoints affected',T.endpointsAffected.toLocaleString(),'#B45309','of '+A.inScope.toLocaleString()+' current')}</div>
+ c.innerHTML=`<div class="g k4">${kpi('Threats',T.total.toLocaleString(),'#14213d',esc(T.first)+' to '+esc(T.last))}${kpi('Open',T.open.toLocaleString(),T.open?'#B91C1C':'#15803D','not mitigated or not resolved','th')}${kpi('Mitigated',((T.mitigation||{}).mitigated||0).toLocaleString(),'#15803D','of '+T.total.toLocaleString())}${kpi('Endpoints with open threats',new Set(D.threatRows.map(r=>r.endpoint)).size.toLocaleString(),'#B45309','of '+A.inScope.toLocaleString()+' current')}</div>
   <div class="g c2" id="tg" style="margin-top:12px"></div>`;
  const g=c.querySelector('#tg');
  g.insertAdjacentHTML('beforeend',`<div class="p"><h3>Threats per week</h3>${weekly(T.weekly)}</div>`);
- g.insertAdjacentHTML('beforeend',bars('Top threat names',T.topNames.map(v=>[v.name,v.count,'q',v.name]),'th'));
- g.insertAdjacentHTML('beforeend',bars('Endpoints with the most threats',T.topEndpoints.map(v=>[v.name,v.count,'q',v.name]),'th'));
- g.insertAdjacentHTML('beforeend',bars('Confidence',T.confidence.map(v=>[v.name,v.count,'confidence',v.name]),'th'));
- const cols=[{k:'created',h:'Created'},{k:'endpoint',h:'Endpoint',host:1},{k:'name',h:'Threat',w:1},{k:'cls',h:'Class'},{k:'confidence',h:'Confidence'},{k:'verdict',h:'Verdict'},{k:'mitigation',h:'Mitigation',pill:1},{k:'incident',h:'Incident'},{k:'publisher',h:'Publisher',w:1},{k:'verification',h:'File signature'}];
+ g.insertAdjacentHTML('beforeend',bars('Classification',T.classification.map(v=>[v.name,v.count])));
+ g.insertAdjacentHTML('beforeend',bars('Mitigation status',Object.entries(T.mitigation).map(([k,v])=>[k.replace(/_/g,' '),v])));
+ g.insertAdjacentHTML('beforeend',bars('Incident status',Object.entries(T.incident).map(([k,v])=>[k.replace(/_/g,' '),v])));
+ const cols=[{k:'created',h:'Created'},{k:'endpoint',h:'Endpoint',host:1},{k:'name',h:'Threat',w:1},{k:'cls',h:'Class'},{k:'confidence',h:'Confidence'},{k:'verdict',h:'Verdict'},{k:'mitigation',h:'Mitigation',pill:1},{k:'incident',h:'Incident'}];
  const rows=D.threatRows;
- const t=dt(cols,rows,{title:'Threats',file:'sentinelone_threats',sort:'created',dir:-1,pre:PRE.th,filters:[{key:'open',label:'State',opts:['Open','Closed']},{key:'cls',label:'Class',opts:uniq(rows,'cls')},{key:'confidence',label:'Confidence',opts:uniq(rows,'confidence')},{key:'mitigation',label:'Mitigation',opts:uniq(rows,'mitigation')},{key:'incident',label:'Incident',opts:uniq(rows,'incident')}]});
+ const t=dt(cols,rows,{title:'Open threats',file:'sentinelone_open_threats',sort:'created',dir:-1,pre:PRE.th,filters:[{key:'cls',label:'Class',opts:uniq(rows,'cls')},{key:'confidence',label:'Confidence',opts:uniq(rows,'confidence')},{key:'mitigation',label:'Mitigation',opts:uniq(rows,'mitigation')},{key:'incident',label:'Incident',opts:uniq(rows,'incident')}]});
  t.style.marginTop='12px';c.appendChild(t);return c};
 /* ---------------- Coverage ---------------- */
 V.cv=()=>{const c=document.createElement('div');
- c.innerHTML=`<div class="p"><h3>Snapshot</h3><table><thead><tr><th>Resource</th><th class="r">Records</th><th>Snapshot</th><th>Integrations</th></tr></thead><tbody>${D.sources.map(s=>`<tr><td>${esc(s.resource)}</td><td class="r">${s.records.toLocaleString()}</td><td>${esc(s.snapshot||'none')}</td><td class="m">${esc(s.customers||'')}</td></tr>`).join('')}</tbody></table></div>
+ c.innerHTML=`<div class="p"><h3>Archived days <span class="m">each day is a snapshot; the latest is shown</span></h3><table><thead><tr><th>As of</th><th class="r">Endpoints</th><th class="r">Not reporting</th><th class="r">Need action</th><th class="r">Watch</th><th class="r">Open threats</th><th class="r">Endpoints with risky apps</th></tr></thead><tbody>${D.history.slice().reverse().map(h=>`<tr><td>${esc(h.asOf)}</td><td class="r">${h.endpoints}</td><td class="r">${h.inactive}</td><td class="r">${h.needsAction}</td><td class="r">${h.watch}</td><td class="r">${h.openThreats}</td><td class="r">${h.riskyEndpoints}</td></tr>`).join('')}</tbody></table></div>
+  <div class="p"><h3>Queries in the archived run</h3><table><thead><tr><th>Source</th><th>Status</th></tr></thead><tbody>${D.sources.map(s=>`<tr><td>${esc(s.source)}</td><td class="m">${esc(s.status)}${s.detail?': '+esc(s.detail):''}</td></tr>`).join('')}</tbody></table></div>
   ${D.notes.length?`<div class="p warn"><h3>Data notes</h3><ul>${D.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`:''}
   <div class="p"><h3>How the numbers are worked out</h3><ul>${D.method.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`;return c};
 function show(t,pre){tab=t;if(pre!==undefined)PRE[t]=pre;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));const m=$('#main');m.innerHTML='';m.appendChild(V[t]());

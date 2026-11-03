@@ -112,7 +112,7 @@ V.ov=()=>{const c=document.createElement('div');
   kpi('Silent over '+D.staleDays+' days',H.stale.toLocaleString(),H.silent?'#B91C1C':H.stale?'#B45309':'#15803D',H.silent+' over '+D.silentDays+' days','ho',{checkin:'Silent'}),
   kpi('On a current sensor',pct(H.onCurrent,H.total),H.behind?'#B45309':'#15803D','newest '+D.window+' releases','ho',{release:'older'}),
   kpi('Need action',E.needsAction.toLocaleString(),E.needsAction?'#B91C1C':'#15803D',E.watch+' more on watch','ho',{state:'Needs action'}),
-  kpi('Protection gaps',gaps.toLocaleString(),gaps?'#B91C1C':'#15803D','reduced mode, unprovisioned, no policy','ho',{mode:'Reduced'}),
+  kpi('Protection gaps',gaps.toLocaleString(),gaps?'#B91C1C':'#15803D','reduced mode, unprovisioned, no policy','ho'),
   AL?kpi('Open detections',AL.open.toLocaleString(),AL.openHigh?'#B91C1C':AL.open?'#B45309':'#15803D',AL.openHigh+' high or critical, last '+AL.windowDays+'d','de'):kpi('Contained',H.contained.toLocaleString(),H.contained?'#B45309':'#15803D','network isolation','ho',{contained:'Contained'})];
  const colors=['#15803D','#1D4ED8','#B45309','#B91C1C','#7f1d1d','#64748B'];
  c.innerHTML=`<div class="g k3">${kp.join('')}</div>
@@ -121,13 +121,10 @@ V.ov=()=>{const c=document.createElement('div');
   <div class="p read">Snapshot <b>${esc(D.snapshot)}</b>. Click a bar or a tile to open the table behind it. "Current sensor" means one of the newest ${D.window} major.minor releases in this fleet (${esc(D.currentReleases.join(', '))}), not the latest Falcon release.</div>`;
  const g1=c.querySelector('#g1'),g2=c.querySelector('#g2');
  g1.insertAdjacentHTML('beforeend',bars('Sensor versions',H.versions.map(v=>[v.name+(v.name===D.latestVersion?' (newest)':''),v.count,'sensor',v.name]),'ho',H.versionCount+' versions'));
- g1.insertAdjacentHTML('beforeend',bars('Operating systems',H.os.map(v=>[v.name,v.count,'os',v.name]),'ho'));
- g1.insertAdjacentHTML('beforeend',bars('Host roles',H.types.map(v=>[v.name,v.count,'role',v.name]),'ho'));
- g1.insertAdjacentHTML('beforeend',bars('Criticality',H.criticality.map(v=>[v.name,v.count,'crit',v.name]),'ho'));
+ g1.insertAdjacentHTML('beforeend',bars('Platforms',H.platforms.map(v=>[v.name,v.count])));
+ g1.insertAdjacentHTML('beforeend',bars('Platforms and host roles',H.mix.map(v=>[v.platform+' / '+v.type,v.count])));
  g2.insertAdjacentHTML('beforeend',kv('Protection health',[['Reduced functionality mode',H.rfm],['Sensor not provisioned',H.notProvisioned],['No prevention policy',H.noPrevention],['Prevention policy not applied',H.preventionNotApplied],['Contained',H.contained],['Uninstall protection off (Windows, Mac)',H.uninstallOff],['Running in safe mode',H.safeMode],['Last reboot over 90 days ago (info only)',H.rebootOld]]));
  g2.insertAdjacentHTML('beforeend',`<div class="p"><h3>New hosts per week <span class="m">first seen by Falcon</span></h3>${weekly(H.weekly)}</div>`);
- g2.insertAdjacentHTML('beforeend',bars('Active Directory domains',H.domains.map(v=>[v.name,v.count,'domain',v.name]),'ho'));
- g2.insertAdjacentHTML('beforeend',bars('Uninstall protection',H.uninstall.map(v=>[v.name,v.count,'uninstall',v.name]),'ho'));
  return c};
 function weekly(w){if(!w.length||!w.some(x=>x.count))return'<div class="m sm">No hosts enrolled in this period.</div>';const W=520,H2=190,pad=28,mx=Math.max(1,...w.map(x=>x.count)),bw=(W-2*pad)/w.length;
  let s=`<svg viewBox="0 0 ${W} ${H2}" class="chart" role="img" aria-label="New hosts per week"><line x1="${pad}" x2="${W-pad}" y1="${H2-26}" y2="${H2-26}" class="gl"/>`;
@@ -137,13 +134,12 @@ function weekly(w){if(!w.length||!w.some(x=>x.count))return'<div class="m sm">No
  return s+'</svg>'}
 /* ---------------- Hosts ---------------- */
 V.ho=()=>{const c=document.createElement('div');
- c.innerHTML=`<div class="g k4"><div class="k" style="--c:var(--red)" data-go="ho" data-pre='{"state":"Needs action"}'><span>Need action</span><b>${E.needsAction}</b><small>score 3 or more</small></div><div class="k" style="--c:var(--amb)" data-go="ho" data-pre='{"state":"Watch"}'><span>Watch</span><b>${E.watch}</b><small>score 1 to 2</small></div><div class="k" style="--c:var(--grn)" data-go="ho" data-pre='{"state":"Healthy"}'><span>Healthy</span><b>${E.healthy}</b><small>no open issue</small></div><div class="k" style="--c:var(--navy)" data-go="ho" data-pre='{}'><span>All hosts</span><b>${H.total.toLocaleString()}</b><small>one row per device id</small></div></div>`;
- const cols=[{k:'name',h:'Host',host:1},{k:'state',h:'Status',pill:1},{k:'checkin',h:'Check-in',pill:1},{k:'seenDays',h:'Silent days',num:1},{k:'platform',h:'Platform'},{k:'role',h:'Role'},{k:'os',h:'OS'},{k:'sensor',h:'Sensor'},{k:'release',h:'Release',pill:1},{k:'mode',h:'Mode',pill:1},{k:'prevention',h:'Prevention',pill:1},{k:'contained',h:'Containment',pill:1},{k:'crit',h:'Criticality'},{k:'reasons',h:'Why',w:1}];
- if(!D.noActors)cols.splice(1,0,{k:'user',h:'Last user'});
+ c.innerHTML=`<div class="g k4"><div class="k" style="--c:var(--red)" data-go="ho" data-pre='{"state":"Needs action"}'><span>Need action</span><b>${E.needsAction}</b><small>score 3 or more</small></div><div class="k" style="--c:var(--amb)" data-go="ho" data-pre='{"state":"Watch"}'><span>Watch</span><b>${E.watch}</b><small>score 1 to 2</small></div><div class="k" style="--c:var(--grn)"><span>Healthy</span><b>${E.healthy.toLocaleString()}</b><small>no open issue; not listed</small></div><div class="k" style="--c:var(--navy)"><span>All hosts</span><b>${H.total.toLocaleString()}</b><small>${H.listed.toLocaleString()} listed below</small></div></div>`;
+ const cols=[{k:'name',h:'Host',host:1},{k:'state',h:'Status',pill:1},{k:'checkin',h:'Check-in',pill:1},{k:'seenDays',h:'Silent days',num:1},{k:'platform',h:'Platform'},{k:'role',h:'Role'},{k:'os',h:'OS'},{k:'sensor',h:'Sensor'},{k:'release',h:'Release',pill:1},{k:'reasons',h:'Why',w:1}];
  if(AL)cols.splice(cols.findIndex(c=>c.k==='score'),0,{k:'openAlerts',h:'Open alerts',num:1},{k:'highOpen',h:'High open',num:1});
  const R=D.rows;
  c.appendChild(dt(cols,R,{title:'Hosts',file:'falcon_hosts',sort:'score',dir:-1,pre:PRE.ho,
-  filters:[{key:'state',label:'Status',opts:['Needs action','Watch','Healthy']},{key:'checkin',label:'Check-in',opts:['Silent','Checking in']},{key:'platform',label:'Platform',opts:uniq(R,'platform')},{key:'role',label:'Role',opts:uniq(R,'role')},{key:'os',label:'OS',opts:uniq(R,'os')},{key:'sensor',label:'Sensor',opts:uniq(R,'sensor')},{key:'release',label:'Release',opts:['current','older']},{key:'mode',label:'Mode',opts:['Full','Reduced']},{key:'prevention',label:'Prevention',opts:['Applied','Not applied','None']},{key:'contained',label:'Containment',opts:['Contained','No']},{key:'crit',label:'Criticality',opts:uniq(R,'crit')},{key:'domain',label:'Domain',opts:uniq(R,'domain')},{key:'uninstall',label:'Uninstall protection',opts:uniq(R,'uninstall')}]}));return c};
+  filters:[{key:'state',label:'Status',opts:['Needs action','Watch','Healthy']},{key:'checkin',label:'Check-in',opts:['Silent','Checking in']},{key:'platform',label:'Platform',opts:uniq(R,'platform')},{key:'role',label:'Role',opts:uniq(R,'role')},{key:'os',label:'OS',opts:uniq(R,'os')},{key:'sensor',label:'Sensor',opts:uniq(R,'sensor')},{key:'release',label:'Release',opts:['current','older']}]}));return c};
 /* ---------------- Detections ---------------- */
 V.de=()=>{const c=document.createElement('div');
  c.innerHTML=`<div class="g k4">${kpi('Detections and leads',AL.total.toLocaleString(),'#14213d','last '+AL.windowDays+' days, '+AL.hostsWithAlerts.toLocaleString()+' hosts')}${kpi('Open',AL.open.toLocaleString(),AL.open?'#B45309':'#15803D',AL.hostsOpen+' hosts')}${kpi('Open high or critical',AL.openHigh.toLocaleString(),AL.openHigh?'#B91C1C':'#15803D',AL.hostsOpenHigh+' hosts','ho',{state:'Needs action'})}${kpi('Open leads',AL.leadsOpen.toLocaleString(),AL.leadsOpen?'#B45309':'#15803D','automated leads')}</div>
@@ -159,12 +155,12 @@ V.de=()=>{const c=document.createElement('div');
 /* ---------------- Policies ---------------- */
 V.po=()=>{const c=document.createElement('div');
  const cols=[{k:'policy',h:'Policy type'},{k:'assigned',h:'Hosts assigned',num:1},{k:'missing',h:'Not assigned',num:1},{k:'notApplied',h:'Not applied',num:1}];
- c.innerHTML=`<div class="g k3">${kpi('Prevention policies in use',PL.preventionPolicies,'#1D4ED8','distinct policy ids')}${kpi('Without a prevention policy',H.noPrevention,H.noPrevention?'#B91C1C':'#15803D','of '+H.total.toLocaleString(),'ho',{prevention:'None'})}${kpi('Prevention not applied',H.preventionNotApplied,H.preventionNotApplied?'#B45309':'#15803D','assigned, not yet applied','ho',{prevention:'Not applied'})}</div>`;
+ c.innerHTML=`<div class="g k3">${kpi('Policy types tracked',PL.coverage.length,'#1D4ED8','assigned, missing, not applied')}${kpi('Without a prevention policy',H.noPrevention,H.noPrevention?'#B91C1C':'#15803D','of '+H.total.toLocaleString())}${kpi('Prevention not applied',H.preventionNotApplied,H.preventionNotApplied?'#B45309':'#15803D','assigned, not yet applied')}</div>`;
  const t=dt(cols,PL.coverage,{title:'Policy coverage',file:'falcon_policies',sort:'missing',dir:-1});t.style.marginTop='12px';c.appendChild(t);
- const g=document.createElement('div');g.innerHTML=bars('Hosts per prevention policy',PL.preventionTop.map(v=>[v.name,v.count]),null,'policy id');g.firstChild.style.marginTop='12px';c.appendChild(g.firstChild);return c};
+ return c};
 /* ---------------- Coverage ---------------- */
 V.cv=()=>{const c=document.createElement('div');
- c.innerHTML=`<div class="p"><h3>Snapshot</h3><table><thead><tr><th>Resource</th><th class="r">Records</th><th>Snapshot</th><th>Integrations</th></tr></thead><tbody>${D.sources.map(s=>`<tr><td>${esc(s.resource)}</td><td class="r">${s.records.toLocaleString()}</td><td>${esc(s.snapshot||'none')}</td><td class="m">${esc(s.customers||'')}</td></tr>`).join('')}</tbody></table></div>
+ c.innerHTML=`<div class="p"><h3>Archive: snapshot ${esc(D.snapshot)}</h3><table><thead><tr><th>Archived query</th><th>Status</th><th>Detail</th></tr></thead><tbody>${D.sources.map(s=>`<tr><td>${esc(s.source)}</td><td>${esc(s.status)}</td><td class="m">${esc(s.detail||'')}</td></tr>`).join('')}</tbody></table></div>
   ${D.notes.length?`<div class="p warn"><h3>Data notes</h3><ul>${D.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`:''}
   <div class="p"><h3>How the numbers are worked out</h3><ul>${D.method.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`;return c};
 function show(t,pre){tab=t;if(pre!==undefined)PRE[t]=pre;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));const m=$('#main');m.innerHTML='';m.appendChild(V[t]());

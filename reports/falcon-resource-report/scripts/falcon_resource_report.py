@@ -1,117 +1,45 @@
 #!/usr/bin/env python3
-"""CrowdStrike Falcon resource report: sensor health, versions, policies and posture in one page.
+"""CrowdStrike Falcon resource report: sensor health, versions, policies and detections in one page.
 
-Reads the falconAgent resource dump (Falcon Hosts API snapshot) for one Fluency / Ingext account and
-writes facts.json, two CSVs, a Fluency-branded print HTML page and a self-contained interactive HTML
-file. Standard library only.
+Archive only. Reads the archived daily runs of the scheduled FPL report CrowdStrike_Resource_Report (the
+download_report_archive output for one Fluency / Ingext account), takes the latest completed day and writes
+facts.json, three CSVs, a Fluency-branded print HTML page and a self-contained interactive HTML file.
+Standard library only. It never queries the tenant.
 
-  falcon_resource_report.py check  --dumps DIR
-  falcon_resource_report.py render --dumps DIR --work DIR --account NAME [--customer TEXT]
-
-The dump lives at DIR/falconAgent/<customer>.jsonl.gz.
+  falcon_resource_report.py check  --archive FILE [FILE ...]
+  falcon_resource_report.py render --archive FILE [FILE ...] --work DIR --account NAME [--customer TEXT]
 """
-import argparse, collections, csv, datetime as dt, glob, gzip, html, json, os, shutil, sys
+import argparse, collections, csv, datetime as dt, html, json, os, shutil, sys
 
-RES = "falconAgent"
+REPORT = "CrowdStrike_Resource_Report"
 STALE_DAYS = 7              # no check-in for longer than this is "stale"
 LONG_STALE_DAYS = 30        # no check-in for longer than this is "silent"
-REBOOT_DAYS = 90            # last reboot older than this is shown (info only, not scored)
 SENSOR_WINDOW = 3           # the newest N major.minor sensor releases in the fleet are "current" (N, N-1, N-2)
-NEW_HOST_DAYS = 30
 TREND_WEEKS = 12
-CORE_POLICIES = ["prevention", "sensor_update", "firewall", "device_control", "remote_response", "content-update",
-                 "global_config", "host-retention", "exposure-management", "sca", "it-automation", "logscale-collector"]
-ALERT_DAYS = 30             # alert window; the alert extract is built over this many days
-HIGH_SEV = ("High", "Critical")
+MAX_AGE_DAYS = 3            # an archived day older than this is flagged as out of date
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(os.path.dirname(HERE), "assets")
 
 
 # ---------------------------------------------------------------- loading
-def load(dumps):
-    """Return (rows, customers, snapshot_hours, files)."""
-    rows, customers, hours, files = [], set(), set(), []
-    for path in sorted(glob.glob(os.path.join(dumps, RES, "*.jsonl.gz"))):
-        files.append(os.path.basename(path))
-        with gzip.open(path, "rt", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                rec = json.loads(line)
-                body = rec.get("@" + RES)
-                if not isinstance(body, dict):
-                    continue
-                body["_customer"] = rec.get("@customer", "")
-                body["_ts"] = rec.get("@timestamp")
-                rows.append(body)
-                customers.add(rec.get("@customer", ""))
-                if rec.get("@dayIndex"):
-                    hours.add(rec["@dayIndex"])
-    return rows, sorted(customers), sorted(hours), files
-
-
-def _tables(path):
-    """Tables of a kql_search result saved as JSON: {name: [row dicts]} (raw response, a Tables list, or a list of row objects)."""
-    if not path or not os.path.exists(path):
-        return {}
-    data = json.load(open(path, encoding="utf-8"))
-    if isinstance(data, dict) and "data" in data:
-        data = data["data"]
-    if isinstance(data, dict):
-        data = data.get("Tables") or data.get("tables") or []
-    if isinstance(data, list) and data and isinstance(data[0], dict) and "Columns" not in data[0] and "columns" not in data[0]:
-        return {"PrimaryResult": [r for r in data if isinstance(r, dict)]}
-    out = {}
-    for tb in data:
-        cols = [c.get("ColumnName") or c.get("name") for c in tb.get("Columns") or tb.get("columns") or []]
-        out[tb.get("TableName") or tb.get("name") or "PrimaryResult"] = [dict(zip(cols, row)) for row in tb.get("Rows") or tb.get("rows") or []]
-    return out
-
-
-def load_search(hosts_path, facets_path, other_path, window_days):
-    """Build the same tables the archived report carries from the three kql_search queries in SKILL.md step 2b."""
-    hosts = _tables(hosts_path).get("PrimaryResult", [])
-    facets = _tables(facets_path)
-    other = _tables(other_path).get("PrimaryResult", [])
-    if not hosts and not facets:
-        return None
-
-    def facet(col, key, name):
-        rows = facets.get("Facet_" + col, [])
-        return [{name: r.get(col), "alerts": int(r.get("count_") or 0)} for r in rows if r.get(col) not in (None, "")]
-    n = lambda r, k: int(r.get(k) or 0)
-    tbl = {
-        "falres_summary": [{"windowDays": window_days, "alertsOpen": sum(n(r, "openAlerts") for r in hosts),
-                            "alertsOpenHigh": sum(n(r, "highOpen") for r in hosts), "leadsOpen": sum(n(r, "leadsOpen") for r in hosts),
-                            "hostsWithAlerts": len(hosts), "hostsOpenHigh": sum(1 for r in hosts if n(r, "highOpen")),
-                            "hostsOpen": sum(1 for r in hosts if n(r, "openAlerts")), "asOf": ""}],
-        "falres_hosts": [{"device_id": r.get("agent_id"), "alerts": n(r, "alerts"), "openAlerts": n(r, "openAlerts"), "highOpen": n(r, "highOpen")} for r in hosts],
-        "falres_alert_hosts": [{"device_id": r.get("agent_id"), "lastAlert": r.get("lastAlert") or "", "topDetection": r.get("topDetection") or ""} for r in hosts],
-        "falres_alert_sev": facet("severity", "severity", "severity"),
-        "falres_alert_status": facet("status", "status", "status"),
-        "falres_alert_tactics": facet("tacticName", "tactic", "tactic"),
-        "falres_alert_names": facet("detection", "name", "name")[:10],
-        "falres_alert_other": other,
-    }
-    return {"asOf": "", "days": 0, "tables": tbl, "search": True}
-
-
-def load_archive(path):
-    """Read the archived CrowdStrike_Resource_Report (download_report_archive output, or a run_report result).
-    Returns {"asOf", "days", "tables": {name: [row dicts]}} for the latest completed day, or None."""
-    if not path or not os.path.exists(path):
-        return None
-    data = json.load(open(path, encoding="utf-8"))
+def load_archive(paths):
+    """Read download_report_archive output (one or more files). Returns
+    {"asOf", "days", "lastDay", "firstDay", "tables": {name: [row dicts]}} for the latest completed day, or None."""
+    if isinstance(paths, str):
+        paths = [paths]
     cands = []
-    if isinstance(data, dict) and isinstance(data.get("days"), list):
-        for d in data["days"]:
-            res = d.get("result")
-            ent = d.get("entry") or {}
-            if res and (ent.get("state") in (None, "completed", "Completed", "complete", "done")):
-                cands.append((str(ent.get("rangeTo") or ""), str(ent.get("completedOn") or ""), res))
-    elif isinstance(data, dict):
-        cands.append(("", "", data.get("result") or data))
+    for path in paths or []:
+        if not path or not os.path.exists(path):
+            continue
+        data = json.load(open(path, encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("days"), list):
+            for d in data["days"]:
+                res = d.get("result")
+                ent = d.get("entry") or {}
+                if res and (ent.get("state") in (None, "completed", "Completed", "complete", "done")):
+                    cands.append((str(ent.get("rangeTo") or ""), str(ent.get("completedOn") or ""), res))
+        elif isinstance(data, dict):
+            cands.append(("", "", data.get("result") or data))
     if not cands:
         return None
     cands.sort(key=lambda c: (c[0], c[1]))
@@ -120,10 +48,10 @@ def load_archive(path):
     for o in res.get("objects") or []:
         tb = o.get("table") or {}
         tables[o.get("name")] = tb.get("rows") or []
-    if "falres_summary" not in tables or not tables["falres_summary"]:
+    if not tables.get("falres_summary"):
         return None
     summ = tables["falres_summary"][0]
-    return {"asOf": str(summ.get("asOf") or rng)[:10], "days": len(cands), "tables": tables}
+    return {"asOf": str(summ.get("asOf") or rng)[:10], "days": len(cands), "firstDay": cands[0][0], "lastDay": cands[-1][0], "tables": tables}
 
 
 def ts(value):
@@ -164,24 +92,29 @@ def plural(n, one, many=None):
     return one if n == 1 else (many or one + "s")
 
 
+
+
 # ---------------------------------------------------------------- check
 def cmd_check(args):
+    arc = load_archive(args.archive)
+    if not arc:
+        print("PROBLEM  no completed day with a falres_summary table in the archive file(s): the report cannot run")
+        return 1
     now = dt.datetime.now(dt.timezone.utc)
-    rows, customers, hours, files = load(args.dumps)
-    newest = max((r["_ts"] for r in rows if r.get("_ts")), default=None)
-    age_h = (now.timestamp() - newest / 1000.0) / 3600.0 if newest else None
+    s = arc["tables"]["falres_summary"][0]
+    age = (now.date() - dt.date.fromisoformat(arc["asOf"])).days
     level, note = "ok", ""
-    if not rows:
-        level, note = "PROBLEM", "no records: the report cannot run"
-    elif age_h is not None and age_h > 48:
-        level, note = "PROBLEM", "snapshot is %.0f hours old" % age_h
-    print("%-8s %-12s records=%-7d customers=%-2d snapshot=%s files=%s %s"
-          % (level, RES, len(rows), len(customers), ",".join(hours) or "-", len(files), note))
-    if rows:
-        ids = [r.get("device_id") for r in rows]
-        print("hosts: %d records, %d distinct device ids, %d with a last_seen, %d with a prevention policy"
-              % (len(rows), len(set(ids)), sum(1 for r in rows if ts(r.get("last_seen"))),
-                 sum(1 for r in rows if (r.get("device_policies") or {}).get("prevention"))))
+    if not int(s.get("hostCount") or 0):
+        level, note = "PROBLEM", "the latest day has no hosts (no Falcon resource import on the tenant)"
+    elif age > MAX_AGE_DAYS:
+        level, note = "PROBLEM", "latest archived day is %d days old" % age
+    srcs = [r for r in arc["tables"].get("sources", []) if r.get("status") != "ok"]
+    print("%-8s %-28s asOf=%s days_in_file=%d hosts=%s %s" % (level, REPORT, arc["asOf"], arc["days"], s.get("hostCount"), note))
+    for r in srcs:
+        print("         query not available: %s %s" % (r.get("source"), str(r.get("detail") or "")[:100]))
+    missing = [t for t in ("falres_seen", "falres_versions", "falres_platforms", "falres_policies", "falres_weekly") if not arc["tables"].get(t)]
+    if missing:
+        print("         tables empty or absent (an older script version?): %s" % ", ".join(missing))
     return 1 if level == "PROBLEM" else 0
 
 
@@ -190,227 +123,114 @@ def top(counter, n=10):
     return [{"name": k, "count": v} for k, v in counter.most_common(n)]
 
 
-def policy_of(r, name):
-    p = (r.get("device_policies") or {}).get(name)
-    return p if isinstance(p, dict) else None
+def n_of(r, k):
+    try:
+        return int(r.get(k) or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
-def analyse(dumps, now, archive=None):
-    rows, customers, hours, _ = load(dumps)
-    # a host appears once per device_id; keep the newest record if a snapshot repeats one
-    by_id = {}
-    for r in rows:
-        k = r.get("device_id") or r.get("hostname")
-        if k not in by_id or (r.get("_ts") or 0) >= (by_id[k].get("_ts") or 0):
-            by_id[k] = r
-    hosts = list(by_id.values())
-    minors = sorted({minor(h.get("agent_version")) for h in hosts if minor(h.get("agent_version"))}, reverse=True)
-    rank = {m: i for i, m in enumerate(minors)}
-    latest = max((h.get("agent_version") for h in hosts if h.get("agent_version")), key=vkey, default="")
+def analyse(arc, now):
+    tb = arc["tables"]
+    s = tb["falres_summary"][0]
+    total = n_of(s, "hostCount")
+    cur_rel = [x.strip() for x in str(s.get("currentReleases") or "").split(",") if x.strip()]
+    vers = tb.get("falres_versions", [])
+    current_ver = {v.get("agentVersion"): bool(v.get("isCurrent")) for v in vers}
+    latest = str(s.get("newestVersion") or "")
 
     eps = []
-    for h in hosts:
-        last = ts(h.get("last_seen")); first = ts(h.get("first_seen")); boot = ts(h.get("last_reboot"))
-        prev = policy_of(h, "prevention"); su = policy_of(h, "sensor_update")
-        plat = h.get("platform_name") or "Unknown"
-        uninstall = (su or {}).get("uninstall_protection") or ""
-        m = minor(h.get("agent_version"))
+    for r in tb.get("falres_hosts", []):
+        ver = r.get("agentVersion") or ""
+        d = r.get("daysSinceSeen")
+        d = None if d in (None, "") or int(d) >= 99999 else int(d)
         e = {
-            "customer": h.get("_customer", ""), "id": h.get("device_id", ""), "host": h.get("hostname", ""),
-            "platform": plat, "type": h.get("product_type_desc") or "Unknown", "os": h.get("os_product_name") or h.get("os_version") or "",
-            "build": h.get("os_build") or "", "domain": h.get("machine_domain") or "", "site": h.get("site_name") or "",
-            "user": h.get("last_login_user") or "", "version": h.get("agent_version") or "",
-            "behind": m is not None and rank.get(m, 0) >= SENSOR_WINDOW, "versionRank": rank.get(m) if m else None,
-            "status": h.get("status") or "", "provision": h.get("provision_status") or "",
-            "rfm": (h.get("reduced_functionality_mode") or "").lower() == "yes",
-            "safeMode": (h.get("safe_mode") or "").lower() in ("yes", "true"),
-            "rtr": h.get("rtr_state") or "", "criticality": h.get("criticality") or "unassigned",
-            "tags": len(h.get("tags") or []), "groups": len(h.get("groups") or []),
-            "lastSeen": last, "lastSeenDays": (now - last).days if last else None,
-            "firstSeen": first, "lastReboot": boot, "rebootDays": (now - boot).days if boot else None,
-            "prevention": bool(prev), "preventionApplied": bool(prev and prev.get("applied") is not False),
-            "preventionPolicy": (prev or {}).get("policy_id", ""), "uninstall": uninstall,
-            "policies": sorted((h.get("device_policies") or {}).keys()),
-            "notApplied": sorted(k for k, v in (h.get("device_policies") or {}).items() if isinstance(v, dict) and v.get("applied") is False),
+            "id": r.get("device_id", ""), "host": r.get("hostname", ""), "platform": r.get("platform") or "Unknown", "type": r.get("role") or "Unknown",
+            "os": r.get("os") or "", "version": ver, "behind": bool(ver) and current_ver.get(ver) is False, "lastSeenDays": d,
+            "score": n_of(r, "score"), "state": r.get("status") or ("Needs action" if n_of(r, "score") >= 3 else "Watch"), "reasons": r.get("reasons") or "",
+            "alerts": n_of(r, "alerts"), "openAlerts": n_of(r, "openAlerts"), "highOpen": n_of(r, "highOpen"), "lastAlert": "", "topAlert": "",
         }
-        e["contained"] = e["status"] not in ("", "normal")
-        e["notProvisioned"] = e["provision"] == "NotProvisioned"
-        e["uninstallOff"] = plat in ("Windows", "Mac") and bool(su) and uninstall != "ENABLED"
         eps.append(e)
+    by_id = {e["id"]: e for e in eps}
+    for r in tb.get("falres_alert_hosts", []):
+        e = by_id.get(r.get("device_id"))
+        if e:
+            e["lastAlert"] = str(r.get("lastAlert") or "")[:10]
+            e["topAlert"] = r.get("topDetection") or ""
 
-    ids = {e["id"] for e in eps}
-    per = collections.defaultdict(lambda: {"n": 0, "open": 0, "highOpen": 0, "leadsOpen": 0, "last": "", "names": collections.Counter()})
-    unmatched = 0
-    if archive:
-        # per-host counts come from the archived day: falres_hosts (scored hosts) and falres_alert_hosts (last alert, top detection)
-        tb = archive["tables"]
-        for r in tb.get("falres_hosts", []):
-            aid = r.get("device_id") or ""
-            if not (int(r.get("alerts") or 0) or int(r.get("openAlerts") or 0)):
-                continue
-            if aid not in ids:
-                unmatched += int(r.get("alerts") or 0)
-                continue
-            d = per[aid]
-            d["n"], d["open"], d["highOpen"] = int(r.get("alerts") or 0), int(r.get("openAlerts") or 0), int(r.get("highOpen") or 0)
-        for r in tb.get("falres_alert_hosts", []):
-            aid = r.get("device_id") or ""
-            if aid in per:
-                d = per[aid]
-                d["last"] = str(r.get("lastAlert") or "")
-                if r.get("topDetection"):
-                    d["names"][r["topDetection"]] += max(1, d["n"])
-    for e in eps:
-        d = per.get(e["id"])
-        e["alerts"] = d["n"] if d else 0
-        e["openAlerts"] = d["open"] if d else 0
-        e["highOpen"] = d["highOpen"] if d else 0
-        e["leadsOpen"] = d["leadsOpen"] if d else 0
-        e["lastAlert"] = (d["last"][:10] if d else "")
-        e["topAlert"] = d["names"].most_common(1)[0][0] if d and d["names"] else ""
+    seen_order = ["< 1 day", "1-7 days", "8-30 days", "31-90 days", "> 90 days", "unknown"]
+    seen = {r.get("bucket"): n_of(r, "hosts") for r in tb.get("falres_seen", [])}
+    buckets = collections.OrderedDict((k, seen.get(k, 0)) for k in seen_order)
 
-    for e in eps:
-        why, total = [], [0]
+    plat = collections.Counter(); types = collections.Counter(); mix = []
+    for r in tb.get("falres_platforms", []):
+        plat[r.get("platform") or "Unknown"] += n_of(r, "hosts")
+        types[r.get("role") or "Unknown"] += n_of(r, "hosts")
+        mix.append({"platform": r.get("platform") or "Unknown", "type": r.get("role") or "Unknown", "count": n_of(r, "hosts")})
 
-        def add(n, text):
-            total[0] += n
-            why.append(text)
-        d = e["lastSeenDays"]
-        if e["rfm"]:
-            add(3, "reduced functionality mode")
-        if e["notProvisioned"]:
-            add(3, "sensor not provisioned")
-        if not e["prevention"]:
-            add(3, "no prevention policy assigned")
-        elif not e["preventionApplied"]:
-            add(2, "prevention policy not applied")
-        if d is not None and d > LONG_STALE_DAYS:
-            add(3, "no check-in for %d days" % d)
-        elif d is not None and d > STALE_DAYS:
-            add(2, "no check-in for %d days" % d)
-        elif d is None:
-            add(2, "never checked in")
-        if e["contained"]:
-            add(2, "host is contained (%s)" % e["status"].replace("_", " "))
-        if e["uninstall"] == "MAINTENANCE_MODE":
-            add(2, "uninstall protection in maintenance mode")
-        elif e["uninstallOff"]:
-            add(1, "uninstall protection not enabled")
-        if e["behind"]:
-            add(1, "sensor %s is older than the newest %d releases" % (e["version"], SENSOR_WINDOW))
-        if e["safeMode"]:
-            add(1, "running in safe mode")
-        if e["highOpen"]:
-            add(3, "%d open high or critical detection%s" % (e["highOpen"], "" if e["highOpen"] == 1 else "s"))
-        elif e["openAlerts"]:
-            add(1, "%d open detection%s or lead%s" % (e["openAlerts"], "" if e["openAlerts"] == 1 else "s", "" if e["openAlerts"] == 1 else "s"))
-        e["score"] = total[0]
-        e["reasons"] = "; ".join(why)
-        e["state"] = "Needs action" if e["score"] >= 3 else ("Watch" if e["score"] else "Healthy")
-
-    n = len(eps)
-    buckets = collections.OrderedDict((k, 0) for k in ["< 1 day", "1-7 days", "8-30 days", "31-90 days", "> 90 days", "unknown"])
-    for e in eps:
-        d = e["lastSeenDays"]
-        buckets["unknown" if d is None else "< 1 day" if d < 1 else "1-7 days" if d <= 7 else "8-30 days" if d <= 30 else "31-90 days" if d <= 90 else "> 90 days"] += 1
-
-    weekly = collections.Counter()
-    for e in eps:
-        if e["firstSeen"]:
-            weekly[(e["firstSeen"] - dt.timedelta(days=e["firstSeen"].weekday())).date()] += 1
     weeks = []
-    if weekly:
-        end = (now - dt.timedelta(days=now.weekday())).date()
-        for i in range(TREND_WEEKS):
-            w = end - dt.timedelta(weeks=TREND_WEEKS - 1 - i)
-            weeks.append({"week": w.isoformat(), "count": weekly.get(w, 0)})
+    wk = {}
+    for r in tb.get("falres_weekly", []):
+        try:
+            d0 = dt.date.fromisoformat(str(r.get("week"))[:10])
+        except ValueError:
+            continue
+        wk[d0] = wk.get(d0, 0) + n_of(r, "hosts")
+    if wk:
+        last, first = max(wk), min(wk)
+        cur = first
+        while cur <= last:
+            weeks.append({"week": cur.isoformat(), "count": wk.get(cur, 0)})
+            cur += dt.timedelta(days=7)
+        weeks = weeks[-TREND_WEEKS:]
 
-    cover = []
-    for name in CORE_POLICIES:
-        have = sum(1 for e in eps if name in e["policies"])
-        cover.append({"policy": name, "assigned": have, "missing": n - have, "notApplied": sum(1 for e in eps if name in e["notApplied"])})
-    prev_ids = collections.Counter(e["preventionPolicy"] for e in eps if e["preventionPolicy"])
-    seen = collections.Counter((e["host"] or "").lower() for e in eps)
-    dup = sorted({e["host"] for e in eps if e["host"] and seen[e["host"].lower()] > 1})
-    crit = [e for e in eps if e["criticality"] in ("critical", "high")]
-    mix = collections.Counter((e["platform"], e["type"]) for e in eps)
-
+    cover = [{"policy": r.get("policy"), "assigned": n_of(r, "assigned"), "missing": n_of(r, "missing"), "notApplied": n_of(r, "notApplied")}
+             for r in tb.get("falres_policies", [])]
+    listed_cap = 500
     facts = {
-        "account": "", "generated": now.isoformat(), "snapshot": hours, "customers": customers,
-        "latestVersion": latest, "currentReleases": ["%d.%d" % m for m in minors[:SENSOR_WINDOW]],
+        "account": "", "generated": now.isoformat(), "asOf": arc["asOf"], "archive": {"days": arc["days"], "firstDay": arc["firstDay"], "lastDay": arc["lastDay"]},
+        "latestVersion": latest, "currentReleases": cur_rel,
         "hosts": {
-            "records": len(rows), "total": n, "duplicateIds": len(rows) - n, "duplicateNames": dup,
-            "stale": sum(1 for e in eps if e["lastSeenDays"] is not None and e["lastSeenDays"] > STALE_DAYS),
-            "silent": sum(1 for e in eps if e["lastSeenDays"] is not None and e["lastSeenDays"] > LONG_STALE_DAYS),
-            "seenBuckets": dict(buckets),
-            "rfm": sum(1 for e in eps if e["rfm"]), "contained": sum(1 for e in eps if e["contained"]),
-            "notProvisioned": sum(1 for e in eps if e["notProvisioned"]), "noPrevention": sum(1 for e in eps if not e["prevention"]),
-            "preventionNotApplied": sum(1 for e in eps if e["prevention"] and not e["preventionApplied"]),
-            "uninstallOff": sum(1 for e in eps if e["uninstallOff"]),
-            "uninstallMaintenance": sum(1 for e in eps if e["uninstall"] == "MAINTENANCE_MODE"),
-            "safeMode": sum(1 for e in eps if e["safeMode"]), "behind": sum(1 for e in eps if e["behind"]),
-            "onCurrent": sum(1 for e in eps if e["version"] and not e["behind"]),
-            "rebootOld": sum(1 for e in eps if e["rebootDays"] is not None and e["rebootDays"] > REBOOT_DAYS),
-            "newHosts": sum(1 for e in eps if e["firstSeen"] and (now - e["firstSeen"]).days <= NEW_HOST_DAYS),
-            "versions": top(collections.Counter(e["version"] or "unknown" for e in eps), 12),
-            "versionCount": len({e["version"] for e in eps}),
-            "platforms": top(collections.Counter(e["platform"] for e in eps)),
-            "types": top(collections.Counter(e["type"] for e in eps)),
-            "mix": [{"platform": k[0], "type": k[1], "count": v} for k, v in mix.most_common()],
-            "os": top(collections.Counter(e["os"] or "unknown" for e in eps), 10),
-            "criticality": top(collections.Counter(e["criticality"] for e in eps)),
-            "domains": top(collections.Counter(e["domain"] or "(none)" for e in eps), 8),
-            "sites": top(collections.Counter(e["site"] or "(none)" for e in eps), 8),
-            "uninstall": top(collections.Counter(e["uninstall"] or "(none)" for e in eps)),
-            "tagged": sum(1 for e in eps if e["tags"]), "weekly": weeks,
-            "criticalNeedsAction": sum(1 for e in crit if e["state"] == "Needs action"),
-            "criticalTotal": len(crit),
+            "total": total, "listed": len(eps), "listedCap": listed_cap, "truncated": len(eps) >= listed_cap and (n_of(s, "needsAction") + n_of(s, "watch")) > len(eps),
+            "stale": n_of(s, "stale7d"), "silent": n_of(s, "silent30d"), "seenBuckets": dict(buckets),
+            "rfm": n_of(s, "rfm"), "contained": n_of(s, "contained"), "notProvisioned": n_of(s, "notProvisioned"), "noPrevention": n_of(s, "noPrevention"),
+            "preventionNotApplied": n_of(s, "preventionNotApplied"), "uninstallOff": n_of(s, "uninstallOff"), "uninstallMaintenance": n_of(s, "uninstallMaintenance"),
+            "safeMode": n_of(s, "safeMode"), "behind": n_of(s, "behind"), "onCurrent": n_of(s, "onCurrent"), "rebootOld": n_of(s, "rebootOld"),
+            "versions": [{"name": v.get("agentVersion") or "unknown", "count": n_of(v, "hosts")} for v in vers[:12]], "versionCount": len(vers),
+            "platforms": top(plat), "types": top(types), "mix": mix, "weekly": weeks,
         },
-        "policies": {"coverage": cover, "preventionPolicies": len(prev_ids), "preventionTop": top(prev_ids, 8)},
-        "endpoints": {"needsAction": sum(1 for e in eps if e["state"] == "Needs action"),
-                      "watch": sum(1 for e in eps if e["state"] == "Watch"),
-                      "healthy": sum(1 for e in eps if e["state"] == "Healthy")},
+        "policies": {"coverage": cover},
+        "endpoints": {"needsAction": n_of(s, "needsAction"), "watch": n_of(s, "watch"), "healthy": n_of(s, "healthy")},
     }
-    facts["alerts"] = alert_facts(archive, eps, unmatched)
+    facts["alerts"] = alert_facts(arc, eps)
     return facts, eps
 
 
-def alert_facts(arc, eps, unmatched):
-    """Detection facts from the falres_alert_* tables (the archived report, or the same queries run by kql_search)."""
-    if not arc:
-        return None
+def alert_facts(arc, eps):
+    """Detection facts from the falres_alert_* tables of the archived day."""
     tb = arc["tables"]
-    summ = (tb.get("falres_summary") or [{}])[0]
+    summ = tb["falres_summary"][0]
+    if not (tb.get("falres_alert_sev") or n_of(summ, "alerts") or tb.get("falres_alert_hosts")):
+        return None
     ORDER = ["Critical", "High", "Medium", "Low", "Lead"]
     sev, status = collections.Counter(), collections.Counter()
-    open_high = leads = 0
     for r in tb.get("falres_alert_sev", []):
-        n = int(r.get("alerts") or 0)
-        s = r.get("severity") or "unknown"
-        sev[s] += n
-        if "status" in r:                      # rows of an older archive carry severity and status together
-            status[r.get("status") or "unknown"] += n
-        if s == "Lead":
-            leads += n
+        sev[r.get("severity") or "unknown"] += n_of(r, "alerts")
     for r in tb.get("falres_alert_status", []):
-        status[r.get("status") or "unknown"] += int(r.get("alerts") or 0)
-    tactic = collections.Counter({(r.get("tactic") or "unknown"): int(r.get("alerts") or 0) for r in tb.get("falres_alert_tactics", [])})
-    names = collections.Counter({(r.get("name") or "unknown"): int(r.get("alerts") or 0) for r in tb.get("falres_alert_names", [])})
-    risky = sorted([e for e in eps if e["highOpen"] or e["openAlerts"]], key=lambda e: (-e["highOpen"], -e["openAlerts"], e["host"].lower()))
-    total = sum(sev.values())
+        status[r.get("status") or "unknown"] += n_of(r, "alerts")
+    tactic = collections.Counter({(r.get("tactic") or "unknown"): n_of(r, "alerts") for r in tb.get("falres_alert_tactics", [])})
+    names = collections.Counter({(r.get("name") or "unknown"): n_of(r, "alerts") for r in tb.get("falres_alert_names", [])})
+    hosts = sorted(tb.get("falres_alert_hosts", []), key=lambda r: (-n_of(r, "highOpen"), -n_of(r, "openAlerts"), str(r.get("hostname") or "").lower()))
     return {
-        "windowDays": int(summ.get("windowDays") or ALERT_DAYS), "total": total, "open": int(summ.get("alertsOpen") or 0),
-        "openHigh": int(summ.get("alertsOpenHigh") or 0), "leads": leads, "leadsOpen": int(summ.get("leadsOpen") or 0),
-        "hostsWithAlerts": int(summ.get("hostsWithAlerts") or 0), "hostsOpenHigh": int(summ.get("hostsOpenHigh") or 0),
-        "hostsOpen": int(summ.get("hostsOpen") or 0), "unmatched": unmatched, "fromArchive": "" if arc.get("search") else arc["asOf"],
+        "windowDays": n_of(summ, "windowDays") or 30, "total": n_of(summ, "alerts") or sum(sev.values()), "open": n_of(summ, "alertsOpen"),
+        "openHigh": n_of(summ, "alertsOpenHigh"), "leads": sev.get("Lead", 0), "leadsOpen": n_of(summ, "leadsOpen"),
+        "hostsWithAlerts": n_of(summ, "hostsWithAlerts"), "hostsOpenHigh": n_of(summ, "hostsOpenHigh"), "hostsOpen": n_of(summ, "hostsOpen"),
         "severity": [{"name": k, "count": v} for k, v in sorted(sev.items(), key=lambda kv: ORDER.index(kv[0]) if kv[0] in ORDER else 9)],
-        "status": top(status), "tactics": top(tactic, 8), "detections": top(names, 8), "openHighDetections": [],
-        "noPreventionWithOpen": sum(1 for e in eps if e["openAlerts"] and (not e["prevention"] or not e["preventionApplied"])),
-        "silentWithOpen": sum(1 for e in eps if e["openAlerts"] and (e["lastSeenDays"] or 0) > STALE_DAYS),
-        "topHosts": [{"host": e["host"], "id": e["id"], "type": e["type"], "alerts": e["alerts"], "open": e["openAlerts"], "highOpen": e["highOpen"],
-                      "last": e["lastAlert"], "top": e["topAlert"]} for e in risky[:15]],
-        "other": [{"product": o.get("product") or "", "type": o.get("type") or "", "alerts": int(o.get("alerts") or 0), "hosts": int(o.get("hosts") or 0),
-                   "open": int(o.get("open") or 0)} for o in tb.get("falres_alert_other", [])],
+        "status": top(status), "tactics": top(tactic, 8), "detections": top(names, 8),
+        "topHosts": [{"host": r.get("hostname") or "", "id": r.get("device_id") or "", "type": r.get("role") or "", "alerts": n_of(r, "alerts"), "open": n_of(r, "openAlerts"),
+                      "highOpen": n_of(r, "highOpen"), "last": str(r.get("lastAlert") or "")[:10], "top": r.get("topDetection") or ""} for r in hosts[:25]],
+        "other": [{"product": o.get("product") or "", "type": o.get("type") or "", "alerts": n_of(o, "alerts"), "hosts": n_of(o, "hosts"), "open": n_of(o, "open")}
+                  for o in tb.get("falres_alert_other", [])],
     }
 
 
@@ -418,10 +238,10 @@ def alert_facts(arc, eps, unmatched):
 def default_narrative(f):
     h, e = f["hosts"], f["endpoints"]
     n = h["total"]
-    s1 = ("<p>Falcon manages <strong>%d hosts</strong>. <strong>%d (%s%%) checked in within the last %d days</strong>; <strong>%d have been silent "
+    s1 = ("<p>Falcon manages <strong>%d hosts</strong> (as of %s). <strong>%d (%s%%) checked in within the last %d days</strong>; <strong>%d have been silent "
           "for longer</strong>, %d of them for over %d days. <strong>%d hosts (%s%%) run one of the newest %d sensor releases</strong> (%s); %d are older. "
           "<strong>%d hosts need action</strong> and %d more are worth watching.</p>"
-          % (n, n - h["stale"], pct(n - h["stale"], n), STALE_DAYS, h["stale"], h["silent"], LONG_STALE_DAYS, h["onCurrent"], pct(h["onCurrent"], n),
+          % (n, esc(f["asOf"]), n - h["stale"], pct(n - h["stale"], n), STALE_DAYS, h["stale"], h["silent"], LONG_STALE_DAYS, h["onCurrent"], pct(h["onCurrent"], n),
              SENSOR_WINDOW, esc(", ".join(f["currentReleases"])), h["behind"], e["needsAction"], e["watch"]))
     gaps = h["rfm"] + h["notProvisioned"] + h["noPrevention"] + h["preventionNotApplied"]
     bits = []
@@ -434,14 +254,11 @@ def default_narrative(f):
         bits.append("<strong>%d %s currently contained</strong> (network isolation)." % (h["contained"], plural(h["contained"], "host is", "hosts are")))
     if h["uninstallOff"]:
         bits.append("Uninstall protection is not enabled on <strong>%d</strong> Windows or Mac hosts." % h["uninstallOff"])
-    if h["criticalTotal"]:
-        bits.append("<strong>%d of the %d hosts rated critical or high need action</strong>." % (h["criticalNeedsAction"], h["criticalTotal"]))
     al = f.get("alerts")
     out = [s1, "<p>" + " ".join(bits) + "</p>"]
     if al:
-        out.append("<p>In the %d-day window Falcon raised <strong>%d endpoint detections and leads</strong> on %d hosts. <strong>%d are still open</strong>, %d of them high or critical on %d hosts. %s</p>"
-                   % (al["windowDays"], al["total"], al["hostsWithAlerts"], al["open"], al["openHigh"], al["hostsOpenHigh"],
-                      ("%d hosts with open detections are also silent or lack an applied prevention policy." % (al["silentWithOpen"] + al["noPreventionWithOpen"])) if (al["silentWithOpen"] or al["noPreventionWithOpen"]) else ""))
+        out.append("<p>In the %d-day window Falcon raised <strong>%d endpoint detections and leads</strong> on %d hosts. <strong>%d are still open</strong>, %d of them high or critical on %d hosts.</p>"
+                   % (al["windowDays"], al["total"], al["hostsWithAlerts"], al["open"], al["openHigh"], al["hostsOpenHigh"]))
     return out
 
 
@@ -455,16 +272,12 @@ def default_steps(f):
         s.append({"when": "This week", "tone": "urgent", "text": "Fix the %d hosts with a protection gap: restore full functionality, provision the sensor or assign a prevention policy." % (h["rfm"] + h["notProvisioned"] + h["noPrevention"])})
     if h["contained"]:
         s.append({"when": "This week", "tone": "urgent", "text": "Confirm the %d contained %s still need isolation, and lift containment where the investigation is closed." % (h["contained"], plural(h["contained"], "host"))})
-    if h["criticalNeedsAction"]:
-        s.append({"when": "This week", "tone": "urgent", "text": "Start with the %d critical or high-rated hosts that need action." % h["criticalNeedsAction"]})
     if h["silent"]:
         s.append({"when": "Within 14 days", "tone": "normal", "text": "Find out why %d hosts have been silent for over %d days: retired, powered off, or the sensor is damaged. Remove retired hosts from Falcon." % (h["silent"], LONG_STALE_DAYS)})
     if h["uninstallOff"]:
         s.append({"when": "Within 14 days", "tone": "normal", "text": "Turn uninstall protection on for the %d Windows and Mac hosts where it is off or in maintenance mode." % h["uninstallOff"]})
     if h["behind"]:
         s.append({"when": "Within 30 days", "tone": "normal", "text": "Move the %d hosts on older sensor releases to a current one through the sensor update policy." % h["behind"]})
-    if h["duplicateNames"]:
-        s.append({"when": "Within 30 days", "tone": "normal", "text": "Check the %d host %s that appear more than once: cloned images or stale records." % (len(h["duplicateNames"]), plural(len(h["duplicateNames"]), "name"))})
     s.append({"when": "Quarterly", "tone": "routine", "text": "Repeat this review and compare check-in, sensor and policy counts with the previous quarter."})
     return s[:6]
 
@@ -536,20 +349,38 @@ def kpi(label, value, color, note=""):
 
 
 # ---------------------------------------------------------------- render
+def coverage_notes(arc, f, now):
+    notes = []
+    age = (now.date() - dt.date.fromisoformat(arc["asOf"])).days
+    notes.append("Built from the archived %s for %s (latest completed day in the file; the file holds %d day%s, %s to %s). Each archived day is a snapshot of the console, so days are never added together."
+                 % (REPORT, arc["asOf"], arc["days"], "" if arc["days"] == 1 else "s", arc["firstDay"] or "?", arc["lastDay"] or "?"))
+    if age > MAX_AGE_DAYS:
+        notes.append("The latest archived day is %d days old, so these figures are not current. Check the scheduled report." % age)
+    if f["hosts"]["truncated"]:
+        notes.append("The archive lists the %d highest-scoring hosts; %d hosts need action or watch, so the host table and hosts.csv are cut at %d. The counts above cover every host."
+                     % (f["hosts"]["listed"], f["endpoints"]["needsAction"] + f["endpoints"]["watch"], f["hosts"]["listedCap"]))
+    bad = [r for r in arc["tables"].get("sources", []) if r.get("status") != "ok"]
+    if bad:
+        notes.append("These queries did not run on the archived day and their panels are empty: %s." % ", ".join(str(r.get("source")) for r in bad))
+    notes.append("Not in the archive, so not shown: operating system and domain breakdowns, criticality, tags, last logged-in user, duplicate host names and per-policy ids.")
+    return notes
+
+
 def cmd_render(args):
     now = dt.datetime.now(dt.timezone.utc)
-    global ALERT_DAYS
-    ALERT_DAYS = args.alerts_days
-    archive = load_archive(args.alerts_archive) or load_search(args.alerts_hosts, args.alerts_facets, args.alerts_other, args.alerts_days)
-    if archive:
-        ALERT_DAYS = int((archive["tables"]["falres_summary"][0].get("windowDays")) or ALERT_DAYS)
-    f, eps = analyse(args.dumps, now, archive)
+    arc = load_archive(args.archive)
+    if not arc:
+        print("PROBLEM: no completed archived day with a falres_summary table; nothing to report", file=sys.stderr)
+        return 1
+    f, eps = analyse(arc, now)
     if not f["hosts"]["total"]:
-        print("PROBLEM: no falconAgent records; nothing to report", file=sys.stderr)
+        print("PROBLEM: the archived day has no Falcon hosts; nothing to report", file=sys.stderr)
         return 1
     f["account"] = args.account
     h, e, pol = f["hosts"], f["endpoints"], f["policies"]
     n = h["total"]
+    notes = coverage_notes(arc, f, now)
+    f["notes"] = notes
     os.makedirs(args.work, exist_ok=True)
 
     narr_path = os.path.join(args.work, "narrative.json")
@@ -580,21 +411,18 @@ def cmd_render(args):
     g.append(panel("Last check-in", stack + legend + bars(h["platforms"], n, "var(--navy)"), 6, "%s hosts" % "{:,}".format(n)))
     vrows = [{"name": v["name"] + ("  (newest)" if v["name"] == f["latestVersion"] else ""), "count": v["count"]} for v in h["versions"]]
     g.append(panel("Sensor versions", bars(vrows, n), 6, "%d versions; current releases %s" % (h["versionCount"], ", ".join(f["currentReleases"]))))
-    g.append(panel("Operating systems", bars(h["os"], n, "var(--navy)"), 6))
-    g.append(panel("Host roles and criticality", bars(h["types"], n, "var(--blue)") + '<div style="height:12px"></div>' + bars(h["criticality"], n, "var(--amber)"), 6))
+    mixrows = [{"name": "%s / %s" % (m["platform"], m["type"]), "count": m["count"]} for m in h["mix"]]
+    g.append(panel("Platforms and host roles", bars(mixrows, n, "var(--navy)"), 6, "hosts"))
     prot = [("Reduced functionality mode", h["rfm"]), ("Sensor not provisioned", h["notProvisioned"]), ("No prevention policy assigned", h["noPrevention"]),
             ("Prevention policy not applied", h["preventionNotApplied"]), ("Contained (network isolation)", h["contained"]),
             ("Uninstall protection off (Windows, Mac)", h["uninstallOff"]), ("  of which maintenance mode", h["uninstallMaintenance"]),
-            ("Running in safe mode", h["safeMode"]), ("Last reboot over %d days ago (info only)" % REBOOT_DAYS, h["rebootOld"])]
+            ("Running in safe mode", h["safeMode"]), ("Last reboot over 90 days ago (info only)", h["rebootOld"])]
     g.append(panel("Protection health", table(["Check", "Hosts"], [[td(k), '<td class="num">%d</td>' % v] for k, v in prot], ["75%", "25%"]), 6, "hosts affected"))
     rows = [[td(c["policy"]), '<td class="num">%s</td>' % "{:,}".format(c["assigned"]), '<td class="num">%s</td>' % "{:,}".format(c["missing"]), '<td class="num">%d</td>' % c["notApplied"]] for c in pol["coverage"]]
-    g.append(panel("Policy coverage", table(["Policy type", "Assigned", "Missing", "Not applied"], rows, ["40%", "20%", "18%", "22%"]), 6,
-                   "%d prevention %s in use" % (pol["preventionPolicies"], plural(pol["preventionPolicies"], "policy", "policies"))))
+    g.append(panel("Policy coverage", table(["Policy type", "Assigned", "Missing", "Not applied"], rows, ["40%", "20%", "18%", "22%"]), 6, "policy types, hosts"))
     g.append(panel("New hosts per week", trend_svg(h["weekly"]), 6, "first seen by Falcon, last %d weeks" % TREND_WEEKS))
-    g.append(panel("Active Directory domains", bars(h["domains"], n, "var(--navy)"), 6, "by hosts"))
 
     if al:
-        sevc = {"Critical": "#7f1d1d", "High": "#B91C1C", "Medium": "#B45309", "Low": "#64748B", "Lead": "#1D4ED8"}
         g.append(panel("Detections by severity", bars(al["severity"], al["total"] or 1, "var(--red)", "No detections in the window.") +
                        '<div style="height:12px"></div>' + bars(al["status"], al["total"] or 1, "var(--amber)"), 6,
                        "%d-day window; leads count as their own row" % al["windowDays"]))
@@ -610,48 +438,35 @@ def cmd_render(args):
             g.append(panel("Other Falcon alert products", table(["Product", "Type", "Alerts", "Hosts", "Open"], orow, ["26%", "34%", "13%", "13%", "14%"]), 12,
                            "identity, data protection and cloud alerts; context only, not in host scores"))
 
-    attn = sorted([x for x in eps if x["score"]], key=lambda x: (-x["score"], x["host"].lower()))
+    attn = sorted(eps, key=lambda x: (-x["score"], x["host"].lower()))
     cap = args.max_listed
     rows = [([('<td class="host">%s</td>' % esc(x["host"])), td(x["type"]), td(x["os"]), td(x["version"]),
-              '<td>%s</td>' % chip(x["state"], STATUS_COLOR[x["state"]]), td(x["reasons"], True)], "") for x in attn[:cap]]
+              '<td>%s</td>' % chip(x["state"], STATUS_COLOR.get(x["state"], "#64748B")), td(x["reasons"], True)], "") for x in attn[:cap]]
     note = "" if len(attn) <= cap else " (first %d of %d; the CSV has all)" % (cap, len(attn))
     app = [panel("Hosts needing attention", table(["Host", "Role", "OS", "Sensor", "Status", "Why"], rows, ["16%", "10%", "17%", "11%", "13%", "33%"], "data devlist") if rows
-                 else '<p class="panel-subtitle">No host has an open issue.</p>', 12, "%d of %s%s" % (len(attn), "{:,}".format(n), note), "page-break")]
+                 else '<p class="panel-subtitle">No host has an open issue.</p>', 12, "%d of %s%s" % (len(attn), "{:,}".format(e["needsAction"] + e["watch"]), note), "page-break")]
     method = ('<div class="method">'
-              '<div><b>Source.</b> One Falcon Hosts snapshot (falconAgent): the current state of each host with a Falcon sensor. One row per device id.</div>'
-              '<div><b>Last check-in.</b> Days from the host\'s last_seen to the time this report was built. More than %d days is stale; more than %d days is silent.</div>'
+              '<div><b>Source.</b> The archived daily run of the scheduled report %s for %s. Each day is a snapshot of the Falcon console at that run, and the latest completed day is used.</div>'
+              '<div><b>Last check-in.</b> Days from the host\'s last_seen to the end of the run window. More than %d days is stale; more than %d days is silent.</div>'
               '<div><b>Current sensor.</b> A host is current when its sensor major.minor release is one of the newest %d releases found in this fleet (N, N-1, N-2), not the latest Falcon release.</div>'
               '<div><b>Needs action.</b> Score of 3 or more: reduced functionality mode, not provisioned or no prevention policy (3 each), silent over %d days (3), prevention not applied, silent %d to %d days, contained or uninstall protection in maintenance mode (2 each). Watch is 1 to 2: uninstall protection off, older sensor, safe mode.</div>'
-              '<div><b>Detections.</b> FalconAlert rows created in the %d-day window, joined to hosts on agent_id = device_id. Endpoint detections (product epp) and automated leads count; identity, data protection and cloud alerts are listed for context only. An open high or critical detection scores 3; any other open detection or lead scores 1.</div>'
-              '<div><b>Not scored.</b> Last reboot age, host criticality and tags are shown for context.</div></div>'
-              % (STALE_DAYS, LONG_STALE_DAYS, SENSOR_WINDOW, LONG_STALE_DAYS, STALE_DAYS + 1, LONG_STALE_DAYS, ALERT_DAYS))
+              '<div><b>Detections.</b> FalconAlert rows created in the %d-day window. Endpoint detections (product epp) and automated leads count; identity, data protection and cloud alerts are listed for context only. An open high or critical detection scores 3; any other open detection or lead scores 1.</div>'
+              '<div><b>Not scored.</b> Last reboot age is shown for context.</div></div>'
+              % (REPORT, esc(f["asOf"]), STALE_DAYS, LONG_STALE_DAYS, SENSOR_WINDOW, LONG_STALE_DAYS, STALE_DAYS + 1, LONG_STALE_DAYS, al["windowDays"] if al else 30))
     app.append(panel("How to read this report", method, 12))
-    if al and al["unmatched"]:
-        app.append(panel("Data notes", '<div class="method"><div>%d alert rows belong to device ids that are not in the host snapshot (retired or deleted hosts) and are left out of the host table.</div></div>' % al["unmatched"], 12))
-    if al and al.get("fromArchive"):
-        app.append(panel("Data notes", '<div class="method"><div>Detections come from the archived CrowdStrike_Resource_Report for %s (%d-day window). Per-host detection counts cover the scored hosts the archive lists, so a host with only closed detections may show none.</div></div>' % (esc(al["fromArchive"]), al["windowDays"]), 12))
-    if not al:
-        app.append(panel("Data notes", '<div class="method"><div>No alert extract was supplied, so detections are not part of this run.</div></div>', 12))
-    if h["duplicateNames"] or h["duplicateIds"]:
-        bits = []
-        if h["duplicateIds"]:
-            bits.append("%d repeated device ids were collapsed to the newest record." % h["duplicateIds"])
-        if h["duplicateNames"]:
-            bits.append("%d host %s appear more than once: %s." % (len(h["duplicateNames"]), plural(len(h["duplicateNames"]), "name"), esc(", ".join(h["duplicateNames"][:8]))))
-        app.append(panel("Data notes", '<div class="method"><div>%s</div></div>' % " ".join(bits), 12))
+    app.append(panel("Data notes", '<div class="method">%s</div>' % "".join("<div>%s</div>" % esc(x) for x in notes), 12))
 
     ns = "".join('<div class="ns-item" style="border-left-color:%s"><div class="ns-num">%d</div><div><div class="ns-when">%s</div><div class="ns-act">%s</div></div></div>'
                  % ({"urgent": "var(--red)", "normal": "var(--blue)"}.get(s.get("tone"), "var(--navy)"), i + 1, esc(s.get("when", "")), esc(s.get("text", ""))) for i, s in enumerate(steps))
 
-    subtitle = args.customer or ", ".join(c for c in f["customers"] if c) or args.account
-    snap = (f["snapshot"] or [""])[-1]
+    subtitle = args.customer or args.account
     tpl = open(os.path.join(ASSETS, "report_template.html"), encoding="utf-8").read()
     page = {
         "report_title": "CrowdStrike Falcon Resource Report", "report_subtitle": subtitle,
-        "report_date": now.strftime("%Y-%m-%d"), "report_meta": " · account <strong>%s</strong>" % esc(args.account),
+        "report_date": now.strftime("%Y-%m-%d"), "report_meta": " · account <strong>%s</strong> · as of <strong>%s</strong>" % (esc(args.account), esc(f["asOf"])),
         "kpi_strip": "".join(kp), "summary_html": "".join(summary), "main_grid": "".join(g),
         "next_steps_items": ns, "appendix": "".join(app),
-        "footer_page_info": "Falcon resource report · %s" % esc(subtitle), "footer_data_date": esc(snap),
+        "footer_page_info": "Falcon resource report · %s" % esc(subtitle), "footer_data_date": esc(f["asOf"]),
     }
     for k, v in page.items():
         tpl = tpl.replace("{{%s}}" % k, v)
@@ -662,71 +477,58 @@ def cmd_render(args):
 
     with open(os.path.join(args.work, "hosts.csv"), "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["customer", "hostname", "device_id", "platform", "role", "os", "os_build", "domain", "site", "last_login_user", "sensor_version",
-                    "behind_current_releases", "last_seen", "last_seen_days", "first_seen", "last_reboot_days", "status", "provision_status",
-                    "reduced_functionality", "safe_mode", "rtr_state", "criticality", "tags", "groups", "prevention_policy", "prevention_applied",
-                    "uninstall_protection", "policies_assigned", "policies_not_applied", "alerts_%dd" % ALERT_DAYS, "open_alerts", "open_high_or_critical", "last_alert", "most_common_detection", "score", "state", "reasons"])
-        for x in sorted(eps, key=lambda x: (-x["score"], x["host"].lower())):
-            w.writerow([x["customer"], x["host"], x["id"], x["platform"], x["type"], x["os"], x["build"], x["domain"], x["site"], "" if args.no_actors else x["user"],
-                        x["version"], x["behind"], day(x["lastSeen"]), x["lastSeenDays"], day(x["firstSeen"]), x["rebootDays"], x["status"], x["provision"],
-                        x["rfm"], x["safeMode"], x["rtr"], x["criticality"], x["tags"], x["groups"], x["preventionPolicy"], x["preventionApplied"],
-                        x["uninstall"], len(x["policies"]), "; ".join(x["notApplied"]), x["alerts"], x["openAlerts"], x["highOpen"], x["lastAlert"], x["topAlert"], x["score"], x["state"], x["reasons"]])
-    if f.get("alerts"):
+        w.writerow(["hostname", "device_id", "platform", "role", "os", "sensor_version", "behind_current_releases", "days_since_seen",
+                    "alerts_%dd" % (al["windowDays"] if al else 30), "open_alerts", "open_high_or_critical", "score", "state", "reasons", "as_of"])
+        for x in attn:
+            w.writerow([x["host"], x["id"], x["platform"], x["type"], x["os"], x["version"], x["behind"], "" if x["lastSeenDays"] is None else x["lastSeenDays"],
+                        x["alerts"], x["openAlerts"], x["highOpen"], x["score"], x["state"], x["reasons"], f["asOf"]])
+    if al:
         with open(os.path.join(args.work, "alerts.csv"), "w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
-            w.writerow(["hostname", "device_id", "role", "alerts", "open_alerts", "open_high_or_critical", "last_alert", "most_common_detection"])
-            for x in sorted([x for x in eps if x["alerts"]], key=lambda x: (-x["highOpen"], -x["openAlerts"], -x["alerts"], x["host"].lower())):
-                w.writerow([x["host"], x["id"], x["type"], x["alerts"], x["openAlerts"], x["highOpen"], x["lastAlert"], x["topAlert"]])
+            w.writerow(["hostname", "device_id", "role", "alerts", "open_alerts", "open_high_or_critical", "last_alert", "most_common_detection", "as_of"])
+            for x in al["topHosts"]:
+                w.writerow([x["host"], x["id"], x["type"], x["alerts"], x["open"], x["highOpen"], x["last"], x["top"], f["asOf"]])
     with open(os.path.join(args.work, "policies.csv"), "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["policy_type", "hosts_assigned", "hosts_not_assigned", "hosts_not_applied"])
+        w.writerow(["policy_type", "hosts_assigned", "hosts_not_assigned", "hosts_not_applied", "as_of"])
         for c in pol["coverage"]:
-            w.writerow([c["policy"], c["assigned"], c["missing"], c["notApplied"]])
+            w.writerow([c["policy"], c["assigned"], c["missing"], c["notApplied"], f["asOf"]])
     with open(os.path.join(args.work, "facts.json"), "w", encoding="utf-8") as fh:
         json.dump(f, fh, indent=2, default=str)
-    build_interactive(os.path.join(args.work, "falcon_resource_report_interactive.html"), args, f, eps, now)
+    build_interactive(os.path.join(args.work, "falcon_resource_report_interactive.html"), args, f, eps, arc, notes, now)
 
-    print("hosts %d | silent over %d days: %d (over %d: %d) | current sensor %d, older %d" % (n, STALE_DAYS, h["stale"], LONG_STALE_DAYS, h["silent"], h["onCurrent"], h["behind"]))
-    print("needs action %d, watch %d, healthy %d" % (e["needsAction"], e["watch"], e["healthy"]))
+    print("as of %s | hosts %d | silent over %d days: %d (over %d: %d) | current sensor %d, older %d" % (f["asOf"], n, STALE_DAYS, h["stale"], LONG_STALE_DAYS, h["silent"], h["onCurrent"], h["behind"]))
+    print("needs action %d, watch %d, healthy %d (host table lists %d)" % (e["needsAction"], e["watch"], e["healthy"], len(eps)))
     print("protection gaps: rfm %d, not provisioned %d, no prevention %d, prevention not applied %d, contained %d" % (h["rfm"], h["notProvisioned"], h["noPrevention"], h["preventionNotApplied"], h["contained"]))
-    print("wrote: falcon_resource_report.html, falcon_resource_report_interactive.html, hosts.csv, policies.csv, facts.json in %s" % args.work)
+    if al:
+        print("detections (%dd): %d, open %d (high or critical %d) on %d hosts" % (al["windowDays"], al["total"], al["open"], al["openHigh"], al["hostsOpen"]))
+    print("wrote: falcon_resource_report.html, falcon_resource_report_interactive.html, hosts.csv, alerts.csv, policies.csv, facts.json in %s" % args.work)
     return 0
 
 
-def build_interactive(path, args, f, eps, now):
+def build_interactive(path, args, f, eps, arc, notes, now):
     """One self-contained interactive HTML file: tabs, search, sort, filters, CSV export, dark mode."""
-    h = f["hosts"]
     hosts = []
     for x in eps:
         hosts.append({
-            "name": x["host"], "user": "" if args.no_actors else x["user"], "platform": x["platform"], "role": x["type"], "os": x["os"],
+            "name": x["host"], "platform": x["platform"], "role": x["type"], "os": x["os"],
             "sensor": x["version"], "release": ("current" if not x["behind"] else "older") if x["version"] else "",
             "seenDays": x["lastSeenDays"] if x["lastSeenDays"] is not None else "", "checkin": "Silent" if (x["lastSeenDays"] or 0) > STALE_DAYS else "Checking in",
-            "mode": "Reduced" if x["rfm"] else "Full", "prov": x["provision"] or "unknown", "contained": "Contained" if x["contained"] else "No",
-            "prevention": "Applied" if x["preventionApplied"] else "Not applied" if x["prevention"] else "None",
-            "uninstall": x["uninstall"] or "none", "crit": x["criticality"], "domain": x["domain"], "policies": len(x["policies"]),
             "alerts": x["alerts"], "openAlerts": x["openAlerts"], "highOpen": x["highOpen"], "lastAlert": x["lastAlert"], "topAlert": x["topAlert"],
             "score": x["score"], "state": x["state"], "reasons": x["reasons"]})
-    sources = [{"resource": RES, "records": f["hosts"]["records"], "snapshot": ", ".join(f["snapshot"]), "customers": ", ".join(c for c in f["customers"] if c)}]
-    notes = []
-    if h["duplicateIds"]:
-        notes.append("%d repeated device ids were collapsed to the newest record." % h["duplicateIds"])
-    if h["duplicateNames"]:
-        notes.append("%d host name(s) appear more than once: %s." % (len(h["duplicateNames"]), ", ".join(h["duplicateNames"][:8])))
+    srcs = [{"source": r.get("source"), "status": r.get("status"), "detail": str(r.get("detail") or "")[:160]} for r in arc["tables"].get("sources", [])]
     method = [
-        "Source: one Falcon Hosts snapshot (falconAgent), one row per device id.",
-        "Last check-in: days from last_seen to the time this file was built. More than %d days is stale; more than %d days is silent." % (STALE_DAYS, LONG_STALE_DAYS),
+        "Source: the archived daily run of the scheduled report %s; the latest completed day (%s) is used. Each day is a snapshot of the Falcon console." % (REPORT, f["asOf"]),
+        "Last check-in: days from last_seen to the end of the run window. More than %d days is stale; more than %d days is silent." % (STALE_DAYS, LONG_STALE_DAYS),
         "Current sensor: the host's major.minor release is one of the newest %d releases found in this fleet (N, N-1, N-2), not the latest Falcon release." % SENSOR_WINDOW,
         "Needs action is a score of 3 or more: reduced functionality mode, not provisioned or no prevention policy (3 each), silent over %d days (3), prevention not applied, silent %d to %d days, contained or uninstall protection in maintenance mode (2 each)." % (LONG_STALE_DAYS, STALE_DAYS + 1, LONG_STALE_DAYS),
-        "Watch is 1 to 2: uninstall protection off on Windows or Mac, older sensor, safe mode. Last reboot age, criticality and tags are shown for context only.",
+        "Watch is 1 to 2: uninstall protection off on Windows or Mac, older sensor, safe mode. Last reboot age is shown for context only.",
+        "Detections: FalconAlert rows created in the %d-day window. Endpoint detections and automated leads count; an open high or critical detection scores 3, any other open detection or lead scores 1. Identity, data protection and cloud alerts are context only." % ((f.get("alerts") or {}).get("windowDays", 30)),
     ]
-    method.append("Detections: FalconAlert rows created in the %d-day window, joined to hosts on agent_id = device_id. Endpoint detections and automated leads count; an open high or critical detection scores 3, any other open detection or lead scores 1. Identity, data protection and cloud alerts are context only." % ALERT_DAYS)
-    if not args.no_actors:
-        method.append("This file embeds host names and last logged-in users. Share it only with the tenant's owner, or rebuild with --no-actors.")
-    data = {"title": "CrowdStrike Falcon Resource Report", "account": args.account, "customer": args.customer, "snapshot": (f["snapshot"] or [""])[-1],
+    data = {"title": "CrowdStrike Falcon Resource Report", "account": args.account, "customer": args.customer, "snapshot": f["asOf"],
             "staleDays": STALE_DAYS, "silentDays": LONG_STALE_DAYS, "window": SENSOR_WINDOW, "latestVersion": f["latestVersion"], "currentReleases": f["currentReleases"],
-            "noActors": args.no_actors, "hosts": h, "policies": f["policies"], "summary": f["endpoints"], "alerts": f.get("alerts"), "rows": hosts,
-            "sources": sources, "notes": notes, "method": method}
+            "hosts": f["hosts"], "policies": f["policies"], "summary": f["endpoints"], "alerts": f.get("alerts"), "rows": hosts,
+            "sources": srcs, "notes": notes, "method": method}
     blob = json.dumps(data, default=str).replace("</", "<\\/")
     tpl = open(os.path.join(ASSETS, "interactive_template.html"), encoding="utf-8").read()
     tpl = tpl.replace("{{title}}", esc((args.customer or args.account) + " Falcon Resource Report")).replace("{{data}}", blob)
@@ -737,16 +539,11 @@ def build_interactive(path, args, f, eps, now):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    c = sub.add_parser("check"); c.add_argument("--dumps", required=True)
-    r = sub.add_parser("render"); r.add_argument("--dumps", required=True); r.add_argument("--work", required=True)
+    c = sub.add_parser("check"); c.add_argument("--archive", nargs="+", required=True, help="download_report_archive JSON file(s) of %s" % REPORT)
+    r = sub.add_parser("render"); r.add_argument("--archive", nargs="+", required=True, help="download_report_archive JSON file(s) of %s" % REPORT)
+    r.add_argument("--work", required=True)
     r.add_argument("--account", required=True); r.add_argument("--customer", default="")
-    r.add_argument("--alerts-archive", default="", help="download_report_archive JSON of CrowdStrike_Resource_Report (preferred)")
-    r.add_argument("--alerts-hosts", default="", help="fallback: kql_search result of the per-host alert query (SKILL.md step 2b)")
-    r.add_argument("--alerts-facets", default="", help="fallback: kql_search result of the facet query")
-    r.add_argument("--alerts-days", type=int, default=30, help="window of the alert data in days (default 30)")
-    r.add_argument("--alerts-other", default="", help="fallback: kql_search result of the other-products query")
     r.add_argument("--max-listed", type=int, default=40)
-    r.add_argument("--no-actors", action="store_true", help="leave last logged-in user names out of the CSV and the interactive file")
     args = ap.parse_args()
     sys.exit(cmd_check(args) if args.cmd == "check" else cmd_render(args))
 

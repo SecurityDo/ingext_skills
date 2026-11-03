@@ -2,117 +2,103 @@
 name: sentinelone-resource-report
 version: 1.0.0
 description: >-
-  Produce a SentinelOne resource report for ONE Ingext/Fluency tenant as HTML (print-style and interactive), PDF and CSVs, combining the three
-  SentinelOne resource dumps in one page: agents (reporting status, agent versions, operating systems, protection
-  mode), applications (installed software, risk levels, publishers, risky applications) and threats (history,
-  classification, open threats, trend). The three are joined per endpoint to rank which endpoints need action.
-  Processed locally in Python from resource dumps; no searches or saved reports are needed. USE THIS SKILL for
-  "SentinelOne resource report", "SentinelOne inventory", "SentinelOne agent, application and threat summary for
-  tenant X", "which SentinelOne endpoints are not reporting or need attention". DO NOT use it for agent coverage
-  against other products (security-agent-deployment-status-report), OS support dates (endpoint-os-currency) or a
-  single host (ingext-get-profile).
+  Produce a SentinelOne resource report for ONE Ingext/Fluency tenant as HTML (print and interactive), PDF and CSVs, built ONLY from the archive of the scheduled report SentinelOne_Resource_Report. It never runs kql_search, run_report or any live search and never downloads a resource dump. It lays out agents (reporting status, versions, protection mode), applications (risk levels, most widespread) and threats (history, open threats, trend), ranking which endpoints need action. USE THIS SKILL for "SentinelOne resource report", "SentinelOne inventory", "which SentinelOne endpoints are not reporting or need attention". DO NOT use it to search events, for agent coverage against other products (security-agent-deployment-status-report), OS support dates (endpoint-os-currency), a single host (ingext-get-profile), or a tenant with no archive.
 ---
 
 # SentinelOne Resource Report
 
-One report for the three SentinelOne resource types a tenant imports:
+Answers: how many SentinelOne endpoints are reporting, which are silent or on an older agent, which are not in
+protect mode, which applications carry risk and how widespread they are, how many threats were detected and which are
+still open, and which endpoints need action first. It is read-only and archive-only.
 
-| Resource | What it holds |
+**The rule that defines this skill: no live searches.** Never call `kql_search`, `run_report`, `lake_search`, the
+resource dump tools or anything else that queries the tenant. Every figure comes from `download_report_archive`. If days
+are missing, say so and offer `backfill_report_archive`; never fill a gap by searching or by downloading a dump.
+
+The archive is written by the scheduled report `SentinelOne_Resource_Report` (an FPL report, one UTC day per run,
+archive enabled; source `Scripts/fplProcessors/code/SentinelOne_Resource_Report.js`). If `list_scheduled_report`
+shows none on the tenant, stop and tell the user to deploy it first. Its tables:
+
+| Table | What it holds |
 |---|---|
-| `sentinelOneAgent` | One record per managed endpoint: version, OS, reporting state, protection mode, scan state |
-| `sentinelOneApplication` | One record per application installed on an endpoint, with a risk level |
-| `sentinelOneThreat` | One record per detected threat, with classification, verdict and mitigation |
+| `s1res_summary` | One row: endpoints, active, inactive, not reporting over 7 days, not in protect mode, patch required, behind newest, needs action / watch / healthy, installs, distinct apps, risky installs and endpoints, threats, open threats, `asOf` |
+| `s1res_endpoints` | One row per endpoint: name, type, OS, group, agent version, reporting state, days silent, protection mode, patch status, risky apps, score, status, reasons |
+| `s1res_agent_versions` | Endpoints per agent version, newest flagged |
+| `s1res_apps_risk`, `s1res_apps_top` | Installs and endpoints per risk level; the 25 applications on the most endpoints |
+| `s1res_threats_class`, `s1res_threats_daily`, `s1res_threats_open` | Threats by class and status; threats per day; each open threat |
 
-The script joins applications and threats to agents on the agent UUID, so the report can say which endpoints
-carry the risk, not only how much risk there is.
+**These are snapshots, not events.** The SentinelOne tables have no history. Each archived day is the state when that
+day's run took the snapshot. Never add days; the report uses the latest archived day and shows a change table of the
+other days. A backfill cannot reconstruct a past state: it records today's console state under the past date, so say
+that when offering it.
 
 A run has three parts:
 
-- **Download.** The connector issues a download link for each dump. You fetch the links with `curl`.
-- **Process locally.** `scripts/s1_resource_report.py` reads the dumps and writes `facts.json`, three CSVs, a
+- **Download.** `download_report_archive` returns the archived days as a file.
+- **Process locally.** `scripts/s1_resource_report.py` reads the file and writes `facts.json`, three CSVs, a
   Fluency-branded print-style HTML page and a self-contained interactive HTML file. It uses only the Python
   standard library.
 - **Narrative.** You write the summary and next steps from `facts.json`.
-
-A run makes one `list_resource_dumps` call per resource plus one `get_resource_dump_url` call per dump. The dump data
-never passes through the conversation.
 
 `<skill-dir>` below means this skill's base directory.
 
 ## Inputs
 
-- **Account.** The Fluency tenant account name. Use whichever Fluency MCP server exposes `list_resource_dumps` and
-  `get_resource_dump_url` for it. If the account is unclear, run `list_accounts` and ask.
-- **Customer name** (optional). Shown in the subtitle.
+| Input | Rule |
+|---|---|
+| Connector | The MCP connector the user names (for example Conekt). Use its tools directly. |
+| Tenant | One account. Call `list_accounts` and match the user's name; stop if ambiguous. Never merge tenants. |
+| Period | The last few days (for "current state") or a month; the report shows the latest day in the period. At most 92 days per download. |
+| Report name | `SentinelOne_Resource_Report` unless the tenant uses another name. |
+| Customer name | Optional. Shown in the subtitle. |
 
-Work in a fresh directory, e.g. `./sentinelone_resources_<account>_<yyyymmdd>/`. Dumps go in
-`<work>/dumps/<resource>/<customer>.jsonl.gz`, using the exact resource names above.
+Work in a fresh directory, e.g. `./sentinelone_resources_<account>_<yyyymmdd>/`.
 
 ## Steps
 
-### 1. Find the dumps
+### 1. Check coverage
 
-Call `list_resource_dumps` with the account and `resource` set to each of the three names, one call each.
+`list_report_archive(account, name, from, to)` shows first and last day, completed, aborted, `missingDays` and script
+hashes. State the days archived out of the days in the period. The report reads the latest day, so a missing last day
+means the report is older than the period end: say which date it is as of. Offer `backfill_report_archive` for gaps
+and say what a backfill records (above); never fill a gap by searching.
 
-- **Not installed.** A tenant without SentinelOne answers `resource type not found` for the resource. Treat that as
-  "no dump", not as a failure of the tool.
-- **No agent dump.** Stop and tell the user the tenant has no SentinelOne resource import. The report has nothing to
-  anchor to. Applications and threats alone are not enough.
-- **No application or threat dump.** Carry on. The report leaves that section out and says so in your reply.
-- **Several integrations.** A resource with several customers (integrations) has one dump per customer. Fetch all of
-  them. The script reads every file in the resource folder.
+If the report is not listed, the tenant has no SentinelOne archive: stop and tell the user to deploy and schedule it.
 
 ### 2. Download
 
-For each (resource, customer) pair, call `get_resource_dump_url` with the account, resource, customer and
-`format: "jsonl"`. Then download it immediately:
-
-```bash
-mkdir -p <work>/dumps/<resource>
-curl -sSf -o "<work>/dumps/<resource>/<customer>.jsonl.gz" "<url>"
-```
-
-Rules for this step:
-
-- **Order.** Links expire after 15 minutes, so request one link, download it, then move on.
-- **Don't read the dumps.** Only the script opens them: no `zcat`, `head` or Read tool on a dump. They hold hostnames,
-  user names and file paths. Invoking this skill is the user's request to download them into the work directory.
-- **Reuse.** If a matching dump is already in `<work>/dumps` from the same snapshot (`dayIndex` / `createdOn` in the
-  listing), skip the download.
-- **Large dumps.** A tenant with tens of thousands of application records still downloads in seconds. Only stop for
-  size if the listing shows more than about 5 million records in one dump.
-- **Blocked downloads.** A 403, or a refused proxy or CONNECT, means this environment's egress allowlist blocks the
-  tenant host (`<account>.app.ingext.io`). Stop. Tell the user that host must be added to their organization's
-  allowed domains, or that the skill can run from a local Claude Code session. Don't retry, and don't try to fetch
-  the data any other way.
+`download_report_archive(account, name, from, to)`. A day is small (tens of KB), so a month downloads in one call. Save
+the result to a file in the work directory and use it as is; do not print it or copy numbers by hand. It holds endpoint
+names, so keep it in the work directory.
 
 ### 3. Health check
 
 ```bash
-python3 <skill-dir>/scripts/s1_resource_report.py check --dumps <work>/dumps
+python3 <skill-dir>/scripts/s1_resource_report.py check --archive <work>/archive.json
 ```
 
-It prints one line per resource with the records, customers and snapshot hour, then the agent totals.
+It prints the days archived, the latest day, one line per table with its row count, any query that was not available in
+the archived run, and the headline totals.
 
-- `PROBLEM` on the agent line (exit code 1) is an empty dump or a snapshot older than 48 hours. Stop and tell the
-  user. Do not render a report from stale or empty agent data.
-- `warning` on applications or threats means that section will be left out or is stale. Carry on and mention it.
+- `PROBLEM` (exit code 1) is no completed day, a missing summary or endpoint table, or a latest day more than 2 days
+  old. Stop and tell the user. Do not render a report from empty or stale data.
+- `warning` on an optional table means that panel is empty. Carry on and mention it.
 
 ### 4. Render
 
 ```bash
-python3 <skill-dir>/scripts/s1_resource_report.py render --dumps <work>/dumps --work <work> \
+python3 <skill-dir>/scripts/s1_resource_report.py render --archive <work>/archive.json --work <work> \
   --account <account> --customer "<Customer>"
 ```
 
-This prints the totals and writes to `<work>`:
+Pass every downloaded file to `--archive` if the period needed several. It prints the totals and writes to `<work>`:
 
 - `sentinelone_resource_report.html`, the print-style page for the PDF, with `assets/logo2.png` copied next to it;
 - `sentinelone_resource_report_interactive.html`, the file to open in a browser (see below);
 - `facts.json`: every number on the page and the default narrative;
 - `endpoints.csv`: every endpoint with its score, status and reasons;
-- `applications.csv`: every distinct application with publisher, risk, installs, endpoints and versions;
-- `threats.csv`: every threat, newest first.
+- `applications_top.csv`: the 25 most widespread applications with publisher, risk and endpoints;
+- `open_threats.csv`: every open threat.
 
 `--max-listed N` caps the "Endpoints needing attention" table in the print-style report (default 40). The CSV and the
 interactive file always have every endpoint.
@@ -120,11 +106,15 @@ interactive file always have every endpoint.
 **Interactive file.** One HTML file with no server and no internet needed. Tabs: Overview, Endpoints, Applications,
 Threats and Coverage. Every table has search, sortable columns, filters, paging and an Export CSV button that
 exports the filtered view. Tiles and bars on the Overview open the matching table already filtered. It follows the
-browser's dark mode. Offer it for working through the endpoint, application and threat lists, and the PDF for a
-document to send.
+browser's dark mode. Offer it for working through the endpoint list, and the PDF for a document to send.
 
-**Personal data.** The interactive file and `endpoints.csv` carry endpoint names and each endpoint's last logged-in
-user. Add `--no-actors` to leave the user names out of both when the files will leave the tenant's owner.
+**Personal data.** The files carry endpoint names and open-threat names, but no user names. Share them only with the
+tenant's owner.
+
+**What the archive does not carry.** The report has no scan-status or scan-age figures, no confidence breakdown of the
+whole threat history (only the open threats show confidence), no publisher ranking, no machine-level application list
+beyond the top 25, no per-endpoint threat history, no last logged-in user and no reboot-required flag. Do not state
+those from memory; if the user needs them, say the scheduled report would have to be extended.
 
 ### 5. Write the narrative
 
@@ -166,16 +156,15 @@ chromium --headless --no-pdf-header-footer --print-to-pdf=<work>/sentinelone_res
   file://<work>/sentinelone_resource_report.html
 ```
 
-The report runs about six to seven pages. If you can rasterise the pages, check that:
+The report runs about five pages. If you can rasterise the pages, check that:
 - no labels are clipped;
 - the KPI strip and summary sit together on page 1.
 
 ### 7. Deliver
 
 Give the interactive HTML, print-style HTML, PDF and the three CSV paths, plus two or three sentences: how many endpoints are not reporting, how
-many threats are open, and the biggest application risk. Keep internal findings out of the PDF and put them in your
-reply. Examples: a duplicate host name, a threat history that names endpoints no longer in the agent list, a snapshot
-that is several hours old.
+many threats are open, and the biggest application risk. State the day the report is as of and how many days were archived. Keep internal findings out of the PDF and put them in your
+reply. Examples: a duplicate host name, silent endpoints whose last-active date the archive does not give, days missing from the archive.
 
 ## What the report does not cover
 
@@ -183,4 +172,4 @@ that is several hours old.
 - Comparing SentinelOne with Defender or Entra: use `security-agent-deployment-status-report`.
 - Live detections and alerts as they happen: use the SentinelOne alert investigation tools.
 
-`references/methodology.md` covers the join, the scoring and the data pitfalls found in real dumps.
+`references/methodology.md` covers the archive tables, the scoring and the data pitfalls.
