@@ -15,7 +15,7 @@ datalake, running a report, investigating a user, checking site health, and more
 - Change history is in [`release_notes/`](./release_notes).
 
 Each skill is versioned independently in its `SKILL.md` frontmatter. The inventory below
-lists all **46 skills** across `SKILLS/` and `reports/`, with the version, source and
+lists all **51 skills** across `SKILLS/` and `reports/`, with the version, source and
 matching downloadable package. Packages are ZIP archives with a `.skill` extension.
 
 ## Installation
@@ -238,6 +238,8 @@ in both source and archives; it does not check that their full file contents mat
 | [windows-server-activity-report](./reports/windows-server-activity-report/SKILL.md) | 1.0.0 | [Source](./reports/windows-server-activity-report) | [Download](./cowork/windows-server-activity-report.skill) | Windows Server activity report from archived daily report results |
 | [fortigate-security-activity-report](./reports/fortigate-security-activity-report/SKILL.md) | 1.0.0 | [Source](./reports/fortigate-security-activity-report) | [Download](./cowork/fortigate-security-activity-report.skill) | FortiGate security activity report from archived daily report results |
 | [microsoft365-resource-inventory-report](./reports/microsoft365-resource-inventory-report/SKILL.md) | 1.0.0 | [Source](./reports/microsoft365-resource-inventory-report) | [Download](./cowork/microsoft365-resource-inventory-report.skill) | Microsoft 365 / Entra directory inventory (users, MFA, devices, apps, groups, licenses) from archived daily snapshots, with an interactive HTML view |
+| [sentinelone-resource-report](./reports/sentinelone-resource-report/SKILL.md) | 1.0.0 | [Source](./reports/sentinelone-resource-report) | [Download](./cowork/sentinelone-resource-report.skill) | SentinelOne agents, applications and threats in one report (endpoint status, agent versions, risky apps, open threats) from resource dumps, with an interactive HTML view |
+| [falcon-resource-report](./reports/falcon-resource-report/SKILL.md) | 1.0.0 | [Source](./reports/falcon-resource-report) | [Download](./cowork/falcon-resource-report.skill) | CrowdStrike Falcon hosts and detections in one report (host health, sensor releases, policy coverage, open detections per host) from the falconAgent resource dump and FalconAlert, with an interactive HTML view |
 
 ---
 
@@ -676,6 +678,30 @@ sort and filter on the user lists, CSV export and hover trend charts. User lists
 - "Microsoft 365 resource report for Acme"
 - "which enabled users have no MFA"
 - "administrators without MFA and expired app secrets"
+
+### sentinelone-resource-report
+
+Produces a SentinelOne resource report for **one tenant** as HTML (print-style and interactive), PDF and
+CSV, from the three SentinelOne resource dumps: **agents**, **applications** and **threats**. The dumps are
+joined on the agent UUID, so the report shows which endpoints carry the risk. It covers reporting state
+(endpoints silent for more than 7 days), agent versions against the newest build in the fleet, operating
+systems, protection mode, application risk levels and publishers, the medium and high-risk applications,
+threat history by classification and week, open threats (not mitigated or not resolved), and a ranked list of
+endpoints that need action. Processed locally in Python from resource dumps; no searches or saved reports are
+needed. The interactive HTML file has tabs, search, sort and filter on every table, CSV export of the
+filtered view and dark mode; `--no-actors` leaves last logged-in user names out of it and the CSV.
+
+### falcon-resource-report
+
+Produces a CrowdStrike Falcon resource report for **one tenant** as HTML (print-style and interactive), PDF and
+CSV. It combines the **falconAgent** resource dump with the **FalconAlert** detections of the last 30 days,
+joined on `agent_id` = `device_id`, so each host shows its open detections next to its health. It covers
+check-in state, sensor releases against the newest three in the fleet, platforms and roles, reduced
+functionality mode, provisioning, prevention and other policy coverage, containment, uninstall protection,
+detections by severity, status and tactic, hosts with open High or Critical detections, and a ranked list of
+hosts that need action. Identity, data-protection and cloud alert products are shown as fleet totals only.
+The interactive HTML file has tabs, search, sort and filter on every table and CSV export; the FPL version
+(`CrowdStrike_Resource_Report`, daily 04:35 UTC) lives in the Scripts repo.
 
 ### incident-investigation
 

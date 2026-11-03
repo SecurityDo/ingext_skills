@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{title}}</title>
+<style>
+:root{--red:#B91C1C;--blu:#1D4ED8;--amb:#B45309;--grn:#15803D;--gry:#64748B;--bg:#f4f6fa;--card:#fff;--ink:#1f2937;--m:#64748b;--line:#e2e8f0;--acc:#1d4ed8;--navy:#14213d}
+@media(prefers-color-scheme:dark){:root{--red:#f87171;--blu:#7aa7ff;--amb:#fbbf24;--grn:#4ade80;--gry:#94a3b8;--bg:#0f1523;--card:#182033;--ink:#e5ebf7;--m:#8b9bb8;--line:#26324b;--acc:#6ea0ff;--navy:#e5ebf7}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
+header{background:linear-gradient(135deg,#0f1a33,#1d3461);color:#fff;padding:26px 0 18px}
+.w{max-width:1180px;margin:0 auto;padding:0 20px}
+.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#9db4e0;font-weight:600}
+h1{margin:4px 0 8px;font-size:26px}
+.chip{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:2px 11px;font-size:12px;margin:0 8px 4px 0}
+nav{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap}
+nav .w{display:flex;gap:2px}
+nav button{background:none;border:0;border-bottom:3px solid transparent;color:var(--m);font:600 13px inherit;padding:12px 14px;cursor:pointer}
+nav button.on{color:var(--acc);border-color:var(--acc)}
+main{padding:18px 20px 48px;max-width:1180px;margin:0 auto}
+.g{display:grid;gap:12px}.k4{grid-template-columns:repeat(4,1fr)}.k3{grid-template-columns:repeat(3,1fr)}.c2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:800px){.k4,.k3,.c2{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.k4,.k3,.c2{grid-template-columns:1fr}}
+.k{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--c);border-radius:10px;padding:12px 14px}
+.k[data-go]{cursor:pointer}.k[data-go]:hover{box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.k b{display:block;font-size:26px;color:var(--c);line-height:1.15}
+.k span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--m);font-weight:600}
+.k small{display:block;color:var(--m);font-size:11px}
+.p{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px}
+.p:first-child{margin-top:0}.g>.p{margin-top:0}
+.p h3{margin:0 0 8px;font-size:14px}
+.warn{border-left:4px solid #B45309;background:rgba(180,83,9,.1)}.read{border-left:4px solid var(--acc)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--m);padding:8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);cursor:pointer;white-space:nowrap}
+td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
+td.w{white-space:normal;min-width:240px;overflow-wrap:anywhere}
+.r{text-align:right;font-variant-numeric:tabular-nums}
+.tw{max-height:600px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.m{color:var(--m)}.sm{font-size:12px}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+input[type=search],select,button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit}
+input[type=search]{min-width:220px;flex:1}
+button{cursor:pointer}button:disabled{opacity:.4;cursor:default}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:600;background:rgba(180,83,9,.15);color:var(--amb);white-space:nowrap}
+.pill.bad{background:rgba(185,28,28,.15);color:var(--red)}.pill.ok{background:rgba(21,128,61,.15);color:var(--grn)}.pill.mute{background:var(--line);color:var(--m)}
+.stack{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line);margin:10px 0 6px}
+.stack i{display:block}
+.lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+.row{display:grid;grid-template-columns:38% 1fr 56px;gap:8px;align-items:center;margin:4px 0;font-size:12px;border-radius:4px;padding:1px 4px}
+.row[data-f]{cursor:pointer}.row[data-f]:hover{background:var(--line)}
+.lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row b{text-align:right}
+.bar2{background:var(--line);height:8px;border-radius:4px;overflow:hidden}.bar2 i{display:block;height:100%;background:var(--acc)}
+.chart{width:100%;height:auto}.gl{stroke:var(--line)}.ax{fill:var(--m);font-size:11px}
+.hl{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+@media print{nav{display:none}.tw{max-height:none}}
+</style>
+</head>
+<body>
+<header><div class="w"><div class="eyebrow">SentinelOne resources</div><h1 id="ttl"></h1><div id="chips"></div></div></header>
+<nav><div class="w"></div></nav>
+<main id="main"></main>
+<script id="data" type="application/json">{{data}}</script>
+<script>
+const D=JSON.parse(document.getElementById('data').textContent);
+const $=s=>document.querySelector(s);
+const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=v=>typeof v==='number'?v.toLocaleString():esc(v);
+const A=D.agents, P=D.applications, T=D.threats, E=D.endpointSummary;
+const TABS=[['ov','Overview'],['en','Endpoints'],['ap','Applications'],['th','Threats'],['cv','Coverage']];
+const CM={'#14213d':'var(--navy)','#B91C1C':'var(--red)','#1D4ED8':'var(--blu)','#B45309':'var(--amb)','#15803D':'var(--grn)','#64748B':'var(--gry)'};const cc=c=>CM[c]||c;
+const PRE={};            // filters to apply when a tab opens (set by clicks on the overview)
+let tableRoots={};
+function kpi(l,v,c,s,go,f){c=cc(c);return `<div class="k" style="--c:${c}" ${go?`data-go="${go}"`:''} ${f?`data-pre='${esc(JSON.stringify(f))}'`:''}><span>${esc(l)}</span><b>${esc(v)}</b><small>${esc(s||'')}</small></div>`}
+function na(t,why){return `<div class="p warn"><b>${esc(t)}</b> not available: ${esc(why||'no data for this resource in the snapshot')}</div>`}
+function kv(t,pairs){return `<div class="p"><h3>${esc(t)}</h3><table>${pairs.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="r">${fmt(v)}</td></tr>`).join('')}</table></div>`}
+function pct(a,b){return b?(Math.round(1000*a/b)/10)+'%':'n/a'}
+function stack(parts,total){if(!total)return'';return `<div class="stack">${parts.filter(p=>p[1]).map(p=>`<i title="${esc(p[0])}: ${p[1].toLocaleString()}" style="width:${100*p[1]/total}%;background:${p[2]}"></i>`).join('')}</div><div class="m sm">${parts.map(p=>`<span class="lg"><i style="background:${p[2]}"></i>${esc(p[0])} ${p[1].toLocaleString()}</span>`).join(' ')}</div>`}
+/* bar list; items are [label,count,filterKey,filterValue]; a click opens the table with that filter */
+function bars(title,items,go,sub){items=items.filter(i=>i[1]);const mx=Math.max(1,...items.map(i=>i[1]));
+ return `<div class="p"><h3>${esc(title)}${sub?` <span class="m">${esc(sub)}</span>`:''}</h3>${items.length?items.map(([k,v,fk,fv])=>`<div class="row" ${go&&fk?`data-go="${go}" data-pre='${esc(JSON.stringify({[fk]:fv==null?k:fv}))}'`:''} ${go&&fk?'data-f="1"':''}><span class="lb" title="${esc(k)}">${esc(k)}</span><span class="bar2"><i style="width:${100*v/mx}%"></i></span><b>${v.toLocaleString()}</b></div>`).join(''):'<div class="m sm">No data.</div>'}</div>`}
+const CLS={'Needs action':'bad','Watch':'','Healthy':'ok','Not reporting':'bad','Reporting':'ok','not mitigated':'bad','mitigated':'ok','High':'bad','Critical':'bad','Medium':'','Low':'mute','None':'mute'};
+/* generic searchable, sortable, paged table with filters and CSV export of the filtered view */
+function dt(cols,rows,opts){opts=opts||{};const S={q:'',sort:opts.sort||null,dir:opts.dir||1,page:0,size:25,f:Object.assign({},opts.pre||{})};if(S.f.q!==undefined){S.q=S.f.q;delete S.f.q}const root=document.createElement('div');root.className='p';
+ const filters=opts.filters||[];
+ function view(){let r=rows.filter(x=>{for(const f of filters){const v=S.f[f.key];if(v&&String(x[f.key])!==v)return false}
+  if(S.q){const q=S.q.toLowerCase();if(!cols.some(c=>String(x[c.k]==null?'':x[c.k]).toLowerCase().includes(q)))return false}return true});
+  if(S.sort){const k=S.sort;r=r.slice().sort((a,b)=>{const x=a[k],y=b[k];return (typeof x==='number'&&typeof y==='number'?x-y:String(x).localeCompare(String(y)))*S.dir})}return r}
+ function draw(){const r=view(),pages=Math.max(1,Math.ceil(r.length/S.size));if(S.page>=pages)S.page=pages-1;const sl=r.slice(S.page*S.size,(S.page+1)*S.size);
+  root.innerHTML=`<h3>${esc(opts.title||'')} <span class="m">(<span data-n>${r.length.toLocaleString()}</span> of ${rows.length.toLocaleString()})</span></h3><div class="bar">
+   <input type="search" placeholder="Search" value="${esc(S.q)}" data-a="q">
+   ${filters.map(f=>`<select data-f="${f.key}"><option value="">${esc(f.label)}: all</option>${f.opts.map(o=>`<option ${S.f[f.key]===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`).join('')}
+   <select data-a="size">${[25,50,100,250].map(n=>`<option ${n===S.size?'selected':''}>${n}</option>`).join('')}</select>
+   <button data-a="csv">Export CSV</button></div>
+   <div class="tw"><table><thead><tr>${cols.map(c=>`<th data-s="${c.k}" class="${c.num?'r':''}">${esc(c.h)}${S.sort===c.k?(S.dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>${sl.map(x=>`<tr>${cols.map(c=>`<td class="${c.num?'r':''} ${c.host?'hl':''} ${c.w?'w':''}">${c.pill?`<span class="pill ${CLS[x[c.k]]||''}">${esc(x[c.k])}</span>`:fmt(x[c.k])}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${cols.length}" class="m">No rows match.</td></tr>`}</tbody></table></div>
+   <div class="bar"><button data-a="prev" ${S.page?'':'disabled'}>Prev</button><span class="m">Page ${S.page+1} of ${pages}</span><button data-a="next" ${S.page<pages-1?'':'disabled'}>Next</button></div>`;
+  const q=root.querySelector('[data-a=q]');q.oninput=e=>{S.q=e.target.value;S.page=0;const p=e.target.selectionStart;draw();const n=root.querySelector('[data-a=q]');n.focus();n.setSelectionRange(p,p)};
+  root.querySelectorAll('[data-f]').forEach(s=>s.onchange=e=>{S.f[s.dataset.f]=e.target.value;S.page=0;draw()});
+  root.querySelector('[data-a=size]').onchange=e=>{S.size=+e.target.value;S.page=0;draw()};
+  root.querySelector('[data-a=prev]').onclick=()=>{S.page--;draw()};root.querySelector('[data-a=next]').onclick=()=>{S.page++;draw()};
+  root.querySelectorAll('th[data-s]').forEach(h=>h.onclick=()=>{if(S.sort===h.dataset.s)S.dir*=-1;else{S.sort=h.dataset.s;S.dir=1}draw()});
+  root.querySelector('[data-a=csv]').onclick=()=>{const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';const t=[cols.map(c=>q(c.h)).join(',')].concat(view().map(x=>cols.map(c=>q(x[c.k])).join(','))).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download=(opts.file||'export')+'.csv';a.click()}}
+ draw();return root}
+const uniq=(rows,k)=>[...new Set(rows.map(r=>r[k]))].filter(v=>v!==''&&v!=null).sort();
+const V={};
+/* ---------------- Overview ---------------- */
+V.ov=()=>{const c=document.createElement('div');
+ const kp=[kpi('Endpoints',A.inScope.toLocaleString(),'#14213d',A.active.toLocaleString()+' reporting','en'),
+  kpi('Not reporting',A.inactive.toLocaleString(),A.inactive?'#B91C1C':'#15803D',A.inactiveStale+' for over '+D.staleDays+' days','en',{reporting:'Not reporting'}),
+  kpi('On newest agent',pct(A.onLatest,A.inScope),A.behindLatest?'#B45309':'#15803D',D.latestVersion,'en'),
+  kpi('Need action',E.needsAction.toLocaleString(),E.needsAction?'#B91C1C':'#15803D',E.watch+' more on watch','en',{status:'Needs action'})];
+ if(D.present.threat)kp.push(kpi('Open threats',T.open.toLocaleString(),T.open?'#B91C1C':'#15803D',T.total.toLocaleString()+' recorded','th',{open:'Open'}));
+ if(D.present.application)kp.push(kpi('Risky app installs',P.highRiskInstances.toLocaleString(),P.highRiskInstances?'#B45309':'#15803D',P.highRiskDistinct+' distinct apps','ap',{risk:'High'}));
+ c.innerHTML=`<div class="g k3">${kp.join('')}</div>
+  <div class="p"><h3>Endpoints by reporting state</h3>${stack([['Reporting',A.active,'#15803D']].concat(Object.entries(A.inactiveBuckets).map(([k,v],i)=>['Silent '+k,v,['#B45309','#B91C1C','#7f1d1d','#64748B'][i%4]])),A.inScope)}</div>
+  <div class="g c2" id="g1"></div><div class="g c2" id="g2" style="margin-top:12px"></div>
+  <div class="p read">Snapshot <b>${esc(D.snapshot)}</b>. Click a bar or a tile to open the table behind it. Applications and threats are joined to endpoints by agent UUID. "Newest agent" is the highest version in this fleet, not the latest SentinelOne release.</div>`;
+ const g1=c.querySelector('#g1'),g2=c.querySelector('#g2');
+ g1.insertAdjacentHTML('beforeend',bars('Agent versions',A.versions.map(v=>[v.name+(v.name===D.latestVersion?' (newest)':''),v.count,'agent',v.name]),'en'));
+ g1.insertAdjacentHTML('beforeend',bars('Operating systems',A.os.map(v=>[v.name,v.count,'os',v.name]),'en'));
+ g1.insertAdjacentHTML('beforeend',bars('Machine types',A.machineTypes.map(v=>[v.name,v.count,'type',v.name]),'en'));
+ g1.insertAdjacentHTML('beforeend',kv('Protection health',[['Mitigation mode not protect',A.notProtect],['Reboot required',A.rebootRequired],['Apps need patching',A.patchRequired],['Infected or active threats',Math.max(A.infected,A.withActiveThreats)],['Full scan older than '+D.scanStaleDays+' days (info only)',A.scanStale],['Pending uninstall',A.pendingUninstall]]));
+ if(D.present.application){
+  const order=['critical','high','medium','low'];
+  g2.insertAdjacentHTML('beforeend',bars('Application risk',order.filter(k=>P.risk[k]).map(k=>[k[0].toUpperCase()+k.slice(1),P.risk[k],'risk',k[0].toUpperCase()+k.slice(1)]),'ap',P.instances.toLocaleString()+' installs, '+P.distinct.toLocaleString()+' distinct'));
+  g2.insertAdjacentHTML('beforeend',bars('Top publishers',P.topPublishers.map(v=>[v.name,v.count]),null,'by installs'));}
+ else g2.insertAdjacentHTML('beforeend',na('Applications'));
+ if(D.present.threat){
+  g2.insertAdjacentHTML('beforeend',bars('Threat classification',T.classification.map(v=>[v.name,v.count,'cls',v.name]),'th'));
+  g2.insertAdjacentHTML('beforeend',`<div class="p"><h3>Threats per week <span class="m">${esc(T.first)} to ${esc(T.last)}</span></h3>${weekly(T.weekly)}</div>`);}
+ else g2.insertAdjacentHTML('beforeend',na('Threats'));
+ return c};
+function weekly(w){if(!w.length)return'<div class="m sm">No threats recorded.</div>';const W=520,H=190,pad=28,mx=Math.max(1,...w.map(x=>x.count)),bw=(W-2*pad)/w.length;
+ let s=`<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="Threats per week"><line x1="${pad}" x2="${W-pad}" y1="${H-26}" y2="${H-26}" class="gl"/>`;
+ w.forEach((x,i)=>{const h=(H-60)*x.count/mx,bx=pad+i*bw+4;s+=`<rect x="${bx}" y="${H-26-h}" width="${bw-8}" height="${h}" rx="3" fill="var(--acc)"><title>Week of ${x.week}: ${x.count.toLocaleString()}</title></rect>`;
+  if(x.count)s+=`<text x="${bx+(bw-8)/2}" y="${H-30-h}" text-anchor="middle" class="ax">${x.count}</text>`;
+  if(i%2===0||w.length<7)s+=`<text x="${bx+(bw-8)/2}" y="${H-9}" text-anchor="middle" class="ax">${x.week.slice(5)}</text>`});
+ return s+'</svg>'}
+/* ---------------- Endpoints ---------------- */
+V.en=()=>{const c=document.createElement('div');
+ c.innerHTML=`<div class="g k4"><div class="k" style="--c:var(--red)" data-go="en" data-pre='{"status":"Needs action"}'><span>Need action</span><b>${E.needsAction}</b><small>score 3 or more</small></div><div class="k" style="--c:var(--amb)" data-go="en" data-pre='{"status":"Watch"}'><span>Watch</span><b>${E.watch}</b><small>score 1 to 2</small></div><div class="k" style="--c:var(--grn)" data-go="en" data-pre='{"status":"Healthy"}'><span>Healthy</span><b>${E.healthy}</b><small>no open issue</small></div><div class="k" style="--c:var(--navy)" data-go="en" data-pre='{}'><span>All endpoints</span><b>${A.inScope}</b><small>${A.decommissioned+A.uninstalled} decommissioned or uninstalled left out</small></div></div>`;
+ const cols=[{k:'name',h:'Endpoint',host:1},{k:'status',h:'Status',pill:1},{k:'reporting',h:'State',pill:1},{k:'type',h:'Type'},{k:'os',h:'OS'},{k:'agent',h:'Agent'},{k:'lastActiveDays',h:'Silent days',num:1},{k:'mitigation',h:'Mode'},{k:'apps',h:'Apps',num:1},{k:'riskyApps',h:'Risky apps',num:1},{k:'threats',h:'Threats',num:1},{k:'openThreats',h:'Open',num:1},{k:'reasons',h:'Why',w:1}];
+ if(!D.noActors)cols.splice(1,0,{k:'user',h:'Last user'});
+ const t=dt(cols,D.endpoints,{title:'Endpoints',file:'sentinelone_endpoints',sort:'score',dir:-1,pre:PRE.en,
+  filters:[{key:'status',label:'Status',opts:['Needs action','Watch','Healthy']},{key:'reporting',label:'State',opts:['Reporting','Not reporting']},{key:'type',label:'Type',opts:uniq(D.endpoints,'type')},{key:'os',label:'OS',opts:uniq(D.endpoints,'os')},{key:'agent',label:'Agent',opts:uniq(D.endpoints,'agent')},{key:'patch',label:'Patching',opts:['Patch required','Up to date']}]});
+ c.appendChild(t);return c};
+/* ---------------- Applications ---------------- */
+V.ap=()=>{const c=document.createElement('div');if(!D.present.application){c.innerHTML=na('Applications');return c}
+ c.innerHTML=`<div class="g k4">${kpi('Installs',P.instances.toLocaleString(),'#14213d',P.newInWindow.toLocaleString()+' in the last '+P.newWindowDays+' days')}${kpi('Distinct applications',P.distinct.toLocaleString(),'#1D4ED8','name and publisher')}${kpi('Risky installs',P.highRiskInstances.toLocaleString(),P.highRiskInstances?'#B45309':'#15803D','medium, high or critical','ap',{risk:'High'})}${kpi('Endpoints with risky apps',P.highRiskEndpoints.toLocaleString(),P.highRiskEndpoints?'#B45309':'#15803D','of '+A.inScope.toLocaleString())}</div>`;
+ const cols=[{k:'name',h:'Application',w:1},{k:'publisher',h:'Publisher',w:1},{k:'risk',h:'Risk',pill:1},{k:'installs',h:'Installs',num:1},{k:'endpoints',h:'Endpoints',num:1},{k:'versions',h:'Versions',w:1},{k:'hosts',h:'Endpoints (risky apps only)',w:1}];
+ c.appendChild(dt(cols,D.apps,{title:'Applications',file:'sentinelone_applications',sort:'endpoints',dir:-1,pre:PRE.ap,filters:[{key:'risk',label:'Risk',opts:['Critical','High','Medium','Low','None']}]}));return c};
+/* ---------------- Threats ---------------- */
+V.th=()=>{const c=document.createElement('div');if(!D.present.threat){c.innerHTML=na('Threats');return c}
+ c.innerHTML=`<div class="g k4">${kpi('Threats',T.total.toLocaleString(),'#14213d',esc(T.first)+' to '+esc(T.last))}${kpi('Open',T.open.toLocaleString(),T.open?'#B91C1C':'#15803D','not mitigated or not resolved','th',{open:'Open'})}${kpi('Malicious',(T.malicious||0).toLocaleString(),T.malicious?'#B91C1C':'#15803D','confidence level')}${kpi('Endpoints affected',T.endpointsAffected.toLocaleString(),'#B45309','of '+A.inScope.toLocaleString()+' current')}</div>
+  <div class="g c2" id="tg" style="margin-top:12px"></div>`;
+ const g=c.querySelector('#tg');
+ g.insertAdjacentHTML('beforeend',`<div class="p"><h3>Threats per week</h3>${weekly(T.weekly)}</div>`);
+ g.insertAdjacentHTML('beforeend',bars('Top threat names',T.topNames.map(v=>[v.name,v.count,'q',v.name]),'th'));
+ g.insertAdjacentHTML('beforeend',bars('Endpoints with the most threats',T.topEndpoints.map(v=>[v.name,v.count,'q',v.name]),'th'));
+ g.insertAdjacentHTML('beforeend',bars('Confidence',T.confidence.map(v=>[v.name,v.count,'confidence',v.name]),'th'));
+ const cols=[{k:'created',h:'Created'},{k:'endpoint',h:'Endpoint',host:1},{k:'name',h:'Threat',w:1},{k:'cls',h:'Class'},{k:'confidence',h:'Confidence'},{k:'verdict',h:'Verdict'},{k:'mitigation',h:'Mitigation',pill:1},{k:'incident',h:'Incident'},{k:'publisher',h:'Publisher',w:1},{k:'verification',h:'File signature'}];
+ const rows=D.threatRows;
+ const t=dt(cols,rows,{title:'Threats',file:'sentinelone_threats',sort:'created',dir:-1,pre:PRE.th,filters:[{key:'open',label:'State',opts:['Open','Closed']},{key:'cls',label:'Class',opts:uniq(rows,'cls')},{key:'confidence',label:'Confidence',opts:uniq(rows,'confidence')},{key:'mitigation',label:'Mitigation',opts:uniq(rows,'mitigation')},{key:'incident',label:'Incident',opts:uniq(rows,'incident')}]});
+ t.style.marginTop='12px';c.appendChild(t);return c};
+/* ---------------- Coverage ---------------- */
+V.cv=()=>{const c=document.createElement('div');
+ c.innerHTML=`<div class="p"><h3>Snapshot</h3><table><thead><tr><th>Resource</th><th class="r">Records</th><th>Snapshot</th><th>Integrations</th></tr></thead><tbody>${D.sources.map(s=>`<tr><td>${esc(s.resource)}</td><td class="r">${s.records.toLocaleString()}</td><td>${esc(s.snapshot||'none')}</td><td class="m">${esc(s.customers||'')}</td></tr>`).join('')}</tbody></table></div>
+  ${D.notes.length?`<div class="p warn"><h3>Data notes</h3><ul>${D.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`:''}
+  <div class="p"><h3>How the numbers are worked out</h3><ul>${D.method.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`;return c};
+function show(t,pre){tab=t;if(pre!==undefined)PRE[t]=pre;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));const m=$('#main');m.innerHTML='';m.appendChild(V[t]());
+ m.querySelectorAll('[data-go]').forEach(k=>k.onclick=()=>{const f=k.dataset.pre?JSON.parse(k.dataset.pre):{};show(k.dataset.go,f)});PRE[t]=undefined;history.replaceState(null,'','#'+t);window.scrollTo(0,0)}
+let tab='ov';
+$('nav .w').innerHTML=TABS.map(t=>`<button data-t="${t[0]}">${t[1]}</button>`).join('');
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.t,{}));
+$('#chips').innerHTML=[D.account,'snapshot '+D.snapshot,A.inScope.toLocaleString()+' endpoints',P.instances?P.instances.toLocaleString()+' app installs':'',T.total?T.total.toLocaleString()+' threats':''].filter(Boolean).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
+$('#ttl').textContent=(D.customer||D.account||'Tenant')+' SentinelOne Resource Report';document.title=$('#ttl').textContent;
+show(TABS.some(t=>t[0]===location.hash.slice(1))?location.hash.slice(1):'ov',{});
+</script>
+</body>
+</html>

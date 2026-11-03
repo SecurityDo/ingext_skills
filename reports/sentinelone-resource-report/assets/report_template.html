@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{report_title}} · Fluency Report</title>
+
+  <style>
+    :root{--navy:#14213d;--ink:#1f2937;--mut:#64748b;--line:#e2e8f0;--bg:#f4f6fa;--card:#fff;--acc:#2563eb;
+      --red:#B91C1C;--amber:#B45309;--green:#15803D;--blue:#1D4ED8;--grey:#64748B;
+      --t1:#1f2937;--t2:#475569;--t3:#64748b;--bd1:#e2e8f0;--bd2:#eef2f7;
+      --mono:ui-monospace,Menlo,Consolas,monospace}
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif;counter-reset:sec}
+    /* No external fonts, scripts or images other than the bundled logo; charts are inline SVG or CSS. */
+    .hero{background:linear-gradient(135deg,#0f1a33 0%,#1d3461 100%);color:#fff;padding:38px 0 70px}
+    .wrap{max-width:1060px;margin:0 auto;padding:0 28px 48px}
+    .hero .wrap{padding-bottom:0;display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+    .eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#9db4e0;font-weight:600}
+    .header-title{margin:6px 0 4px;font-size:30px;font-weight:700;letter-spacing:-.01em;color:#fff}
+    .header-subtitle{margin:0;color:#c7d4ee;font-size:14px}
+    .header-meta{margin-top:18px;display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#e6edfb;border-radius:999px;padding:3px 12px;font-size:12px}
+    .header-meta strong{color:#fff;font-weight:600}
+    .brand{display:inline-flex;background:#fff;border-radius:10px;padding:8px 12px;flex-shrink:0}
+    .brand img{max-height:26px;max-width:150px;object-fit:contain;display:block}
+    .page{max-width:1060px;margin:0 auto;padding:0 28px 48px;display:flex;flex-direction:column;gap:18px}
+    .kpi-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:-46px}
+    .kpi{--c:var(--grey);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:0 2px 8px rgba(15,26,51,.06);border-top:4px solid var(--c);min-width:0}
+    .kpi:has(.kpi-value.red){--c:var(--red)}.kpi:has(.kpi-value.green){--c:var(--green)}.kpi:has(.kpi-value.amber){--c:var(--amber)}.kpi:has(.kpi-value.navy){--c:var(--navy)}.kpi:has(.kpi-value.blue){--c:var(--blue)}
+    .kpi-label{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;order:2}
+    .kpi{display:flex;flex-direction:column}
+    .kpi-value{font-size:32px;line-height:1.1;font-weight:700;color:var(--grey);order:1;margin-bottom:2px}
+    .kpi-value.red{color:var(--red)}.kpi-value.blue{color:var(--blue)}.kpi-value.navy{color:var(--navy)}.kpi-value.green{color:var(--green)}.kpi-value.amber{color:var(--amber)}
+    .kpi-note{font-size:12px;color:var(--mut);order:3}
+    .summary{border-left:4px solid var(--acc);background:#eff4ff;border-radius:0 10px 10px 0;padding:14px 18px;color:#1e3a8a}
+    .summary::before{content:"Read this first";display:block;text-transform:uppercase;letter-spacing:.1em;font-size:11px;font-weight:700;margin-bottom:4px}
+    .summary p{margin:4px 0}.summary strong{color:#1e3a8a;font-weight:700}
+    .main-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+    .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;min-width:0;grid-column:span 12;box-shadow:0 1px 4px rgba(15,26,51,.04)}
+    .panel.col-4{grid-column:span 4}.panel.col-5{grid-column:span 5}.panel.col-6{grid-column:span 6}.panel.col-7{grid-column:span 7}.panel.col-8{grid-column:span 8}.panel.col-12{grid-column:span 12}
+    @media (max-width:760px){.panel.col-4,.panel.col-5,.panel.col-6,.panel.col-7,.panel.col-8{grid-column:span 12}.header-title{font-size:24px}.hero .wrap{flex-direction:column}}
+    .panel-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+    .panel-title,.next-steps h3{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:700;color:var(--navy);margin:0}
+    .panel-title::before,.next-steps h3::before{counter-increment:sec;content:counter(sec);background:var(--navy);color:#fff;border-radius:6px;font-size:12px;padding:2px 8px;font-weight:600}
+    .panel-subtitle{font-size:12px;color:var(--mut)}
+    table.data{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:13px}
+    table.data th{background:#f1f5f9;color:#475569;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;padding:10px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    table.data td{padding:8px;border-bottom:1px solid var(--line);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    table.data td.wrap{white-space:normal;word-break:break-word}
+    table.data tr:last-child td{border-bottom:0}
+    table.data tbody tr:hover td{background:#f8fafc}
+    table.data tr.sev-high{background:#fdecec}table.data tr.sev-med{background:#fff7e8}table.data tr.sev-low{background:#f0f5fb}
+    .pill{display:inline-block;padding:2px 11px;border-radius:999px;font-size:11px;font-weight:600;color:#fff}
+    .pill.high{background:var(--red)}.pill.med{background:var(--amber)}.pill.low{background:var(--blue)}.pill.info{background:var(--line);color:var(--t2)}
+    .svg-chart{width:100%;height:auto;display:block}
+    .bar-rows{display:flex;flex-direction:column;gap:8px}
+    .bar-track{background:var(--line);border-radius:7px;height:12px;overflow:hidden}
+    .bar-fill{height:100%;border-radius:7px;background:var(--blue)}
+    .legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin:0 0 12px}
+    .lg{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut)}
+    .lg i,.st i{display:inline-block;width:10px;height:10px;border-radius:3px;flex-shrink:0}
+    .src-row{margin-bottom:14px}.src-row:last-child{margin-bottom:0}
+    .src-head{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+    .src-name{font-size:13px;font-weight:600;color:var(--navy)}
+    .tag{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+    .src-pct{margin-left:auto;font-size:15px;font-weight:700;color:var(--navy);font-family:var(--mono)}
+    .stack{display:flex;gap:2px;height:14px;border-radius:7px;overflow:hidden;background:var(--line)}
+    .seg{height:100%;min-width:2px}
+    .src-note{font-size:12px;color:var(--mut);margin-top:4px}
+    .ibars{display:flex;flex-direction:column;gap:12px;margin-top:4px}
+    .ibar{display:grid;grid-template-columns:170px 1fr 36px;align-items:center;gap:10px}
+    .ibar-label{font-size:13px;color:var(--ink);line-height:1.25}
+    .ibar-sub{display:block;font-size:11px;color:var(--mut)}
+    .ibar-val{font-size:14px;font-weight:700;color:var(--navy);text-align:right;font-family:var(--mono)}
+    table.matrix td{padding:8px 4px}
+    table.matrix th{padding:10px 4px;white-space:normal;overflow:visible;text-overflow:clip}
+    table.matrix td.num{overflow:visible;font-size:13px}
+    table.matrix th.dotc,table.matrix td.dotc{text-align:center}
+    table.matrix th.dotc{text-transform:none;letter-spacing:0;font-size:12px}
+    .dot{display:inline-block;width:11px;height:11px;border-radius:50%;border:1.5px solid #c9ced8}
+    .dot.on{background:var(--navy);border-color:var(--navy)}
+    .pbar{height:12px;background:var(--line);border-radius:6px;overflow:hidden}
+    .pbar-fill{height:100%;background:var(--blue);border-radius:6px}
+    table.matrix td.num{text-align:right;font-family:var(--mono);font-weight:600;color:var(--navy)}
+    table.matrix td.note{font-size:12px;color:var(--mut)}
+    table.matrix td.note.gap{color:var(--ink);font-weight:600}
+    .types-wide .type-rows{display:grid;grid-template-columns:repeat(3,1fr);gap:0 20px}
+    .method{display:grid;grid-template-columns:1fr 1fr;gap:10px 24px;font-size:13px;color:var(--t2);line-height:1.5}
+    .method b{color:var(--navy)}
+    table.devlist th{white-space:normal;overflow:visible;text-overflow:clip}
+    table.devlist td{font-size:12px;padding:7px 8px}
+    table.devlist td.host{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--navy);border-left:4px solid var(--navy)}
+    table.devlist tr.grp td{background:#f8fafc;font-weight:700;font-size:12px;color:var(--navy);border-left:0}
+    table.devlist tr.grp td span{color:var(--mut);font-weight:500}
+    .st{display:inline-flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid var(--line);border-radius:999px;padding:1px 10px 1px 8px;font-size:11px;font-weight:600}
+    .st i{border-radius:50%;width:8px;height:8px}
+    .when{color:var(--mut);font-weight:500}
+    .cls{margin-left:6px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--navy);border:1px solid #c8cbe0;border-radius:4px;padding:0 4px}
+    .next-steps{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+    .next-steps h3{margin-bottom:12px}
+    .ns-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+    .ns-item{display:flex;align-items:flex-start;gap:10px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--navy);border-radius:10px;padding:12px 14px}
+    .ns-num{flex-shrink:0;width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1}
+    .ns-when{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin-bottom:2px}
+    .ns-act{font-size:13px;color:var(--ink);line-height:1.4}
+    .footer{display:flex;justify-content:space-between;align-items:center;margin-top:16px;color:var(--mut);font-size:12px;border-top:1px solid var(--line);padding-top:14px;gap:16px;flex-wrap:wrap}
+    .footer a{color:var(--blue);text-decoration:none}
+    @media print{
+      html,body{background:#fff;font-size:12px}
+      .hero,.kpi,.pill,.stack,.seg,.bar-fill,.pbar-fill,.dot,.lg i,.st i,.summary,.ns-num,.ns-item,.brand,.header-meta{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      .hero{padding:22px 0 54px;border-radius:10px}.hero .wrap{padding:0 22px}
+      .page{max-width:none;padding:0;gap:12px}
+      .kpi-strip{margin-top:-36px;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}.kpi{padding:10px 12px}.kpi-label{font-size:10px}.kpi-value{font-size:24px}.header-title{font-size:24px}
+      .panel{padding:12px 14px}
+      .panel,.kpi-strip,.summary,.next-steps,.ns-item,.src-row,.ibar{break-inside:avoid}
+      .panel.page-break{break-before:page}
+      /* A4 print width is under the 760px mobile breakpoint; keep the desktop grid on paper. */
+      .panel.col-4{grid-column:span 4}.panel.col-5{grid-column:span 5}.panel.col-6{grid-column:span 6}.panel.col-7{grid-column:span 7}.panel.col-8{grid-column:span 8}
+      .hero .wrap{flex-direction:row}
+      .ibar{grid-template-columns:120px 1fr 34px}
+      .ibar-label{font-size:11px}
+      table.data th{position:static}
+      table.data tr{break-inside:avoid}
+      table.devlist thead{display:table-header-group}
+      table.devlist{break-inside:auto}
+      .panel.col-12:has(table.devlist){break-inside:auto}
+    }
+  .ibar-label{overflow-wrap:anywhere}
+    .stack-note{font-size:12px;color:var(--mut)}
+  </style>
+</head>
+
+<body>
+  <div class="hero"><div class="wrap">
+    <div class="header-left">
+      <div class="eyebrow">SentinelOne resources</div>
+      <h1 class="header-title">{{report_title}}</h1>
+      <p class="header-subtitle">{{report_subtitle}}</p>
+      <div class="header-meta">Generated <strong>{{report_date}}</strong>{{report_meta}}</div>
+    </div>
+    <a class="brand" href="https://fluencysecurity.com" target="_blank" rel="noopener">
+      <img src="assets/logo2.png" alt="Fluency">
+    </a>
+  </div></div>
+
+  <div class="page">
+
+    <!-- KPI strip — 4-6 cards -->
+    <div class="kpi-strip">
+      {{kpi_strip}}
+    </div>
+
+    <!-- Written interpretation of the highest-signal numbers -->
+    <div class="summary">
+      {{summary_html}}
+    </div>
+
+    <!-- Main grid — use .panel.col-4/.col-6/.col-8/.col-12 -->
+    <div class="main-grid">
+      {{main_grid}}
+    </div>
+
+    <!-- Recommended next steps -->
+    <div class="next-steps">
+      <h3>Recommended Next Steps</h3>
+      <div class="ns-grid">
+        {{next_steps_items}}
+      </div>
+    </div>
+
+    <!-- Page 2+: method and device list, on the same 12-column grid -->
+    <div class="main-grid">
+      {{appendix}}
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <div>{{footer_page_info}}</div>
+      <div>Data as at <strong>{{footer_data_date}}</strong> · powered by <a href="https://fluencysecurity.com" target="_blank" rel="noopener">Fluency</a></div>
+    </div>
+
+  </div>
+</body>
+</html>
