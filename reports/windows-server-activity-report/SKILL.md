@@ -1,6 +1,6 @@
 ---
 name: windows-server-activity-report
-version: 1.0.0
+version: 1.0.1
 description: >-
   Produce a Windows Server Activity report for ONE Ingext/Fluency tenant and a period (a calendar month by
   default) as HTML, PDF and CSV, built ONLY from the archive of the scheduled report WindowsSrv_Activity_Report.
@@ -68,6 +68,8 @@ python3 scripts/build_report.py --archive ARCHIVE1.json [ARCHIVE2.json ...] \
 Pass the whole requested period in `--from/--to`, including days not yet archived: they are listed as gaps instead of
 silently shrinking the period. The script sums the per-day trend rows, sums every facet and list by value, keeps the
 latest run when a day was archived twice, and reports script-hash changes.
+
+Add `--interactive WORKDIR/report_interactive.html` to also write one self-contained interactive page (tabs, search, sort, filter, CSV export of the filtered view, dark mode, hover trend charts) from the same merged data; `--no-actors` omits user names and IPs from it too.
 
 **Scans the tenant could not run.** The processor catches a missing table or failed query and records it in the
 archived `sources` table as "not available" with the error text. The report shows each scan as available, partial

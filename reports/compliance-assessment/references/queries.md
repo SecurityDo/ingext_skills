@@ -81,11 +81,11 @@ Notes:
 - Control mapping used by the script: AU-2/AU-12 (event volumes), SI-4 (behavior summaries),
   AU-6 and IR-4/IR-5 (incident dispositions), AC-2 (users, directory audit), AC-7 (failed
   sign-ins), IA-2/IA-5 (Conditional Access), CM-8 (devices, Qualys hosts), RA-5 (Qualys).
-  AU-4/AU-11 is partial when a history depth was measured and not observed otherwise (configured retention is never collected); SC-7 and SI-3 are not observed until a network or endpoint source is
+  AU-4/AU-11 is always supported (one-year platform retention, stated, never searched); SC-7 and SI-3 are not observed until a network or endpoint source is
   present, then partial; AC-1, IA-1 and IR-1 are always manual review. IA-2/IA-5 is partial from Conditional
   Access policies or from MFA registration in the user dump; AC-2 and AC-7 also use CloudTrail IAM changes
   and failed console logins when present.
 
-## Retention probe (archived sources)
+## Log retention (AU-4 / AU-11)
 
-One `kql_search` per table and age (90, 180, 270, 365 days before the period end): `<Table> | take 1`, `rangeFrom`/`rangeTo` a 1 to 24 hour window ending that many days before the period end (window = 100000 / avg daily events x 24 h, clamped). Save as `retention_<Table>_<age>.json`. `take 1` is not cheap on a dense window, so keep it short. The result shows records exist at that depth, not the configured retention.
+No query. Log data is stored for one year (365 days) on the Fluency platform, so AU-4/AU-11 is always supported and the report states the fact. Do not run retention probes.

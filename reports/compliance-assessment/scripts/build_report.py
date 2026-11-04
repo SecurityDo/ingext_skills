@@ -547,6 +547,7 @@ def history_facts(d, period_end):
 
 
 RETENTION_TARGET_DAYS = 365
+RETENTION_STATEMENT = "Log data is stored for one year (365 days) on the Fluency platform. This is a fixed platform retention period, stated as a fact; no search was run to measure it."
 
 
 def retention_facts(d, period_end):
@@ -828,7 +829,7 @@ def main():
     net_src = [x for x in extra if x["class"] == "network" and x["events"]]
     end_src = [x for x in extra if x["class"] == "endpoint" and x["events"]]
     hist = history_facts(d, period_end)
-    ret = retention_facts(d, period_end)
+    ret = None  # retention is a stated platform fact (RETENTION_STATEMENT); retention_ probe files are ignored
     conns = load(d, "connectors.json")
     reps = load(d, "reports.json")
     conn_list = [(c.get("application"), c.get("state")) for c in conns.get("entries", [])] if conns else None
@@ -863,24 +864,10 @@ def main():
         return None
 
     pct = "%.1f%%" % (100.0 * failed / sin) if sin else None
-    hist_ok = [h for h in (hist or []) if h.get("days") is not None]
-    if ret:
-        def _rt(r):
-            if r["deepest_days"] is None:
-                return "%s no records found at any probed depth" % r["table"]
-            miss = ", none at %s days" % r["first_miss_days"] if r["first_miss_days"] else ""
-            return "%s records found back to %s days%s" % (r["table"], r["deepest_days"], miss)
-        ret_status = "supported" if all(r["target_met"] for r in ret) else "partial"
-        ret_text = ("Retention probe (target %s days): %s. Each probe looks for any record in a short window that far before the period end, so it shows how far back records exist, not the configured retention setting. Archive counts are not retention evidence." % (
-            RETENTION_TARGET_DAYS, "; ".join(_rt(r) for r in ret)))
-        if hist_ok:
-            ret_text += " Other sources: " + "; ".join("%s %s%s days" % (h["table"], "at least " if h.get("at_least") else "", n(h["days"])) for h in hist_ok) + "."
-    elif hist_ok:
-        ret_status = "partial"
-        ret_text = "History observed: %s. This is how far back records exist, not the configured retention period, and it can reflect when a source was connected." % "; ".join(
-            "%s %s%s days (oldest %s)" % (h["table"], "at least " if h.get("at_least") else "", n(h["days"]), h["oldest"]) for h in hist_ok)
-    else:
-        ret_status, ret_text = "not_observed", "Retention period and storage capacity were not collected in this run, and no history depth was measured."
+    # AU-4 / AU-11 is a platform fact, not something measured: Fluency keeps every tenant's log data for one year
+    # (365 days). It is always reported as supported and nothing is searched to prove it.
+    ret_status = "supported"
+    ret_text = RETENTION_STATEMENT
     if inc_total is not None:
         au6_text = "%s summaries became incidents: %s still new, %s closed. No review-cadence record was collected." % (n(inc_total), n(new_inc or 0), n(closed_inc or 0))
         ir_text = "%s. Documented response procedure not supplied." % (
@@ -1192,9 +1179,6 @@ def main():
 
     st_by = {r[0]: r[2] for r in rows}
     gaps = []
-    if st_by["AU-4 / AU-11"] != "supported":
-        gaps.append("<li><b>Log retention and capacity (AU-4, AU-11):</b> confirm the configured retention for each index; %s</li>" % (
-            "the history depth measured above is what exists today, not a setting. Sources whose history was not measured (very large tables time out) need a narrower query." if hist_ok else "measure history depth per source with the history_ queries."))
     if not ca:
         gaps.append("<li><b>MFA and admin protection (IA-2, IA-5):</b> collect the Conditional Access policies to see which enforce MFA and for whom.</li>")
     elif not ca_enf:
@@ -1241,7 +1225,7 @@ def main():
 <p><b>What the evidence shows.</b> {logging_line}</p>
 <p><b>Why it matters.</b> Controls that depend on review, identity configuration, inventory and vulnerability data are only partly evidenced, and any control with no data source on this tenant is reported as not observed.</p>
 <p><b>Result.</b> 13 control groups assessed: {c_s} supported, {c_p} partial, {c_n} not observed, {c_m} needing customer documentation. Evidence coverage is {cov}{cov_prior}. {lead_find}{lead_new}</p>
-<p><b>Evidence strength.</b> Confirmed: event volumes, incident counts, inventory counts. Inferred: the mapping of evidence to control status. Unknown: configured retention, vulnerability findings, policy documents.</p></div>
+<p><b>Evidence strength.</b> Confirmed: event volumes, incident counts, inventory counts. Inferred: the mapping of evidence to control status. Stated: log retention is one year on the platform. Unknown: vulnerability findings, policy documents.</p></div>
 <div class="read"><b>Read this first.</b> This is a reduced, evidence-led view of 13 NIST SP 800-53 Rev. 5 control groups, assembled by read-only queries to the {site} connector. It is not the full Compliance Package and does not certify or attest compliance. "Not observed" means evidence was not collected in this run; it is not a failed control. Evidence coverage is a measure of how much of the evidence was observed, not a compliance score.</div>
 <h2><span class="n">1</span>Key findings</h2>
 <p class="small">{fsub}Observations computed from the evidence, using analyst thresholds. They show where to look first; they are not compliance determinations.</p>

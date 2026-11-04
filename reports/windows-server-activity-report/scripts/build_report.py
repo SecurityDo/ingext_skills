@@ -3,6 +3,7 @@
 
   build_report.py --archive day1.json [day2.json ...] --out report.html [--csv report.csv] [--summary-json s.json]
                   [--from YYYY-MM-DD --to YYYY-MM-DD] [--tenant NAME --site Develop] [--top 10] [--no-actors]
+                  [--interactive report_interactive.html]
 
 Each --archive file is the saved result of download_report_archive (days[] of {entry, result}); several files and
 several days per file are merged. This script never queries a tenant. Rules: the per-day trend rows are summed (hosts
@@ -10,7 +11,7 @@ is the PEAK day); win_facets (one table per facet) is summed by value, "(none)" 
 win_ingest are summed by key, with distinct counts (user names, hosts) reported as the PEAK single day; a missing
 value is 0; a day that is not archived is a GAP, never zero. --no-actors drops every list that names a user or an IP.
 """
-import argparse, collections, csv, datetime as dt, glob, html, json, sys
+import argparse, collections, csv, datetime as dt, glob, html, json, os, sys
 
 E = html.escape
 NAVY, RED, AMB, GRN, GRY, BLU = "#14213d", "#B91C1C", "#B45309", "#15803D", "#64748B", "#1D4ED8"
@@ -269,6 +270,78 @@ def short(ts):
     return (ts or "")[:16].replace("T", " ")
 
 
+def build_interactive(path, ctx):
+    """One self-contained interactive HTML (tabs, search, sort, filter, CSV export, dark mode, hover charts).
+    Reuses the merged structures main() already computed; honours --no-actors by never putting user names or IPs in the file."""
+    T, fac, fsrc, actors, top = ctx["T"], ctx["fac"], ctx["fsrc"], ctx["actors"], ctx["top"]
+    expected, daily, other = ctx["expected"], ctx["daily"], ctx["other"]
+    tables = []
+
+    def add(tid, tab, title, sub, cols, rows, color, half=False, sort=None):
+        tables.append({"id": tid, "tab": tab, "title": title, "sub": sub, "color": color, "half": half, "sort": sort,
+                       "cols": [{"l": c, "n": isinstance(rows[0][i], (int, float)) if rows else (i > 0)} for i, c in enumerate(cols)],
+                       "rows": [list(r) for r in rows]})
+
+    def cnt(tid, tab, title, sub, facet, color, hdr, label=None, total=None, half=True):
+        rows = [[(label(k) if label else k), c] for k, c in fac.get(facet, collections.Counter()).most_common() if c]
+        if total:
+            rows = [r + [round(100.0 * r[1] / total, 1)] for r in rows]
+        add(tid, tab, title, sub, list(hdr) + (["% of total"] if total else []), rows, color, half)
+
+    add("events_by_host", "events", "Events by host", "Short host names. %s" % ctx["lostnote"].strip(),
+        ["Host", "Events", "MB"], [[h, c, round(ctx["host_bytes"][h] / 1e6, 2)] for h, c in ctx["host_tot"].most_common()], NAVY)
+    add("events_by_event_id", "events", "Events by event ID", "Names come from the AD_EventID lookup, else the description on the event. %d event ID(s) have no name." % ctx["unnamed"],
+        ["Event ID", "Events", "MB"], [[ctx["ename"](e), c, round(ctx["id_bytes"][e] / 1e6, 2)] for e, c in ctx["id_tot"].most_common()], NAVY)
+    cnt("logon_types", "logons", "Successful logons by type", "Machine accounts left out.", "logonType", GRN, ("Logon type", "Logons"),
+        lambda k: "%s (%s)" % (LOGON_TYPE.get(k, "type"), k), T["logonsOk"])
+    cnt("failed_reasons", "logons", "Failed logons by reason", "SubStatus code, else Status.", "failedReason", RED, ("Reason", "Failures"),
+        lambda k: "%s (%s)" % (FAIL_REASON.get(k, "code"), k) if k != "(not recorded)" else k, T["logonsFailed"])
+    if actors:
+        cnt("top_logon_accounts", "logons", "Top accounts by logons", "Target account of successful user logons.", "logonUser", GRN, ("Account", "Logons"), None, T["logonsOk"])
+        cnt("top_failed_accounts", "logons", "Top accounts by failures", "Target account of failed logons.", "failedUser", RED, ("Account", "Failures"), None, T["logonsFailed"])
+        add("failed_sources", "logons", "Failed logons by source address", "Many user names from one address is a spray, many failures with few names is brute force, the rest is probing. Lower bound: top 100 a day.",
+            ["Source", "Failures", "User names (peak day)", "Hosts (peak day)", "Pattern", "First seen", "Last seen"],
+            [[k, r["failures"], r["usernames"], r["hosts"], "Credential spray" if r["usernames"] >= 10 else ("Brute force" if r["failures"] >= 50 else "Probe"), short(r["first"]), short(r["last"])] for k, r in fsrc.items()], RED)
+    cnt("account_events", "priv", "Account events", "By event.", "acctEvent", BLU, ("Event", "Count"), lambda k: "%s %s" % (k, ACCT_EVENT.get(k, "")))
+    cnt("group_additions", "priv", "Group additions", "Group that gained a member.", "groupName", BLU, ("Group", "Adds"))
+    if actors:
+        cnt("priv_logon_accounts", "priv", "Privileged logons by account", "Special-privilege logons (4672), people only.", "privAccount", AMB, ("Account", "Logons"), None, T["privLogons"])
+        cnt("account_actors", "priv", "Account changes by actor", "Who made the change.", "acctActor", BLU, ("Actor", "Events"))
+        cnt("account_targets", "priv", "Account changes by target", "The account that was changed.", "acctTarget", BLU, ("Target", "Events"))
+        cnt("group_actors", "priv", "Group additions by actor", "Who added the member.", "groupActor", BLU, ("Actor", "Adds"))
+    cnt("persist_items", "tamper", "Services and tasks installed", "Name of the service or scheduled task.", "persistItem", AMB, ("Item", "Count"))
+    cnt("tamper_events", "tamper", "Log clears and policy changes", "By event.", "tamperEvent", RED, ("Event", "Count"), lambda k: "%s %s" % (k, TAMPER_EVENT.get(k, "")))
+    cnt("tamper_hosts", "tamper", "Tampering by host", "Host where the log was cleared or the policy changed.", "tamperHost", RED, ("Host", "Count"))
+    if actors:
+        cnt("tamper_actors", "tamper", "Tampering by actor", "Account that did it.", "tamperActor", RED, ("Actor", "Count"))
+    srows = []
+    for s in sorted(ctx["stat"]):
+        c = ctx["stat"][s]
+        okd, nad = c.get("ok", 0), c.get("not available", 0)
+        srows.append([s, "available" if okd and not nad else ("not available" if nad and not okd else "partial"), okd, nad, (ctx["detail"].get(s) or "")[:120]])
+    if srows:
+        add("scan_status", "coverage", "Scan status", "Whether each scan ran on the archived days.", ["Scan", "Status", "Days ok", "Days not available", "Error"], srows, GRN, sort=None)
+    add("crosswalk", "coverage", "What these counts relate to", "Indicative crosswalk to NIST SP 800-53 Rev. 5. Related, not equivalent.",
+        ["Area", "800-53 controls", "Counts that relate"], [list(x) for x in SEC_FAMILY], NAVY)
+    add("limits", "coverage", "Limits", "Source: archive of the scheduled report WindowsSrv_Activity_Report. No live search was run to build this report.",
+        ["Limit"], [[l] for l in LIMITS], GRY)
+    dcols = ["Day"] + [SHORT[m] for m in TABLE_COLS]
+    drows = [[d] + [daily[d][m] for m in TABLE_COLS] for d in expected if d in daily]
+    daily_table = {"id": "daily_trend", "tab": "overview", "title": "Daily counts", "sub": "One row per archived UTC day. Hosts is the peak single day. Days not archived are gaps and are not listed.",
+                   "color": NAVY, "half": False, "sort": 0,
+                   "cols": [{"l": c, "n": i > 0} for i, c in enumerate(dcols)], "rows": drows}
+    data = {"meta": {"tenant": ctx["tenant"], "site": ctx["site"], "period": ctx["period"], "days_archived": len(daily), "days_expected": len(expected),
+                     "missing": ctx["missing"], "actors": actors, "nodata": ctx["nodata"], "hashes": ctx["hashes"],
+                     "non_completed": ", ".join("%s=%s" % kv for kv in sorted(other.items())), "multi_script": ctx["multi_script"]},
+            "totals": {m: T[m] for m in METRICS}, "metrics": list(METRICS), "labels": {m: LABEL[m] for m in METRICS},
+            "days": [{"date": d, "gap": d not in daily, "v": ({m: daily[d][m] for m in METRICS} if d in daily else {})} for d in expected],
+            "highlights": ctx["hl"], "tables": tables, "daily_table": daily_table, "capped": ["%s (%d d)" % kv for kv in sorted(ctx["capped"].items())]}
+    tpl = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "interactive_template.html"), encoding="utf-8").read()
+    blob = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(tpl.replace("{{title}}", E("Windows Server Activity Report - %s" % (ctx["tenant"] or "Tenant"))).replace("{{data}}", blob))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--archive", nargs="+", required=True)
@@ -280,6 +353,7 @@ def main():
     ap.add_argument("--tenant", default="")
     ap.add_argument("--site", default="")
     ap.add_argument("--top", type=int, default=10)
+    ap.add_argument("--interactive", metavar="PATH", help="also write a single self-contained interactive HTML file (tabs, search, sort, filter, CSV export, dark mode)")
     ap.add_argument("--no-actors", action="store_true", help="omit lists that name user accounts and IP addresses")
     a = ap.parse_args()
 
@@ -504,6 +578,12 @@ def main():
             if actors:
                 for k, r in sorted(fsrc.items(), key=lambda kv: -kv[1]["failures"]):
                     w.writerow(["failed_source", k, "failures", r["failures"]]); w.writerow(["failed_source", k, "peak_day_usernames", r["usernames"]])
+    if a.interactive:
+        build_interactive(a.interactive, {"T": T, "fac": fac, "fsrc": fsrc, "actors": actors, "top": top, "expected": expected, "daily": daily, "other": other,
+                                          "lostnote": lostnote, "host_bytes": host_bytes, "host_tot": host_tot, "id_bytes": id_bytes, "id_tot": id_tot,
+                                          "ename": ename, "unnamed": unnamed, "stat": stat, "detail": detail, "tenant": a.tenant, "site": a.site,
+                                          "period": period, "missing": missing, "nodata": nodata, "hashes": ", ".join("%s (%d d)" % (h, c) for h, c in hashes.most_common()),
+                                          "multi_script": len(hashes) > 1, "capped": capped, "hl": hl})
     print("period %s: %d of %d days archived, %s events, %s logons, %s failed, %d gap day(s)%s"
           % (period, len(done), len(expected), n(T["events"]), n(T["logonsOk"]), n(T["logonsFailed"]), len(missing), ", NO WINDOWS DATA" if nodata else ""))
 

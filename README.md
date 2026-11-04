@@ -235,7 +235,7 @@ in both source and archives; it does not check that their full file contents mat
 | [ingext-entity-tables](./SKILLS/ingext-entity-tables/SKILL.md) | 1.0.0 | [Source](./SKILLS/ingext-entity-tables) | [Download](./cowork/ingext-entity-tables.skill) | Discover and query entity lookup tables, watchlists and reference values |
 | [aws-cloudtrail-activity-report](./reports/aws-cloudtrail-activity-report/SKILL.md) | 1.0.0 | [Source](./reports/aws-cloudtrail-activity-report) | [Download](./cowork/aws-cloudtrail-activity-report.skill) | AWS CloudTrail activity report from archived daily report results |
 | [microsoft365-entra-activity-report](./reports/microsoft365-entra-activity-report/SKILL.md) | 2.0.0 | [Source](./reports/microsoft365-entra-activity-report) | [Download](./cowork/microsoft365-entra-activity-report.skill) | Microsoft 365 and Entra activity report from archived daily report results |
-| [windows-server-activity-report](./reports/windows-server-activity-report/SKILL.md) | 1.0.0 | [Source](./reports/windows-server-activity-report) | [Download](./cowork/windows-server-activity-report.skill) | Windows Server activity report from archived daily report results |
+| [windows-server-activity-report](./reports/windows-server-activity-report/SKILL.md) | 1.0.1 | [Source](./reports/windows-server-activity-report) | [Download](./cowork/windows-server-activity-report.skill) | Windows Server activity report from archived daily report results |
 | [fortigate-security-activity-report](./reports/fortigate-security-activity-report/SKILL.md) | 1.0.0 | [Source](./reports/fortigate-security-activity-report) | [Download](./cowork/fortigate-security-activity-report.skill) | FortiGate security activity report from archived daily report results |
 | [microsoft365-resource-inventory-report](./reports/microsoft365-resource-inventory-report/SKILL.md) | 1.0.0 | [Source](./reports/microsoft365-resource-inventory-report) | [Download](./cowork/microsoft365-resource-inventory-report.skill) | Microsoft 365 / Entra directory inventory (users, MFA, devices, apps, groups, licenses) from archived daily snapshots, with an interactive HTML view |
 | [sentinelone-resource-report](./reports/sentinelone-resource-report/SKILL.md) | 1.0.0 | [Source](./reports/sentinelone-resource-report) | [Download](./cowork/sentinelone-resource-report.skill) | SentinelOne agents, applications and threats in one report (endpoint status, agent versions, risky apps, open threats) from the archive of the scheduled report SentinelOne_Resource_Report, with an interactive HTML view |
@@ -656,7 +656,8 @@ built **only from the archive** of the scheduled report `WindowsSrv_Activity_Rep
 by event ID, with names from the `AD_EventID` lookup) and adds user logons and failures, failed-logon
 sources with a spray / brute-force / probe pattern, privileged logons, account and group changes,
 services and scheduled tasks installed, and audit-log clears and policy changes, with archive
-coverage and gap days. User and IP lists can be left out with `--no-actors`.
+coverage and gap days. User and IP lists can be left out with `--no-actors`. An optional single-file
+interactive page (tabs, search, sort, filters, CSV export, trend dropdown, daily counts tab) is built with `--interactive`.
 
 **Try:**
 - "Windows server activity report for last month"
