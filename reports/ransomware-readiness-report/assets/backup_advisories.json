@@ -1,0 +1,18 @@
+{
+  "_about": "Backup product advisories compared against each version found in the tenant. Edit this file as new advisories or fixed versions are published; the report logic does not change. A product or version with no entry is reported as 'CVE status not verified', never as safe.",
+  "updated": "2026-11-05",
+  "advisories": [
+    {
+      "id": "veeam-kb4771",
+      "product_regex": "^Veeam Backup (&|and) Replication$",
+      "vulnerable_through": "12.3.2.3617",
+      "fixed_in": "12.3.2.4165",
+      "cves": ["CVE-2025-48983", "CVE-2025-48984"],
+      "cvss": 9.9,
+      "condition": "exploitable when the backup server is joined to the production Windows domain",
+      "source": "Veeam KB4771, 14 Oct 2025",
+      "mitre": "T1490, T1486"
+    }
+  ],
+  "components_note": "Veeam components (Backup Transport, Installer Service, Mount Service and similar) carry the build number of the Backup & Replication release they belong to; report them as 'CVE status not verified' unless an advisory above names them."
+}

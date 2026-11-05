@@ -61,6 +61,27 @@ def vuln_frame(d):
     return pd.concat(parts, ignore_index=True)
 
 
+def vkey(v):
+    return tuple(int(x) for x in re.findall(r"\d+", str(v)))
+
+
+def load_advisories():
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "backup_advisories.json")
+    try:
+        return json.load(open(p)).get("advisories", [])
+    except Exception:
+        return []
+
+
+def advisory_status(product, version, advisories):
+    for a in advisories:
+        if re.search(a["product_regex"], product or "", re.I):
+            if vkey(version) <= vkey(a["vulnerable_through"]):
+                return "VULNERABLE", a["id"] + ": " + ", ".join(a["cves"]) + " (fixed in " + a["fixed_in"] + ")"
+            return "fixed or newer", a["id"]
+    return "CVE status not verified", ""
+
+
 def days_since(ts):
     try:
         t = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
@@ -138,8 +159,12 @@ def main(d, out):
                 bdom[(a.get("agentDomain") or "").upper()] += 0
             if REMOTE.search(nm):
                 rh.setdefault(nm, set()).add(a.get("agentComputerName"))
-        ev["backup"] = sorted(({"product": k[0], "version": k[1], "endpoints": len(v)} for k, v in bh.items()),
-                              key=lambda x: -x["endpoints"])
+        adv = load_advisories()
+        ev["backup"] = sorted(({"product": k[0], "version": k[1], "endpoints": len(v),
+                                "advisory": advisory_status(k[0], k[1], adv)[0],
+                                "detail": advisory_status(k[0], k[1], adv)[1]} for k, v in bh.items()),
+                              key=lambda x: (x["advisory"] != "VULNERABLE", -x["endpoints"]))
+        ev["backup_vulnerable_endpoints"] = len({h for k, v in bh.items() if advisory_status(k[0], k[1], adv)[0] == "VULNERABLE" for h in v})
         ev["backup_domains"] = sorted({(a.get("agentDomain") or "").upper() for a in apps
                                       if BACKUP.search(a.get("name") or "") and a.get("agentDomain")})
         ev["remote_tools"] = sorted(({"tool": k, "endpoints": len(v)} for k, v in rh.items()),

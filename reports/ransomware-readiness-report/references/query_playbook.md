@@ -96,10 +96,10 @@ sentinelOneApplication | extend ln = tolower(name)
   or ln contains "commvault" or ln contains "datto" or ln contains "acronis"
 | summarize endpoints=dcount(agentComputerName) by name, version, agentDomain
 ```
-For each backup product found, compare its version with the advisory list below. A product or
-version that is not on the list is reported as "CVE status not verified"; never write that it is
-safe. (Veeam B&R ≤ 12.3.2.3617 → CVE-2025-48983/48984, CVSS 9.9, fixed 12.3.2.4165, exploitable
-only when the server is domain-joined; Veeam KB4771, 14 Oct 2025.) Backup servers joined to the production domain are a finding on their own.
+Each backup product and version is compared with `assets/backup_advisories.json` by `scripts/resource_evidence.py`
+(Veeam B&R up to 12.3.2.3617 is VULNERABLE to CVE-2025-48983/48984, fixed in 12.3.2.4165; Veeam KB4771, 14 Oct 2025).
+Update the JSON, not the code, when advisories change. Not on the list means "CVE status not verified", never safe.
+Backup servers joined to the production domain are a finding on their own.
 
 ## Pillar 5 — Detection & response (sentinelOneThreat)
 

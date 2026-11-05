@@ -56,8 +56,10 @@ reported.
 4. **Run the eight pillars:** Backup and recovery; Endpoint coverage; Prevention and hardening; Vulnerability exposure;
    Detection and response; Identity and access; Logging and forensics; Threat activity. Fold remote-access tools and
    end-of-life systems into the most relevant pillar. 30-day WindowsAudit queries are slow: filter by EventID first.
-5. **Backup product versions.** Compare each backup product and version with the advisory list in the playbook. An
-   unlisted product or version is reported as "CVE status not verified", never as safe.
+5. **Backup product versions.** `resource_evidence.py` compares each backup product and version with
+   `assets/backup_advisories.json` (the Veeam advisory list; edit that file when advisories or fixed versions change and
+   the logic stays the same). Each row is VULNERABLE, fixed or newer, or "CVE status not verified". An unlisted product or
+   version is never reported as safe.
 6. **Select the top issues** (6 to 10), ranked Critical, High, Medium by how directly they enable encryption or block
    recovery. Backup compromise and unprotected devices outrank hygiene items. For each: finding (with numbers), why
    the board should care (one or two sentences, no jargon), recommendation, owner, target (7, 14, 30, 60 or 90 days),
