@@ -1,6 +1,6 @@
 ---
 name: ransomware-readiness-report
-version: 1.1.0
+version: 1.2.0
 description: >-
   Assess ONE Fluency / Ingext tenant's ability to prevent, withstand and recover from ransomware and render
   a board-level report (HTML and PDF): an overall rating, an eight-pillar scorecard, 6 to 10 ranked issues
@@ -51,8 +51,15 @@ reported.
    vulnerabilities with exploit availability, threat classes, user counts and conditional-access MFA policies. A dump that
    is missing is listed under `gaps`: a visibility gap, never a guess. If the shell cannot reach the tenant host, tell the
    user the host must be allowed or the download run on their own computer.
-3b. **Event data: query.** Only event tables (WindowsAudit, AzureSigninLogs) are queried, with
-   `list_data_tables` to confirm they exist, then `validate_kql` and `kql_search` (see the playbook, pillars 6 and 7).
+3b. **Windows audit: archive only.** Call `list_report_archive` for `WindowsSrv_Activity_Report` and
+   `download_report_archive` for the last 30 days (save the result to a file), then run
+   `python3 scripts/windows_evidence.py <file> -o windows_evidence.json`. It sums the daily results into log clearing
+   (1102/104), audit-policy changes, new services and scheduled tasks (7045/4697/4698), account and group changes, failed
+   and NTLM logons and failed-logon source patterns, with suspect service names flagged. Never run `kql_search` or
+   `run_report` for this pillar: if the report is not archived, the Windows pillar is "not measurable, visibility gap".
+   (To test before a tenant has the archive, one `run_report` result for a single day has the same shape and is accepted.)
+3c. **Sign-in events: archive first.** Read `Office365_Entra_Activity_Report` from the archive for single-factor, MFA-required,
+   risky and legacy-auth sign-in counts; only if it is absent query `AzureSigninLogs` (playbook pillar 6).
 4. **Run the eight pillars:** Backup and recovery; Endpoint coverage; Prevention and hardening; Vulnerability exposure;
    Detection and response; Identity and access; Logging and forensics; Threat activity. Fold remote-access tools and
    end-of-life systems into the most relevant pillar. 30-day WindowsAudit queries are slow: filter by EventID first.

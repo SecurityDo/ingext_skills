@@ -163,3 +163,11 @@ atera, logmein, pdq, manageengine. Count endpoints and servers. EOL from
 Pillars 1 to 5 and 8 no longer use KQL on resource tables. `scripts/resource_evidence.py` computes the same
 measures from the downloaded dumps (see SKILL.md step 3). The KQL above remains the fallback when a dump cannot be
 downloaded and is a cross-check for small tables. Only pillars 6 and 7 (sign-in and Windows audit events) always run as queries.
+
+## Windows audit and sign-ins come from archives (v1.2.0)
+
+Pillar 7 is read from the archive of `WindowsSrv_Activity_Report` by `scripts/windows_evidence.py`; the `WindowsAudit`
+query above is not run. A tenant without that archive gets "not measurable, visibility gap" for the pillar. Pillar 6 reads
+`Office365_Entra_Activity_Report` first. Verified on gramfg for 2026-11-04: 24 log-clear events (12 each of 1102 and 104,
+none with a recorded actor), 7,232 audit-policy changes by the domain controllers' own accounts, 47 services and 4 tasks
+installed (Sentinel and Windows components, nothing suspect), 57 failed logons and 19 probe-pattern failed-logon sources.
