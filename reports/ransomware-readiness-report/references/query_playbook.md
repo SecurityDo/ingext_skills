@@ -157,3 +157,9 @@ atera, logmein, pdq, manageengine. Count endpoints and servers. EOL from
 - **green / Healthy**: no material issues.
 - Overall rating: any red pillar in Backup, Endpoint Coverage or Prevention → "Elevated Risk";
   2+ red → "High Risk"; no red and ≤2 amber → "Moderate Risk"; otherwise "Resilient".
+
+## Resource data is parsed locally (v1.1.0)
+
+Pillars 1 to 5 and 8 no longer use KQL on resource tables. `scripts/resource_evidence.py` computes the same
+measures from the downloaded dumps (see SKILL.md step 3). The KQL above remains the fallback when a dump cannot be
+downloaded and is a cross-check for small tables. Only pillars 6 and 7 (sign-in and Windows audit events) always run as queries.

@@ -1,6 +1,6 @@
 ---
 name: ransomware-readiness-report
-version: 1.0.0
+version: 1.1.0
 description: >-
   Assess ONE Fluency / Ingext tenant's ability to prevent, withstand and recover from ransomware and render
   a board-level report (HTML and PDF): an overall rating, an eight-pillar scorecard, 6 to 10 ranked issues
@@ -39,8 +39,20 @@ reported.
 2. **Read `references/query_playbook.md`.** It holds the proven queries and the engine quirks (WindowsAudit uses
    `timestamp`; resource tables take no time filter; always pass both `rangeFrom` and `rangeTo`). Follow the `ingext-kql`
    skill for every query and run `validate_kql` before `kql_search`.
-3. **Discover tables** with `list_data_tables`. Run each pillar whose tables exist. A missing table or empty field is a
-   **visibility gap**: record it and rate that pillar amber with "not measurable, visibility gap". Never guess.
+3. **Resource data: download and parse locally.** Never query resource tables with KQL. Call
+   `list_resource_dumps` for the tenant, then `get_resource_dump_url` for each of: sentinelOneAgent,
+   sentinelOneApplication, sentinelOneThreat, msDefenderMachine, msDefenderSecureConfig (parquet),
+   msDefenderSecureScore, msDefenderVulnerability (parquet, over a million rows), office365User and
+   office365ConditionalAccessPolicy. Download each file with `curl -o <dump_dir>/<resource>.jsonl.gz` (or
+   `.parquet`) in a shell that can reach the tenant host (links expire in 15 minutes; fetch them in one go), then run
+   `python3 scripts/resource_evidence.py <dump_dir> evidence.json`. It needs pandas and pyarrow for the parquet files and
+   writes aggregate counts only: coverage and stale agents, detect-only modes, Defender devices with no EDR agent, backup
+   products and versions, remote-access tools, end-of-life OS, ASR, LAPS and Credential Guard gaps, Critical and High
+   vulnerabilities with exploit availability, threat classes, user counts and conditional-access MFA policies. A dump that
+   is missing is listed under `gaps`: a visibility gap, never a guess. If the shell cannot reach the tenant host, tell the
+   user the host must be allowed or the download run on their own computer.
+3b. **Event data: query.** Only event tables (WindowsAudit, AzureSigninLogs) are queried, with
+   `list_data_tables` to confirm they exist, then `validate_kql` and `kql_search` (see the playbook, pillars 6 and 7).
 4. **Run the eight pillars:** Backup and recovery; Endpoint coverage; Prevention and hardening; Vulnerability exposure;
    Detection and response; Identity and access; Logging and forensics; Threat activity. Fold remote-access tools and
    end-of-life systems into the most relevant pillar. 30-day WindowsAudit queries are slow: filter by EventID first.
