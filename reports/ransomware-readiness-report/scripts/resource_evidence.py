@@ -195,6 +195,15 @@ def main(d, out):
             "synced_from_ad": sum(bool(u.get("onPremisesSyncEnabled")) for u in usr),
             "password_never_expires": sum("DisablePasswordExpiration" in (u.get("passwordPolicies") or "") for u in usr),
         }
+        ga = [u for u in usr if "Global Administrator" in (u.get("roles") or [])]
+        adm = [u for u in usr if any("Administrator" in r for r in (u.get("roles") or []))]
+        ev["identity"].update({
+            "global_admins": len(ga),
+            "global_admins_enabled": sum(bool(u.get("accountEnabled")) for u in ga),
+            "global_admins_cloud_only": sum(not u.get("onPremisesSyncEnabled") for u in ga),
+            "admin_role_holders": len(adm),
+            "admin_roles": dict(Counter(r for u in usr for r in (u.get("roles") or []) if "Administrator" in r).most_common(12)),
+        })
     if cap is not None:
         def mfa(p): return "mfa" in json.dumps((p.get("grantControls") or {})).lower()
         def alluser(p): return "All" in ((p.get("conditions") or {}).get("users") or {}).get("includeUsers", [])
@@ -207,7 +216,7 @@ def main(d, out):
             "legacy_auth_block": sum(legacy(p) and "block" in json.dumps(p.get("grantControls") or {}).lower() for p in en),
             "report_only": sum(p.get("state") == "enabledForReportingButNotEnforced" for p in cap),
         }
-    gap("Admin role assignments and MFA registration are not in the resource dumps (identity pillar needs the sign-in and directory-role sources)")
+    gap("Per-user MFA registration is not in the resource dumps (admin MFA comes from the sign-in events)")
     gap("Log clearing, new services and account changes are event data, not resources (WindowsAudit / archived WindowsSrv report)")
     json.dump(ev, open(out, "w"), indent=2, default=str)
     print(json.dumps(ev, indent=2, default=str))
