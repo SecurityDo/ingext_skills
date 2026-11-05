@@ -58,8 +58,8 @@ reported.
    and NTLM logons and failed-logon source patterns, with suspect service names flagged. Never run `kql_search` or
    `run_report` for this pillar: if the report is not archived, the Windows pillar is "not measurable, visibility gap".
    (To test before a tenant has the archive, one `run_report` result for a single day has the same shape and is accepted.)
-3c. **Sign-in events: archive only.** Call `list_report_archive` for `Office365_Entra_Activity_Report` (if the tenant's report
-   is named `Microsoft_Entra_Activity_Report`, use that name; the parser reads object names, not the report name) and
+3c. **Sign-in events: archive only.** Call `list_report_archive` for `Office365_Entra_Activity_Report` (that exact name; no other
+   name is accepted) and
    `download_report_archive` for the last 30 days with `objects` set to `signin_trend`, `signin_facets`, `audit_trend`
    and `sources`. Save the result to a file and run `python3 scripts/entra_evidence.py <file> -o entra_evidence.json`.
    It returns sign-in counts, the single-factor share, how many sign-ins had conditional access applied, legacy-auth
