@@ -126,6 +126,8 @@ def _num(value):
 def kpi(label, value, note="", color="", tag=None, tag_kind="gray"):
     """One KPI cell: big mono number, mono caps label, optional status tag (string or tag() html). `note` shows as small gray text."""
     c = (" " + color) if color in ("red", "blue", "amber") else ""
+    if not re.match(r"^[\d,.\-+$]+[%a-zA-Z]{0,3}$", str(value).strip()) and len(str(value)) > 6:
+        c += " txt"                                            # a word or phrase, not a figure: smaller type so it fits the cell
     t = ""
     if tag:
         t = tag if str(tag).startswith("<") else globals()["tag"](tag, tag_kind)

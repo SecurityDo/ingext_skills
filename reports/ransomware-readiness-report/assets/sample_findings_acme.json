@@ -1,0 +1,164 @@
+{
+ "tenant": "Acme",
+ "assessment_date": "2026-09-30",
+ "evidence_window": "30 days (snapshots current)",
+ "overall_rating": "Elevated Risk",
+ "kpi_label": "Device Secure Score",
+ "kpi_value": "488",
+ "summary_headline": "Not yet ransomware-ready, but the fixes are well defined",
+ "summary": "Acme has solid foundations: SentinelOne protects 790 managed endpoints with malicious threats blocked automatically, tamper protection is on everywhere, and there are no unresolved active threats. The weaknesses sit precisely where modern ransomware operators aim: the backup servers, devices nobody is watching, the lateral-movement paths between machines, and the evidence trail on the domain controllers.",
+ "board_ask": "approve an immediate patch-and-isolate action on the backup servers (7 days) and sponsor a 90-day hardening program covering endpoint coverage, anti-ransomware controls and admin MFA. Most actions use tools Acme already licenses.",
+ "pillars": [
+  {
+   "name": "Backup &amp; Recovery",
+   "status": "red",
+   "detail": "Critical flaw on domain-joined backup servers"
+  },
+  {
+   "name": "Endpoint Coverage",
+   "status": "red",
+   "detail": "167 unprotected active devices; 83 laptops silent &gt;7 days"
+  },
+  {
+   "name": "Prevention &amp; Hardening",
+   "status": "red",
+   "detail": "ASR and LAPS absent fleet-wide"
+  },
+  {
+   "name": "Vulnerability Exposure",
+   "status": "amber",
+   "detail": "503 devices with exploitable CVEs"
+  },
+  {
+   "name": "Detection &amp; Response",
+   "status": "amber",
+   "detail": "Suspicious threats alert-only"
+  },
+  {
+   "name": "Identity &amp; Access",
+   "status": "amber",
+   "detail": "Admin portals single-factor for 11 accounts"
+  },
+  {
+   "name": "Logging &amp; Forensics",
+   "status": "amber",
+   "detail": "DC logs cleared daily"
+  },
+  {
+   "name": "Threat Activity",
+   "status": "green",
+   "detail": "No unmitigated malicious threats"
+  }
+ ],
+ "issues": [
+  {
+   "severity": "Critical",
+   "title": "Backup servers exposed to critical remote-code-execution flaws",
+   "finding": "Veeam Backup &amp; Replication build 12.3.2.3617 runs on 6 servers, all joined to the production domain. This build is affected by CVE-2025-48983 and CVE-2025-48984 (CVSS 9.9), which let any authenticated domain user execute code on domain-joined backup servers. The fix shipped in 12.3.2.4165 (Veeam KB4771, Oct 2025).",
+   "why": "Ransomware crews target backups first so the organization cannot recover without paying. A single phished employee password could be enough to reach them.",
+   "recommendation": "Upgrade to 12.3.2.4165 or later within 7 days. Move backup servers to a separate workgroup or management domain, enforce immutable / offline copies, and test a full restore.",
+   "owner": "Infrastructure",
+   "target": "7 days",
+   "mitre": "T1490 Inhibit System Recovery"
+  },
+  {
+   "severity": "Critical",
+   "title": "167 active Windows devices have no endpoint protection",
+   "finding": "Defender device discovery sees 167 active Windows devices that are neither onboarded to Defender nor matched to a SentinelOne agent. They include 7 servers and 9 end-of-life systems (6 Windows 7, 1 Server 2008 R2, 2 Server 2012 R2). Matching is by hostname, so a small number may be guest or personal devices.",
+   "why": "Unprotected machines are where attackers land, stage tools and launch encryption without being seen.",
+   "recommendation": "Triage the list, deploy SentinelOne or isolate via network access control within 30 days, starting with servers and end-of-life systems. Retire or segment anything that cannot run an agent.",
+   "owner": "IT Operations",
+   "target": "30 days",
+   "mitre": "T1133 / T1210"
+  },
+  {
+   "severity": "High",
+   "title": "Suspicious activity is detected but never blocked",
+   "finding": "All 790 SentinelOne agents run the &ldquo;suspicious&rdquo; policy in detect-only mode. On 15 Sep a network-scanning tool was executed under an administrator account, flagged as suspicious, and not mitigated. The same scanner is installed on 6 endpoints. On 8 Sep a behavioral ransomware detection was contained only on its second trigger.",
+   "why": "Network scanning by an admin account is a classic pre-ransomware reconnaissance step. Detect-only mode relies on a human responding in time.",
+   "recommendation": "Move the suspicious-threat policy to Protect (servers first), remove unapproved scanning tools, and add an alert for discovery tooling run by privileged accounts.",
+   "owner": "Security Operations",
+   "target": "14 days",
+   "mitre": "T1046 Network Service Discovery"
+  },
+  {
+   "severity": "High",
+   "title": "Core anti-ransomware hardening is switched off",
+   "finding": "All 18 Defender Attack Surface Reduction rules are non-compliant on 617 of 617 assessed devices, including &ldquo;Use advanced protection against ransomware&rdquo;, &ldquo;Block process creations from PsExec and WMI&rdquo; and &ldquo;Block rebooting machine in Safe Mode&rdquo;. LAPS is not enabled on any device; Credential Guard is off on 362 of 613. Device Secure Score is 488.",
+   "why": "Without these controls one compromised workstation can move laterally with shared local-admin passwords and remote-execution tools, the exact path used to push encryption fleet-wide.",
+   "recommendation": "Deploy ASR rules in audit mode for two weeks, then block. Roll out Windows LAPS and Credential Guard. Track Secure Score monthly with a 650+ target.",
+   "owner": "Endpoint Engineering",
+   "target": "60 days",
+   "mitre": "T1021 / T1570 Lateral Movement"
+  },
+  {
+   "severity": "High",
+   "title": "Exploitable vulnerabilities are widespread and aging",
+   "finding": "503 devices carry critical or high CVEs with public or verified exploits; on 345 the exposure is older than 30 days and on 129 older than 90 days. 86 devices have exploitable criticals. Main drivers: unpatched Chrome (issues dating to July 2025) and Teams Classic on 112 devices. Only 1 of 58 servers reports into Defender vulnerability management.",
+   "why": "Known, weaponized vulnerabilities are the second most common ransomware entry point. The server blind spot means risk on the most valuable systems is unmeasured.",
+   "recommendation": "Set patch SLAs (critical &le;14 days, high &le;30), force browser auto-update, remove Teams Classic, and onboard all servers to vulnerability scanning.",
+   "owner": "IT Operations",
+   "target": "30 days",
+   "mitre": "T1190 / T1203"
+  },
+  {
+   "severity": "High",
+   "title": "Domain controller security logs are cleared about six times a day",
+   "finding": "Both domain controllers recorded a Security-log-cleared event every day for 30 days (365 events). Routine clearing destroys local forensic evidence and makes an attacker&rsquo;s own log wipe indistinguishable from normal operations.",
+   "why": "Investigators and insurers need a reliable record of what happened. Clearing logs is a standard ransomware anti-forensics step.",
+   "recommendation": "Increase Security log size, set retention to archive instead of clear, forward all DC events to the SIEM, and alert on any Event ID 1102.",
+   "owner": "Infrastructure",
+   "target": "14 days",
+   "mitre": "T1070.001 Clear Windows Event Logs"
+  },
+  {
+   "severity": "Medium",
+   "title": "Admin portals reachable with a password alone",
+   "finding": "11 accounts signed into the Azure Portal, Microsoft 365 Admin Center or Azure CLI with single-factor authentication (443 sign-ins in 30 days). Across the tenant, 21% of successful sign-ins were single-factor (953 users). MFA registration data is not currently collected.",
+   "why": "Stolen credentials are the most common ransomware entry point. Admin consoles protected only by a password are high-value targets.",
+   "recommendation": "Require phishing-resistant MFA for all admin portals and tools via Conditional Access, review the 5 Global Administrators, and enable authentication-method reporting.",
+   "owner": "Identity",
+   "target": "30 days",
+   "mitre": "T1078 Valid Accounts"
+  },
+  {
+   "severity": "Medium",
+   "title": "End-of-life systems and remote-access tool sprawl",
+   "finding": "21 Windows 10 devices are past end of support; 13 Server 2016 hosts reach end of support in January 2027. Splashtop is installed on 739 endpoints including 19 servers, alongside PDQ and ManageEngine management agents.",
+   "why": "Unsupported systems receive no patches. Remote-access and management tools are frequently hijacked by ransomware operators for entry and mass deployment.",
+   "recommendation": "Fund a replacement plan for end-of-life systems. Restrict remote-access tools to approved accounts with MFA, remove them from servers where not needed, and alert on use outside change windows.",
+   "owner": "IT Operations",
+   "target": "90 days",
+   "mitre": "T1219 Remote Access Software"
+  }
+ ],
+ "roadmap": [
+  {
+   "window": "0&ndash;14 days",
+   "actions": "Patch Veeam and isolate backup servers; switch SentinelOne suspicious policy to Protect on servers; stop DC log clearing and alert on Event ID 1102; remove unapproved scanning tools.",
+   "outcome": "Recovery capability protected; reconnaissance blocked; forensic trail restored."
+  },
+  {
+   "window": "15&ndash;30 days",
+   "actions": "Agent or isolate the 167 unprotected devices; admin-portal MFA via Conditional Access; patch SLAs and browser auto-update; remove Teams Classic.",
+   "outcome": "No blind spots on the network; credential-only admin access closed."
+  },
+  {
+   "window": "31&ndash;60 days",
+   "actions": "ASR rules audit &rarr; block; Windows LAPS; Credential Guard; onboard servers to vulnerability scanning.",
+   "outcome": "Lateral movement paths closed; Secure Score target 650+."
+  },
+  {
+   "window": "61&ndash;90 days",
+   "actions": "End-of-life replacement plan; remote-access tool governance; full restore test and ransomware tabletop exercise.",
+   "outcome": "Proven recovery; board-reportable readiness metrics."
+  }
+ ],
+ "strengths": [
+  "788 of 790 SentinelOne agents connected, with malicious threats blocked automatically.",
+  "Tamper protection enabled on every assessed device.",
+  "SMBv1 and WDigest disabled; Controlled Folder Access compliant on most devices.",
+  "Legacy email authentication nearly eliminated (2 users in 30 days)."
+ ],
+ "methodology": "Findings were derived from Acme&rsquo;s Fluency / Ingext datalake: SentinelOne agent, threat and application inventories; Microsoft Defender machine, antivirus health, secure configuration, vulnerability and Secure Score snapshots; Entra ID user and sign-in logs (30 days); and Windows Security audit events (30 days). Unprotected-device counts match Defender discovery to SentinelOne by hostname and may include a small number of guest devices. MFA registration status could not be measured because authentication-method data is not currently collected. Veeam vulnerability details: Veeam KB4771 (published 14 Oct 2025). No individual users are named in this report. Sanitized sample — company and identity details are fictional."
+}

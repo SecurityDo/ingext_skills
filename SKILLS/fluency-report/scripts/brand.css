@@ -101,6 +101,7 @@ h3,.panel-title,.cap,.block-title{font-size:14px;font-weight:700;color:#000;marg
 .callout .tag{background:none;font:500 8.5px/1.4 var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--t3);margin:0 0 6px;border:0;padding:0;display:block}
 .callout p,.note p,.banner p{font-size:12px;color:var(--text);margin:0 0 6px;padding:0}.callout p:last-child,.note p:last-child{margin:0}
 .callout.act,.note.red,.banner{border-left-color:var(--red)}.callout.watch,.note.amber{border-left-color:var(--amber)}
+.callout.act{display:block}
 .note .ic{display:none}
 .callout.dark,.netread{background:#000;color:#fff;border:0;padding:16px 20px}
 .callout.dark h4,.callout.dark p,.callout.dark .tag,.netread h4,.netread p,.netread strong{color:#fff}
@@ -229,3 +230,4 @@ body>.wrap>:first-child{margin-top:0}
   .kpis.three{grid-template-columns:repeat(3,1fr)}.kpis.five{grid-template-columns:repeat(5,1fr)}.kpis.six,.kpis.kpis6{grid-template-columns:repeat(6,1fr)}
   .two,.g2{grid-template-columns:1fr 1fr}
 }
+.kpi .kpi-value.txt{font-size:21px;line-height:1.2;font-weight:600;min-height:36px}

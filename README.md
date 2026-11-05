@@ -240,6 +240,7 @@ in both source and archives; it does not check that their full file contents mat
 | [microsoft365-resource-inventory-report](./reports/microsoft365-resource-inventory-report/SKILL.md) | 1.0.1 | [Source](./reports/microsoft365-resource-inventory-report) | [Download](./cowork/microsoft365-resource-inventory-report.skill) | Microsoft 365 / Entra directory inventory (users, MFA, devices, apps, groups, licenses) from archived daily snapshots, with an interactive HTML view |
 | [sentinelone-resource-report](./reports/sentinelone-resource-report/SKILL.md) | 1.0.1 | [Source](./reports/sentinelone-resource-report) | [Download](./cowork/sentinelone-resource-report.skill) | SentinelOne agents, applications and threats in one report (endpoint status, agent versions, risky apps, open threats) from the archive of the scheduled report SentinelOne_Resource_Report, with an interactive HTML view |
 | [falcon-resource-report](./reports/falcon-resource-report/SKILL.md) | 1.0.1 | [Source](./reports/falcon-resource-report) | [Download](./cowork/falcon-resource-report.skill) | CrowdStrike Falcon hosts and detections in one report (host health, sensor releases, policy coverage, open detections per host) from the archive of the scheduled report CrowdStrike_Resource_Report, with an interactive HTML view |
+| [ransomware-readiness-report](./reports/ransomware-readiness-report/SKILL.md) | 1.0.0 | [Source](./reports/ransomware-readiness-report) | [Download](./cowork/ransomware-readiness-report.skill) | Board ransomware readiness report: overall rating, eight-pillar scorecard, ranked issues with owners and MITRE, 90-day roadmap → HTML + PDF |
 | [defender-resource-report](./reports/defender-resource-report/SKILL.md) | 1.0.1 | [Source](./reports/defender-resource-report) | [Download](./cowork/defender-resource-report.skill) | Microsoft Defender for Endpoint devices in one report (enrolment, check-in, antivirus, vulnerabilities, secure configuration, recommendations, alerts, ranked devices) from the archive of the scheduled report Defender_Resource_Report, with an interactive HTML view |
 | [guardduty-resource-report](./reports/guardduty-resource-report/SKILL.md) | 1.0.0 | [Source](./reports/guardduty-resource-report) | [Download](./cowork/guardduty-resource-report.skill) | AWS GuardDuty findings in one report (severity, finding types and categories, accounts and regions, resources, repeat-heavy findings, ranked findings, 30 days of daily counts) from the archive of the scheduled report GuardDuty_Resource_Report, with an interactive HTML view |
 
@@ -704,6 +705,16 @@ other policy coverage, detections of the last 30 days by severity, status and ta
 Critical detections, and a ranked list of hosts that need action. Healthy hosts are counted but not listed.
 Identity, data-protection and cloud alert products are shown as fleet totals only. The interactive HTML file
 has tabs, search, sort and filter on every table and CSV export.
+
+### ransomware-readiness-report
+
+Assesses **one tenant's** ability to prevent, withstand and recover from ransomware and renders a board-level
+report (HTML and PDF) in the Fluency editorial style: an overall rating, an eight-pillar scorecard, six to ten
+ranked issues (what we found, why the board should care, recommendation, owner, target, MITRE technique), a
+90-day roadmap and the strengths to keep. Evidence comes from SentinelOne, Defender, Entra ID and Windows audit
+tables through the connector, using the proven queries in `references/query_playbook.md`; a missing table is a
+visibility gap, not a guess. The renderer fixes the layout and computes the overall rating from the pillar
+statuses. Names no users, hosts or IPs. Read-only. The cyber-risk-in-dollars report reuses this evidence.
 
 ### defender-resource-report
 
