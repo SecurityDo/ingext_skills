@@ -4,12 +4,29 @@
 Archive only. Reads the archived daily runs of the scheduled FPL report Defender_Resource_Report (the
 download_report_archive output for one Fluency / Ingext account), takes the latest completed day and writes
 facts.json, four CSVs, a Fluency-branded print HTML page and a self-contained interactive HTML file.
-Standard library only. It never queries the tenant.
+Standard library plus the fluency-report brand kit (charts and PDF). It never queries the tenant.
 
   defender_resource_report.py check  --archive FILE [FILE ...]
   defender_resource_report.py render --archive FILE [FILE ...] --work DIR --account NAME [--customer TEXT]
 """
 import argparse, collections, csv, datetime as dt, html, json, os, shutil, sys
+import os as _os, sys as _sys, glob as _glob
+def _find_brand_kit():
+    # The Fluency report brand kit lives only in the `fluency-report` skill (scripts/). Find that skill next to this one.
+    here = _os.path.dirname(_os.path.abspath(__file__)); home = _os.path.expanduser("~")
+    cands = [_os.environ.get("FLUENCY_BRAND_DIR"), here]
+    up = here
+    for _ in range(5):
+        up = _os.path.dirname(up); cands.append(_os.path.join(up, "fluency-report", "scripts"))
+    cands += [_os.path.join(home, ".claude", "skills", "fluency-report", "scripts")]
+    cands += _glob.glob(_os.path.join(home, ".claude", "skills", "**", "fluency-report", "scripts"), recursive=True)
+    for c in cands:
+        if c and _os.path.exists(_os.path.join(c, "fluency_brand.py")):
+            return c
+    raise SystemExit("The Fluency report brand kit was not found. Install the `fluency-report` skill (this report uses its "
+                     "scripts/fluency_brand.py and brand.css), or set FLUENCY_BRAND_DIR to that skill's scripts folder.")
+_sys.path.insert(0, _find_brand_kit())
+import fluency_brand as fb  # Fluency report brand kit, from the fluency-report skill
 
 REPORT = "Defender_Resource_Report"
 STALE_DAYS = 7              # not seen for longer than this is "stale"
@@ -265,19 +282,17 @@ def panel(title, body, cols=6, sub="", cls=""):
 
 
 def bars(items, total=None, color="var(--blue)", empty="No data."):
+    """Horizontal bars (shared chart helper): name, count and share of the total."""
     items = [i for i in items if i["count"]]
     if not items:
         return '<p class="panel-subtitle">%s</p>' % esc(empty)
-    mx = max(i["count"] for i in items)
-    out = ['<div class="ibars">']
+    col = fb.semantic_color(color)
+    rows = []
     for i in items:
-        w = max(2.0, 100.0 * i["count"] / mx)
-        sub = '<span class="ibar-sub">%s%%</span>' % pct(i["count"], total) if total else ""
-        label = i["name"] if len(str(i["name"])) <= 44 else str(i["name"])[:41] + "..."
-        out.append('<div class="ibar"><div class="ibar-label" title="%s">%s%s</div><div class="bar-track"><div class="bar-fill" style="width:%.1f%%;background:%s"></div></div>'
-                   '<div class="ibar-val">%s</div></div>' % (esc(i["name"]), esc(label), sub, w, color, num(i["count"])))
-    out.append("</div>")
-    return "".join(out)
+        name = str(i["name"])
+        label = name if len(name) <= 44 else name[:41] + "..."
+        rows.append((label, i["count"], col, fb._fmt(i["count"]) + ((" \u00b7 %s%%" % pct(i["count"], total)) if total else "")))
+    return fb.bar_rows(rows)
 
 
 def table(headers, rows, widths=None, cls="data"):
@@ -300,7 +315,7 @@ def chip(text, color):
 
 
 EXPLOIT = {"ExploitIsVerified": "Verified exploit", "ExploitIsInKit": "In exploit kit", "ExploitIsPublic": "Public exploit", "NoExploit": "No known exploit"}
-STATUS_COLOR = {"Needs action": "#B91C1C", "Watch": "#B45309", "Healthy": "#15803D"}
+STATUS_COLOR = {"Needs action": "#b3242e", "Watch": "#a06c00", "Healthy": "#175d9a"}
 
 
 def kpi(label, value, color, note=""):
@@ -365,9 +380,9 @@ def cmd_render(args):
     ]
 
     g = []
-    colors = ["#15803D", "#1D4ED8", "#B45309", "#B91C1C", "#7f1d1d", "#64748B"]
+    colors = ["#111111", "#175d9a", "#a06c00", "#b3242e", "#6b6b6b", "#bdbdbd"]
     # enrolment
-    enr = [("Onboarded", n, "#15803D"), ("Can be onboarded", fl["canBeOnboarded"], "#1D4ED8"), ("Insufficient information", fl["insufficientInfo"], "#B45309"), ("Unsupported", fl["unsupported"], "#64748B")]
+    enr = [("Onboarded", n, "#175d9a"), ("Can be onboarded", fl["canBeOnboarded"], "#175d9a"), ("Insufficient information", fl["insufficientInfo"], "#a06c00"), ("Unsupported", fl["unsupported"], "#8a8a8a")]
     stack = '<div class="stack">%s</div>' % "".join('<div class="seg" style="width:%.2f%%;background:%s" title="%s: %d"></div>' % (100.0 * c / fl["devices"], col, esc(k), c) for k, c, col in enr if c)
     legend = '<div class="legend" style="margin-top:10px">%s</div>' % "".join('<span class="lg"><i style="background:%s"></i>%s: %s</span>' % (col, esc(k), num(c)) for k, c, col in enr if c)
     mix = [{"name": "%s / %s" % (x["status"], x["os"]), "count": x["count"]} for x in fl["byStatusOs"][:6]]
@@ -418,7 +433,7 @@ def cmd_render(args):
     attn = sorted(eps, key=lambda x: (-x["score"], x["host"].lower()))
     cap = args.max_listed
     rows = [([('<td class="host wrap">%s</td>' % esc(x["host"])), td(x["os"]), td("" if x["seenDays"] is None else x["seenDays"]),
-              '<td>%s</td>' % chip(x["state"], STATUS_COLOR.get(x["state"], "#64748B")), td(x["reasons"], True)], "") for x in attn[:cap]]
+              '<td>%s</td>' % chip(x["state"], STATUS_COLOR.get(x["state"], "#8a8a8a")), td(x["reasons"], True)], "") for x in attn[:cap]]
     note = "" if len(attn) <= cap else " (first %d of %d; the CSV has all)" % (cap, len(attn))
     app = [panel("Devices needing attention", table(["Device", "OS", "Days", "Status", "Why"], rows, ["26%", "12%", "6%", "17%", "39%"], "data devlist") if rows
                  else '<p class="panel-subtitle">No device has an open issue.</p>', 12, "%d of %s%s" % (len(attn), num(e["needsAction"] + e["watch"]), note), "page-break")]

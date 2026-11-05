@@ -9,6 +9,23 @@ never assumed healthy.
   build_report.py --health health.json --tenant acme --tenant-name "Example Corp" --site Develop --out report.html --csv applications.csv
 """
 import argparse, csv, datetime, html, json, os, sys
+import os as _os, sys as _sys, glob as _glob
+def _find_brand_kit():
+    # The Fluency report brand kit lives only in the `fluency-report` skill (scripts/). Find that skill next to this one.
+    here = _os.path.dirname(_os.path.abspath(__file__)); home = _os.path.expanduser("~")
+    cands = [_os.environ.get("FLUENCY_BRAND_DIR"), here]
+    up = here
+    for _ in range(5):
+        up = _os.path.dirname(up); cands.append(_os.path.join(up, "fluency-report", "scripts"))
+    cands += [_os.path.join(home, ".claude", "skills", "fluency-report", "scripts")]
+    cands += _glob.glob(_os.path.join(home, ".claude", "skills", "**", "fluency-report", "scripts"), recursive=True)
+    for c in cands:
+        if c and _os.path.exists(_os.path.join(c, "fluency_brand.py")):
+            return c
+    raise SystemExit("The Fluency report brand kit was not found. Install the `fluency-report` skill (this report uses its "
+                     "scripts/fluency_brand.py and brand.css), or set FLUENCY_BRAND_DIR to that skill's scripts folder.")
+_sys.path.insert(0, _find_brand_kit())
+import fluency_brand as fb  # Fluency report brand kit, from the fluency-report skill
 
 KINDS = {"error": ("Error", "#B91C1C"), "attention": ("Attention", "#B45309"), "disabled": ("Disabled", "#64748B"),
          "other": ("Other", "#64748B"), "running": ("Running", "#15803D")}
@@ -176,7 +193,7 @@ def main():
         limits="".join("<li>%s</li>" % esc(x) for x in h["limits"]), mode=esc("state-only mode" if state_only else "full mode"),
         strength=esc("Confirmed: the connector state of each application. Unknown: traffic, errors, last-active times and missing components, which this run could not read." if state_only else "Confirmed: connector state, errors, 24-hour traffic and error bytes, and each component's last activity within the 24-hour window, all from the tenant's own connector configuration. Unknown: whether a source is disabled beyond its disable setting."))
     with open(a.out, "w") as f:
-        f.write(doc)
+        f.write(fb.apply_brand(doc))
     print("wrote", a.out, a.csv, "| %d apps: %d running, %d error, %d attention, %d disabled, %d other" % (len(views), cnt["running"], cnt["error"], cnt["attention"], cnt["disabled"], cnt["other"]))
 
 

@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{title}}</title>
+<style>
+:root{--red:#111827;--blu:#4b5563;--amb:#374151;--grn:#6b7280;--gry:#9ca3af;--bg:#f5f5f5;--card:#fff;--ink:#1f2328;--m:#6b7280;--line:#e5e5e5;--acc:#374151;--navy:#1f2328}
+@media(prefers-color-scheme:dark){:root{--red:#f5f5f5;--blu:#bdbdbd;--amb:#d4d4d4;--grn:#9ca3af;--gry:#6b7280;--bg:#111111;--card:#1a1a1a;--ink:#eeeeee;--m:#9a9a9a;--line:#2b2b2b;--acc:#f5f5f5;--navy:#eeeeee}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
+header{background:linear-gradient(135deg,#111827,#374151);color:#fff;padding:26px 0 18px}
+.w{max-width:1180px;margin:0 auto;padding:0 20px}
+.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#d4d4d4;font-weight:600}
+h1{margin:4px 0 8px;font-size:26px}
+.chip{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:2px 11px;font-size:12px;margin:0 8px 4px 0}
+nav{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap}
+nav .w{display:flex;gap:2px}
+nav button{background:none;border:0;border-bottom:3px solid transparent;color:var(--m);font:600 13px inherit;padding:12px 14px;cursor:pointer}
+nav button.on{color:var(--acc);border-color:var(--acc)}
+main{padding:18px 20px 48px;max-width:1180px;margin:0 auto}
+.g{display:grid;gap:12px}.k4{grid-template-columns:repeat(4,1fr)}.k3{grid-template-columns:repeat(3,1fr)}.c2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:800px){.k4,.k3,.c2{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.k4,.k3,.c2{grid-template-columns:1fr}}
+.k{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--c);border-radius:10px;padding:12px 14px}
+.k[data-go]{cursor:pointer}.k[data-go]:hover{box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.k b{display:block;font-size:26px;color:var(--c);line-height:1.15}
+.k span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--m);font-weight:600}
+.k small{display:block;color:var(--m);font-size:11px}
+.p{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px}
+.p:first-child{margin-top:0}.g>.p{margin-top:0}
+.p h3{margin:0 0 8px;font-size:14px}
+.warn{border-left:4px solid #374151;background:rgba(180,83,9,.1)}.read{border-left:4px solid var(--acc)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--m);padding:8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);cursor:pointer;white-space:nowrap}
+td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
+td.w{white-space:normal;min-width:240px;overflow-wrap:anywhere}
+.r{text-align:right;font-variant-numeric:tabular-nums}
+.tw{max-height:600px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.m{color:var(--m)}.sm{font-size:12px}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+input[type=search],select,button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit}
+input[type=search]{min-width:220px;flex:1}
+button{cursor:pointer}button:disabled{opacity:.4;cursor:default}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:600;background:rgba(180,83,9,.15);color:var(--amb);white-space:nowrap}
+.pill.bad{background:rgba(17,24,39,.15);color:var(--red)}.pill.ok{background:rgba(107,114,128,.15);color:var(--grn)}.pill.mute{background:var(--line);color:var(--m)}
+.stack{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line);margin:10px 0 6px}
+.stack i{display:block}
+.lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+.row{display:grid;grid-template-columns:38% 1fr 56px;gap:8px;align-items:center;margin:4px 0;font-size:12px;border-radius:4px;padding:1px 4px}
+.row[data-f]{cursor:pointer}.row[data-f]:hover{background:var(--line)}
+.lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row b{text-align:right}
+.bar2{background:var(--line);height:8px;border-radius:4px;overflow:hidden}.bar2 i{display:block;height:100%;background:var(--acc)}
+.chart{width:100%;height:auto}.gl{stroke:var(--line)}.ax{fill:var(--m);font-size:11px}
+.hl{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+.sel{margin-left:8px}
+@media print{nav{display:none}.tw{max-height:none}}
+</style>
+</head>
+<body>
+<header><div class="w"><div class="eyebrow">AWS GuardDuty findings</div><h1 id="ttl"></h1><div id="chips"></div></div></header>
+<nav><div class="w"></div></nav>
+<main id="main"></main>
+<script id="data" type="application/json">{{data}}</script>
+<script>
+const D=JSON.parse(document.getElementById('data').textContent);
+const $=s=>document.querySelector(s);
+const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=v=>typeof v==='number'?v.toLocaleString():esc(v);
+const A=null;
+const CM={'#1f2328':'var(--navy)','#111827':'var(--red)','#4b5563':'var(--blu)','#374151':'var(--amb)','#6b7280':'var(--grn)','#9ca3af':'var(--gry)'};const cc=c=>CM[c]||c;
+const PRE={};            // filters to apply when a tab opens (set by clicks on the overview)
+let tableRoots={};
+function kpi(l,v,c,s,go,f){c=cc(c);return `<div class="k" style="--c:${c}" ${go?`data-go="${go}"`:''} ${f?`data-pre='${esc(JSON.stringify(f))}'`:''}><span>${esc(l)}</span><b>${esc(v)}</b><small>${esc(s||'')}</small></div>`}
+function na(t,why){return `<div class="p warn"><b>${esc(t)}</b> not available: ${esc(why||'no data for this resource in the snapshot')}</div>`}
+function kv(t,pairs){return `<div class="p"><h3>${esc(t)}</h3><table>${pairs.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="r">${fmt(v)}</td></tr>`).join('')}</table></div>`}
+function pct(a,b){return b?(Math.round(1000*a/b)/10)+'%':'n/a'}
+function stack(parts,total){if(!total)return'';return `<div class="stack">${parts.filter(p=>p[1]).map(p=>`<i title="${esc(p[0])}: ${p[1].toLocaleString()}" style="width:${100*p[1]/total}%;background:${p[2]}"></i>`).join('')}</div><div class="m sm">${parts.map(p=>`<span class="lg"><i style="background:${p[2]}"></i>${esc(p[0])} ${p[1].toLocaleString()}</span>`).join(' ')}</div>`}
+/* bar list; items are [label,count,filterKey,filterValue]; a click opens the table with that filter */
+function bars(title,items,go,sub){items=items.filter(i=>i[1]);const mx=Math.max(1,...items.map(i=>i[1]));
+ return `<div class="p"><h3>${esc(title)}${sub?` <span class="m">${esc(sub)}</span>`:''}</h3>${items.length?items.map(([k,v,fk,fv])=>`<div class="row" ${go&&fk?`data-go="${go}" data-pre='${esc(JSON.stringify({[fk]:fv==null?k:fv}))}'`:''} ${go&&fk?'data-f="1"':''}><span class="lb" title="${esc(k)}">${esc(k)}</span><span class="bar2"><i style="width:${100*v/mx}%"></i></span><b>${v.toLocaleString()}</b></div>`).join(''):'<div class="m sm">No data.</div>'}</div>`}
+const CLS={'Needs action':'bad','Watch':'','Low priority':'mute','Archived':'mute','High':'bad','Medium':'','Low':'mute','yes':'','no':'','Yes':'ok'};
+/* generic searchable, sortable, paged table with filters and CSV export of the filtered view */
+function dt(cols,rows,opts){opts=opts||{};const S={q:'',sort:opts.sort||null,dir:opts.dir||1,page:0,size:25,f:Object.assign({},opts.pre||{})};if(S.f.q!==undefined){S.q=S.f.q;delete S.f.q}const root=document.createElement('div');root.className='p';
+ const filters=opts.filters||[];
+ function view(){let r=rows.filter(x=>{for(const f of filters){const v=S.f[f.key];if(v&&String(x[f.key])!==v)return false}
+  if(S.q){const q=S.q.toLowerCase();if(!cols.some(c=>String(x[c.k]==null?'':x[c.k]).toLowerCase().includes(q)))return false}return true});
+  if(S.sort){const k=S.sort;r=r.slice().sort((a,b)=>{const x=a[k],y=b[k];return (typeof x==='number'&&typeof y==='number'?x-y:String(x).localeCompare(String(y)))*S.dir})}return r}
+ function draw(){const r=view(),pages=Math.max(1,Math.ceil(r.length/S.size));if(S.page>=pages)S.page=pages-1;const sl=r.slice(S.page*S.size,(S.page+1)*S.size);
+  root.innerHTML=`<h3>${esc(opts.title||'')} <span class="m">(<span data-n>${r.length.toLocaleString()}</span> of ${rows.length.toLocaleString()})</span></h3><div class="bar">
+   <input type="search" placeholder="Search" value="${esc(S.q)}" data-a="q">
+   ${filters.map(f=>`<select data-f="${f.key}"><option value="">${esc(f.label)}: all</option>${f.opts.map(o=>`<option ${S.f[f.key]===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`).join('')}
+   <select data-a="size">${[25,50,100,250].map(n=>`<option ${n===S.size?'selected':''}>${n}</option>`).join('')}</select>
+   <button data-a="csv">Export CSV</button></div>
+   <div class="tw"><table><thead><tr>${cols.map(c=>`<th data-s="${c.k}" class="${c.num?'r':''}">${esc(c.h)}${S.sort===c.k?(S.dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>${sl.map(x=>`<tr>${cols.map(c=>`<td class="${c.num?'r':''} ${c.host?'hl':''} ${c.w?'w':''}">${c.pill?`<span class="pill ${CLS[x[c.k]]||''}">${esc(x[c.k])}</span>`:fmt(x[c.k])}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${cols.length}" class="m">No rows match.</td></tr>`}</tbody></table></div>
+   <div class="bar"><button data-a="prev" ${S.page?'':'disabled'}>Prev</button><span class="m">Page ${S.page+1} of ${pages}</span><button data-a="next" ${S.page<pages-1?'':'disabled'}>Next</button></div>`;
+  const q=root.querySelector('[data-a=q]');q.oninput=e=>{S.q=e.target.value;S.page=0;const p=e.target.selectionStart;draw();const n=root.querySelector('[data-a=q]');n.focus();n.setSelectionRange(p,p)};
+  root.querySelectorAll('[data-f]').forEach(s=>s.onchange=e=>{S.f[s.dataset.f]=e.target.value;S.page=0;draw()});
+  root.querySelector('[data-a=size]').onchange=e=>{S.size=+e.target.value;S.page=0;draw()};
+  root.querySelector('[data-a=prev]').onclick=()=>{S.page--;draw()};root.querySelector('[data-a=next]').onclick=()=>{S.page++;draw()};
+  root.querySelectorAll('th[data-s]').forEach(h=>h.onclick=()=>{if(S.sort===h.dataset.s)S.dir*=-1;else{S.sort=h.dataset.s;S.dir=1}draw()});
+  root.querySelector('[data-a=csv]').onclick=()=>{const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';const t=[cols.map(c=>q(c.h)).join(',')].concat(view().map(x=>cols.map(c=>q(x[c.k])).join(','))).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download=(opts.file||'export')+'.csv';a.click()}}
+ draw();return root}
+const uniq=(rows,k)=>[...new Set(rows.map(r=>r[k]))].filter(v=>v!==''&&v!=null).sort();
+const V={};
+const E=D.summary,ST=D.status,DY=D.daily,FD=D.findings;
+const TABS=[['ov','Overview'],['fi','Findings'],['ty','Types and categories'],['ac','Accounts and regions'],['re','Resources'],['cv','Coverage'],['da','Daily counts']];
+const BC={High:'#111827',Medium:'#374151',Low:'#9ca3af'};
+const SEV=v=>Number(v).toFixed(1);
+/* SVG column chart of one daily counter */
+function chart(key,color){const n=DY.length;if(!n)return '<div class="m">No days.</div>';const W=1000,H=210,L=40,B=26,T=10,R=8;const mx=Math.max(1,...DY.map(d=>d[key]));
+ const bw=(W-L-R)/n;let s=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily ${esc(key)}">`;
+ const q=mx<4?mx:4;for(let i=0;i<=q;i++){const y=T+(H-T-B)*(1-i/q);s+=`<line class="gl" x1="${L}" x2="${W-R}" y1="${y}" y2="${y}"/><text class="ax" x="${L-6}" y="${y+4}" text-anchor="end">${Math.round(mx*i/q).toLocaleString()}</text>`}
+ DY.forEach((d,i)=>{const h=(H-T-B)*d[key]/mx,x=L+i*bw;s+=`<rect x="${x+1}" y="${H-B-h}" width="${Math.max(1,bw-2)}" height="${h}" fill="${color}" rx="1"><title>${esc(d.day)}: ${d[key].toLocaleString()}</title></rect>`;
+  if(i%Math.ceil(n/8)===0)s+=`<text class="ax" x="${x+bw/2}" y="${H-8}" text-anchor="middle">${esc(d.day.slice(5))}</text>`});
+ return s+'</svg>'}
+const MET=[['events','Updates received','#4b5563'],['findings','Findings updated','#1f2328'],['high','High severity findings','#111827'],['medium','Medium severity findings','#374151'],['low','Low severity findings','#9ca3af'],['new','New findings','#6b7280'],['newHigh','New high severity findings','#111827']];
+/* ---------------- Overview ---------------- */
+V.ov=()=>{const c=document.createElement('div');
+ const kp=[kpi('Findings',E.findings.toLocaleString(),'#1f2328','updated in '+E.windowDays+' days, '+E.events.toLocaleString()+' updates','fi'),
+  kpi('Need action',ST.needsAction.toLocaleString(),ST.needsAction?'#111827':'#6b7280',ST.watch.toLocaleString()+' more on watch','fi',{state:'Needs action'}),
+  kpi('High severity',E.high.toLocaleString(),E.high?'#111827':'#6b7280',E.medium.toLocaleString()+' medium, '+E.low.toLocaleString()+' low','fi',{band:'High'}),
+  kpi('Updated last 7 days',E.active7d.toLocaleString(),E.active7d?'#374151':'#6b7280',E.active24h.toLocaleString()+' in the last 24 hours','fi'),
+  kpi('New in window',E.newFindings.toLocaleString(),'#4b5563','first raised in the last '+E.windowDays+' days','da'),
+  kpi('Repeat heavy',E.repeat10.toLocaleString(),E.repeat10?'#374151':'#6b7280','updated 10 or more times','fi')];
+ c.innerHTML=`<div class="g k3">${kp.join('')}</div>
+  <div class="p"><h3>Severity <span class="m">${E.findings.toLocaleString()} findings</span></h3>${stack([['High',E.high,'#111827'],['Medium',E.medium,'#374151'],['Low',E.low,'#9ca3af']],E.findings)}</div>
+  <div class="p"><h3>Attention rating</h3>${stack([['Needs action',ST.needsAction,'#111827'],['Watch',ST.watch,'#374151'],['Low priority',ST.lowPriority,'#4b5563'],['Archived',ST.archived,'#9ca3af']],ST.listed)}</div>
+  <div class="p"><h3>Trend explorer <select id="msel" class="sel">${MET.map(m=>`<option value="${m[0]}">${esc(m[1])}</option>`).join('')}</select></h3><div id="chartbox"></div></div>
+  <div class="g c2" id="g1" style="margin-top:12px"></div>
+  <div class="p read" style="margin-top:12px">Snapshot <b>${esc(D.snapshot)}</b>, ${E.windowDays} day window. A finding is counted once at its latest update. Click a tile or a bar to open the table behind it.</div>`;
+ const draw=()=>{const m=MET.find(x=>x[0]===c.querySelector('#msel').value);c.querySelector('#chartbox').innerHTML=chart(m[0],m[2])};
+ c.querySelector('#msel').onchange=draw;draw();
+ const g=c.querySelector('#g1');
+ g.insertAdjacentHTML('beforeend',bars('Categories',D.categories.slice(0,10).map(v=>[v.category,v.findings,'category',v.category]),'fi'));
+ g.insertAdjacentHTML('beforeend',bars('Finding types',D.types.slice(0,10).map(v=>[v.type,v.findings,'type',v.type]),'fi'));
+ return c};
+/* ---------------- Findings ---------------- */
+V.fi=()=>{const c=document.createElement('div');
+ c.innerHTML=`<div class="g k4">${kpi('Need action',ST.needsAction.toLocaleString(),'#111827','score 3 or more',null)}${kpi('Watch',ST.watch.toLocaleString(),'#374151','score 2',null)}${kpi('Low priority',ST.lowPriority.toLocaleString(),'#4b5563','score 1',null)}${kpi('Archived',ST.archived.toLocaleString(),'#9ca3af','score 0',null)}</div>
+  ${ST.truncated?`<div class="p warn" style="margin-top:12px">The report lists the first ${ST.listedCap.toLocaleString()} of ${E.findings.toLocaleString()} findings.</div>`:''}<div style="height:12px"></div>`;
+ const cols=[{k:'id',h:'Finding id',host:1},{k:'state',h:'Status',pill:1},{k:'score',h:'Score',num:1},{k:'band',h:'Severity',pill:1},{k:'severity',h:'Sev.',num:1},{k:'type',h:'Type',w:1},{k:'resourceType',h:'Resource type'},{k:'resource',h:'Resource',host:1},{k:'account',h:'Account'},{k:'region',h:'Region'},{k:'created',h:'Created'},{k:'first',h:'First update'},{k:'last',h:'Last update'},{k:'updates',h:'Updates',num:1},{k:'eventCount',h:'GuardDuty count',num:1},{k:'archived',h:'Archived'},{k:'inSnapshot',h:'In current list'},{k:'reasons',h:'Why',w:1}];
+ c.appendChild(dt(cols,FD,{title:'Findings in the window',file:'guardduty_findings',sort:'score',dir:-1,pre:PRE.fi,
+  filters:[{key:'state',label:'Status',opts:['Needs action','Watch','Low priority','Archived']},{key:'band',label:'Severity',opts:['High','Medium','Low']},{key:'category',label:'Category',opts:uniq(FD,'category')},{key:'type',label:'Type',opts:uniq(FD,'type')},{key:'resourceType',label:'Resource type',opts:uniq(FD,'resourceType')},{key:'account',label:'Account',opts:uniq(FD,'account')},{key:'region',label:'Region',opts:uniq(FD,'region')},{key:'inSnapshot',label:'In current list',opts:uniq(FD,'inSnapshot')}]}));
+ const cur=dt([{k:'id',h:'Finding id',host:1},{k:'state',h:'Status',pill:1},{k:'band',h:'Severity',pill:1},{k:'type',h:'Type',w:1},{k:'resource',h:'Resource',host:1},{k:'account',h:'Account'},{k:'region',h:'Region'},{k:'last',h:'Last update'},{k:'inWindow',h:'In window'}],D.current,{title:'GuardDuty current list (resource snapshot)',file:'guardduty_current',sort:'last',dir:-1});cur.style.marginTop='12px';c.appendChild(cur);
+ return c};
+/* ---------------- Types and categories ---------------- */
+V.ty=()=>{const c=document.createElement('div');
+ c.appendChild(dt([{k:'category',h:'Category'},{k:'band',h:'Worst severity',pill:1},{k:'severity',h:'Sev.',num:1},{k:'types',h:'Types',num:1},{k:'findings',h:'Findings',num:1},{k:'updates',h:'Updates',num:1}],D.categories,{title:'Categories',file:'guardduty_categories',sort:'severity',dir:-1}));
+ const t=dt([{k:'type',h:'Finding type',host:1,w:1},{k:'category',h:'Category'},{k:'band',h:'Severity',pill:1},{k:'severity',h:'Sev.',num:1},{k:'findings',h:'Findings',num:1},{k:'updates',h:'Updates',num:1},{k:'resources',h:'Resources',num:1},{k:'accounts',h:'Accounts',num:1},{k:'first',h:'First update'},{k:'last',h:'Last update'}],D.types,{title:'Finding types',file:'guardduty_types',sort:'severity',dir:-1,pre:PRE.ty,filters:[{key:'category',label:'Category',opts:uniq(D.types,'category')},{key:'band',label:'Severity',opts:['High','Medium','Low']}]});t.style.marginTop='12px';c.appendChild(t);
+ const r=dt([{k:'id',h:'Finding id',host:1},{k:'type',h:'Type',w:1},{k:'band',h:'Severity',pill:1},{k:'resource',h:'Resource',host:1},{k:'updates',h:'Updates',num:1},{k:'eventCount',h:'GuardDuty count',num:1},{k:'first',h:'First update'},{k:'last',h:'Last update'}],D.repeat,{title:'Repeat-heavy findings (10 or more updates)',file:'guardduty_repeat',sort:'updates',dir:-1});r.style.marginTop='12px';c.appendChild(r);
+ return c};
+/* ---------------- Accounts and regions ---------------- */
+V.ac=()=>{const c=document.createElement('div');
+ c.innerHTML=`<div class="g k3">${kpi('Accounts',E.accounts.toLocaleString(),'#1f2328','with findings in the window')}${kpi('Regions',E.regions.toLocaleString(),'#4b5563','with findings in the window')}${kpi('Resources',E.resources.toLocaleString(),'#374151',E.resourceTypes.toLocaleString()+' resource types')}</div><div style="height:12px"></div>`;
+ c.appendChild(dt([{k:'account',h:'AWS account',host:1},{k:'region',h:'Region'},{k:'findings',h:'Findings',num:1},{k:'high',h:'High',num:1},{k:'medium',h:'Medium',num:1},{k:'low',h:'Low',num:1},{k:'updates',h:'Updates',num:1},{k:'resources',h:'Resources',num:1},{k:'last',h:'Last update'}],D.accounts,{title:'Accounts and regions',file:'guardduty_accounts',sort:'high',dir:-1,filters:[{key:'account',label:'Account',opts:uniq(D.accounts,'account')},{key:'region',label:'Region',opts:uniq(D.accounts,'region')}]}));
+ return c};
+/* ---------------- Resources ---------------- */
+V.re=()=>{const c=document.createElement('div');
+ c.appendChild(dt([{k:'resourceType',h:'Resource type'},{k:'resource',h:'Resource',host:1,w:1},{k:'band',h:'Worst severity',pill:1},{k:'severity',h:'Sev.',num:1},{k:'findings',h:'Findings',num:1},{k:'types',h:'Types',num:1},{k:'updates',h:'Updates',num:1},{k:'topType',h:'Most common type',w:1},{k:'first',h:'First update'},{k:'last',h:'Last update'}],D.resources,{title:'Resources with findings (top '+D.resources.length+')',file:'guardduty_resources',sort:'severity',dir:-1,filters:[{key:'resourceType',label:'Resource type',opts:uniq(D.resources,'resourceType')},{key:'band',label:'Severity',opts:['High','Medium','Low']}]}));
+ return c};
+/* ---------------- Coverage ---------------- */
+V.cv=()=>{const c=document.createElement('div');
+ c.innerHTML=`<div class="p"><h3>Archive: snapshot ${esc(D.snapshot)}</h3><table><thead><tr><th>Archived query</th><th>Status</th><th>Detail</th></tr></thead><tbody>${D.sources.map(s=>`<tr><td>${esc(s.source)}</td><td>${esc(s.status)}</td><td class="m">${esc(s.detail)}</td></tr>`).join('')}</tbody></table></div>
+  ${D.notes.length?`<div class="p warn"><h3>Data notes</h3><ul>${D.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`:''}
+  <div class="p"><h3>How the numbers are worked out</h3><ul>${D.method.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`;return c};
+/* ---------------- Daily counts (last tab) ---------------- */
+V.da=()=>{const c=document.createElement('div');
+ c.appendChild(dt([{k:'day',h:'Day',host:1},{k:'events',h:'Updates',num:1},{k:'findings',h:'Findings updated',num:1},{k:'high',h:'High',num:1},{k:'medium',h:'Medium',num:1},{k:'low',h:'Low',num:1},{k:'new',h:'New findings',num:1},{k:'newHigh',h:'New high',num:1}],DY,{title:'Daily counts',file:'guardduty_daily',sort:'day',dir:-1}));
+ return c};
+function show(t,pre){tab=t;if(pre!==undefined)PRE[t]=pre;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));const m=$('#main');m.innerHTML='';m.appendChild(V[t]());
+ m.querySelectorAll('[data-go]').forEach(k=>k.onclick=()=>{const f=k.dataset.pre?JSON.parse(k.dataset.pre):{};show(k.dataset.go,f)});PRE[t]=undefined;history.replaceState(null,'','#'+t);window.scrollTo(0,0)}
+let tab='ov';
+$('nav .w').innerHTML=TABS.map(t=>`<button data-t="${t[0]}">${t[1]}</button>`).join('');
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.t,{}));
+$('#chips').innerHTML=[D.account,'snapshot '+D.snapshot,E.findings.toLocaleString()+' findings, '+E.windowDays+' days'].filter(Boolean).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
+$('#ttl').textContent=(D.customer||D.account||'Tenant')+' GuardDuty Resource Report';document.title=$('#ttl').textContent;
+show(TABS.some(t=>t[0]===location.hash.slice(1))?location.hash.slice(1):'ov',{});
+</script>
+</body>
+</html>

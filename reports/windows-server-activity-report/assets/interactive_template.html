@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{title}}</title>
 <style>
-:root{--red:#B91C1C;--blu:#1D4ED8;--amb:#B45309;--grn:#15803D;--navy:#14213d;--bg:#f4f6fa;--card:#fff;--ink:#1f2937;--m:#64748b;--line:#e2e8f0;--acc:#1d4ed8}
-:root[data-theme=dark]{--red:#f87171;--blu:#7aa7ff;--amb:#fbbf24;--grn:#4ade80;--navy:#9db4e0;--bg:#0f1523;--card:#182033;--ink:#e5ebf7;--m:#8b9bb8;--line:#26324b;--acc:#6ea0ff}
+:root{--red:#111827;--blu:#4b5563;--amb:#374151;--grn:#6b7280;--navy:#1f2328;--bg:#f5f5f5;--card:#fff;--ink:#1f2328;--m:#6b7280;--line:#e5e5e5;--acc:#374151}
+:root[data-theme=dark]{--red:#f5f5f5;--blu:#bdbdbd;--amb:#d4d4d4;--grn:#9ca3af;--navy:#d4d4d4;--bg:#111111;--card:#1a1a1a;--ink:#eeeeee;--m:#9a9a9a;--line:#2b2b2b;--acc:#f5f5f5}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
-header{background:linear-gradient(135deg,#0f1a33,#1d3461);color:#fff;padding:24px 0 16px}
+header{background:linear-gradient(135deg,#111827,#374151);color:#fff;padding:24px 0 16px}
 .w{max-width:1180px;margin:0 auto;padding:0 20px;position:relative}
-.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#9db4e0;font-weight:600}
+.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#d4d4d4;font-weight:600}
 h1{margin:4px 0 6px;font-size:26px}
-header p{margin:0 0 10px;color:#cdd8ee;max-width:820px}
+header p{margin:0 0 10px;color:#d4d4d4;max-width:820px}
 .chip{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:2px 11px;font-size:12px;margin:0 8px 4px 0}
 #theme{position:absolute;right:20px;top:0;background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:4px 10px;cursor:pointer;font:12px inherit}
 nav{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap}
@@ -46,10 +46,10 @@ input,select,button.b{background:var(--card);color:var(--ink);border:1px solid v
 input[type=search]{min-width:160px;flex:1}input[type=number]{width:90px}
 button.b{cursor:pointer}
 .pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:600;background:rgba(180,83,9,.15);color:var(--amb)}
-.pill.bad{background:rgba(185,28,28,.15);color:var(--red)}.pill.ok{background:rgba(21,128,61,.15);color:var(--grn)}
+.pill.bad{background:rgba(17,24,39,.15);color:var(--red)}.pill.ok{background:rgba(107,114,128,.15);color:var(--grn)}
 .cell{position:relative;display:inline-block;width:60px;height:6px;background:var(--line);border-radius:3px;vertical-align:middle;margin-left:6px;overflow:hidden}.cell i{display:block;height:100%;background:var(--c,var(--acc))}
 svg.ch{width:100%;height:auto;display:block}
-#tip{position:fixed;pointer-events:none;background:#0f1a33;color:#fff;font-size:12px;padding:5px 9px;border-radius:6px;display:none;z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+#tip{position:fixed;pointer-events:none;background:#111827;color:#fff;font-size:12px;padding:5px 9px;border-radius:6px;display:none;z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 .msel{display:flex;align-items:center;gap:8px;margin:6px 0 8px;font-size:12px;color:var(--m)}
 .msel select{background:var(--card);color:var(--fg,inherit);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:13px inherit;min-width:240px}
 .mchips{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
@@ -125,7 +125,7 @@ function chart(metric,color,big){
   var mx=Math.max.apply(null,vals.filter(function(v){return v!=null}).concat([1])),bw=(W-2*L)/Math.max(days.length,1);
   var s="<svg class='ch' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='"+esc(D.labels[metric])+" per day'><line x1='"+L+"' x2='"+(W-L)+"' y1='"+(H-B)+"' y2='"+(H-B)+"' stroke='var(--line)'/>";
   days.forEach(function(d,i){var x=L+i*bw,v=vals[i],tipText=d.date+": "+(v==null?"not archived (gap)":fmt(v)+" "+D.labels[metric].toLowerCase());
-    if(v==null)s+="<rect x='"+(x+.5)+"' y='6' width='"+Math.max(bw-1,1)+"' height='"+(H-B-6)+"' fill='rgba(245,158,11,.18)' stroke='#f59e0b' stroke-dasharray='2 2' data-t='"+esc(tipText)+"'/>";
+    if(v==null)s+="<rect x='"+(x+.5)+"' y='6' width='"+Math.max(bw-1,1)+"' height='"+(H-B-6)+"' fill='rgba(55,65,81,.18)' stroke='#9ca3af' stroke-dasharray='2 2' data-t='"+esc(tipText)+"'/>";
     else{var h=(H-B-10)*v/mx;s+="<rect class='bb' x='"+(x+.5)+"' y='"+(H-B-h)+"' width='"+Math.max(bw-1,1)+"' height='"+Math.max(h,v?1:0)+"' fill='"+color+"' data-t='"+esc(tipText)+"'/><rect x='"+x+"' y='0' width='"+bw+"' height='"+(H-B)+"' fill='transparent' data-t='"+esc(tipText)+"'/>"}});
   s+="<text x='"+L+"' y='"+(H-6)+"' font-size='10' fill='var(--m)'>"+esc(days.length?days[0].date:"")+"</text><text x='"+(W-L)+"' y='"+(H-6)+"' font-size='10' fill='var(--m)' text-anchor='end'>"+esc(days.length?days[days.length-1].date:"")+"</text><text x='"+(W-L)+"' y='10' font-size='10' fill='var(--m)' text-anchor='end'>max "+fmt(mx)+"</text></svg>";
   return s}
@@ -152,12 +152,12 @@ panes.overview=function(r){
   if(M.nodata)h+="<div class='p warn'><b>No Windows data.</b> Every scan on every archived day reports the WindowsAudit table as not available. This tenant does not collect Windows events (or the table has a different name); the counts are not zeros of activity.</div>";
   if(M.missing.length)h+="<div class='p warn'><b>Gap.</b> "+M.missing.length+" day(s) are not in the archive and are not counted as zero: "+esc(M.missing.slice(0,31).join(", "))+(M.missing.length>31?" ...":"")+".</div>";
   h+="<div class='p'><h3>Worth a look</h3><ul>"+D.highlights.map(function(x){return "<li>"+esc(x)+"</li>"}).join("")+"</ul></div>";
-  h+="<div class='g c2'>"+[["events","var(--navy)"],["logonsOk","var(--grn)"],["logonsFailed","var(--red)"],["privLogons","var(--amb)"]].map(function(m){return "<div class='p'><h3>"+esc(D.labels[m[0]])+" per day</h3><p class='sub'>Hover a bar for the day. Hatched amber columns are gaps.</p>"+chart(m[0],m[1].replace("var(--navy)","#3b5a9a").replace("var(--grn)","#15803D").replace("var(--red)","#B91C1C").replace("var(--amb)","#B45309"))+"</div>"}).join("")+"</div>";
+  h+="<div class='g c2'>"+[["events","var(--navy)"],["logonsOk","var(--grn)"],["logonsFailed","var(--red)"],["privLogons","var(--amb)"]].map(function(m){return "<div class='p'><h3>"+esc(D.labels[m[0]])+" per day</h3><p class='sub'>Hover a bar for the day. Hatched amber columns are gaps.</p>"+chart(m[0],m[1].replace("var(--navy)","#6b7280").replace("var(--grn)","#6b7280").replace("var(--red)","#111827").replace("var(--amb)","#374151"))+"</div>"}).join("")+"</div>";
   h+="<div class='p'><h3>Trend explorer</h3><p class='sub'>Pick any counter. Hosts is the peak single day.</p><label class='msel'>Counter <select id='msel'></select></label><div id='mchart'></div></div>";
   r.innerHTML=h;
   var sel=$("#msel",r);
   sel.innerHTML=D.metrics.map(function(m){return "<option value='"+m+"'>"+esc(D.labels[m])+"</option>"}).join("");
-  function ex(){$("#mchart",r).innerHTML=chart(sel.value,"#1D4ED8",true)}
+  function ex(){$("#mchart",r).innerHTML=chart(sel.value,"#4b5563",true)}
   sel.onchange=ex;ex();
   Array.prototype.forEach.call(r.querySelectorAll("[data-go]"),function(k){k.onclick=function(){show(k.dataset.go)}});
 };

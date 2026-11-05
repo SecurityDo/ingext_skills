@@ -153,9 +153,26 @@ not exist, a number not backed by the evidence, a non-calendar due date.
 - Every GAP and PARTIAL is visible and honest; the risk register exists even when PARTIAL.
 - Look at the page. If you cannot, say so in the hand-off.
 - The output is one self-contained HTML file with no external script, font link or image, so it can
-  be posted as it stands. Fonts fall back to system fonts. There is no PDF step.
+  be posted as it stands. Fonts fall back to system fonts. PDF: run the render command in the branding section below.
 
 ## Delivering
 
 Posting or sending the report is a separate step that needs the operator's approval of the HTML.
 Do not post automatically.
+
+## Fluency report branding and PDF
+
+**Prerequisite: the `fluency-report` skill.** All Fluency report styling lives in that skill's `scripts/` folder
+(`fluency_brand.py`, `brand.css`, the IBM Plex fonts, the lock mark and `render_pdf.mjs`). This skill does not carry its own
+copy: the build scripts here that style a report find the `fluency-report` skill next to this one (or at `FLUENCY_BRAND_DIR`) and
+import `fluency_brand` from it, and stop with a clear message if it is not installed. Install `fluency-report` alongside this skill. In the steps below, `<fluency-report>` means
+that skill's folder.
+
+- The HTML report is one self-contained file (mark, fonts and CSS inlined). The PDF is rendered from that same HTML with the same
+  CSS, so the two match: `node <fluency-report>/scripts/render_pdf.mjs --input report.html --output report.pdf`.
+  US Letter, same editorial styling as the HTML (brandline, closing footer line; no paged footer). It needs Playwright
+  (`npm install playwright`) and a Chromium or Chrome binary; it finds a Chrome install automatically.
+- Do not convert these reports with WeasyPrint, wkhtmltopdf or a generic HTML-to-PDF step: they ignore
+  the brand CSS (grid, fonts, page rules), so the PDF would not match the HTML.
+- Do not hand-write report styling. The look is the Fluency editorial style (white paper, IBM Plex, black rules, one blue / red / amber, no cards or gradients). A new page is `fluency_brand.page(...)`; markup from an older script goes
+  through `fluency_brand.apply_brand(html)`. Design and component reference: the `fluency-report` skill (`references/widget_recipes.md`).

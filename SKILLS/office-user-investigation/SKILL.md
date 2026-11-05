@@ -192,7 +192,7 @@ ISO2→ISO3 mapping is bundled at `assets/iso2_to_iso3.json`.
 
 First run only — install deps in the sandbox (PDF rendering only; no GeoIP package needed):
 ```bash
-pip install weasyprint --break-system-packages -q
+npm install playwright && npx playwright install chromium
 ```
 
 Then:
@@ -211,7 +211,7 @@ Notes:
 - Geolocation comes from the query's platform `_ip` enrichment (country / city / ISP /
   coordinates) — **no IP lookup is performed**. Still caption it as approximate and recommend
   live threat-intel verification before formal attribution.
-- The PDF is rendered with WeasyPrint (no browser needed). If WeasyPrint can't
+- The PDF is rendered with Chromium via <fluency-report>/scripts/render_pdf.mjs, from the same HTML and CSS. If Playwright can't
   load its system libs, drop `--pdf` and deliver the HTML; the user can convert it with the
   browser's "Save as PDF" with background graphics enabled.
 - The script derives the **home country** from the highest-event IP, classifies
@@ -248,4 +248,21 @@ office-user-investigation/
 | No `Office365` table on the tenant | Stop; tell the user this skill needs Office365 datalake data |
 | `ip_summary.json` empty | The user has no ClientIP-bearing events in the window; report "no activity found" |
 | Country outline missing | Rare (all sovereign countries pre-bundled); build still works and dots plot. **Do not look it up** — if a border is worth adding, estimate a rough outline from your own knowledge |
-| WeasyPrint libs missing | Build HTML only; use browser "Save as PDF" with background graphics enabled |
+| Playwright/Chromium missing | Build HTML only; install Playwright, then run <fluency-report>/scripts/render_pdf.mjs on the HTML |
+
+## Fluency report branding and PDF
+
+**Prerequisite: the `fluency-report` skill.** All Fluency report styling lives in that skill's `scripts/` folder
+(`fluency_brand.py`, `brand.css`, the IBM Plex fonts, the lock mark and `render_pdf.mjs`). This skill does not carry its own
+copy: the build scripts here that style a report find the `fluency-report` skill next to this one (or at `FLUENCY_BRAND_DIR`) and
+import `fluency_brand` from it, and stop with a clear message if it is not installed. Install `fluency-report` alongside this skill. In the steps below, `<fluency-report>` means
+that skill's folder.
+
+- The HTML report is one self-contained file (mark, fonts and CSS inlined). The PDF is rendered from that same HTML with the same
+  CSS, so the two match: `node <fluency-report>/scripts/render_pdf.mjs --input report.html --output report.pdf`.
+  US Letter, same editorial styling as the HTML (brandline, closing footer line; no paged footer). It needs Playwright
+  (`npm install playwright`) and a Chromium or Chrome binary; it finds a Chrome install automatically.
+- Do not convert these reports with WeasyPrint, wkhtmltopdf or a generic HTML-to-PDF step: they ignore
+  the brand CSS (grid, fonts, page rules), so the PDF would not match the HTML.
+- Do not hand-write report styling. The look is the Fluency editorial style (white paper, IBM Plex, black rules, one blue / red / amber, no cards or gradients). A new page is `fluency_brand.page(...)`; markup from an older script goes
+  through `fluency_brand.apply_brand(html)`. Design and component reference: the `fluency-report` skill (`references/widget_recipes.md`).

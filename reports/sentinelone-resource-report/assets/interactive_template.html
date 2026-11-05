@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{title}}</title>
 <style>
-:root{--red:#B91C1C;--blu:#1D4ED8;--amb:#B45309;--grn:#15803D;--gry:#64748B;--bg:#f4f6fa;--card:#fff;--ink:#1f2937;--m:#64748b;--line:#e2e8f0;--acc:#1d4ed8;--navy:#14213d}
-@media(prefers-color-scheme:dark){:root{--red:#f87171;--blu:#7aa7ff;--amb:#fbbf24;--grn:#4ade80;--gry:#94a3b8;--bg:#0f1523;--card:#182033;--ink:#e5ebf7;--m:#8b9bb8;--line:#26324b;--acc:#6ea0ff;--navy:#e5ebf7}}
+:root{--red:#111827;--blu:#4b5563;--amb:#374151;--grn:#6b7280;--gry:#9ca3af;--bg:#f5f5f5;--card:#fff;--ink:#1f2328;--m:#6b7280;--line:#e5e5e5;--acc:#374151;--navy:#1f2328}
+@media(prefers-color-scheme:dark){:root{--red:#f5f5f5;--blu:#bdbdbd;--amb:#d4d4d4;--grn:#9ca3af;--gry:#6b7280;--bg:#111111;--card:#1a1a1a;--ink:#eeeeee;--m:#9a9a9a;--line:#2b2b2b;--acc:#f5f5f5;--navy:#eeeeee}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
-header{background:linear-gradient(135deg,#0f1a33,#1d3461);color:#fff;padding:26px 0 18px}
+header{background:linear-gradient(135deg,#111827,#374151);color:#fff;padding:26px 0 18px}
 .w{max-width:1180px;margin:0 auto;padding:0 20px}
-.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#9db4e0;font-weight:600}
+.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#d4d4d4;font-weight:600}
 h1{margin:4px 0 8px;font-size:26px}
 .chip{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:2px 11px;font-size:12px;margin:0 8px 4px 0}
 nav{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap}
@@ -30,7 +30,7 @@ main{padding:18px 20px 48px;max-width:1180px;margin:0 auto}
 .p{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px}
 .p:first-child{margin-top:0}.g>.p{margin-top:0}
 .p h3{margin:0 0 8px;font-size:14px}
-.warn{border-left:4px solid #B45309;background:rgba(180,83,9,.1)}.read{border-left:4px solid var(--acc)}
+.warn{border-left:4px solid #374151;background:rgba(180,83,9,.1)}.read{border-left:4px solid var(--acc)}
 table{border-collapse:collapse;width:100%;font-size:13px}
 th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--m);padding:8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);cursor:pointer;white-space:nowrap}
 td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
@@ -43,7 +43,7 @@ input[type=search],select,button{background:var(--card);color:var(--ink);border:
 input[type=search]{min-width:220px;flex:1}
 button{cursor:pointer}button:disabled{opacity:.4;cursor:default}
 .pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:600;background:rgba(180,83,9,.15);color:var(--amb);white-space:nowrap}
-.pill.bad{background:rgba(185,28,28,.15);color:var(--red)}.pill.ok{background:rgba(21,128,61,.15);color:var(--grn)}.pill.mute{background:var(--line);color:var(--m)}
+.pill.bad{background:rgba(17,24,39,.15);color:var(--red)}.pill.ok{background:rgba(107,114,128,.15);color:var(--grn)}.pill.mute{background:var(--line);color:var(--m)}
 .stack{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line);margin:10px 0 6px}
 .stack i{display:block}
 .lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
@@ -68,7 +68,7 @@ const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const fmt=v=>typeof v==='number'?v.toLocaleString():esc(v);
 const A=D.agents, P=D.applications, T=D.threats, E=D.endpointSummary;
 const TABS=[['ov','Overview'],['en','Endpoints'],['ap','Applications'],['th','Threats'],['cv','Coverage']];
-const CM={'#14213d':'var(--navy)','#B91C1C':'var(--red)','#1D4ED8':'var(--blu)','#B45309':'var(--amb)','#15803D':'var(--grn)','#64748B':'var(--gry)'};const cc=c=>CM[c]||c;
+const CM={'#1f2328':'var(--navy)','#111827':'var(--red)','#4b5563':'var(--blu)','#374151':'var(--amb)','#6b7280':'var(--grn)','#9ca3af':'var(--gry)'};const cc=c=>CM[c]||c;
 const PRE={};            // filters to apply when a tab opens (set by clicks on the overview)
 let tableRoots={};
 function kpi(l,v,c,s,go,f){c=cc(c);return `<div class="k" style="--c:${c}" ${go?`data-go="${go}"`:''} ${f?`data-pre='${esc(JSON.stringify(f))}'`:''}><span>${esc(l)}</span><b>${esc(v)}</b><small>${esc(s||'')}</small></div>`}
@@ -105,14 +105,14 @@ const uniq=(rows,k)=>[...new Set(rows.map(r=>r[k]))].filter(v=>v!==''&&v!=null).
 const V={};
 /* ---------------- Overview ---------------- */
 V.ov=()=>{const c=document.createElement('div');
- const kp=[kpi('Endpoints',A.inScope.toLocaleString(),'#14213d',A.active.toLocaleString()+' reporting','en'),
-  kpi('Not reporting',A.inactive.toLocaleString(),A.inactive?'#B91C1C':'#15803D',A.inactiveStale+' for over '+D.staleDays+' days','en',{reporting:'Not reporting'}),
-  kpi('On newest agent',pct(A.onLatest,A.inScope),A.behindLatest?'#B45309':'#15803D',D.latestVersion,'en'),
-  kpi('Need action',E.needsAction.toLocaleString(),E.needsAction?'#B91C1C':'#15803D',E.watch+' more on watch','en',{status:'Needs action'})];
- if(D.present.threat)kp.push(kpi('Open threats',T.open.toLocaleString(),T.open?'#B91C1C':'#15803D',T.total.toLocaleString()+' recorded','th'));
- if(D.present.application)kp.push(kpi('Risky app installs',P.highRiskInstances.toLocaleString(),P.highRiskInstances?'#B45309':'#15803D',P.highRiskEndpoints+' endpoints','ap'));
+ const kp=[kpi('Endpoints',A.inScope.toLocaleString(),'#1f2328',A.active.toLocaleString()+' reporting','en'),
+  kpi('Not reporting',A.inactive.toLocaleString(),A.inactive?'#111827':'#6b7280',A.inactiveStale+' for over '+D.staleDays+' days','en',{reporting:'Not reporting'}),
+  kpi('On newest agent',pct(A.onLatest,A.inScope),A.behindLatest?'#374151':'#6b7280',D.latestVersion,'en'),
+  kpi('Need action',E.needsAction.toLocaleString(),E.needsAction?'#111827':'#6b7280',E.watch+' more on watch','en',{status:'Needs action'})];
+ if(D.present.threat)kp.push(kpi('Open threats',T.open.toLocaleString(),T.open?'#111827':'#6b7280',T.total.toLocaleString()+' recorded','th'));
+ if(D.present.application)kp.push(kpi('Risky app installs',P.highRiskInstances.toLocaleString(),P.highRiskInstances?'#374151':'#6b7280',P.highRiskEndpoints+' endpoints','ap'));
  c.innerHTML=`<div class="g k3">${kp.join('')}</div>
-  <div class="p"><h3>Endpoints by reporting state</h3>${stack([['Reporting',A.active,'#15803D']].concat(Object.entries(A.inactiveBuckets).map(([k,v],i)=>[k==='unknown'?'Not reporting, last active unknown':'Silent '+k,v,['#B45309','#B91C1C','#7f1d1d','#64748B'][i%4]])),A.inScope)}</div>
+  <div class="p"><h3>Endpoints by reporting state</h3>${stack([['Reporting',A.active,'#6b7280']].concat(Object.entries(A.inactiveBuckets).map(([k,v],i)=>[k==='unknown'?'Not reporting, last active unknown':'Silent '+k,v,['#374151','#111827','#1f2328','#9ca3af'][i%4]])),A.inScope)}</div>
   <div class="g c2" id="g1"></div><div class="g c2" id="g2" style="margin-top:12px"></div>
   <div class="p read">Archived snapshot as of <b>${esc(D.snapshot)}</b>. Click a bar or a tile to open the table behind it. "Newest agent" is the highest version in this fleet, not the latest SentinelOne release.</div>`;
  const g1=c.querySelector('#g1'),g2=c.querySelector('#g2');
@@ -145,12 +145,12 @@ V.en=()=>{const c=document.createElement('div');
  c.appendChild(t);return c};
 /* ---------------- Applications ---------------- */
 V.ap=()=>{const c=document.createElement('div');if(!D.present.application){c.innerHTML=na('Applications');return c}
- c.innerHTML=`<div class="g k4">${kpi('Installs',P.instances.toLocaleString(),'#14213d',P.newInWindow.toLocaleString()+' in the last '+P.newWindowDays+' days')}${kpi('Distinct applications',P.distinct.toLocaleString(),'#1D4ED8','name and publisher; the table lists the 25 most widespread')}${kpi('Risky installs',P.highRiskInstances.toLocaleString(),P.highRiskInstances?'#B45309':'#15803D','medium, high or critical','ap',{risk:'High'})}${kpi('Endpoints with risky apps',P.highRiskEndpoints.toLocaleString(),P.highRiskEndpoints?'#B45309':'#15803D','of '+A.inScope.toLocaleString())}</div>`;
+ c.innerHTML=`<div class="g k4">${kpi('Installs',P.instances.toLocaleString(),'#1f2328',P.newInWindow.toLocaleString()+' in the last '+P.newWindowDays+' days')}${kpi('Distinct applications',P.distinct.toLocaleString(),'#4b5563','name and publisher; the table lists the 25 most widespread')}${kpi('Risky installs',P.highRiskInstances.toLocaleString(),P.highRiskInstances?'#374151':'#6b7280','medium, high or critical','ap',{risk:'High'})}${kpi('Endpoints with risky apps',P.highRiskEndpoints.toLocaleString(),P.highRiskEndpoints?'#374151':'#6b7280','of '+A.inScope.toLocaleString())}</div>`;
  const cols=[{k:'name',h:'Application',w:1},{k:'publisher',h:'Publisher',w:1},{k:'risk',h:'Risk',pill:1},{k:'endpoints',h:'Endpoints',num:1}];
  c.appendChild(dt(cols,D.apps,{title:'Most widespread applications',file:'sentinelone_applications_top',sort:'endpoints',dir:-1,pre:PRE.ap,filters:[{key:'risk',label:'Risk',opts:['Critical','High','Medium','Low','None']}]}));return c};
 /* ---------------- Threats ---------------- */
 V.th=()=>{const c=document.createElement('div');if(!D.present.threat){c.innerHTML=na('Threats');return c}
- c.innerHTML=`<div class="g k4">${kpi('Threats',T.total.toLocaleString(),'#14213d',esc(T.first)+' to '+esc(T.last))}${kpi('Open',T.open.toLocaleString(),T.open?'#B91C1C':'#15803D','not mitigated or not resolved','th')}${kpi('Mitigated',((T.mitigation||{}).mitigated||0).toLocaleString(),'#15803D','of '+T.total.toLocaleString())}${kpi('Endpoints with open threats',new Set(D.threatRows.map(r=>r.endpoint)).size.toLocaleString(),'#B45309','of '+A.inScope.toLocaleString()+' current')}</div>
+ c.innerHTML=`<div class="g k4">${kpi('Threats',T.total.toLocaleString(),'#1f2328',esc(T.first)+' to '+esc(T.last))}${kpi('Open',T.open.toLocaleString(),T.open?'#111827':'#6b7280','not mitigated or not resolved','th')}${kpi('Mitigated',((T.mitigation||{}).mitigated||0).toLocaleString(),'#6b7280','of '+T.total.toLocaleString())}${kpi('Endpoints with open threats',new Set(D.threatRows.map(r=>r.endpoint)).size.toLocaleString(),'#374151','of '+A.inScope.toLocaleString()+' current')}</div>
   <div class="g c2" id="tg" style="margin-top:12px"></div>`;
  const g=c.querySelector('#tg');
  g.insertAdjacentHTML('beforeend',`<div class="p"><h3>Threats per week</h3>${weekly(T.weekly)}</div>`);

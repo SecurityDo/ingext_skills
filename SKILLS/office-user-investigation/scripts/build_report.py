@@ -32,6 +32,23 @@ Expected files in --workdir (raw kql_search tool output is fine; see SKILL.md):
   user_record.json  (optional) get_azure_user_record output
 """
 import argparse, json, os, glob, math, html as _H, datetime as dt, collections
+import os as _os, sys as _sys, glob as _glob
+def _find_brand_kit():
+    # The Fluency report brand kit lives only in the `fluency-report` skill (scripts/). Find that skill next to this one.
+    here = _os.path.dirname(_os.path.abspath(__file__)); home = _os.path.expanduser("~")
+    cands = [_os.environ.get("FLUENCY_BRAND_DIR"), here]
+    up = here
+    for _ in range(5):
+        up = _os.path.dirname(up); cands.append(_os.path.join(up, "fluency-report", "scripts"))
+    cands += [_os.path.join(home, ".claude", "skills", "fluency-report", "scripts")]
+    cands += _glob.glob(_os.path.join(home, ".claude", "skills", "**", "fluency-report", "scripts"), recursive=True)
+    for c in cands:
+        if c and _os.path.exists(_os.path.join(c, "fluency_brand.py")):
+            return c
+    raise SystemExit("The Fluency report brand kit was not found. Install the `fluency-report` skill (this report uses its "
+                     "scripts/fluency_brand.py and brand.css), or set FLUENCY_BRAND_DIR to that skill's scripts folder.")
+_sys.path.insert(0, _find_brand_kit())
+import fluency_brand as fb  # Fluency report brand kit, from the fluency-report skill
 
 # ----------------------------- helpers --------------------------------------
 def load(path):
@@ -163,7 +180,7 @@ def build_map_svg(points, skill_dir, workdir):
     lat = math.ceil(LAT0/20)*20
     while lat <= LAT1:
         _,y = proj(0, lat); grat.append(f'<line x1="0" y1="{y:.1f}" x2="{W}" y2="{y:.1f}"/>'); lat += 20
-    col = {"primary":"#3fb950","home_other":"#4493f8","foreign":"#f85149","attacker":"#b81d13"}
+    col = {"primary":"#175d9a","home_other":"#8a8a8a","foreign":"#a06c00","attacker":"#b3242e"}
     # jitter identical coords
     seen = collections.defaultdict(int)
     for p in pts:
@@ -176,35 +193,31 @@ def build_map_svg(points, skill_dir, workdir):
     for p in sorted(pts, key=lambda d:-d["events"]):
         if not (LON0 <= p["lon"] <= LON1 and LAT0 <= p["lat"] <= LAT1):
             continue
-        x,y = proj(p["lon"], p["lat"]); c = col.get(p["cls"], "#4493f8")
+        x,y = proj(p["lon"], p["lat"]); c = col.get(p["cls"], "#8a8a8a")
         tip = f'{p["ip"]} | {(p["city"] or "")} {p["cc"] or "?"} | events {p["events"]}, logins {p["logins"]}, failed {p["failed"]}, sends {p["sends"]}'
         circ.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{rad(p["events"]):.1f}" fill="{c}" fill-opacity="0.55" stroke="{c}" stroke-width="1"><title>{_H.escape(tip)}</title></circle>')
     return (f'<svg class="geomap" viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg">'
-            f'<rect x="0" y="0" width="{W}" height="{H}" fill="#0a0e14"/>'
-            f'<g stroke="#162030" stroke-width="0.6">{"".join(grat)}</g>'
-            f'<path d="{land}" fill="#1b2532" stroke="#33414f" stroke-width="0.5"/>'
+            f'<rect x="0" y="0" width="{W}" height="{H}" fill="#f7f7f7"/>'
+            f'<g stroke="#e6e6e6" stroke-width="0.6">{"".join(grat)}</g>'
+            f'<path d="{land}" fill="#d9d9d9" stroke="#bdbdbd" stroke-width="0.5"/>'
             f'{"".join(circ)}</svg>')
 
 # ----------------------------- bars -----------------------------------------
 def build_bars_svg(timeline_rows):
+    """Sign-ins per day, stacked successful / failed (shared chart helper)."""
     by = collections.OrderedDict()
     for r in timeline_rows:
         d = str(r.get("bin") or r.get("timestamp") or "")[:10]
-        op = r.get("Operation",""); n = num(r.get("logins") or r.get("count") or 0)
-        by.setdefault(d, [0,0])
-        if op == "UserLoggedIn": by[d][0]+=n
-        elif op == "UserLoginFailed": by[d][1]+=n
-    items = [(d,s,f) for d,(s,f) in by.items() if (s or f)]
+        op = r.get("Operation", ""); n = num(r.get("logins") or r.get("count") or 0)
+        by.setdefault(d, [0, 0])
+        if op == "UserLoggedIn": by[d][0] += n
+        elif op == "UserLoginFailed": by[d][1] += n
+    items = [(d, s, f) for d, (s, f) in by.items() if (s or f)]
     if not items:
         return ""
-    mx = max(s+f for _,s,f in items) or 1
-    n = len(items); BW=900; gap=3; bw=(BW-gap*(n-1))/n; base=110
-    out = [f'<rect x="0" y="0" width="{BW}" height="120" fill="#0a0e14"/>']
-    for i,(d,s,f) in enumerate(items):
-        tot=s+f; h=max(2,80*tot/mx); fs=h*s/tot if tot else 0; ff=h-fs; x=i*(bw+gap)
-        out.append(f'<rect x="{x:.1f}" y="{base-ff:.1f}" width="{bw:.1f}" height="{ff:.1f}" fill="#f85149"><title>{d}: {s} ok / {f} failed</title></rect>')
-        out.append(f'<rect x="{x:.1f}" y="{base-h:.1f}" width="{bw:.1f}" height="{fs:.1f}" fill="#4493f8"><title>{d}: {s} ok / {f} failed</title></rect>')
-    return f'<svg viewBox="0 0 {BW} 120" style="width:100%;height:auto;display:block;border:1px solid #2a3340;border-radius:8px">{"".join(out)}</svg>'
+    return fb.column_chart([d[5:] for d, _, _ in items], [("Successful", [s for _, s, _ in items]), ("Failed", [f for _, _, f in items])],
+                           mode="stack", colors=["#175d9a", "#b3242e"], height=170, show_values=False, y_label="Sign-ins per day")
+
 
 # ----------------------------- main -----------------------------------------
 def main():
@@ -400,7 +413,7 @@ def main():
     HTML = f"""<!DOCTYPE html><html lang=en><head><meta charset=UTF-8>
 <meta name=viewport content="width=device-width, initial-scale=1.0">
 <title>O365 Investigation — {_H.escape(a.username)}</title><style>
-:root{{--bg:#0d1117;--panel:#161b22;--panel2:#1c2330;--line:#2a3340;--txt:#e6edf3;--muted:#9aa7b4;--blue:#4493f8;--amber:#f0a020;--red:#f85149;--green:#3fb950;--dred:#b81d13}}
+:root{{--bg:#0d1117;--panel:#161b22;--panel2:#1c2330;--line:#d8d8d8;--txt:#e6edf3;--muted:#9aa7b4;--blue:#8a8a8a;--amber:#f0a020;--red:#a06c00;--green:#175d9a;--dred:#b3242e}}
 *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px;line-height:1.5}}
 .wrap{{max-width:1100px;margin:0 auto;padding:30px 22px 60px}}
 header{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:22px;flex-wrap:wrap;gap:14px}}
@@ -422,17 +435,13 @@ th{{background:var(--panel2);color:var(--muted);font-weight:600;font-size:11px;t
 td.bad,.bad{{color:var(--red)}}
 .chip{{font-size:11px;padding:1px 8px;border-radius:12px;color:#fff;background:var(--panel2);border:1px solid var(--line);white-space:nowrap;display:inline-block}}
 .chip.foreign{{background:rgba(248,81,73,.85);border-color:var(--red)}}.chip.attacker{{background:var(--dred);border-color:var(--dred)}}.chip.red{{background:rgba(248,81,73,.85)}}.chip.amb{{background:rgba(240,160,32,.85);color:#000}}
-svg.geomap{{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:10px;background:#0a0e14}}
+svg.geomap{{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:10px;background:#f7f7f7}}
 .maplegend{{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:10px 0 4px}}.maplegend i{{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}}
 .geocaveat{{border:1px solid var(--amber);background:rgba(240,160,32,.08);border-radius:8px;padding:11px 15px;margin:6px 0 14px;font-size:12px;color:#f0d9a8}}
 .geogrid{{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:14px}}@media(max-width:820px){{.geogrid{{grid-template-columns:1fr}}.kpis{{grid-template-columns:repeat(2,1fr)}}}}
 ol.rec{{padding-left:18px}}ol.rec li{{margin-bottom:9px}}.sev{{font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;margin-right:6px}}.sev.c{{background:var(--red);color:#fff}}.sev.h{{background:var(--amber);color:#000}}.sev.m{{background:var(--blue);color:#fff}}
 .note{{color:var(--muted);font-size:12px;margin-top:8px}}footer{{border-top:1px solid var(--line);margin-top:36px;padding-top:14px;color:var(--muted);font-size:11px}}
-</style></head><body><div class=wrap>
-<header><div><div class=brand>FLUENCY<span>·</span>Ingext</div><h1>Office 365 User Investigation</h1>
-<div class="sub mono">{_H.escape(a.username)}</div></div>
-<div class=meta><div>Window: <b>{win}</b></div><div>Generated: <b>{dt.datetime.now(dt.timezone.utc).strftime("%b %d %Y")}</b></div>
-<div>Source: <b>Office365 datalake (KQL)</b></div><div>Events analysed: <b>{tot_events:,}</b></div></div></header>
+</style></head><body>{fb.hero('Identity investigation','Office 365 User Investigation',a.username,chips=['Window: '+str(win),'Source: Office365 datalake (KQL)','Events analysed: '+format(tot_events,',')])}<div class=wrap>
 
 <div class="verdict {sevcls}"><span class=tag>{sev}</span>
 <p style="margin:10px 0 0">{exec_lines[0]}</p></div>
@@ -458,7 +467,7 @@ ol.rec{{padding-left:18px}}ol.rec li{{margin-bottom:9px}}.sev{{font-size:10px;fo
 <section><h3 class=r>GeoIP map of all sign-ins &amp; activity</h3>
 <div class=geocaveat><b>&#9888; Geolocation is approximate.</b> Source-IP country / city / ISP and coordinates come from the platform&rsquo;s GeoIP enrichment returned by the query (no separate IP lookup is performed). Treat as indicative, not authoritative &mdash; confirm with live threat intelligence before formal attribution.</div>
 {map_svg}
-<div class=maplegend><span><i style="background:#3fb950"></i>Primary user (home country)</span><span><i style="background:#4493f8"></i>Other home-country IPs</span><span><i style="background:#f85149"></i>Foreign access</span><span><i style="background:#b81d13"></i>Inbox-rule / BEC IPs</span><span>dot size &prop; event count</span></div>
+<div class=maplegend><span><i style="background:#175d9a"></i>Primary user (home country)</span><span><i style="background:#8a8a8a"></i>Other home-country IPs</span><span><i style="background:#a06c00"></i>Foreign access</span><span><i style="background:#b3242e"></i>Inbox-rule / BEC IPs</span><span>dot size &prop; event count</span></div>
 <div class=geogrid>
 <div><h3>Activity by country <span class=cc>(GeoLite, approx.)</span></h3>
 <table><tr><th>Country</th><th>IPs</th><th>Events</th><th>Logins</th><th>Failed</th><th>Sends</th></tr>{cc_html}</table></div>
@@ -479,14 +488,12 @@ ol.rec{{padding-left:18px}}ol.rec li{{margin-bottom:9px}}.sev{{font-size:10px;fo
 </div></body></html>"""
 
     os.makedirs(os.path.dirname(os.path.abspath(a.output)), exist_ok=True)
-    open(a.output, "w").write(HTML)
+    open(a.output, "w").write(fb.apply_brand(HTML))
     print("HTML written:", a.output)
 
     if a.pdf:
         try:
-            override = "<style>.geogrid{grid-template-columns:1fr !important}table{font-size:11px}td,th{overflow-wrap:anywhere}td.mono,.mono{white-space:nowrap}</style>"
-            from weasyprint import HTML as WHTML
-            WHTML(string=HTML.replace("</head>", override+"</head>", 1)).write_pdf(a.pdf)
+            fb.to_pdf(a.output, a.pdf)      # same CSS as the HTML, US Letter (Chromium via Playwright)
             print("PDF written:", a.pdf)
         except Exception as e:
             print("PDF step skipped (", e, ")")

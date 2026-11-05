@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{title}}</title>
 <style>
-:root{--red:#B91C1C;--blu:#1D4ED8;--amb:#B45309;--grn:#15803D;--gry:#64748B;--bg:#f4f6fa;--card:#fff;--ink:#1f2937;--m:#64748b;--line:#e2e8f0;--acc:#1d4ed8;--navy:#14213d}
-@media(prefers-color-scheme:dark){:root{--red:#f87171;--blu:#7aa7ff;--amb:#fbbf24;--grn:#4ade80;--gry:#94a3b8;--bg:#0f1523;--card:#182033;--ink:#e5ebf7;--m:#8b9bb8;--line:#26324b;--acc:#6ea0ff;--navy:#e5ebf7}}
+:root{--red:#111827;--blu:#4b5563;--amb:#374151;--grn:#6b7280;--gry:#9ca3af;--bg:#f5f5f5;--card:#fff;--ink:#1f2328;--m:#6b7280;--line:#e5e5e5;--acc:#374151;--navy:#1f2328}
+@media(prefers-color-scheme:dark){:root{--red:#f5f5f5;--blu:#bdbdbd;--amb:#d4d4d4;--grn:#9ca3af;--gry:#6b7280;--bg:#111111;--card:#1a1a1a;--ink:#eeeeee;--m:#9a9a9a;--line:#2b2b2b;--acc:#f5f5f5;--navy:#eeeeee}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
-header{background:linear-gradient(135deg,#0f1a33,#1d3461);color:#fff;padding:26px 0 18px}
+header{background:linear-gradient(135deg,#111827,#374151);color:#fff;padding:26px 0 18px}
 .w{max-width:1180px;margin:0 auto;padding:0 20px}
-.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#9db4e0;font-weight:600}
+.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#d4d4d4;font-weight:600}
 h1{margin:4px 0 8px;font-size:26px}
 .chip{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:2px 11px;font-size:12px;margin:0 8px 4px 0}
 nav{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap}
@@ -30,7 +30,7 @@ main{padding:18px 20px 48px;max-width:1180px;margin:0 auto}
 .p{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px}
 .p:first-child{margin-top:0}.g>.p{margin-top:0}
 .p h3{margin:0 0 8px;font-size:14px}
-.warn{border-left:4px solid #B45309;background:rgba(180,83,9,.1)}.read{border-left:4px solid var(--acc)}
+.warn{border-left:4px solid #374151;background:rgba(180,83,9,.1)}.read{border-left:4px solid var(--acc)}
 table{border-collapse:collapse;width:100%;font-size:13px}
 th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--m);padding:8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);cursor:pointer;white-space:nowrap}
 td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
@@ -43,7 +43,7 @@ input[type=search],select,button{background:var(--card);color:var(--ink);border:
 input[type=search]{min-width:220px;flex:1}
 button{cursor:pointer}button:disabled{opacity:.4;cursor:default}
 .pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:600;background:rgba(180,83,9,.15);color:var(--amb);white-space:nowrap}
-.pill.bad{background:rgba(185,28,28,.15);color:var(--red)}.pill.ok{background:rgba(21,128,61,.15);color:var(--grn)}.pill.mute{background:var(--line);color:var(--m)}
+.pill.bad{background:rgba(17,24,39,.15);color:var(--red)}.pill.ok{background:rgba(107,114,128,.15);color:var(--grn)}.pill.mute{background:var(--line);color:var(--m)}
 .stack{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line);margin:10px 0 6px}
 .stack i{display:block}
 .lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
@@ -67,7 +67,7 @@ const $=s=>document.querySelector(s);
 const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>typeof v==='number'?v.toLocaleString():esc(v);
 const A=null;
-const CM={'#14213d':'var(--navy)','#B91C1C':'var(--red)','#1D4ED8':'var(--blu)','#B45309':'var(--amb)','#15803D':'var(--grn)','#64748B':'var(--gry)'};const cc=c=>CM[c]||c;
+const CM={'#1f2328':'var(--navy)','#111827':'var(--red)','#4b5563':'var(--blu)','#374151':'var(--amb)','#6b7280':'var(--grn)','#9ca3af':'var(--gry)'};const cc=c=>CM[c]||c;
 const PRE={};            // filters to apply when a tab opens (set by clicks on the overview)
 let tableRoots={};
 function kpi(l,v,c,s,go,f){c=cc(c);return `<div class="k" style="--c:${c}" ${go?`data-go="${go}"`:''} ${f?`data-pre='${esc(JSON.stringify(f))}'`:''}><span>${esc(l)}</span><b>${esc(v)}</b><small>${esc(s||'')}</small></div>`}
@@ -107,15 +107,15 @@ const TABS=[['ov','Overview'],['ho','Devices'],['vu','Vulnerabilities'],['cf','C
 const SRC={microsoftDefenderForEndpoint:'Defender for Endpoint',microsoftDefenderForOffice365:'Defender for Office 365',dataLossPrevention:'Data loss prevention'};
 /* ---------------- Overview ---------------- */
 V.ov=()=>{const c=document.createElement('div');
- const kp=[kpi('Onboarded devices',N.toLocaleString(),'#14213d','of '+F.devices.toLocaleString()+' known to Defender','ho'),
-  kpi('Need action',E.needsAction.toLocaleString(),E.needsAction?'#B91C1C':'#15803D',E.watch.toLocaleString()+' more on watch','ho',{state:'Needs action'}),
-  kpi('Secure Score',SS.score.toLocaleString(),'#1D4ED8','points, '+SS.time,'cf'),
-  kpi('High exposure',H.exposureHigh.toLocaleString(),H.exposureHigh?'#B45309':'#15803D',pct(H.exposureHigh,N)+' of onboarded','ho',{exposure:'High'}),
-  kpi('Exploitable CVEs',VU.exploitDevices.toLocaleString(),VU.exploitDevices?'#B91C1C':'#15803D','devices with a verified exploit','vu'),
-  kpi('Open alerts',AL.mdeOpenScored.toLocaleString(),AL.openHigh?'#B91C1C':AL.mdeOpenScored?'#B45309':'#15803D',AL.openHigh+' high, informational excluded','al')];
- const colors=['#15803D','#1D4ED8','#B45309','#B91C1C','#7f1d1d','#64748B'];
+ const kp=[kpi('Onboarded devices',N.toLocaleString(),'#1f2328','of '+F.devices.toLocaleString()+' known to Defender','ho'),
+  kpi('Need action',E.needsAction.toLocaleString(),E.needsAction?'#111827':'#6b7280',E.watch.toLocaleString()+' more on watch','ho',{state:'Needs action'}),
+  kpi('Secure Score',SS.score.toLocaleString(),'#4b5563','points, '+SS.time,'cf'),
+  kpi('High exposure',H.exposureHigh.toLocaleString(),H.exposureHigh?'#374151':'#6b7280',pct(H.exposureHigh,N)+' of onboarded','ho',{exposure:'High'}),
+  kpi('Exploitable CVEs',VU.exploitDevices.toLocaleString(),VU.exploitDevices?'#111827':'#6b7280','devices with a verified exploit','vu'),
+  kpi('Open alerts',AL.mdeOpenScored.toLocaleString(),AL.openHigh?'#111827':AL.mdeOpenScored?'#374151':'#6b7280',AL.openHigh+' high, informational excluded','al')];
+ const colors=['#6b7280','#4b5563','#374151','#111827','#1f2328','#9ca3af'];
  c.innerHTML=`<div class="g k3">${kp.join('')}</div>
-  <div class="p"><h3>Enrolment <span class="m">${F.devices.toLocaleString()} devices known to Defender</span></h3>${stack([['Onboarded',N,'#15803D'],['Can be onboarded',F.canBeOnboarded,'#1D4ED8'],['Insufficient information',F.insufficientInfo,'#B45309'],['Unsupported',F.unsupported,'#64748B']],F.devices)}</div>
+  <div class="p"><h3>Enrolment <span class="m">${F.devices.toLocaleString()} devices known to Defender</span></h3>${stack([['Onboarded',N,'#6b7280'],['Can be onboarded',F.canBeOnboarded,'#4b5563'],['Insufficient information',F.insufficientInfo,'#374151'],['Unsupported',F.unsupported,'#9ca3af']],F.devices)}</div>
   <div class="p"><h3>Onboarded devices by last seen</h3>${stack(Object.entries(H.seenBuckets).map(([k,v],i)=>[k,v,colors[i%6]]),N)}</div>
   <div class="g c2" id="g1"></div><div class="g c2" id="g2" style="margin-top:12px"></div>
   <div class="p read">Snapshot <b>${esc(D.snapshot)}</b>. Click a tile or a bar to open the table behind it. Scores cover onboarded devices only; informational alerts are not scored.</div>`;
@@ -134,19 +134,19 @@ V.ho=()=>{const c=document.createElement('div');
   filters:[{key:'state',label:'Status',opts:['Needs action','Watch']},{key:'checkin',label:'Last seen',opts:['Silent','Seen']},{key:'os',label:'OS',opts:uniq(R,'os')},{key:'exposure',label:'Exposure',opts:uniq(R,'exposure')},{key:'risk',label:'Risk',opts:uniq(R,'risk')},{key:'health',label:'Health',opts:uniq(R,'health')},{key:'av',label:'Antivirus',opts:uniq(R,'av')}]}));return c};
 /* ---------------- Vulnerabilities ---------------- */
 V.vu=()=>{const c=document.createElement('div');
- c.innerHTML=`<div class="g k3">${kpi('Devices with CVEs',VU.devices.toLocaleString(),'#B45309',pct(VU.devices,N)+' of onboarded')}${kpi('With a critical CVE',VU.criticalDevices.toLocaleString(),VU.criticalDevices?'#B91C1C':'#15803D','devices')}${kpi('With an exploitable CVE',VU.exploitDevices.toLocaleString(),VU.exploitDevices?'#B91C1C':'#15803D','High or Critical, verified exploit')}</div><div style="height:12px"></div>`;
+ c.innerHTML=`<div class="g k3">${kpi('Devices with CVEs',VU.devices.toLocaleString(),'#374151',pct(VU.devices,N)+' of onboarded')}${kpi('With a critical CVE',VU.criticalDevices.toLocaleString(),VU.criticalDevices?'#111827':'#6b7280','devices')}${kpi('With an exploitable CVE',VU.exploitDevices.toLocaleString(),VU.exploitDevices?'#111827':'#6b7280','High or Critical, verified exploit')}</div><div style="height:12px"></div>`;
  c.appendChild(dt([{k:'severity',h:'Severity'},{k:'exploit',h:'Exploit'},{k:'cves',h:'CVEs',num:1},{k:'devices',h:'Devices',num:1}],VU.severity,{title:'By severity and exploit',file:'defender_vuln_severity',sort:'cves',dir:-1}));
  const a=dt([{k:'cve',h:'CVE',host:1},{k:'severity',h:'Severity'},{k:'exploit',h:'Exploit'},{k:'devices',h:'Devices',num:1},{k:'cvss',h:'CVSS',num:1},{k:'software',h:'Software'}],VU.cves,{title:'Top exploitable CVEs',file:'defender_cves',sort:'devices',dir:-1});a.style.marginTop='12px';c.appendChild(a);
  const b=dt([{k:'vendor',h:'Vendor'},{k:'software',h:'Software'},{k:'cves',h:'Critical CVEs',num:1},{k:'devices',h:'Devices',num:1}],VU.software,{title:'Software with the most critical CVEs',file:'defender_software',sort:'cves',dir:-1});b.style.marginTop='12px';c.appendChild(b);return c};
 /* ---------------- Configuration ---------------- */
 V.cf=()=>{const c=document.createElement('div');
- c.innerHTML=`<div class="g k3">${kpi('Secure Score',SS.score.toLocaleString(),'#1D4ED8','points, '+SS.time)}${kpi('Settings compliant',pct(CF.compliant,CF.applicable),'#B45309',CF.compliant.toLocaleString()+' of '+CF.applicable.toLocaleString()+' applicable checks')}${kpi('Active recommendations',RC.count.toLocaleString(),'#14213d',RC.publicExploit+' with a public exploit')}</div><div style="height:12px"></div>`;
+ c.innerHTML=`<div class="g k3">${kpi('Secure Score',SS.score.toLocaleString(),'#4b5563','points, '+SS.time)}${kpi('Settings compliant',pct(CF.compliant,CF.applicable),'#374151',CF.compliant.toLocaleString()+' of '+CF.applicable.toLocaleString()+' applicable checks')}${kpi('Active recommendations',RC.count.toLocaleString(),'#1f2328',RC.publicExploit+' with a public exploit')}</div><div style="height:12px"></div>`;
  c.appendChild(dt([{k:'category',h:'Category'},{k:'applicable',h:'Applicable checks',num:1},{k:'compliant',h:'Compliant',num:1},{k:'pct',h:'Compliance %',num:1},{k:'devices',h:'Devices',num:1}],CF.categories,{title:'Secure configuration by category',file:'defender_config_categories',sort:'pct',dir:1}));
  const a=dt([{k:'configuration',h:'Setting',w:1},{k:'category',h:'Category'},{k:'devices',h:'Devices failing',num:1},{k:'impact',h:'Impact',num:1}],CF.top,{title:'Most common failing settings',file:'defender_config_failing',sort:'devices',dir:-1});a.style.marginTop='12px';c.appendChild(a);
  const b=dt([{k:'recommendation',h:'Recommendation',w:1},{k:'category',h:'Category'},{k:'severity',h:'Severity',num:1},{k:'exposed',h:'Exposed devices',num:1},{k:'publicExploit',h:'Public exploit'}],RC.top.map(r=>Object.assign({},r,{publicExploit:r.publicExploit?'yes':'no'})),{title:'Top security recommendations',file:'defender_recommendations',sort:'exposed',dir:-1});b.style.marginTop='12px';c.appendChild(b);return c};
 /* ---------------- Alerts ---------------- */
 V.al=()=>{const c=document.createElement('div');
- c.innerHTML=`<div class="g k4">${kpi('Alerts in window',AL.total.toLocaleString(),'#14213d','last '+AL.windowDays+' days, all products')}${kpi('Open endpoint alerts',AL.mdeOpenScored.toLocaleString(),AL.mdeOpenScored?'#B45309':'#15803D','informational excluded')}${kpi('Open high severity',AL.openHigh.toLocaleString(),AL.openHigh?'#B91C1C':'#15803D',AL.devicesOpenHigh+' devices')}${kpi('Open incidents',AL.incidentsOpen.toLocaleString(),AL.incidentsOpen?'#B45309':'#15803D','of '+AL.incidentsTotal.toLocaleString())}</div>
+ c.innerHTML=`<div class="g k4">${kpi('Alerts in window',AL.total.toLocaleString(),'#1f2328','last '+AL.windowDays+' days, all products')}${kpi('Open endpoint alerts',AL.mdeOpenScored.toLocaleString(),AL.mdeOpenScored?'#374151':'#6b7280','informational excluded')}${kpi('Open high severity',AL.openHigh.toLocaleString(),AL.openHigh?'#111827':'#6b7280',AL.devicesOpenHigh+' devices')}${kpi('Open incidents',AL.incidentsOpen.toLocaleString(),AL.incidentsOpen?'#374151':'#6b7280','of '+AL.incidentsTotal.toLocaleString())}</div>
   <div class="g c2" id="a1" style="margin-top:12px"></div>`;
  const g=c.querySelector('#a1');
  g.insertAdjacentHTML('beforeend',bars('By severity',AL.bySeverity.map(v=>[v.name,v.count])));

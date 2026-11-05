@@ -393,24 +393,35 @@ Interpretation      — 2–3 sentence plain-English summary of findings
 Next steps          — 2–4 action items if anything is degraded/unhealthy
                       (omit or shorten if everything is healthy)
 ──────────────────────────────────────────────────────
-Footer              — "Powered by Ingext · <date>"
+Footer              — the standard Fluency footer (added by fluency_brand.page)
 ```
 
-### Styling guidelines
+### Styling and build
 
-- **Do not display raw component IDs** (`rt_*`, `sink_*`, `pipe_*`, `src_*`) anywhere in the
-  report. Always refer to components by their human-readable names — application name (e.g.
-  "Office365"), processor name (e.g. "Office365_AdjustmentsV2"), and component type (router / sink /
-  datasource). IDs may be used internally to run queries, but must never appear in the output.
-- Use inline CSS only — no external dependencies.
-- Color scheme:
-  - HEALTHY / PASS: `#22c55e` (green)
-  - DEGRADED / UNKNOWN: `#f59e0b` (amber)
-  - UNHEALTHY / FAIL: `#ef4444` (red)
-  - Background: `#0f172a` (dark navy), card background: `#1e293b`
-  - Body text: `#e2e8f0`, muted text: `#94a3b8`
-- Max width `780px`, centered, responsive.
-- The overall status badge should be prominent — large font, full-width banner color.
+Build the page with the Fluency report brand kit from the `fluency-report` skill (`<fluency-report>/scripts/`); do not hand-write CSS and do not use the
+old dark theme. The kit gives the Fluency header with logo, KPI cards, panels, tables, pills, callouts and the
+standard footer, and the same stylesheet drives the PDF.
+
+```python
+import sys; sys.path.insert(0, "<fluency-report>/scripts")
+import fluency_brand as fb
+html = fb.page(
+    title="Ingext Site Health Report", eyebrow="Site health", subtitle="<site name>", meta="<DD MMM YYYY – DD MMM YYYY>",
+    kpis=[fb.kpi("Overall status", "HEALTHY", "all checks pass", "green"), ...],      # the four KPI cards above
+    summary="<p><strong>…</strong> 2–3 sentence interpretation</p>",
+    body="".join([fb.panel("Login activity", inner_html, col=12), ...]),              # one panel per check
+    steps=[("This week", "action text"), ...])                                         # omit when healthy
+open("ingext_health_<YYYYMMDD>.html", "w").write(html)
+```
+
+- Result badges use `fb.pill("PASS", "ok")`, `fb.pill("WARN", "med")`, `fb.pill("FAIL", "high")`, `fb.pill("UNKNOWN", "info")`.
+- Tables: `fb.table(headers, rows, num_cols=(...))`; bars: `fb.bar_rows(...)`; status summary: `fb.callouts([...])`.
+- The overall status is the first KPI card, coloured green / amber / red, and the single most important reason goes in the summary.
+- **Do not display raw component IDs** (`rt_*`, `sink_*`, `pipe_*`, `src_*`) anywhere in the report. Always refer to
+  components by their human-readable names: application name (e.g. "Office365"), processor name (e.g.
+  "Office365_AdjustmentsV2"), and component type (router / sink / datasource). IDs may be used internally to run
+  queries, but must never appear in the output.
+- PDF, when asked: `node <fluency-report>/scripts/render_pdf.mjs --input <html> --output <pdf>` (US Letter, matches the HTML).
 
 ## Step 10 — Share
 

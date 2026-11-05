@@ -4,12 +4,29 @@
 Archive only. Reads the archived daily runs of the scheduled FPL report CrowdStrike_Resource_Report (the
 download_report_archive output for one Fluency / Ingext account), takes the latest completed day and writes
 facts.json, three CSVs, a Fluency-branded print HTML page and a self-contained interactive HTML file.
-Standard library only. It never queries the tenant.
+Standard library plus the fluency-report brand kit (charts and PDF). It never queries the tenant.
 
   falcon_resource_report.py check  --archive FILE [FILE ...]
   falcon_resource_report.py render --archive FILE [FILE ...] --work DIR --account NAME [--customer TEXT]
 """
 import argparse, collections, csv, datetime as dt, html, json, os, shutil, sys
+import os as _os, sys as _sys, glob as _glob
+def _find_brand_kit():
+    # The Fluency report brand kit lives only in the `fluency-report` skill (scripts/). Find that skill next to this one.
+    here = _os.path.dirname(_os.path.abspath(__file__)); home = _os.path.expanduser("~")
+    cands = [_os.environ.get("FLUENCY_BRAND_DIR"), here]
+    up = here
+    for _ in range(5):
+        up = _os.path.dirname(up); cands.append(_os.path.join(up, "fluency-report", "scripts"))
+    cands += [_os.path.join(home, ".claude", "skills", "fluency-report", "scripts")]
+    cands += _glob.glob(_os.path.join(home, ".claude", "skills", "**", "fluency-report", "scripts"), recursive=True)
+    for c in cands:
+        if c and _os.path.exists(_os.path.join(c, "fluency_brand.py")):
+            return c
+    raise SystemExit("The Fluency report brand kit was not found. Install the `fluency-report` skill (this report uses its "
+                     "scripts/fluency_brand.py and brand.css), or set FLUENCY_BRAND_DIR to that skill's scripts folder.")
+_sys.path.insert(0, _find_brand_kit())
+import fluency_brand as fb  # Fluency report brand kit, from the fluency-report skill
 
 REPORT = "CrowdStrike_Resource_Report"
 STALE_DAYS = 7              # no check-in for longer than this is "stale"
@@ -289,19 +306,17 @@ def panel(title, body, cols=6, sub="", cls=""):
 
 
 def bars(items, total=None, color="var(--blue)", empty="No data."):
+    """Horizontal bars (shared chart helper): name, count and share of the total."""
     items = [i for i in items if i["count"]]
     if not items:
         return '<p class="panel-subtitle">%s</p>' % esc(empty)
-    mx = max(i["count"] for i in items)
-    out = ['<div class="ibars">']
+    col = fb.semantic_color(color)
+    rows = []
     for i in items:
-        w = max(2.0, 100.0 * i["count"] / mx)
-        sub = '<span class="ibar-sub">%s%%</span>' % pct(i["count"], total) if total else ""
-        label = i["name"] if len(str(i["name"])) <= 44 else str(i["name"])[:41] + "..."
-        out.append('<div class="ibar"><div class="ibar-label" title="%s">%s%s</div><div class="bar-track"><div class="bar-fill" style="width:%.1f%%;background:%s"></div></div>'
-                   '<div class="ibar-val">%s</div></div>' % (esc(i["name"]), esc(label), sub, w, color, i["count"]))
-    out.append("</div>")
-    return "".join(out)
+        name = str(i["name"])
+        label = name if len(name) <= 44 else name[:41] + "..."
+        rows.append((label, i["count"], col, fb._fmt(i["count"]) + ((" \u00b7 %s%%" % pct(i["count"], total)) if total else "")))
+    return fb.bar_rows(rows)
 
 
 def table(headers, rows, widths=None, cls="data"):
@@ -320,27 +335,13 @@ def chip(text, color):
 
 
 def trend_svg(weeks):
+    """New hosts per week as columns (shared chart helper)."""
     if not weeks or not any(x["count"] for x in weeks):
         return '<p class="panel-subtitle">No hosts enrolled in this period.</p>'
-    w, h, pad = 520, 170, 26
-    mx = max(x["count"] for x in weeks) or 1
-    bw = (w - 2 * pad) / len(weeks)
-    out = ['<svg class="svg-chart" viewBox="0 0 %d %d" role="img" aria-label="New hosts per week">' % (w, h)]
-    out.append('<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#e2e8f0"/>' % (pad, h - 24, w - pad, h - 24))
-    for i, x in enumerate(weeks):
-        bh = (h - 56) * x["count"] / mx
-        bx = pad + i * bw + 4
-        out.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="3" fill="#1D4ED8"><title>Week of %s: %d</title></rect>'
-                   % (bx, h - 24 - bh, bw - 8, bh, x["week"], x["count"]))
-        if x["count"]:
-            out.append('<text x="%.1f" y="%.1f" font-size="10" text-anchor="middle" fill="#475569">%d</text>' % (bx + (bw - 8) / 2, h - 28 - bh, x["count"]))
-        if i % 2 == 0 or len(weeks) < 7:
-            out.append('<text x="%.1f" y="%d" font-size="9" text-anchor="middle" fill="#64748B">%s</text>' % (bx + (bw - 8) / 2, h - 8, x["week"][5:]))
-    out.append("</svg>")
-    return "".join(out)
+    return fb.column_chart([x["week"][5:] for x in weeks], [("New hosts", [x["count"] for x in weeks])], height=170, y_label="New hosts per week")
 
 
-STATUS_COLOR = {"Needs action": "#B91C1C", "Watch": "#B45309", "Healthy": "#15803D"}
+STATUS_COLOR = {"Needs action": "#b3242e", "Watch": "#a06c00", "Healthy": "#175d9a"}
 
 
 def kpi(label, value, color, note=""):
@@ -404,7 +405,7 @@ def cmd_render(args):
                     "%d high or critical, last %dd" % (al["openHigh"], al["windowDays"]))
 
     g = []
-    colors = ["#15803D", "#1D4ED8", "#B45309", "#B91C1C", "#7f1d1d", "#64748B"]
+    colors = ["#111111", "#175d9a", "#a06c00", "#b3242e", "#6b6b6b", "#bdbdbd"]
     segs = [(k, v, c) for (k, v), c in zip(h["seenBuckets"].items(), colors) if v]
     stack = '<div class="stack">%s</div>' % "".join('<div class="seg" style="width:%.2f%%;background:%s" title="%s: %d"></div>' % (100.0 * v / n, c, esc(k), v) for k, v, c in segs)
     legend = '<div class="legend" style="margin-top:10px">%s</div>' % "".join('<span class="lg"><i style="background:%s"></i>%s: %s</span>' % (c, esc(k), "{:,}".format(v)) for k, v, c in segs)
@@ -441,7 +442,7 @@ def cmd_render(args):
     attn = sorted(eps, key=lambda x: (-x["score"], x["host"].lower()))
     cap = args.max_listed
     rows = [([('<td class="host">%s</td>' % esc(x["host"])), td(x["type"]), td(x["os"]), td(x["version"]),
-              '<td>%s</td>' % chip(x["state"], STATUS_COLOR.get(x["state"], "#64748B")), td(x["reasons"], True)], "") for x in attn[:cap]]
+              '<td>%s</td>' % chip(x["state"], STATUS_COLOR.get(x["state"], "#8a8a8a")), td(x["reasons"], True)], "") for x in attn[:cap]]
     note = "" if len(attn) <= cap else " (first %d of %d; the CSV has all)" % (cap, len(attn))
     app = [panel("Hosts needing attention", table(["Host", "Role", "OS", "Sensor", "Status", "Why"], rows, ["16%", "10%", "17%", "11%", "13%", "33%"], "data devlist") if rows
                  else '<p class="panel-subtitle">No host has an open issue.</p>', 12, "%d of %s%s" % (len(attn), "{:,}".format(e["needsAction"] + e["watch"]), note), "page-break")]

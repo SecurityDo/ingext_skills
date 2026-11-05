@@ -21,6 +21,23 @@ Only cases.json is required. A missing optional file turns the sections that nee
 GAP; nothing is filled in.
 """
 import argparse, calendar, collections, datetime, hashlib, html, json, os, re, sys
+import os as _os, sys as _sys, glob as _glob
+def _find_brand_kit():
+    # The Fluency report brand kit lives only in the `fluency-report` skill (scripts/). Find that skill next to this one.
+    here = _os.path.dirname(_os.path.abspath(__file__)); home = _os.path.expanduser("~")
+    cands = [_os.environ.get("FLUENCY_BRAND_DIR"), here]
+    up = here
+    for _ in range(5):
+        up = _os.path.dirname(up); cands.append(_os.path.join(up, "fluency-report", "scripts"))
+    cands += [_os.path.join(home, ".claude", "skills", "fluency-report", "scripts")]
+    cands += _glob.glob(_os.path.join(home, ".claude", "skills", "**", "fluency-report", "scripts"), recursive=True)
+    for c in cands:
+        if c and _os.path.exists(_os.path.join(c, "fluency_brand.py")):
+            return c
+    raise SystemExit("The Fluency report brand kit was not found. Install the `fluency-report` skill (this report uses its "
+                     "scripts/fluency_brand.py and brand.css), or set FLUENCY_BRAND_DIR to that skill's scripts folder.")
+_sys.path.insert(0, _find_brand_kit())
+import fluency_brand as fb  # Fluency report brand kit, from the fluency-report skill
 
 E = html.escape
 MONO = "ui-monospace,Menlo,Consolas,monospace"
@@ -178,29 +195,19 @@ def figure(title, svg, note=""):
     return '<div class="fig"><div class="ft">%s</div>%s%s</div>' % (E(title), svg, ("<p>%s</p>" % note) if note else "")
 
 
-def hbars(data, width=760, label_w=250, color=NAVY, fmt=str):
-    mx = max([r[1] for r in data] + [1])
-    out = '<svg viewBox="0 0 %d %d" width="100%%" role="img">' % (width, 26 * len(data) + 4)
-    for i, r in enumerate(data):
-        col = r[2] if len(r) > 2 else color
-        y, bw = i * 26, (width - label_w - 70) * r[1] / mx
-        out += ('<text x="0" y="%d" font-size="12" fill="#1f2937" font-family="%s">%s</text><rect x="%d" y="%d" width="%d" height="16" fill="#eef2f7" rx="4"/><rect x="%d" y="%d" width="%.1f" height="16" fill="%s" rx="4"/>'
-                '<text x="%.1f" y="%d" font-size="12" fill="#1f2937" font-family="%s">%s</text>') % (y + 17, SANS, E(r[0]), label_w, y + 4, width - label_w - 70, label_w, y + 4, max(bw, 1), col, label_w + bw + 8, y + 17, MONO, E(fmt(r[1])))
-    return out + "</svg>"
+def hbars(data, width=760, label_w=250, color=None, fmt=str):
+    """Horizontal bars (shared helper). A third element on a row colours that bar by meaning."""
+    return fb.bar_rows([(r[0], r[1], (fb.semantic_color(r[2]) if len(r) > 2 else None), str(fmt(r[1]))) for r in data])
 
 
 def heatmap(risks):
+    """Likelihood x impact risk matrix (shared helper); the fill follows the register's bands."""
     cells = collections.defaultdict(list)
     for r in risks:
         cells[(r["likelihood"], r["impact"])].append(r["id"])
-    svg = '<svg viewBox="0 0 520 300" width="100%" role="img">'
-    for L in range(1, 6):
-        for I in range(1, 6):
-            x, y = 50 + (I - 1) * 92, 250 - L * 46
-            svg += '<rect x="%d" y="%d" width="88" height="42" fill="%s" opacity="0.22" rx="6"/><text x="%d" y="%d" font-size="11" fill="#475569" font-family="%s" text-anchor="end">%d</text>' % (x, y, band(L * I)[1], x + 84, y + 15, MONO, L * I)
-            if cells.get((L, I)):
-                svg += '<text x="%d" y="%d" font-size="13" font-weight="700" fill="%s" font-family="%s" text-anchor="middle">%s</text>' % (x + 44, y + 32, NAVY, MONO, E(" ".join(cells[(L, I)])))
-    return svg + '<text x="270" y="290" font-size="11" fill="#64748B" text-anchor="middle" font-family="%s">IMPACT 1 → 5</text><text x="10" y="150" font-size="11" fill="#64748B" font-family="%s" transform="rotate(-90 10 150)" text-anchor="middle">LIKELIHOOD 1 → 5</text></svg>' % (SANS, SANS)
+    lvl = {"Low": 0, "Medium": 1, "High": 2, "Critical": 3}
+    return fb.matrix_grid({k: " ".join(v) for k, v in cells.items()}, level=lambda L, I: lvl[band(L * I)[0]],
+                          row_title="LIKELIHOOD 1 \u2192 5", col_title="IMPACT 1 \u2192 5")
 
 
 # ---------- computation ----------
@@ -719,7 +726,7 @@ def main():
         with open(a.narrative) as f:
             nar = json.load(f)
         with open(a.logo) as f:
-            logo = re.sub(r'width="\d+px" height="\d+px"', 'width="52" height="52"', f.read())
+            f.read(); logo = fb.logo_img()  # brand logo (was the svg mark)
     except (OSError, ValueError) as e:
         sys.exit("cannot read narrative or logo: %s" % e)
     for k in ("rag", "trend", "exec_summary", "decisions", "chapters", "root_causes", "blind_spots", "pathways", "risks", "remediation", "client_actions"):
@@ -734,7 +741,7 @@ def main():
     html_doc = render(ev, nar, v, a, logo)
     check_numbers(nar, known)
     with open(a.out, "w") as f:
-        f.write(html_doc)
+        f.write(fb.apply_brand(html_doc))
     print("wrote %s | %d cases, %d unacknowledged, %d true positives" % (a.out, v["cases"], v["unacked"], v["tp"]))
     for w in warnings:
         print("WARNING:", w)

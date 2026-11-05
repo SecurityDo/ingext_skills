@@ -364,7 +364,7 @@ def build_timeline_svg(events: list[dict], from_ms: int, to_ms: int) -> str:
 
     # Axis line
     lines = []
-    lines.append(f'<line x1="{PAD_L}" y1="155" x2="{W-PAD_R}" y2="155" stroke="#e3e6ec" stroke-width="1"/>')
+    lines.append(f'<line x1="{PAD_L}" y1="155" x2="{W-PAD_R}" y2="155" stroke="#d8d8d8" stroke-width="1"/>')
 
     # X-axis labels (start, mid, end)
     mid_dt = ms_to_dt((from_ms + to_ms) // 2)
@@ -375,9 +375,9 @@ def build_timeline_svg(events: list[dict], from_ms: int, to_ms: int) -> str:
 
     # Lane labels + horizontal guide lines
     for lane, y in LANE_Y.items():
-        color = {"Sign-in": "#2d65a1", "Dir change initiated": "#e8a01e",
-                 "Dir change targeting user": "#c0161c"}.get(lane, "#8a92a3")
-        lines.append(f'<line x1="{PAD_L}" y1="{y}" x2="{W-PAD_R}" y2="{y}" stroke="#eef0f4" stroke-width="1" stroke-dasharray="3 3"/>')
+        color = {"Sign-in": "#175d9a", "Dir change initiated": "#a06c00",
+                 "Dir change targeting user": "#b3242e"}.get(lane, "#8a8a8a")
+        lines.append(f'<line x1="{PAD_L}" y1="{y}" x2="{W-PAD_R}" y2="{y}" stroke="#e2e2e2" stroke-width="1" stroke-dasharray="3 3"/>')
 
     # Dots — jitter dots that land too close together slightly
     for ev in events:
@@ -1388,9 +1388,9 @@ def main():
 
     # Timeline events
     events = []
-    events += extract_events(signin_data,     "Sign-in",                    "#2d65a1")
-    events += extract_events(dir_init_data,   "Dir change initiated",       "#e8a01e")
-    events += extract_events(dir_target_data, "Dir change targeting user",  "#c0161c")
+    events += extract_events(signin_data,     "Sign-in",                    "#175d9a")
+    events += extract_events(dir_init_data,   "Dir change initiated",       "#a06c00")
+    events += extract_events(dir_target_data, "Dir change targeting user",  "#b3242e")
     events.sort(key=lambda e: e["dt"])
 
     # Time labels

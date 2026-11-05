@@ -23,6 +23,23 @@ Rules (ported from the three local posture reports; thresholds are constants bel
                                   rooted; hybrid sync older than 30 days; no username
 """
 import argparse, collections, csv, datetime, glob, gzip, html, json, os, re, sys
+import os as _os, sys as _sys, glob as _glob
+def _find_brand_kit():
+    # The Fluency report brand kit lives only in the `fluency-report` skill (scripts/). Find that skill next to this one.
+    here = _os.path.dirname(_os.path.abspath(__file__)); home = _os.path.expanduser("~")
+    cands = [_os.environ.get("FLUENCY_BRAND_DIR"), here]
+    up = here
+    for _ in range(5):
+        up = _os.path.dirname(up); cands.append(_os.path.join(up, "fluency-report", "scripts"))
+    cands += [_os.path.join(home, ".claude", "skills", "fluency-report", "scripts")]
+    cands += _glob.glob(_os.path.join(home, ".claude", "skills", "**", "fluency-report", "scripts"), recursive=True)
+    for c in cands:
+        if c and _os.path.exists(_os.path.join(c, "fluency_brand.py")):
+            return c
+    raise SystemExit("The Fluency report brand kit was not found. Install the `fluency-report` skill (this report uses its "
+                     "scripts/fluency_brand.py and brand.css), or set FLUENCY_BRAND_DIR to that skill's scripts folder.")
+_sys.path.insert(0, _find_brand_kit())
+import fluency_brand as fb  # Fluency report brand kit, from the fluency-report skill
 
 E = html.escape
 NAVY, RED, AMB, GRN, GRY, BLU = "#14213d", "#B91C1C", "#B45309", "#15803D", "#64748B", "#1D4ED8"
@@ -325,7 +342,7 @@ details{margin:8px 0}summary{cursor:pointer;font-weight:600;color:var(--navy)}
             "<li>Never read these counts as compliance or compromise.</li></ul></div></div>")
     wn = "".join("<div class='warn'><b>Warning:</b> %s</div>" % E(w) for w in warns)
     with open(a.out, "w") as f:
-        f.write("<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Office 365 Posture Review</title><style>%s</style></head><body>%s%s%s%s</body></html>" % (css, head, wn, "".join(body), tail))
+        f.write(fb.apply_brand("<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Office 365 Posture Review</title><style>%s</style></head><body>%s%s%s%s</body></html>" % (css, head, wn, "".join(body), tail)))
     if a.csv:
         with open(a.csv, "w", newline="") as f:
             w = csv.writer(f)

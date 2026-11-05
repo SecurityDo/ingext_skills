@@ -53,3 +53,20 @@ One table: `Requirement | Title and caveat | Related 800-53 groups and status`. 
 - The mapping is the analyst's and indicative; check it against the current text of CIS Critical Security Controls v8.1 before use.
 - Not observed is not a failure. Never write "compliant", "certified" or "attested".
 - The output names the tenant; keep it out of the repository.
+
+## Fluency report branding and PDF
+
+**Prerequisite: the `fluency-report` skill.** All Fluency report styling lives in that skill's `scripts/` folder
+(`fluency_brand.py`, `brand.css`, the IBM Plex fonts, the lock mark and `render_pdf.mjs`). This skill does not carry its own
+copy: the build scripts here that style a report find the `fluency-report` skill next to this one (or at `FLUENCY_BRAND_DIR`) and
+import `fluency_brand` from it, and stop with a clear message if it is not installed. Install `fluency-report` alongside this skill. In the steps below, `<fluency-report>` means
+that skill's folder.
+
+- The HTML report is one self-contained file (mark, fonts and CSS inlined). The PDF is rendered from that same HTML with the same
+  CSS, so the two match: `node <fluency-report>/scripts/render_pdf.mjs --input report.html --output report.pdf`.
+  US Letter, same editorial styling as the HTML (brandline, closing footer line; no paged footer). It needs Playwright
+  (`npm install playwright`) and a Chromium or Chrome binary; it finds a Chrome install automatically.
+- Do not convert these reports with WeasyPrint, wkhtmltopdf or a generic HTML-to-PDF step: they ignore
+  the brand CSS (grid, fonts, page rules), so the PDF would not match the HTML.
+- Do not hand-write report styling. The look is the Fluency editorial style (white paper, IBM Plex, black rules, one blue / red / amber, no cards or gradients). A new page is `fluency_brand.page(...)`; markup from an older script goes
+  through `fluency_brand.apply_brand(html)`. Design and component reference: the `fluency-report` skill (`references/widget_recipes.md`).

@@ -19,6 +19,23 @@ personal data. The compliance assessment does not read them. Days archived by an
 only and are missing from those lists.
 """
 import argparse, collections, csv, datetime as dt, glob, html, json, sys
+import os as _os, sys as _sys, glob as _glob
+def _find_brand_kit():
+    # The Fluency report brand kit lives only in the `fluency-report` skill (scripts/). Find that skill next to this one.
+    here = _os.path.dirname(_os.path.abspath(__file__)); home = _os.path.expanduser("~")
+    cands = [_os.environ.get("FLUENCY_BRAND_DIR"), here]
+    up = here
+    for _ in range(5):
+        up = _os.path.dirname(up); cands.append(_os.path.join(up, "fluency-report", "scripts"))
+    cands += [_os.path.join(home, ".claude", "skills", "fluency-report", "scripts")]
+    cands += _glob.glob(_os.path.join(home, ".claude", "skills", "**", "fluency-report", "scripts"), recursive=True)
+    for c in cands:
+        if c and _os.path.exists(_os.path.join(c, "fluency_brand.py")):
+            return c
+    raise SystemExit("The Fluency report brand kit was not found. Install the `fluency-report` skill (this report uses its "
+                     "scripts/fluency_brand.py and brand.css), or set FLUENCY_BRAND_DIR to that skill's scripts folder.")
+_sys.path.insert(0, _find_brand_kit())
+import fluency_brand as fb  # Fluency report brand kit, from the fluency-report skill
 
 E = html.escape
 NAVY, RED, AMB, GRN, GRY, BLU, TEAL = "#14213d", "#B91C1C", "#B45309", "#15803D", "#64748B", "#1D4ED8", "#0F766E"
@@ -287,25 +304,10 @@ def merge(done):
 
 
 def bars(series, days, color, title):
-    """Inline SVG bar chart: one bar per calendar day; a day without data is a hatched gap, never a zero bar."""
-    W, H, L, B = 480, 110, 6, 18
-    mx = max([v for v in series.values()] + [1])
-    k = len(days)
-    bw = (W - 2 * L) / max(k, 1)
-    o = ["<svg viewBox='0 0 %d %d' role='img' aria-label='%s'>" % (W, H, E(title))]
-    o.append("<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#e2e8f0'/>" % (L, H - B, W - L, H - B))
-    for i, d in enumerate(days):
-        x = L + i * bw
-        if d not in series:
-            o.append("<rect x='%.1f' y='6' width='%.1f' height='%d' fill='#fef3c7' stroke='#f59e0b' stroke-dasharray='2 2'/>" % (x + 0.5, max(bw - 1, 1), H - B - 6))
-            continue
-        h = (H - B - 8) * series[d] / mx
-        o.append("<rect x='%.1f' y='%.1f' width='%.1f' height='%.1f' fill='%s'><title>%s: %s</title></rect>" % (x + 0.5, H - B - h, max(bw - 1, 1), h, color, d, n(series[d])))
-    o.append("<text x='%d' y='%d' font-size='10' fill='#64748b'>%s</text>" % (L, H - 4, days[0] if days else ""))
-    o.append("<text x='%d' y='%d' font-size='10' fill='#64748b' text-anchor='end'>%s</text>" % (W - L, H - 4, days[-1] if days else ""))
-    o.append("<text x='%d' y='%d' font-size='10' fill='#64748b' text-anchor='end'>max %s</text>" % (W - L, 10, n(mx)))
-    o.append("</svg>")
-    return "".join(o)
+    """One column per calendar day (shared chart helper). A day without data is a hatched gap, never a zero bar."""
+    days = [str(d) for d in days]
+    return fb.column_chart([d[5:] for d in days], [(title, [series[d] if d in series else None for d in days])],
+                           colors=[fb.legacy_color(color)], height=140, show_values=False, y_label=title)
 
 
 def table(title, sub, counter, total, color, top, kind, tail=0):
@@ -516,7 +518,7 @@ def main():
              % "".join("<tr><td>%s</td><td class='mono'>%s</td><td>%s</td></tr>" % (E(x), E(y), E(z)) for x, y, z in SEC_FAMILY))
     o.append("<div class='foot'><b>Limits</b><ul>%s</ul><p>Source: archive of the scheduled report Office365_Entra_Activity_Report. No live search was run to build this report.</p></div>" % "".join("<li>%s</li>" % E(l) for l in LIMITS))
     o.append("</div></body></html>")
-    open(a.out, "w").write("".join(o))
+    open(a.out, "w").write(fb.apply_brand("".join(o)))
 
     if a.csv:
         with open(a.csv, "w", newline="") as fh:

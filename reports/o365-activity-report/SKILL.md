@@ -243,9 +243,9 @@ Office365
 
 ## Step 4 — Build the report
 
-First run only — WeasyPrint is only needed if you want a PDF:
+First run only — a PDF needs Playwright with Chromium (the same renderer as every Fluency report):
 ```bash
-pip install weasyprint --break-system-packages -q   # optional, PDF only
+npm install playwright && npx playwright install chromium   # optional, PDF only
 ```
 
 Then:
@@ -284,8 +284,8 @@ no such events); a blank panel whose status is `MISSING` is a build you must fix
 Notes:
 - HTML has **no external assets** (inline CSS, inline SVG chart) so it renders in
   the Cowork/artifact sandbox.
-- PDF via WeasyPrint is optional; if its libs are missing, drop `--pdf` and deliver
-  the HTML; the user can use the browser's "Save as PDF" with background graphics enabled.
+- PDF is optional and rendered from the HTML by <fluency-report>/scripts/render_pdf.mjs (Chromium) so it matches the HTML; if
+  Playwright is missing, drop `--pdf` and deliver the HTML, then run the render command in the branding section below.
 
 ---
 
@@ -317,6 +317,23 @@ o365-activity-report/
 | **Tables blank but summary looks right** | You ran the queries but didn't SAVE them — the classic failure. Build exits 3 with an INCOMPLETE banner listing the MISSING files. Go to Step 3.5, save them, rebuild. |
 | Build exits non-zero / INCOMPLETE banner | One or more results were never saved. Re-run + save the MISSING files (often the "Output too large → path" case), then rebuild. Do not deliver. |
 | A query returned zero rows (saved) | Truthful "no data" panel, status `empty`, build stays green — this is fine |
-| WeasyPrint libs missing | Build HTML only; use browser "Save as PDF" with background graphics enabled |
+| Playwright/Chromium missing | Build HTML only; install Playwright, then run <fluency-report>/scripts/render_pdf.mjs on the HTML |
 | User named ONE mailbox | Wrong skill — use `office-user-investigation` |
 | User asked for a saved/FPL report | Wrong skill — use `fluency-report` |
+
+## Fluency report branding and PDF
+
+**Prerequisite: the `fluency-report` skill.** All Fluency report styling lives in that skill's `scripts/` folder
+(`fluency_brand.py`, `brand.css`, the IBM Plex fonts, the lock mark and `render_pdf.mjs`). This skill does not carry its own
+copy: the build scripts here that style a report find the `fluency-report` skill next to this one (or at `FLUENCY_BRAND_DIR`) and
+import `fluency_brand` from it, and stop with a clear message if it is not installed. Install `fluency-report` alongside this skill. In the steps below, `<fluency-report>` means
+that skill's folder.
+
+- The HTML report is one self-contained file (mark, fonts and CSS inlined). The PDF is rendered from that same HTML with the same
+  CSS, so the two match: `node <fluency-report>/scripts/render_pdf.mjs --input report.html --output report.pdf`.
+  US Letter, same editorial styling as the HTML (brandline, closing footer line; no paged footer). It needs Playwright
+  (`npm install playwright`) and a Chromium or Chrome binary; it finds a Chrome install automatically.
+- Do not convert these reports with WeasyPrint, wkhtmltopdf or a generic HTML-to-PDF step: they ignore
+  the brand CSS (grid, fonts, page rules), so the PDF would not match the HTML.
+- Do not hand-write report styling. The look is the Fluency editorial style (white paper, IBM Plex, black rules, one blue / red / amber, no cards or gradients). A new page is `fluency_brand.page(...)`; markup from an older script goes
+  through `fluency_brand.apply_brand(html)`. Design and component reference: the `fluency-report` skill (`references/widget_recipes.md`).

@@ -52,6 +52,23 @@ Optional extra sources (run only for tables that list_data_tables shows):
                         With --require-m365 the build stops (exit 3) when no day of the period is archived.
 """
 import argparse, collections, datetime, gzip, html, json, os, re, sys
+import os as _os, sys as _sys, glob as _glob
+def _find_brand_kit():
+    # The Fluency report brand kit lives only in the `fluency-report` skill (scripts/). Find that skill next to this one.
+    here = _os.path.dirname(_os.path.abspath(__file__)); home = _os.path.expanduser("~")
+    cands = [_os.environ.get("FLUENCY_BRAND_DIR"), here]
+    up = here
+    for _ in range(5):
+        up = _os.path.dirname(up); cands.append(_os.path.join(up, "fluency-report", "scripts"))
+    cands += [_os.path.join(home, ".claude", "skills", "fluency-report", "scripts")]
+    cands += _glob.glob(_os.path.join(home, ".claude", "skills", "**", "fluency-report", "scripts"), recursive=True)
+    for c in cands:
+        if c and _os.path.exists(_os.path.join(c, "fluency_brand.py")):
+            return c
+    raise SystemExit("The Fluency report brand kit was not found. Install the `fluency-report` skill (this report uses its "
+                     "scripts/fluency_brand.py and brand.css), or set FLUENCY_BRAND_DIR to that skill's scripts folder.")
+_sys.path.insert(0, _find_brand_kit())
+import fluency_brand as fb  # Fluency report brand kit, from the fluency-report skill
 
 UTC = datetime.timezone.utc
 
@@ -185,16 +202,7 @@ def parse_ts(s):
 def bars(rows, color, w=380, suffix=""):
     if not rows:
         return '<p class="small">No data in this window.</p>'
-    mx = max(v for _, v in rows) or 1
-    lab, right = 152, 66
-    out = ['<svg viewBox="0 0 %d %d" width="100%%" role="img">' % (w, 28 * len(rows))]
-    for i, (k, v) in enumerate(rows):
-        y, bw = i * 28, max(2, int((w - lab - right) * v / mx))
-        out.append('<text x="0" y="%d" font-size="14" fill="#334155">%s</text>' % (y + 18, html.escape(k)))
-        out.append('<rect x="%d" y="%d" width="%d" height="17" rx="3" fill="%s"/>' % (lab, y + 4, bw, color))
-        out.append('<text x="%d" y="%d" font-size="14" fill="#334155">%s%s</text>' % (lab + 6 + bw, y + 18, "{:,}".format(v), suffix))
-    out.append("</svg>")
-    return "".join(out)
+    return fb.bar_rows([(k, v, fb.semantic_color(color)) for k, v in rows], fmt=lambda v: "{:,}".format(v) + suffix)
 
 
 def top_with_other(pairs, keep, other_label):
@@ -1252,7 +1260,7 @@ def main():
         o365=n(o365), audit=n(audit), wl_chart=wl_chart, au_chart=au_chart, ctr=ctr, mon_name=mon_name, beh=n(beh_total), sc_chart=sc_chart, disp=disp,
         gaps="\n".join(gaps), meth_tables=esc(meth_tables), meth_dumps=esc(meth_dumps))
     with open(a.out, "w") as f:
-        f.write(doc)
+        f.write(fb.apply_brand(doc))
     if a.summary_json:
         with open(a.summary_json, "w") as f:
             facts = {

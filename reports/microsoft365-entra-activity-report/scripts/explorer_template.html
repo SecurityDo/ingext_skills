@@ -3,10 +3,10 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: sticky control bar (source tabs, date range) over KPI strip, one drag-to-select daily chart, facet tables, daily table. Counts only, no user names. */
-:root{--bg:#f6f7f9;--panel:#fff;--ink:#16202e;--muted:#5b6778;--line:#dfe3ea;--accent:#1f5fbf;--accent-soft:#dce8fb;--warn:#c2410c;--warn-soft:#fde9dc;--gap:#aab2bf;--ok:#1f7a4d;
+:root{--bg:#f5f5f5;--panel:#fff;--ink:#1f2328;--muted:#6b7280;--line:#e5e5e5;--accent:#374151;--accent-soft:#e5e7eb;--warn:#111827;--warn-soft:#e5e7eb;--gap:#aab2bf;--ok:#6b7280;
 --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f151e;--panel:#171f2b;--ink:#e6ebf2;--muted:#9aa6b8;--line:#2a3547;--accent:#6ea2f5;--accent-soft:#1d2d4a;--warn:#f08a54;--warn-soft:#3a2418;--gap:#5a6578;--ok:#5fc08e;color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#0f151e;--panel:#171f2b;--ink:#e6ebf2;--muted:#9aa6b8;--line:#2a3547;--accent:#6ea2f5;--accent-soft:#1d2d4a;--warn:#f08a54;--warn-soft:#3a2418;--gap:#5a6578;--ok:#5fc08e;color-scheme:dark}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111111;--panel:#1a1a1a;--ink:#eeeeee;--muted:#9a9a9a;--line:#2b2b2b;--accent:#d4d4d4;--accent-soft:#2b2b2b;--warn:#f5f5f5;--warn-soft:#2b2b2b;--gap:#6b7280;--ok:#9ca3af;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#111111;--panel:#1a1a1a;--ink:#eeeeee;--muted:#9a9a9a;--line:#2b2b2b;--accent:#d4d4d4;--accent-soft:#2b2b2b;--warn:#f5f5f5;--warn-soft:#2b2b2b;--gap:#6b7280;--ok:#9ca3af;color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45}
 .wrap{max-width:1180px;margin:0 auto;padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));padding-block:0 40px}

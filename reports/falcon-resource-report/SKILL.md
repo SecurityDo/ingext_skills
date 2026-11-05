@@ -85,30 +85,16 @@ carry every host the archive lists.
 last logged-in user, duplicate host names, per-policy ids, and any host that scores 0 (healthy hosts are counted, not listed). The
 fleet totals cover every host. If the host table is cut at 500 the Data notes say so.
 
-### 5. Write the narrative
+### 5. Narrative (optional)
 
-The default narrative is generic. Read `facts.json`, filter `hosts.csv` for specifics, then write `<work>/narrative.json`:
+The report's structure is fixed by the script: the same KPI strip, summary, panels, tables and recommended next steps every run.
+The summary and next-steps text are generated from the numbers by the script, so a plain `render` already produces a complete,
+repeatable report. **Do not add, remove or reorder sections, charts or tables, and do not hand-edit the HTML.**
 
-```json
-{
-  "summary": ["<p>HTML for paragraph 1 (may use <strong>)</p>", "<p>paragraph 2</p>"],
-  "nextSteps": [
-    {"when": "This week", "tone": "urgent", "text": "Restore full functionality on the 3 hosts in reduced functionality mode."},
-    {"when": "Within 14 days", "tone": "normal", "text": "..."},
-    {"when": "Quarterly", "tone": "routine", "text": "..."}
-  ]
-}
-```
-
-Run step 4 again; it picks up `narrative.json`. Rules:
-
-- **Numbers.** Every number comes from `facts.json` or from counting rows in the CSV. Compute it; don't estimate. State the as-of date.
-- **Summary.** Two paragraphs: the fleet and its check-in and sensor health, then the protection gaps, policy picture and detections.
-  Each is at most about 90 words.
-- **Next steps.** At most 6, ordered by urgency. `when` is one of: This week, Within 14 days, Within 30 days, Quarterly. `tone` is
-  `urgent` (red), `normal` (blue) or `routine` (navy).
-- **Audience.** This page goes to the client: use no internal terms (archive, FPL, connector); hedge causes the data cannot show (a
-  silent host may be powered off, retired or renamed); containment is often deliberate, so say a host "is contained", not compromised.
+Only when the user asks for tailored wording, read `facts.json` and write `<work>/narrative.json` with just two keys, `summary`
+(2-3 short HTML paragraphs) and `nextSteps` (at most 6 items with `when`, `tone`, `text`), then run step 4 again. Every number
+must come from `facts.json` or a count of CSV rows; state the as-of date; write for the client (no internal terms such as archive,
+FPL or connector); hedge causes the data cannot show. Without `narrative.json` the built-in text is used.
 
 ### 6. PDF and review
 
@@ -117,8 +103,7 @@ filters and sort should change the row count. Print `falcon_resource_report.html
 margins, background graphics on and no scaling:
 
 ```bash
-chromium --headless --no-pdf-header-footer --print-to-pdf=<work>/falcon_resource_report.pdf \
-  file://<work>/falcon_resource_report.html
+node <fluency-report>/scripts/render_pdf.mjs --input <work>/falcon_resource_report.html --output <work>/falcon_resource_report.pdf
 ```
 
 The report runs about five to six pages. If you can rasterise the pages, check that no labels are clipped and the KPI strip and
@@ -138,3 +123,20 @@ and put them in your reply (for example an archived day that is several days old
 - Comparing Falcon with Defender or SentinelOne: use `security-agent-deployment-status-report`.
 
 `references/methodology.md` covers the scoring and the archive tables.
+
+## Fluency report branding and PDF
+
+**Prerequisite: the `fluency-report` skill.** All Fluency report styling lives in that skill's `scripts/` folder
+(`fluency_brand.py`, `brand.css`, the IBM Plex fonts, the lock mark and `render_pdf.mjs`). This skill does not carry its own
+copy: the build scripts here that style a report find the `fluency-report` skill next to this one (or at `FLUENCY_BRAND_DIR`) and
+import `fluency_brand` from it, and stop with a clear message if it is not installed. Install `fluency-report` alongside this skill. In the steps below, `<fluency-report>` means
+that skill's folder.
+
+- The HTML report is one self-contained file (mark, fonts and CSS inlined). The PDF is rendered from that same HTML with the same
+  CSS, so the two match: `node <fluency-report>/scripts/render_pdf.mjs --input report.html --output report.pdf`.
+  US Letter, same editorial styling as the HTML (brandline, closing footer line; no paged footer). It needs Playwright
+  (`npm install playwright`) and a Chromium or Chrome binary; it finds a Chrome install automatically.
+- Do not convert these reports with WeasyPrint, wkhtmltopdf or a generic HTML-to-PDF step: they ignore
+  the brand CSS (grid, fonts, page rules), so the PDF would not match the HTML.
+- Do not hand-write report styling. The look is the Fluency editorial style (white paper, IBM Plex, black rules, one blue / red / amber, no cards or gradients). A new page is `fluency_brand.page(...)`; markup from an older script goes
+  through `fluency_brand.apply_brand(html)`. Design and component reference: the `fluency-report` skill (`references/widget_recipes.md`).

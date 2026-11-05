@@ -34,6 +34,23 @@ All are optional; a missing/empty file becomes a truthful "no data" panel:
   logontype.json    LogonType, accesses            (mailitemsaccessed)
 """
 import argparse, json, os, html as _H, datetime as dt
+import os as _os, sys as _sys, glob as _glob
+def _find_brand_kit():
+    # The Fluency report brand kit lives only in the `fluency-report` skill (scripts/). Find that skill next to this one.
+    here = _os.path.dirname(_os.path.abspath(__file__)); home = _os.path.expanduser("~")
+    cands = [_os.environ.get("FLUENCY_BRAND_DIR"), here]
+    up = here
+    for _ in range(5):
+        up = _os.path.dirname(up); cands.append(_os.path.join(up, "fluency-report", "scripts"))
+    cands += [_os.path.join(home, ".claude", "skills", "fluency-report", "scripts")]
+    cands += _glob.glob(_os.path.join(home, ".claude", "skills", "**", "fluency-report", "scripts"), recursive=True)
+    for c in cands:
+        if c and _os.path.exists(_os.path.join(c, "fluency_brand.py")):
+            return c
+    raise SystemExit("The Fluency report brand kit was not found. Install the `fluency-report` skill (this report uses its "
+                     "scripts/fluency_brand.py and brand.css), or set FLUENCY_BRAND_DIR to that skill's scripts folder.")
+_sys.path.insert(0, _find_brand_kit())
+import fluency_brand as fb  # Fluency report brand kit, from the fluency-report skill
 
 # ----------------------------- parsing --------------------------------------
 def load(path):
@@ -209,48 +226,18 @@ def render_timechart(rows, bin_label=""):
     all_v = [p[1] for pts in series.values() for p in pts]
     if not all_t or not all_v:
         return None
-    tmin, tmax = all_t[0], all_t[-1]
-    vmax = max(all_v) or 1
-    span = (tmax - tmin).total_seconds() or 1.0
-
-    W, H = 900, 320
-    PL, PR, PT, PB = 58, 20, 18, 46
-    iw, ih = W - PL - PR, H - PT - PB
-    def X(d): return PL + iw * ((d - tmin).total_seconds() / span)
-    def Y(v): return PT + ih * (1 - (v / vmax))
-
-    parts = [f'<svg class="tc" viewBox="0 0 {W} {H}" preserveAspectRatio="xMidYMid meet" role="img">']
-    # y gridlines + labels (0, 25, 50, 75, 100%)
-    for frac in (0, .25, .5, .75, 1):
-        y = PT + ih * (1 - frac); val = int(round(vmax * frac))
-        parts.append(f'<line x1="{PL}" y1="{y:.1f}" x2="{W-PR}" y2="{y:.1f}" class="grid"/>')
-        parts.append(f'<text x="{PL-8}" y="{y+3:.1f}" class="ylab">{val:,}</text>')
-    # x ticks (~6)
-    n_ticks = min(6, len(all_t))
-    for i in range(n_ticks):
-        d = tmin + dt.timedelta(seconds=span * (i / max(1, n_ticks - 1)))
-        x = X(d)
-        lab = d.strftime("%m-%d %H:%M")
-        parts.append(f'<line x1="{x:.1f}" y1="{PT}" x2="{x:.1f}" y2="{PT+ih}" class="grid vg"/>')
-        parts.append(f'<text x="{x:.1f}" y="{H-PB+18}" class="xlab" text-anchor="middle">{lab}</text>')
-    # one polyline per series
-    ordered = sorted(series.items(), key=lambda kv: -sum(v for _, v in kv[1]))
-    for i, (name, pts) in enumerate(ordered):
-        color = PALETTE[i % len(PALETTE)]
-        d = " ".join(f'{"M" if j == 0 else "L"}{X(t):.1f},{Y(v):.1f}' for j, (t, v) in enumerate(pts))
-        if len(ordered) == 1:  # single series: subtle area fill
-            area = d + f' L{X(pts[-1][0]):.1f},{PT+ih:.1f} L{X(pts[0][0]):.1f},{PT+ih:.1f} Z'
-            parts.append(f'<path d="{area}" fill="{color}" opacity="0.10"/>')
-        parts.append(f'<path d="{d}" fill="none" stroke="{color}" stroke-width="2" '
-                     f'stroke-linejoin="round" stroke-linecap="round"/>')
-    parts.append("</svg>")
-    legend = "".join(
-        f'<span><i style="background:{PALETTE[i % len(PALETTE)]}"></i>{esc(name)}</span>'
-        for i, (name, _) in enumerate(ordered))
+    ordered = sorted(series.items(), key=lambda kv: -sum(v for _, v in kv[1]))[:6]
+    labels = [d.strftime("%m-%d %H:%M") for d in all_t]
+    data = []
+    for name, pts in ordered:
+        m = dict(pts)
+        data.append((name, [m.get(t, 0) for t in all_t]))
+    if len(all_t) <= 60:
+        chart = fb.column_chart(labels, data, mode="stack", height=220, show_values=False, y_label="Events over time")
+    else:
+        chart = fb.line_chart(labels, data, height=220, y_label="Events over time")
     binnote = f" (per {esc(bin_label)} bin)" if bin_label else ""
-    return (f'<div class="chartwrap">{"".join(parts)}</div>'
-            f'<div class="legend">{legend}</div>'
-            f'<p class="note">Events over the reporting window{binnote}, UTC.</p>')
+    return chart + f'<p class="fn">Events over the reporting window{binnote}, UTC.</p>'
 
 def render_table(rows, bar_col=None, ts_cols=("lastSeen", "firstSeen", "timestamp")):
     if not rows:
@@ -479,14 +466,12 @@ Timestamps are UTC.</div>
 </div></body></html>"""
 
     os.makedirs(os.path.dirname(os.path.abspath(a.output)), exist_ok=True)
-    open(a.output, "w").write(HTML)
+    open(a.output, "w").write(fb.apply_brand(HTML))
     print("HTML written:", a.output)
 
     if a.pdf:
         try:
-            from weasyprint import HTML as WHTML
-            override = "<style>table{font-size:11px}td,th{overflow-wrap:anywhere}</style>"
-            WHTML(string=HTML.replace("</head>", override + "</head>", 1)).write_pdf(a.pdf)
+            fb.to_pdf(a.output, a.pdf)      # same CSS as the HTML, US Letter (Chromium via Playwright)
             print("PDF written:", a.pdf)
         except Exception as e:
             print("PDF step skipped (", e, ")")

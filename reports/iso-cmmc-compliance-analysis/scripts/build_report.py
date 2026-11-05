@@ -9,6 +9,23 @@ collects nothing. Each companion row lists the 800-53 control groups it relates 
 returned. The mapping is an indicative analyst crosswalk, labelled as such; related is not equivalent.
 """
 import argparse, collections, csv, html, json, sys
+import os as _os, sys as _sys, glob as _glob
+def _find_brand_kit():
+    # The Fluency report brand kit lives only in the `fluency-report` skill (scripts/). Find that skill next to this one.
+    here = _os.path.dirname(_os.path.abspath(__file__)); home = _os.path.expanduser("~")
+    cands = [_os.environ.get("FLUENCY_BRAND_DIR"), here]
+    up = here
+    for _ in range(5):
+        up = _os.path.dirname(up); cands.append(_os.path.join(up, "fluency-report", "scripts"))
+    cands += [_os.path.join(home, ".claude", "skills", "fluency-report", "scripts")]
+    cands += _glob.glob(_os.path.join(home, ".claude", "skills", "**", "fluency-report", "scripts"), recursive=True)
+    for c in cands:
+        if c and _os.path.exists(_os.path.join(c, "fluency_brand.py")):
+            return c
+    raise SystemExit("The Fluency report brand kit was not found. Install the `fluency-report` skill (this report uses its "
+                     "scripts/fluency_brand.py and brand.css), or set FLUENCY_BRAND_DIR to that skill's scripts folder.")
+_sys.path.insert(0, _find_brand_kit())
+import fluency_brand as fb  # Fluency report brand kit, from the fluency-report skill
 
 E = html.escape
 NAVY, RED, AMB, GRN, GRY = "#1C2B45", "#B91C1C", "#B45309", "#15803D", "#64748B"
@@ -398,7 +415,7 @@ def main():
              "<li>The checks table reads Not evaluable where the evidence was not collected, for example the Defender rows on a tenant without Defender data.</li>"
              "<li>Statuses are the 800-53 statuses returned by compliance-assessment; a companion row never raises one.</li></ul></div></div></body></html>")
     with open(a.out, "w") as f:
-        f.write("\n".join(o))
+        f.write(fb.apply_brand("\n".join(o)))
     if a.csv:
         with open(a.csv, "w", newline="") as f:
             w = csv.writer(f)

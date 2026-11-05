@@ -28,6 +28,23 @@ Pattern (thresholds are constants below): under-covered when the gap exceeds UND
 EDR users exceed the seats by more than OVER, otherwise aligned.
 """
 import argparse, collections, csv, datetime, glob, gzip, html, json, os, re, sys
+import os as _os, sys as _sys, glob as _glob
+def _find_brand_kit():
+    # The Fluency report brand kit lives only in the `fluency-report` skill (scripts/). Find that skill next to this one.
+    here = _os.path.dirname(_os.path.abspath(__file__)); home = _os.path.expanduser("~")
+    cands = [_os.environ.get("FLUENCY_BRAND_DIR"), here]
+    up = here
+    for _ in range(5):
+        up = _os.path.dirname(up); cands.append(_os.path.join(up, "fluency-report", "scripts"))
+    cands += [_os.path.join(home, ".claude", "skills", "fluency-report", "scripts")]
+    cands += _glob.glob(_os.path.join(home, ".claude", "skills", "**", "fluency-report", "scripts"), recursive=True)
+    for c in cands:
+        if c and _os.path.exists(_os.path.join(c, "fluency_brand.py")):
+            return c
+    raise SystemExit("The Fluency report brand kit was not found. Install the `fluency-report` skill (this report uses its "
+                     "scripts/fluency_brand.py and brand.css), or set FLUENCY_BRAND_DIR to that skill's scripts folder.")
+_sys.path.insert(0, _find_brand_kit())
+import fluency_brand as fb  # Fluency report brand kit, from the fluency-report skill
 
 UNDER, OVER = 0.10, 0.10
 NON_USERS = {"", "system", "root", "local service", "network service", "nt authority\\system", "-", "n/a", "none", "null"}
@@ -246,12 +263,8 @@ def main():
     def bars(items, color):
         if not items:
             return ""
-        mx = max(v for _, v in items) or 1
-        out = '<svg viewBox="0 0 720 %d" width="100%%" role="img">' % (24 * len(items) + 4)
-        for i, (lab, v) in enumerate(items):
-            bw = 360 * v / mx
-            out += '<text x="0" y="%d" font-size="12" fill="#0f172a">%s</text><rect x="260" y="%d" width="%.1f" height="15" fill="%s" rx="2"/><text x="%.1f" y="%d" font-size="12" fill="#0f172a">%s</text>' % (i * 24 + 15, E(lab[:34]), i * 24 + 3, max(bw, 1), color, 266 + bw, i * 24 + 15, "{:,}".format(v))
-        return out + "</svg>"
+        return fb.bar_rows([(lab, v, fb.semantic_color(color)) for lab, v in items])
+
     sections = []
     h2n = [1]
 
@@ -313,7 +326,7 @@ def main():
                                 chart=bars([(t["display"], t["gap"]) for t in under[:10]], RED) or "<span class=\"small\">No under-covered tenant to chart.</span>",
                                 sections="".join(sections), stale_note=(" %d tenant(s) have a dump older than two days: %s." % (len(stale), E(", ".join(t["display"] for t in stale)))) if stale else "")
     with open(a.out, "w") as f:
-        f.write(doc)
+        f.write(fb.apply_brand(doc))
     print("wrote %s and %s | %d tenants: %s | patterns: %s" % (a.out, a.csv, len(rows), dict(cnt), dict(pat)))
     for w in warns:
         print("WARNING:", w)
