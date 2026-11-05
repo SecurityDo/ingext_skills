@@ -1,6 +1,6 @@
 # Ransomware Readiness — Query Playbook
 
-**Reference only (v1.4.0):** the report runs no KQL. Evidence comes from resource dumps (`scripts/resource_evidence.py`) and the archives of
+**Reference only:** the report runs no KQL. Evidence comes from resource dumps (`scripts/resource_evidence.py`) and the archives of
 `WindowsSrv_Activity_Report` and `Office365_Entra_Activity_Report`. The queries below explain each measure and can be used to check a number by hand.
 
 Proven on the Acme connector (30 Sep 2026). Tool names are `mcp__<Connector>__<tool>`
@@ -161,13 +161,13 @@ atera, logmein, pdq, manageengine. Count endpoints and servers. EOL from
 - Overall rating: any red pillar in Backup, Endpoint Coverage or Prevention → "Elevated Risk";
   2+ red → "High Risk"; no red and ≤2 amber → "Moderate Risk"; otherwise "Resilient".
 
-## Resource data is parsed locally (v1.1.0)
+## Resource data is parsed locally
 
 Pillars 1 to 5 and 8 no longer use KQL on resource tables. `scripts/resource_evidence.py` computes the same
 measures from the downloaded dumps (see SKILL.md step 3). The KQL above remains the fallback when a dump cannot be
 downloaded and is a cross-check for small tables. Only pillars 6 and 7 (sign-in and Windows audit events) always run as queries.
 
-## Windows audit and sign-ins come from archives (v1.2.0)
+## Windows audit and sign-ins come from archives
 
 Pillar 7 is read from the archive of `WindowsSrv_Activity_Report` by `scripts/windows_evidence.py`; the `WindowsAudit`
 query above is not run. A tenant without that archive gets "not measurable, visibility gap" for the pillar. Pillar 6 reads
@@ -175,7 +175,7 @@ query above is not run. A tenant without that archive gets "not measurable, visi
 none with a recorded actor), 7,232 audit-policy changes by the domain controllers' own accounts, 47 services and 4 tasks
 installed (Sentinel and Windows components, nothing suspect), 57 failed logons and 19 probe-pattern failed-logon sources.
 
-Pillar 6 sign-in checks are read from the archive by `scripts/entra_evidence.py` (v1.3.0); the `AzureSigninLogs` queries above
+Pillar 6 sign-in checks are read from the archive by `scripts/entra_evidence.py`; the `AzureSigninLogs` queries above
 are not run. Verified on `audit` (30 days, 3,677 sign-ins): 1.2% single-factor, 133 legacy-auth (Authenticated SMTP),
 0 sign-ins with conditional access applied, risk levels hidden (no Entra ID Protection), 78 admin-portal sign-ins. The archive
 holds apps and authentication requirement as separate facets, so MFA on admin-portal sign-ins cannot be joined: admin MFA is

@@ -1,6 +1,6 @@
 ---
 name: ransomware-readiness-report
-version: 1.4.0
+version: 1.0.0
 description: >-
   Assess ONE Fluency / Ingext tenant's ability to prevent, withstand and recover from ransomware and render
   a board-level report (HTML and PDF): an overall rating, an eight-pillar scorecard, 6 to 10 ranked issues
