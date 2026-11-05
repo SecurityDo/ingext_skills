@@ -16,7 +16,9 @@ from datetime import datetime, timezone
 
 NOW = datetime.now(timezone.utc)
 BACKUP = re.compile(r"veeam|backup exec|rubrik|cohesity|commvault|acronis|datto|unitrends|arcserve|nakivo|altaro|druva|veritas|networker|avamar", re.I)
-REMOTE = re.compile(r"teamviewer|anydesk|splashtop|screenconnect|connectwise control|logmein|gotomypc|goto resolve|rustdesk|ultraviewer|ammyy|supremo|dameware|bomgar|beyondtrust remote|remotepc|atera|ninjarmm|ninjaone|n-able|kaseya|action1|level\.io|meshcentral|radmin|vnc|dwservice|zoho assist|chrome remote desktop", re.I)
+REMOTE = re.compile(r"teamviewer|anydesk|splashtop|screenconnect|connectwise control|logmein|gotomypc|goto resolve|rustdesk|ultraviewer|ammyy|supremo|dameware|bomgar|beyondtrust remote|remotepc|pdq|manageengine|desktop central|endpoint central|bigfix|atera|ninjarmm|ninjaone|n-able|kaseya|action1|level\.io|meshcentral|radmin|vnc|dwservice|zoho assist|chrome remote desktop", re.I)
+SCANNER = re.compile(r"advanced ip scanner|advanced port scanner|angry ip|nmap|zenmap|masscan|netscan|softperfect|ip scanner|port scanner|network scanner", re.I)
+EOL_PLATFORM = re.compile(r"windows ?(xp|vista|7|8)|server ?(2003|2008|2012)", re.I)
 EOL_OS = re.compile(r"windows (xp|vista|7|8|8\.1)\b|server 2003|server 2008|server 2012|windows 10", re.I)
 
 
@@ -135,6 +137,7 @@ def main(d, out):
             "by_type": dict(Counter(a.get("machineType") for a in live)),
             "stale_7d": sum(1 for x in off if x is not None and x > 7),
             "stale_30d": sum(1 for x in off if x is not None and x > 30),
+            "stale_7d_by_type": dict(Counter(a.get("machineType") for a, x in zip(live, off) if x is not None and x > 7)),
             "not_up_to_date": sum(a.get("isUpToDate") is False for a in live),
             "pending_uninstall": sum(bool(a.get("isPendingUninstall")) for a in live),
             "detect_only": sum(a.get("mitigationMode") != "protect" for a in live),
@@ -143,6 +146,7 @@ def main(d, out):
             "suspicious_modes": dict(Counter(a.get("mitigationModeSuspicious") for a in live)),
             "os": dict(Counter(a.get("osName") for a in live).most_common(15)),
             "eol_os": {k: v for k, v in Counter(a.get("osName") for a in live if EOL_OS.search(a.get("osName") or "")).items()},
+            "eol_approaching": {"Windows Server 2016 (extended support ends 12 Jan 2027)": sum("server 2016" in (a.get("osName") or "").lower() for a in live)},
         }
         names = {host(a.get("computerName")) for a in live}
     else:
@@ -161,6 +165,7 @@ def main(d, out):
             "excluded_inactive": len(ep) - len(act),
             "not_in_edr_agent_list": None if miss is None else len(miss),
             "of_which_servers": None if miss is None else sum("server" in (m.get("osPlatform") or "").lower() for m in miss),
+            "of_which_end_of_life": None if miss is None else sum(bool(EOL_PLATFORM.search(m.get("osPlatform") or "")) for m in miss),
             "by_os": None if miss is None else dict(Counter(m.get("osPlatform") for m in miss)),
             "note": "Active Windows, Linux and Mac devices Defender can see with no matching EDR agent; phones, embedded and unknown platforms, duplicates and inactive devices are excluded. Matched by short hostname, so a rename can mis-match.",
         }
@@ -168,7 +173,7 @@ def main(d, out):
     # ---- Backup + remote tools
     if apps is not None:
         b = Counter(); r = Counter(); bdom = Counter()
-        bh, rh = {}, {}
+        bh, rh, rsrv, scan = {}, {}, {}, {}
         for a in apps:
             nm = a.get("name") or ""
             if BACKUP.search(nm):
@@ -177,6 +182,10 @@ def main(d, out):
                 bdom[(a.get("agentDomain") or "").upper()] += 0
             if REMOTE.search(nm):
                 rh.setdefault(nm, set()).add(a.get("agentComputerName"))
+                if a.get("agentMachineType") == "server":
+                    rsrv.setdefault(nm, set()).add(a.get("agentComputerName"))
+            if SCANNER.search(nm):
+                scan.setdefault(nm, set()).add(a.get("agentComputerName"))
         adv = load_advisories()
         ev["backup"] = sorted(({"product": k[0], "version": k[1], "endpoints": len(v),
                                 "advisory": advisory_status(k[0], k[1], adv)[0],
@@ -197,21 +206,24 @@ def main(d, out):
                                    "note": "The advisory applies only to domain-joined servers." if needs_domain else ""}
         ev["backup_domains"] = sorted({(a.get("agentDomain") or "").upper() for a in apps
                                       if BACKUP.search(a.get("name") or "") and a.get("agentDomain")})
-        fam = {}
+        fam, fam_srv = {}, {}
         for nm, hs in rh.items():
             m = REMOTE.search(nm)
-            fam.setdefault((m.group(0) if m else nm).lower(), set()).update(hs)
+            key = (m.group(0) if m else nm).lower()
+            fam.setdefault(key, set()).update(hs)
+            fam_srv.setdefault(key, set()).update(rsrv.get(nm, set()))
+        ev["scanner_tools"] = sorted(({"tool": k, "endpoints": len(v)} for k, v in scan.items()), key=lambda x: -x["endpoints"])
         allow = load_allowlist()
         live_n = len([x for x in s1 if not x.get("isDecommissioned")]) if s1 is not None else 0
         top = max(fam, key=lambda f: len(fam[f])) if fam else None
-        inferred = [top] if (not allow and top and live_n and len(fam[top]) >= 0.4 * live_n) else []
+        inferred = [f for f in fam if not allow and live_n and len(fam[f]) >= 0.4 * live_n]
         sanctioned = set(allow) | set(inferred)
         other = set().union(*[h for f, h in fam.items() if f not in sanctioned]) if fam else set()
-        ev["remote_tools"] = sorted(({"family": f, "endpoints": len(h), "status": "sanctioned" if f in sanctioned else "other"}
+        ev["remote_tools"] = sorted(({"family": f, "endpoints": len(h), "servers": len(fam_srv.get(f, ())), "status": "sanctioned" if f in sanctioned else "other"}
                                      for f, h in fam.items()), key=lambda x: -x["endpoints"])
         ev["remote_other_families"] = sum(1 for f in fam if f not in sanctioned)
         ev["remote_other_endpoints"] = len(other)
-        ev["remote_sanctioned_basis"] = "allow-list" if allow else ("inferred: dominant tool on 40% or more of agents" if inferred else "none identified")
+        ev["remote_sanctioned_basis"] = "allow-list" if allow else ("inferred: tools on 40% or more of agents are treated as the organisation's own" if inferred else "none identified")
     # ---- Hardening
     if cfg is not None:
         import pandas as pd
@@ -225,6 +237,10 @@ def main(d, out):
         g["possible_reporting_gap"] = ((g["pct"] >= 99.9) & (g["devices"] >= 50)).astype(bool)
         ev["hardening"] = g.sort_values("noncompliant", ascending=False).head(25).to_dict("records")
         ev["hardening_devices"] = int(df["deviceId"].nunique())
+        sk = df[df["configurationName"].str.contains(r"tamper protection|smbv1|smb v1|wdigest|controlled folder|real-?time protection|cloud-delivered|potentially unwanted|network protection|bitlocker|firewall|smartscreen", case=False, regex=True)]
+        sg = sk.groupby("configurationName").agg(devices=("deviceId", "nunique"), compliant=("isCompliant", lambda x: int((x == True).sum()))).reset_index()
+        sg["pct_compliant"] = (100 * sg["compliant"] / sg["devices"]).round(1)
+        ev["strong_controls"] = sg[(sg["devices"] >= 50) & (sg["pct_compliant"] >= 95)].sort_values("pct_compliant", ascending=False).head(10).to_dict("records")
         ev["hardening_rules_failing_everywhere"] = int(g["possible_reporting_gap"].sum())
         if ev["hardening_rules_failing_everywhere"] >= 10:
             ev["gaps"].append("10 or more hardening rules fail on every applicable device: the tenant may not report them. Word the finding as 'not confirmed' unless the policy state is verified.")
@@ -246,6 +262,10 @@ def main(d, out):
             "exploit_available_cves": int(exp["CveId"].nunique()),
             "exploit_available_devices": int(exp["DeviceId"].nunique()),
             "exploit_levels": {str(k): int(x) for k, x in v["ExploitabilityLevel"].value_counts().items()},
+            "exploitable_older_than_30d_devices": int(exp[exp["age"] > 30]["DeviceId"].nunique()),
+            "exploitable_older_than_90d_devices": int(exp[exp["age"] > 90]["DeviceId"].nunique()),
+            "exploitable_critical_devices": int(exp[exp["VulnerabilitySeverityLevel"] == "Critical"]["DeviceId"].nunique()),
+            "top_software": [{"software": k, "devices": int(x)} for k, x in exp.groupby("SoftwareName")["DeviceId"].nunique().sort_values(ascending=False).head(8).items()],
             "servers_in_vulnerability_data": int(vul[vul["OSPlatform"].astype(str).str.startswith("WindowsServer")]["DeviceId"].nunique()),
             "servers_in_edr": (ev.get("endpoint") or {}).get("by_type", {}).get("server"),
             "servers_onboarded_to_defender": sum(m.get("onboardingStatus") == "Onboarded" and str(m.get("osPlatform")).startswith("WindowsServer") for m in (mac or [])),
@@ -264,6 +284,10 @@ def main(d, out):
             "by_incident_status": dict(Counter(ti(t, "incidentStatus") for t in thr)),
             "on_detect_only_agent": sum((t.get("agentDetectionInfo") or {}).get("agentMitigationMode") != "protect" for t in thr),
             "ransomware_class": sum(ti(t, "classification") == "Ransomware" for t in thr),
+            "by_mitigation": dict(Counter(ti(t, "mitigationStatus") for t in thr)),
+            "by_confidence": dict(Counter(ti(t, "confidenceLevel") for t in thr)),
+            "scanner_named": sum(bool(SCANNER.search(str(ti(t, "threatName") or ""))) for t in thr),
+            "top_names": dict(Counter(str(ti(t, "threatName")) for t in thr).most_common(6)),
         }
     # ---- Identity (resource side)
     if usr is not None:
