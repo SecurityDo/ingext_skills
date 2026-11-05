@@ -171,3 +171,9 @@ query above is not run. A tenant without that archive gets "not measurable, visi
 `Office365_Entra_Activity_Report` first. Verified on gramfg for 2026-11-04: 24 log-clear events (12 each of 1102 and 104,
 none with a recorded actor), 7,232 audit-policy changes by the domain controllers' own accounts, 47 services and 4 tasks
 installed (Sentinel and Windows components, nothing suspect), 57 failed logons and 19 probe-pattern failed-logon sources.
+
+Pillar 6 sign-in checks are read from the archive by `scripts/entra_evidence.py` (v1.3.0); the `AzureSigninLogs` queries above
+are not run. Verified on `audit` (30 days, 3,677 sign-ins): 1.2% single-factor, 133 legacy-auth (Authenticated SMTP),
+0 sign-ins with conditional access applied, risk levels hidden (no Entra ID Protection), 78 admin-portal sign-ins. The archive
+holds apps and authentication requirement as separate facets, so MFA on admin-portal sign-ins cannot be joined: admin MFA is
+judged from conditional-access policies (office365ConditionalAccessPolicy dump) and the overall single-factor share.

@@ -1,6 +1,6 @@
 ---
 name: ransomware-readiness-report
-version: 1.2.0
+version: 1.3.0
 description: >-
   Assess ONE Fluency / Ingext tenant's ability to prevent, withstand and recover from ransomware and render
   a board-level report (HTML and PDF): an overall rating, an eight-pillar scorecard, 6 to 10 ranked issues
@@ -58,8 +58,13 @@ reported.
    and NTLM logons and failed-logon source patterns, with suspect service names flagged. Never run `kql_search` or
    `run_report` for this pillar: if the report is not archived, the Windows pillar is "not measurable, visibility gap".
    (To test before a tenant has the archive, one `run_report` result for a single day has the same shape and is accepted.)
-3c. **Sign-in events: archive first.** Read `Office365_Entra_Activity_Report` from the archive for single-factor, MFA-required,
-   risky and legacy-auth sign-in counts; only if it is absent query `AzureSigninLogs` (playbook pillar 6).
+3c. **Sign-in events: archive only.** Call `list_report_archive` for `Office365_Entra_Activity_Report` (if the tenant's report
+   is named `Microsoft_Entra_Activity_Report`, use that name; the parser reads object names, not the report name) and
+   `download_report_archive` for the last 30 days with `objects` set to `signin_trend`, `signin_facets`, `audit_trend`
+   and `sources`. Save the result to a file and run `python3 scripts/entra_evidence.py <file> -o entra_evidence.json`.
+   It returns sign-in counts, the single-factor share, how many sign-ins had conditional access applied, legacy-auth
+   clients, admin-portal sign-in volume and directory changes. Hidden risk levels or an unavailable table become gaps.
+   If there is no archive the identity sign-in checks are "not measurable, visibility gap"; never query AzureSigninLogs.
 4. **Run the eight pillars:** Backup and recovery; Endpoint coverage; Prevention and hardening; Vulnerability exposure;
    Detection and response; Identity and access; Logging and forensics; Threat activity. Fold remote-access tools and
    end-of-life systems into the most relevant pillar. 30-day WindowsAudit queries are slow: filter by EventID first.
