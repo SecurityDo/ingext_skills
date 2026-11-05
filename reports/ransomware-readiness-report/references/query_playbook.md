@@ -1,5 +1,8 @@
 # Ransomware Readiness — Query Playbook
 
+**Reference only (v1.4.0):** the report runs no KQL. Evidence comes from resource dumps (`scripts/resource_evidence.py`) and the archives of
+`WindowsSrv_Activity_Report` and `Office365_Entra_Activity_Report`. The queries below explain each measure and can be used to check a number by hand.
+
 Proven on the Acme connector (30 Sep 2026). Tool names are `mcp__<Connector>__<tool>`
 (e.g. `mcp__Acme__kql_search`); load them first if your client defers tools. Always `validate_kql`
 before `kql_search`. Skip any pillar whose table is absent from `list_data_tables` and

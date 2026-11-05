@@ -7,11 +7,15 @@
       "product_regex": "^Veeam Backup (&|and) Replication$",
       "vulnerable_through": "12.3.2.3617",
       "fixed_in": "12.3.2.4165",
-      "cves": ["CVE-2025-48983", "CVE-2025-48984"],
+      "cves": [
+        "CVE-2025-48983",
+        "CVE-2025-48984"
+      ],
       "cvss": 9.9,
       "condition": "exploitable when the backup server is joined to the production Windows domain",
       "source": "Veeam KB4771, 14 Oct 2025",
-      "mitre": "T1490, T1486"
+      "mitre": "T1490, T1486",
+      "requires_domain_joined": true
     }
   ],
   "components_note": "Veeam components (Backup Transport, Installer Service, Mount Service and similar) carry the build number of the Backup & Replication release they belong to; report them as 'CVE status not verified' unless an advisory above names them."

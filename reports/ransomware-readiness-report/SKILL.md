@@ -1,6 +1,6 @@
 ---
 name: ransomware-readiness-report
-version: 1.3.0
+version: 1.4.0
 description: >-
   Assess ONE Fluency / Ingext tenant's ability to prevent, withstand and recover from ransomware and render
   a board-level report (HTML and PDF): an overall rating, an eight-pillar scorecard, 6 to 10 ranked issues
@@ -36,9 +36,9 @@ reported.
 ## Steps
 
 1. **Connector.** Confirm which tenant. If the user did not name one, call `list_accounts` and ask.
-2. **Read `references/query_playbook.md`.** It holds the proven queries and the engine quirks (WindowsAudit uses
-   `timestamp`; resource tables take no time filter; always pass both `rangeFrom` and `rangeTo`). Follow the `ingext-kql`
-   skill for every query and run `validate_kql` before `kql_search`.
+2. **Read `references/query_playbook.md`.** It explains what each pillar measures and why. No KQL is run for this
+   report: resource data comes from dumps, event data from archived reports. The queries in the playbook are reference
+   only, for a person checking a number by hand.
 3. **Resource data: download and parse locally.** Never query resource tables with KQL. Call
    `list_resource_dumps` for the tenant, then `get_resource_dump_url` for each of: sentinelOneAgent,
    sentinelOneApplication, sentinelOneThreat, msDefenderMachine, msDefenderSecureConfig (parquet),
@@ -65,9 +65,15 @@ reported.
    It returns sign-in counts, the single-factor share, how many sign-ins had conditional access applied, legacy-auth
    clients, admin-portal sign-in volume and directory changes. Hidden risk levels or an unavailable table become gaps.
    If there is no archive the identity sign-in checks are "not measurable, visibility gap"; never query AzureSigninLogs.
-4. **Run the eight pillars:** Backup and recovery; Endpoint coverage; Prevention and hardening; Vulnerability exposure;
-   Detection and response; Identity and access; Logging and forensics; Threat activity. Fold remote-access tools and
-   end-of-life systems into the most relevant pillar. 30-day WindowsAudit queries are slow: filter by EventID first.
+4. **Map the evidence to the eight pillars.** Backup and recovery (`backup`, `backup_vulnerable`); Endpoint coverage
+   (`endpoint`, `unprotected`); Prevention and hardening (`hardening`, `secure_score`, detect-only modes); Vulnerability
+   exposure (`vulnerabilities`, including the server coverage gap); Detection and response (`threats`, detect-only);
+   Identity and access (`identity`, `conditional_access`, `entra_evidence.json`); Logging and forensics
+   (`windows_evidence.json`); Threat activity (`threats`, remote tools, persistence). Fold remote-access tools and
+   end-of-life systems into the most relevant pillar. Every `gaps` entry in the three evidence files becomes a plain
+   caveat; a missing source makes that pillar amber, "not measurable, visibility gap". Take two cautions into account:
+   unprotected devices are already limited to active Windows, Linux and Mac endpoints, and a hardening rule that fails
+   on every device is worded "not confirmed" (it may not be reported by the tenant).
 5. **Backup product versions.** `resource_evidence.py` compares each backup product and version with
    `assets/backup_advisories.json` (the Veeam advisory list; edit that file when advisories or fixed versions change and
    the logic stays the same). Each row is VULNERABLE, fixed or newer, or "CVE status not verified". An unlisted product or
@@ -78,7 +84,7 @@ reported.
    MITRE technique.
 7. **Collect strengths:** controls that are compliant. A board needs balance.
 8. **Write `findings.json`** in the shape of `assets/sample_findings_acme.json`. Fields: `tenant`, `assessment_date`
-   (YYYY-MM-DD), `evidence_window`, `kpi_label`, `kpi_value`, `summary_headline`, `summary`, `board_ask`,
+   (YYYY-MM-DD), `evidence_window` (built from the `coverage` and `sources` fields: for example "resource snapshot 5 Nov; Windows audit 1 of 30 days; sign-ins 30 of 30 days"), `kpi_label`, `kpi_value`, `summary_headline`, `summary`, `board_ask`,
    `pillars` (eight of `{name, status red|amber|green, detail}`), `issues`, `roadmap`, `strengths`, `methodology`.
    Text is inserted as HTML: write `&amp;`, `&lt;`, `&gt;`.
 9. **Render:** `python3 scripts/render_report.py findings.json <out_dir>` writes

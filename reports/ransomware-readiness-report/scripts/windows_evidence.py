@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Ransomware-readiness evidence from WindowsSrv_Activity_Report results.
 
-Usage: windows_evidence.py <result.json> [more.json ...] [-o windows_evidence.json]
+Usage: windows_evidence.py <result.json> [more.json ...] [--days 30] [-o windows_evidence.json]
 
 Each input is either a download_report_archive result ({"days":[{"entry","result"}]}) or one
 get_report_result / run_report result ({"result":{"objects":[...]}}). Daily results are additive:
@@ -41,16 +41,25 @@ def facet(o, key):
     return out
 
 
-def main(paths, out):
+def main(paths, out, expected=30):
     days = 0
     tot = Counter()
+    cov = {}
     ev = {"gaps": []}
     persist, tamper_ev, tamper_actor, patterns = Counter(), Counter(), Counter(), Counter()
     clear_days = set()
     status = Counter()
+    perday = {}
     for p in paths:
-        for objs in objects(json.load(open(p))):
+        doc = json.load(open(p))
+        if doc.get("coverage"):
+            cov = doc["coverage"]
+        for objs in objects(doc):
             byname = {o["name"]: o for o in objs}
+            tr = table(byname.get("win_trend", {}))
+            perday[tr[0]["Date"][:10] if tr else "?%d" % len(perday)] = byname
+    for date, byname in sorted(perday.items()):
+        if True:
             for r in table(byname.get("win_trend", {})):
                 days += 1
                 for k, v in r.items():
@@ -76,6 +85,11 @@ def main(paths, out):
             "logonsFailed", "ntlmFailures", "kerberosFailures", "explicitCreds", "privLogons", "rdpLogons", "networkLogons",
             "powershellScripts", "processCreations"]
     ev["days_covered"] = days
+    ev["coverage"] = {"expected_days": cov.get("expected", expected), "archived_days": days,
+                      "missing_days": cov.get("missing", max(0, expected - days))}
+    if ev["coverage"]["archived_days"] < ev["coverage"]["expected_days"]:
+        ev["gaps"].append("Windows audit covers %d of %d expected days; counts are for the archived days only"
+                          % (days, ev["coverage"]["expected_days"]))
     ev["totals"] = {k: tot[k] for k in keep if k in tot}
     ev["log_clearing"] = {"events": tot["logsCleared"], "days_with_clears": len(clear_days),
                           "by_event_id": {k: v for k, v in tamper_ev.items() if k in ("1102", "104")},
@@ -92,8 +106,11 @@ def main(paths, out):
 if __name__ == "__main__":
     a = sys.argv[1:]
     out = "windows_evidence.json"
+    exp = 30
+    if "--days" in a:
+        i = a.index("--days"); exp = int(a[i + 1]); a = a[:i] + a[i + 2:]
     if "-o" in a:
         i = a.index("-o"); out = a[i + 1]; a = a[:i] + a[i + 2:]
     if not a:
         sys.exit(__doc__)
-    main(a, out)
+    main(a, out, exp)

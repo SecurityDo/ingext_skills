@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Ransomware-readiness identity evidence from the archived Entra activity report.
 
-Usage: entra_evidence.py <archive.json> [more.json ...] [-o entra_evidence.json]
+Usage: entra_evidence.py <archive.json> [more.json ...] [--days 30] [-o entra_evidence.json]
 
 Input: download_report_archive results (or one get_report_result) of the scheduled report
 Office365_Entra_Activity_Report (the name this tenant family archives it under; the parser reads
@@ -47,11 +47,15 @@ def facet(o, key):
     return out
 
 
-def main(paths, out):
+def main(paths, out, expected=30):
     perday = {}
+    cov = {}
     hashes = set()
     for p in paths:
-        for done, h, objs in results(json.load(open(p))):
+        doc = json.load(open(p))
+        if doc.get("coverage"):
+            cov = doc["coverage"]
+        for done, h, objs in results(doc):
             byname = {o["name"]: o for o in objs}
             tr = rows(byname.get("signin_trend", {}))
             date = tr[0]["Date"][:10] if tr else (done or "")[:10] + "?"
@@ -84,6 +88,11 @@ def main(paths, out):
     for s in unavailable:
         ev["gaps"].append(f"{s} not available on {unavailable[s]} archived scan(s)")
     ev["days_covered"] = len(perday)
+    ev["coverage"] = {"expected_days": cov.get("expected", expected), "archived_days": len(perday),
+                      "missing_days": cov.get("missing", max(0, expected - len(perday)))}
+    if len(perday) < ev["coverage"]["expected_days"]:
+        ev["gaps"].append("Sign-in data covers %d of %d expected days; counts are for the archived days only"
+                          % (len(perday), ev["coverage"]["expected_days"]))
     ev["script_versions"] = len(hashes)
     if len(hashes) > 1:
         ev["gaps"].append("The archived script changed inside the window; counts are summed but days may not be strictly comparable")
@@ -111,8 +120,11 @@ def main(paths, out):
 if __name__ == "__main__":
     a = sys.argv[1:]
     out = "entra_evidence.json"
+    exp = 30
+    if "--days" in a:
+        i = a.index("--days"); exp = int(a[i + 1]); a = a[:i] + a[i + 2:]
     if "-o" in a:
         i = a.index("-o"); out = a[i + 1]; a = a[:i] + a[i + 2:]
     if not a:
         sys.exit(__doc__)
-    main(a, out)
+    main(a, out, exp)

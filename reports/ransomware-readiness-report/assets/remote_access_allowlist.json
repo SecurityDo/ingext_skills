@@ -1,0 +1,4 @@
+{
+  "_about": "Remote-access tools the organisation sanctions (lower-case family names such as splashtop, teamviewer). Leave empty to infer: the tool on 40% or more of agents is treated as the organisation's own; everything else is reported as other.",
+  "sanctioned": []
+}

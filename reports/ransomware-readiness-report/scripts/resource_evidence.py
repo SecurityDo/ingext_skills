@@ -77,9 +77,17 @@ def advisory_status(product, version, advisories):
     for a in advisories:
         if re.search(a["product_regex"], product or "", re.I):
             if vkey(version) <= vkey(a["vulnerable_through"]):
-                return "VULNERABLE", a["id"] + ": " + ", ".join(a["cves"]) + " (fixed in " + a["fixed_in"] + ")"
-            return "fixed or newer", a["id"]
-    return "CVE status not verified", ""
+                return "VULNERABLE", a["id"] + ": " + ", ".join(a["cves"]) + " (fixed in " + a["fixed_in"] + ")", bool(a.get("requires_domain_joined"))
+            return "fixed or newer", a["id"], False
+    return "CVE status not verified", "", False
+
+
+def load_allowlist():
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "remote_access_allowlist.json")
+    try:
+        return [x.lower() for x in json.load(open(p)).get("sanctioned", [])]
+    except Exception:
+        return []
 
 
 def days_since(ts):
@@ -114,6 +122,9 @@ def main(d, out):
         if v is None:
             gap(f"{n} dump not available")
 
+    ev["sources"] = {n: (None if v is None else len(v)) for n, v in [
+        ("sentinelOneAgent", s1), ("sentinelOneApplication", apps), ("sentinelOneThreat", thr), ("msDefenderMachine", mac),
+        ("msDefenderSecureConfig", cfg), ("office365User", usr), ("office365ConditionalAccessPolicy", cap), ("msDefenderVulnerability", vul)]}
     # ---- Endpoint coverage + detect-only EDR + EOL OS
     if s1 is not None:
         live = [a for a in s1 if not a.get("isDecommissioned")]
@@ -137,14 +148,21 @@ def main(d, out):
     else:
         names = set()
     if mac is not None:
-        cand = [m for m in mac if not m.get("isExcluded") and m.get("onboardingStatus") == "CanBeOnboarded"]
-        miss = [m for m in cand if host(m.get("computerDnsName")) not in names] if s1 is not None else None
+        ENDPOINT_OS = re.compile(r"^(windows|linux|ubuntu|debian|redhat|centos|suse|fedora|oracle|macos)", re.I)
+        cand = [m for m in mac if not m.get("isExcluded") and m.get("onboardingStatus") == "CanBeOnboarded"
+                and not m.get("mergedIntoMachineId") and not m.get("isPotentialDuplication")]
+        ep = [m for m in cand if ENDPOINT_OS.match(m.get("osPlatform") or "")]
+        act = [m for m in ep if m.get("healthStatus") == "Active"]
+        miss = [m for m in act if host(m.get("computerDnsName")) not in names] if s1 is not None else None
         ev["unprotected"] = {
             "defender_onboarded": sum(m.get("onboardingStatus") == "Onboarded" for m in mac),
-            "can_be_onboarded": len(cand),
+            "can_be_onboarded_raw": len(cand),
+            "excluded_not_an_endpoint_platform": len(cand) - len(ep),
+            "excluded_inactive": len(ep) - len(act),
             "not_in_edr_agent_list": None if miss is None else len(miss),
+            "of_which_servers": None if miss is None else sum("server" in (m.get("osPlatform") or "").lower() for m in miss),
             "by_os": None if miss is None else dict(Counter(m.get("osPlatform") for m in miss)),
-            "note": "Matched by short hostname; a rename or duplicate record can mis-match.",
+            "note": "Active Windows, Linux and Mac devices Defender can see with no matching EDR agent; phones, embedded and unknown platforms, duplicates and inactive devices are excluded. Matched by short hostname, so a rename can mis-match.",
         }
 
     # ---- Backup + remote tools
@@ -164,11 +182,36 @@ def main(d, out):
                                 "advisory": advisory_status(k[0], k[1], adv)[0],
                                 "detail": advisory_status(k[0], k[1], adv)[1]} for k, v in bh.items()),
                               key=lambda x: (x["advisory"] != "VULNERABLE", -x["endpoints"]))
-        ev["backup_vulnerable_endpoints"] = len({h for k, v in bh.items() if advisory_status(k[0], k[1], adv)[0] == "VULNERABLE" for h in v})
+        vul_hosts, needs_domain = {}, False
+        for a in apps:
+            nm = a.get("name") or ""
+            if BACKUP.search(nm):
+                st = advisory_status(nm, a.get("version"), adv)
+                if st[0] == "VULNERABLE":
+                    vul_hosts[a.get("agentComputerName")] = (a.get("agentDomain") or "").upper()
+                    needs_domain = needs_domain or st[2]
+        joined = [h for h, d in vul_hosts.items() if d not in ("", "WORKGROUP")]
+        ev["backup_vulnerable"] = {"endpoints": len(vul_hosts), "domain_joined": len(joined),
+                                   "workgroup_or_unknown": len(vul_hosts) - len(joined),
+                                   "exploitable_now": len(joined) if needs_domain else len(vul_hosts),
+                                   "note": "The advisory applies only to domain-joined servers." if needs_domain else ""}
         ev["backup_domains"] = sorted({(a.get("agentDomain") or "").upper() for a in apps
                                       if BACKUP.search(a.get("name") or "") and a.get("agentDomain")})
-        ev["remote_tools"] = sorted(({"tool": k, "endpoints": len(v)} for k, v in rh.items()),
-                                    key=lambda x: -x["endpoints"])
+        fam = {}
+        for nm, hs in rh.items():
+            m = REMOTE.search(nm)
+            fam.setdefault((m.group(0) if m else nm).lower(), set()).update(hs)
+        allow = load_allowlist()
+        live_n = len([x for x in s1 if not x.get("isDecommissioned")]) if s1 is not None else 0
+        top = max(fam, key=lambda f: len(fam[f])) if fam else None
+        inferred = [top] if (not allow and top and live_n and len(fam[top]) >= 0.4 * live_n) else []
+        sanctioned = set(allow) | set(inferred)
+        other = set().union(*[h for f, h in fam.items() if f not in sanctioned]) if fam else set()
+        ev["remote_tools"] = sorted(({"family": f, "endpoints": len(h), "status": "sanctioned" if f in sanctioned else "other"}
+                                     for f, h in fam.items()), key=lambda x: -x["endpoints"])
+        ev["remote_other_families"] = sum(1 for f in fam if f not in sanctioned)
+        ev["remote_other_endpoints"] = len(other)
+        ev["remote_sanctioned_basis"] = "allow-list" if allow else ("inferred: dominant tool on 40% or more of agents" if inferred else "none identified")
     # ---- Hardening
     if cfg is not None:
         import pandas as pd
@@ -179,8 +222,12 @@ def main(d, out):
         g = df[key].groupby(["configurationName", "configurationImpact"]).agg(
             devices=("deviceId", "nunique"), noncompliant=("isCompliant", lambda s: int((s == False).sum()))).reset_index()
         g["pct"] = (100 * g["noncompliant"] / g["devices"]).round(1)
+        g["possible_reporting_gap"] = ((g["pct"] >= 99.9) & (g["devices"] >= 50)).astype(bool)
         ev["hardening"] = g.sort_values("noncompliant", ascending=False).head(25).to_dict("records")
         ev["hardening_devices"] = int(df["deviceId"].nunique())
+        ev["hardening_rules_failing_everywhere"] = int(g["possible_reporting_gap"].sum())
+        if ev["hardening_rules_failing_everywhere"] >= 10:
+            ev["gaps"].append("10 or more hardening rules fail on every applicable device: the tenant may not report them. Word the finding as 'not confirmed' unless the policy state is verified.")
     if score:
         ev["secure_score"] = score[0].get("score")
     # ---- Vulnerabilities
@@ -199,12 +246,18 @@ def main(d, out):
             "exploit_available_cves": int(exp["CveId"].nunique()),
             "exploit_available_devices": int(exp["DeviceId"].nunique()),
             "exploit_levels": {str(k): int(x) for k, x in v["ExploitabilityLevel"].value_counts().items()},
+            "servers_in_vulnerability_data": int(vul[vul["OSPlatform"].astype(str).str.startswith("WindowsServer")]["DeviceId"].nunique()),
+            "servers_in_edr": (ev.get("endpoint") or {}).get("by_type", {}).get("server"),
+            "servers_onboarded_to_defender": sum(m.get("onboardingStatus") == "Onboarded" and str(m.get("osPlatform")).startswith("WindowsServer") for m in (mac or [])),
             "top_cves": [{"cve": k, "devices": int(x)} for k, x in exp.groupby("CveId")["DeviceId"].nunique().sort_values(ascending=False).head(10).items()],
         }
     # ---- Threats
     if thr is not None:
         ti = lambda t, k: (t.get("threatInfo") or {}).get(k)
+        all_thr = thr
+        thr = [t for t in all_thr if days_since(ti(t, "createdAt")) is not None and days_since(ti(t, "createdAt")) <= 90]
         ev["threats"] = {
+            "in_dump": len(all_thr), "window_days": 90,
             "total": len(thr),
             "by_classification": dict(Counter(ti(t, "classification") for t in thr)),
             "by_verdict": dict(Counter(ti(t, "analystVerdict") for t in thr)),
@@ -242,7 +295,7 @@ def main(d, out):
             "report_only": sum(p.get("state") == "enabledForReportingButNotEnforced" for p in cap),
         }
     gap("Per-user MFA registration is not in the resource dumps (admin MFA comes from the sign-in events)")
-    gap("Log clearing, new services and account changes are event data, not resources (WindowsAudit / archived WindowsSrv report)")
+    gap("Log clearing, new services and account changes are event data: see windows_evidence.json (archived WindowsSrv_Activity_Report)")
     json.dump(ev, open(out, "w"), indent=2, default=str)
     print(json.dumps(ev, indent=2, default=str))
 
