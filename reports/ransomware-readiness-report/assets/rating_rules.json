@@ -166,18 +166,18 @@
   {
    "id": "E3",
    "pillar": "endpoint",
-   "severity": "Medium",
+   "severity": "Critical",
    "when": [
     {
-     "path": "r.endpoint.stale_7d",
+     "path": "r.endpoint.stale",
      "op": ">=",
      "ratio_of": "r.endpoint.agents",
-     "value": 0.05
+     "value": 0.1
     }
    ],
-   "headline": "{r.endpoint.stale_7d} agents silent &gt;7 days",
-   "title": "{r.endpoint.stale_7d} agents have not checked in for over a week",
-   "finding": "{r.endpoint.stale_7d} of {r.endpoint.agents} agents have not been active for more than 7 days and {r.endpoint.stale_30d} for more than 30 days ({r.stale7_split}).",
+   "headline": "{r.endpoint.stale} agents silent for over {r.stale_window_text}",
+   "title": "{r.endpoint.stale} agents have not checked in for over {r.stale_window_text}",
+   "finding": "{r.endpoint.stale} of {r.endpoint.agents} agents have not checked in for more than {r.stale_window_text} ({r.stale7_split}). More than 10% of the fleet is silent, so coverage on paper is much better than coverage in practice.",
    "why": "A device that has gone quiet may be switched off, lost or have its protection removed, and it will not stop an attack while it is silent.",
    "recommendation": "Review silent agents weekly, remove retired devices and investigate any that are active on the network but silent to the agent.",
    "owner": "IT Operations",
@@ -187,8 +187,143 @@
    "outcome": "Accurate coverage"
   },
   {
+   "id": "E6",
    "pillar": "endpoint",
    "severity": "High",
+   "when": [
+    {
+     "path": "r.endpoint.stale",
+     "op": ">=",
+     "value": 1
+    }
+   ],
+   "headline": "{r.endpoint.stale} agents silent for over {r.stale_window_text}",
+   "title": "{r.endpoint.stale} agents have not checked in for over {r.stale_window_text}",
+   "finding": "{r.endpoint.stale} of {r.endpoint.agents} agents have not checked in for more than {r.stale_window_text} ({r.stale7_split}).",
+   "why": "A device that has gone quiet may be switched off, lost or have its protection removed, and it will not stop an attack while it is silent.",
+   "recommendation": "Review silent agents weekly, remove retired devices and investigate any that are active on the network but silent to the agent.",
+   "owner": "IT Operations",
+   "target": "30 days",
+   "mitre": "T1562.001 Impair Defenses",
+   "action": "Clean up silent agents",
+   "outcome": "Accurate coverage",
+   "suppress_if": [
+    "E3"
+   ]
+  },
+  {
+   "pillar": "endpoint",
+   "owner": "Security Operations",
+   "target": "14 days",
+   "mitre": "T1562.001 Impair Defenses",
+   "id": "E7",
+   "severity": "High",
+   "when": [
+    {
+     "path": "r.endpoint.rtr_not_enabled",
+     "op": ">=",
+     "value": 1
+    }
+   ],
+   "headline": "{r.endpoint.rtr_not_enabled} agents cannot be remotely contained",
+   "title": "Responders cannot remotely contain some hosts",
+   "finding": "{r.endpoint.rtr_not_enabled} CrowdStrike agents have Real-Time Response switched off, so responders cannot investigate or isolate them during an incident.",
+   "why": "In a ransomware event the first move is to isolate the host. Without remote response that has to be done by hand.",
+   "recommendation": "Enable Real-Time Response on every host.",
+   "action": "Enable Real-Time Response everywhere",
+   "outcome": "Any host can be isolated remotely"
+  },
+  {
+   "pillar": "endpoint",
+   "owner": "Security Operations",
+   "target": "14 days",
+   "mitre": "T1562.001 Impair Defenses",
+   "id": "E8",
+   "severity": "High",
+   "when": [
+    {
+     "path": "r.endpoint.contained",
+     "op": ">=",
+     "value": 1
+    }
+   ],
+   "headline": "{r.endpoint.contained} hosts network-contained",
+   "title": "Hosts are network-contained",
+   "finding": "{r.endpoint.contained} CrowdStrike hosts are network-contained. That is either an incident response in progress or a containment that was never lifted.",
+   "why": "A contained host is cut off from the network and may signal an active incident.",
+   "recommendation": "Confirm with the SOC whether each containment is intentional and lift any that are stale.",
+   "action": "Confirm or lift host containment",
+   "outcome": "No forgotten containment"
+  },
+  {
+   "pillar": "endpoint",
+   "owner": "Security Operations",
+   "target": "14 days",
+   "mitre": "T1562.001 Impair Defenses",
+   "id": "E9",
+   "severity": "High",
+   "when": [
+    {
+     "path": "r.endpoint.no_firewall_policy",
+     "op": ">=",
+     "value": 1
+    }
+   ],
+   "headline": "{r.endpoint.no_firewall_policy} agents without the firewall policy",
+   "title": "The endpoint firewall policy is not applied everywhere",
+   "finding": "{r.endpoint.no_firewall_policy} of {r.endpoint.agents} CrowdStrike agents do not have the firewall policy applied.",
+   "why": "Host firewall rules slow an attacker moving between machines.",
+   "recommendation": "Assign and verify the firewall policy on every host group.",
+   "action": "Apply the firewall policy everywhere",
+   "outcome": "Lateral movement is harder"
+  },
+  {
+   "pillar": "endpoint",
+   "owner": "Security Operations",
+   "target": "14 days",
+   "mitre": "T1562.001 Impair Defenses",
+   "id": "E10",
+   "severity": "High",
+   "when": [
+    {
+     "path": "r.endpoint.not_provisioned",
+     "op": ">=",
+     "value": 1
+    }
+   ],
+   "headline": "{r.endpoint.not_provisioned} agents not provisioned",
+   "title": "Some agents are not fully provisioned",
+   "finding": "{r.endpoint.not_provisioned} CrowdStrike agents are not in the Provisioned state, so they may not report reliably.",
+   "why": "An agent that is not fully installed may not protect or report.",
+   "recommendation": "Finish or repeat the install, or remove the record if the host is gone.",
+   "action": "Fix unprovisioned agents",
+   "outcome": "Every agent reports"
+  },
+  {
+   "pillar": "endpoint",
+   "owner": "Security Operations",
+   "target": "14 days",
+   "mitre": "T1562.001 Impair Defenses",
+   "id": "E11",
+   "severity": "Medium",
+   "when": [
+    {
+     "path": "r.endpoint.no_sensor_update_policy",
+     "op": ">=",
+     "value": 1
+    }
+   ],
+   "headline": "{r.endpoint.no_sensor_update_policy} agents without a sensor-update policy",
+   "title": "Some sensors are not kept up to date",
+   "finding": "{r.endpoint.no_sensor_update_policy} of {r.endpoint.agents} CrowdStrike agents have no sensor-update policy applied, so they are not kept current.",
+   "why": "Old sensors miss new detections and can fall into reduced functionality after an OS update.",
+   "recommendation": "Assign a sensor-update policy to every host group.",
+   "action": "Apply the sensor-update policy",
+   "outcome": "Sensors stay current"
+  },
+  {
+   "pillar": "endpoint",
+   "severity": "Critical",
    "owner": "Security Operations",
    "target": "14 days",
    "mitre": "T1562.001 Impair Defenses",
@@ -197,8 +332,7 @@
     {
      "path": "r.endpoint.reduced_functionality",
      "op": ">=",
-     "ratio_of": "r.endpoint.agents",
-     "value": 0.01
+     "value": 1
     }
    ],
    "headline": "{r.endpoint.reduced_functionality} agents in reduced-functionality mode",
@@ -211,7 +345,7 @@
   },
   {
    "pillar": "endpoint",
-   "severity": "High",
+   "severity": "Critical",
    "owner": "Security Operations",
    "target": "14 days",
    "mitre": "T1562.001 Impair Defenses",
@@ -220,13 +354,12 @@
     {
      "path": "r.endpoint.no_prevention_policy",
      "op": ">=",
-     "ratio_of": "r.endpoint.agents",
-     "value": 0.01
+     "value": 1
     }
    ],
    "headline": "{r.endpoint.no_prevention_policy} agents with no prevention policy applied",
    "title": "Some endpoint agents have no prevention policy applied",
-   "finding": "{r.endpoint.no_prevention_policy} of {r.endpoint.agents} CrowdStrike agents have no prevention policy applied, so they may detect but not block.",
+   "finding": "{r.endpoint.no_prevention_policy} of {r.endpoint.agents} CrowdStrike agents have no prevention policy applied, so the sensor is installed but not actively blocking.",
    "why": "Without an applied prevention policy the sensor cannot stop ransomware, only report it.",
    "recommendation": "Assign a prevention policy to every host group and confirm it applies.",
    "action": "Apply a prevention policy to every agent",
@@ -332,48 +465,24 @@
   {
    "id": "D1",
    "pillar": "detection",
-   "severity": "Critical",
-   "when": [
-    {
-     "path": "r.endpoint.detect_only",
-     "op": ">=",
-     "ratio_of": "r.endpoint.agents",
-     "value": 0.1
-    }
-   ],
-   "headline": "{r.endpoint.detect_only} agents only detect, never block",
-   "title": "Endpoint agents are in detect-only mode",
-   "finding": "{r.endpoint.detect_only} of {r.endpoint.agents} agents run in detect-only mode and will not stop a confirmed threat.",
-   "why": "The product can see an attack but is told not to stop it.",
-   "recommendation": "Move every agent to Protect.",
-   "owner": "Security Operations",
-   "target": "7 days",
-   "mitre": "T1562.001 Impair Defenses",
-   "action": "Move all agents to Protect",
-   "outcome": "Threats blocked, not just logged"
-  },
-  {
-   "id": "D2",
-   "pillar": "detection",
    "severity": "High",
    "when": [
     {
-     "path": "r.endpoint.suspicious_detect_only",
+     "path": "r.endpoint.mitigation_issues",
      "op": ">=",
-     "ratio_of": "r.endpoint.agents",
-     "value": 0.5
+     "value": 1
     }
    ],
-   "headline": "Suspicious threats alert-only on {r.endpoint.suspicious_detect_only} agents",
-   "title": "Suspicious activity is detected but never blocked",
-   "finding": "{r.endpoint.suspicious_detect_only} of {r.endpoint.agents} SentinelOne agents run the \"suspicious\" policy in detect-only mode. Of {r.threats.total} threats in the last {r.threats.window_days} days, {r.threats.on_detect_only_agent} were on agents that only detect, and {r.threats.unmitigated} was not mitigated. {r.scanner_text}",
-   "why": "The product can see an attack starting but is told not to stop it, so a real intrusion would only be noticed afterwards.",
-   "recommendation": "Switch the suspicious policy to Protect, starting with servers. Remove or approve any scanning tool, and review unmitigated detections.",
+   "headline": "{r.endpoint.mitigation_issues} agents not fully in Protect mode",
+   "title": "Endpoint agents are not fully in Protect mode",
+   "finding": "{r.endpoint.mitigation_issues} of {r.endpoint.agents} SentinelOne agents have the threat or suspicious mitigation mode set to something other than Protect ({r.endpoint.detect_only} on the threat policy, {r.endpoint.suspicious_detect_only} on the suspicious policy). {r.mitigation_sentence} {r.scanner_text}",
+   "why": "The product can see an attack but is told not to stop it, so a real intrusion would only be noticed afterwards.",
+   "recommendation": "Move every agent to Protect on both policies, servers first. Remove or approve any scanning tool, and review unmitigated detections.",
    "owner": "Security Operations",
    "target": "14 days",
-   "mitre": "T1046 Network Service Discovery",
-   "action": "Switch the suspicious policy to Protect on servers; remove unapproved scanning tools",
-   "outcome": "Reconnaissance blocked"
+   "mitre": "T1562.001 Impair Defenses",
+   "action": "Move all agents to Protect on both policies",
+   "outcome": "Threats blocked, not just logged"
   },
   {
    "id": "I1",
@@ -474,6 +583,50 @@
    "outcome": "Persistence removed"
   },
   {
+   "pillar": "threat",
+   "owner": "Security Operations",
+   "mitre": "T1486 Data Encrypted for Impact",
+   "id": "T3",
+   "severity": "Critical",
+   "target": "24 hours",
+   "when": [
+    {
+     "path": "r.endpoint.infected",
+     "op": ">=",
+     "value": 1
+    }
+   ],
+   "headline": "{r.endpoint.infected} infected devices",
+   "title": "Devices are currently infected",
+   "finding": "{r.endpoint.infected} agents report an active infection or active threats.",
+   "why": "A device with an active threat may already be running attacker code.",
+   "recommendation": "Isolate each infected device and investigate now.",
+   "action": "Isolate and investigate infected devices",
+   "outcome": "Active infections contained"
+  },
+  {
+   "pillar": "threat",
+   "owner": "Security Operations",
+   "mitre": "T1486 Data Encrypted for Impact",
+   "id": "T4",
+   "severity": "Critical",
+   "target": "24 hours",
+   "when": [
+    {
+     "path": "r.threats.unresolved_critical",
+     "op": ">=",
+     "value": 1
+    }
+   ],
+   "headline": "{r.threats.unresolved_critical} unresolved threats with serious indicators",
+   "title": "Unresolved threats show credential theft, lateral movement or obfuscation",
+   "finding": "{r.threats.unresolved_critical} unresolved threats show credential access, lateral movement, obfuscation with other high-risk behaviour, or several open threats on one host.",
+   "why": "These are the patterns that come before ransomware deployment.",
+   "recommendation": "Triage them first and isolate the affected hosts.",
+   "action": "Triage serious unresolved threats",
+   "outcome": "Intrusions stopped early"
+  },
+  {
    "id": "T1",
    "pillar": "threat",
    "severity": "High",
@@ -498,7 +651,7 @@
   {
    "id": "T2",
    "pillar": "threat",
-   "severity": "Medium",
+   "severity": "High",
    "when": [
     {
      "path": "r.threats.unresolved",
@@ -508,14 +661,17 @@
    ],
    "headline": "{r.threats.unresolved} threats unresolved",
    "title": "Threats remain unresolved",
-   "finding": "{r.threats.unresolved} of {r.threats.total} threats in the last {r.threats.window_days} days are not resolved.",
+   "finding": "{r.threats.unresolved} threats are not resolved and not marked benign.",
    "why": "Open threats may still be active.",
    "recommendation": "Close or escalate every open threat.",
    "owner": "Security Operations",
    "target": "14 days",
    "mitre": "T1486 Data Encrypted for Impact",
    "action": "Close or escalate open threats",
-   "outcome": "No open threats"
+   "outcome": "No open threats",
+   "suppress_if": [
+    "T4"
+   ]
   }
  ],
  "strengths": [

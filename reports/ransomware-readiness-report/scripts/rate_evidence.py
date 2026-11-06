@@ -53,9 +53,15 @@ def derive(r, w):
     ep = r.get("endpoint") or {}
     vend = list((ep.get("vendors") or {}).keys())
     d["edr_name"] = " and ".join(vend) if vend else "endpoint"
-    st = ep.get("stale_7d") or 0
-    srv = (ep.get("stale_7d_by_type") or {}).get("server", 0)
+    st = ep.get("stale") or 0
+    srv = (ep.get("stale_by_type") or {}).get("server", 0)
     d["stale7_split"] = f"{st - srv} workstations and {srv} servers" if srv else f"{st} workstations"
+    days = ep.get("stale_days_by_vendor") or {}
+    d["stale_window_text"] = (f"{list(days.values())[0]} days" if len(set(days.values())) == 1
+                              else " or ".join(f"{v} days ({k})" for k, v in sorted(days.items(), key=lambda x: x[1]))) if days else "7 days"
+    th = r.get("threats") or {}
+    d["mitigation_sentence"] = (f"Of {th.get('total')} threats in the last {th.get('window_days')} days, {th.get('on_detect_only_agent')} were on agents that only detect, "
+                                f"and {th.get('unmitigated')} was not mitigated.") if th else ""
     tools = r.get("remote_tools") or []
     san = [t for t in tools if t.get("status") == "sanctioned"]
     oth = [t for t in tools if t.get("status") != "sanctioned"]

@@ -114,7 +114,7 @@ reported.
 ## Scoring
 
 `scripts/rate_evidence.py` applies `assets/rating_rules.json`; `render_report.py` then computes the overall rating from the pillar statuses.
-The thresholds, rule by rule, are listed in `references/rating_thresholds.md`, generated from the rules file by
+Endpoint and threat severities follow the existing review reports (`sentinelOneConfig`, `falconAgentSecurity` in the MCP repo): silent agents High and Critical above 10% of the fleet (7 days SentinelOne, 14 days CrowdStrike), prevention policy missing or reduced functionality Critical, any agent not in Protect mode High, infected devices Critical, unresolved threats High and Critical with credential access, lateral movement or obfuscation. Thresholds for the other pillars are Fluency proposals. The thresholds, rule by rule, are listed in `references/rating_thresholds.md`, generated from the rules file by
 `scripts/make_thresholds_doc.py` (run it after every change to `assets/rating_rules.json`).
 
 - Pillar **red / At risk**: any Critical issue in the pillar, or a control absent fleet-wide. **Amber / Needs work**:

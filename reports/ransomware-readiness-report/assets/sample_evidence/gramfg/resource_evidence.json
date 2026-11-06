@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-05",
+  "generated": "2026-11-06",
   "gaps": [
     "10 or more hardening rules fail on every applicable device: the tenant may not report them. Word the finding as 'not confirmed' unless the policy state is verified.",
     "Per-user MFA registration is not in the resource dumps (admin MFA comes from the sign-in events)",
@@ -7,6 +7,7 @@
   ],
   "sources": {
     "sentinelOneAgent": 788,
+    "falconAgent": null,
     "sentinelOneApplication": 25378,
     "sentinelOneThreat": 9,
     "msDefenderMachine": 2917,
@@ -16,6 +17,9 @@
     "msDefenderVulnerability": 1542875
   },
   "endpoint": {
+    "vendors": {
+      "SentinelOne": 788
+    },
     "agents": 788,
     "connected": 787,
     "by_type": {
@@ -23,20 +27,17 @@
       "laptop": 708,
       "desktop": 20
     },
-    "stale_7d": 69,
+    "stale_7d": 70,
     "stale_30d": 33,
+    "stale": 70,
+    "stale_by_type": {
+      "laptop": 70
+    },
+    "stale_days_by_vendor": {
+      "SentinelOne": 7
+    },
     "stale_7d_by_type": {
-      "laptop": 69
-    },
-    "not_up_to_date": 15,
-    "pending_uninstall": 1,
-    "detect_only": 0,
-    "suspicious_detect_only": 788,
-    "mitigation_modes": {
-      "protect": 788
-    },
-    "suspicious_modes": {
-      "detect": 788
+      "laptop": 70
     },
     "os": {
       "Windows 11 Pro": 706,
@@ -56,6 +57,19 @@
     },
     "eol_approaching": {
       "Windows Server 2016 (extended support ends 12 Jan 2027)": 13
+    },
+    "not_up_to_date": 15,
+    "pending_uninstall": 1,
+    "detect_only": 0,
+    "suspicious_detect_only": 788,
+    "mitigation_issues": 788,
+    "infected": 0,
+    "detect_only_basis": 788,
+    "mitigation_modes": {
+      "protect": 788
+    },
+    "suspicious_modes": {
+      "detect": 788
     }
   },
   "unprotected": {
@@ -615,7 +629,7 @@
     "rows_total": 1542875,
     "critical_high_devices": 676,
     "critical_devices": 663,
-    "older_than_30d_devices": 618,
+    "older_than_30d_devices": 620,
     "server_devices": 1,
     "exploit_available_cves": 159,
     "exploit_available_devices": 498,
@@ -625,7 +639,7 @@
       "ExploitIsPublic": 199,
       "ExploitIsInKit": 10
     },
-    "exploitable_older_than_30d_devices": 367,
+    "exploitable_older_than_30d_devices": 369,
     "exploitable_older_than_90d_devices": 118,
     "exploitable_critical_devices": 89,
     "top_software": [
@@ -731,6 +745,7 @@
       "not_mitigated": 1
     },
     "unresolved": 0,
+    "unresolved_critical": 0,
     "unmitigated_malicious": 0,
     "unmitigated": 1,
     "by_confidence": {

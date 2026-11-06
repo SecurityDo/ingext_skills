@@ -1,12 +1,12 @@
 {
- "tenant": "Grand River Aseptic Mfg",
+ "tenant": "Grand River",
  "assessment_date": "2026-11-06",
- "evidence_window": "Resource snapshots 5 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived",
+ "evidence_window": "Resource snapshots 6 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived",
  "overall_rating": "Elevated Risk",
  "kpi_label": "Device Secure Score",
  "kpi_value": "489",
  "summary_headline": "Not yet ransomware-ready, but the fixes are well defined",
- "summary": "2 critical, 4 high and 3 medium issues across the eight pillars. 787 of 788 SentinelOne agents are connected. Most urgent: Backup servers exposed to critical remote-code-execution flaws; 167 active devices have no endpoint protection.",
+ "summary": "2 critical, 5 high and 2 medium issues across the eight pillars. 787 of 788 SentinelOne agents are connected. Most urgent: Backup servers exposed to critical remote-code-execution flaws; 167 active devices have no endpoint protection.",
  "board_ask": "approve immediate action on patch Veeam and isolate backup servers (7 days); agent or isolate the 167 unprotected devices (30 days), and sponsor a 90-day hardening program to close the remaining findings. Most actions use tools the organization already licenses.",
  "pillars": [
   {
@@ -17,7 +17,7 @@
   {
    "name": "Endpoint Coverage",
    "status": "red",
-   "detail": "167 unprotected active devices; 69 laptops silent &gt;7 days"
+   "detail": "167 unprotected active devices; 70 workstations silent &gt;7 days"
   },
   {
    "name": "Prevention &amp; Hardening",
@@ -32,7 +32,7 @@
   {
    "name": "Detection &amp; Response",
    "status": "amber",
-   "detail": "Suspicious threats alert-only on 788 agents"
+   "detail": "788 agents not fully in Protect mode"
   },
   {
    "name": "Identity &amp; Access",
@@ -64,12 +64,22 @@
   {
    "severity": "Critical",
    "title": "167 active devices have no endpoint protection",
-   "finding": "Defender device discovery sees 167 active Windows, Linux and Mac devices that are neither onboarded to Defender nor matched to a SentinelOne agent. They include 5 servers and 9 end-of-life systems. Phones, inactive and duplicate records are excluded. Matching is by hostname, so a small number may be guest or personal devices.",
+   "finding": "Defender device discovery sees 167 active Windows, Linux and Mac devices that are neither onboarded to Defender nor matched to an SentinelOne agent. They include 5 servers and 9 end-of-life systems. Phones, inactive and duplicate records are excluded. Matching is by hostname, so a small number may be guest or personal devices.",
    "why": "Attackers look for the one machine nobody is watching. Anything unprotected is a free foothold to start encrypting from.",
    "recommendation": "Install the endpoint agent on, or isolate, every unprotected device, servers and end-of-life systems first. Alert when a new device appears without an agent.",
    "owner": "IT Operations",
    "target": "30 days",
    "mitre": "T1133 / T1210"
+  },
+  {
+   "severity": "High",
+   "title": "70 agents have not checked in for over 7 days",
+   "finding": "70 of 788 agents have not checked in for more than 7 days (70 workstations).",
+   "why": "A device that has gone quiet may be switched off, lost or have its protection removed, and it will not stop an attack while it is silent.",
+   "recommendation": "Review silent agents weekly, remove retired devices and investigate any that are active on the network but silent to the agent.",
+   "owner": "IT Operations",
+   "target": "30 days",
+   "mitre": "T1562.001 Impair Defenses"
   },
   {
    "severity": "High",
@@ -84,7 +94,7 @@
   {
    "severity": "High",
    "title": "Exploitable vulnerabilities are widespread and aging",
-   "finding": "498 devices carry critical or high CVEs with a known exploit (159 CVEs); on 367 the exposure is older than 30 days and on 118 older than 90 days. 89 devices have exploitable criticals. Main drivers: unpatched Chrome on 111 devices, Teams Classic on 104. Only 1 of 60 servers reports into Defender vulnerability management, so server exposure is largely unmeasured.",
+   "finding": "498 devices carry critical or high CVEs with a known exploit (159 CVEs); on 369 the exposure is older than 30 days and on 118 older than 90 days. 89 devices have exploitable criticals. Main drivers: unpatched Chrome on 111 devices, Teams Classic on 104. Only 1 of 60 servers reports into Defender vulnerability management, so server exposure is largely unmeasured.",
    "why": "Known exploits are what attackers use to get in. Every month an exposure stays open raises the odds it is used.",
    "recommendation": "Set patch deadlines (critical exploitable in 14 days), enforce browser auto-update, remove retired software, and onboard servers to vulnerability management.",
    "owner": "IT Operations",
@@ -93,13 +103,13 @@
   },
   {
    "severity": "High",
-   "title": "Suspicious activity is detected but never blocked",
-   "finding": "788 of 788 SentinelOne agents run the \"suspicious\" policy in detect-only mode. Of 9 threats in the last 90 days, 8 were on agents that only detect, and 1 was not mitigated. A network-scanning tool (Angry IP Scanner) is installed on 6 endpoints.",
-   "why": "The product can see an attack starting but is told not to stop it, so a real intrusion would only be noticed afterwards.",
-   "recommendation": "Switch the suspicious policy to Protect, starting with servers. Remove or approve any scanning tool, and review unmitigated detections.",
+   "title": "Endpoint agents are not fully in Protect mode",
+   "finding": "788 of 788 SentinelOne agents have the threat or suspicious mitigation mode set to something other than Protect (0 on the threat policy, 788 on the suspicious policy). Of 9 threats in the last 90 days, 8 were on agents that only detect, and 1 was not mitigated. A network-scanning tool (Angry IP Scanner) is installed on 6 endpoints.",
+   "why": "The product can see an attack but is told not to stop it, so a real intrusion would only be noticed afterwards.",
+   "recommendation": "Move every agent to Protect on both policies, servers first. Remove or approve any scanning tool, and review unmitigated detections.",
    "owner": "Security Operations",
    "target": "14 days",
-   "mitre": "T1046 Network Service Discovery"
+   "mitre": "T1562.001 Impair Defenses"
   },
   {
    "severity": "High",
@@ -110,16 +120,6 @@
    "owner": "Security Operations",
    "target": "14 days",
    "mitre": "T1070.001 Clear Windows Event Logs"
-  },
-  {
-   "severity": "Medium",
-   "title": "69 agents have not checked in for over a week",
-   "finding": "69 of 788 agents have not been active for more than 7 days and 33 for more than 30 days (laptops 69).",
-   "why": "A device that has gone quiet may be switched off, lost or have its protection removed, and it will not stop an attack while it is silent.",
-   "recommendation": "Review silent agents weekly, remove retired devices and investigate any that are active on the network but silent to the agent.",
-   "owner": "IT Operations",
-   "target": "30 days",
-   "mitre": "T1562.001 Impair Defenses"
   },
   {
    "severity": "Medium",
@@ -145,13 +145,13 @@
  "roadmap": [
   {
    "window": "0&ndash;14 days",
-   "actions": "Patch Veeam and isolate backup servers; Switch the suspicious policy to Protect on servers; remove unapproved scanning tools; Find and stop the security-log clearing; alert on event IDs 1102 and 104.",
-   "outcome": "Recovery capability protected; Reconnaissance blocked; Forensic trail restored."
+   "actions": "Patch Veeam and isolate backup servers; Move all agents to Protect on both policies; Find and stop the security-log clearing; alert on event IDs 1102 and 104.",
+   "outcome": "Recovery capability protected; Threats blocked, not just logged; Forensic trail restored."
   },
   {
    "window": "15&ndash;30 days",
-   "actions": "Agent or isolate the 167 unprotected devices; Patch deadlines and browser auto-update; onboard servers to vulnerability management; Clean up silent agents; Require MFA for admin portals and all users through conditional access.",
-   "outcome": "No blind spots on the network; Known-exploit exposure closed; Accurate coverage; Credential-only access closed."
+   "actions": "Agent or isolate the 167 unprotected devices; Clean up silent agents; Patch deadlines and browser auto-update; onboard servers to vulnerability management; Require MFA for admin portals and all users through conditional access.",
+   "outcome": "No blind spots on the network; Accurate coverage; Known-exploit exposure closed; Credential-only access closed."
   },
   {
    "window": "31&ndash;60 days",
@@ -171,16 +171,16 @@
   "10 protective settings, for example \"Disable WDigest Authentication\", \"Disable SMBv1 server\", \"Turn on Microsoft Defender Firewall\", are compliant on 95% or more of devices.",
   "Global Administrator accounts are few (5) and cloud-only."
  ],
- "methodology": "Findings were derived from Grand River Aseptic Mfg&rsquo;s Fluency / Ingext datalake: endpoint, vulnerability, hardening, identity and conditional-access snapshots, the archived Entra sign-in activity report and the archived Windows server activity report. Evidence window: Resource snapshots 5 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived. Pillar colours and issue severities follow the thresholds in rating_rules.json. Unprotected-device counts match Defender discovery to SentinelOne by hostname, count only active Windows, Linux and Mac devices, and may include a small number of guest devices. MFA registration status and the MFA status of individual admin-portal sign-ins could not be measured. No individual users or hosts are named in this report.",
+ "methodology": "Findings were derived from Grand River&rsquo;s Fluency / Ingext datalake: endpoint, vulnerability, hardening, identity and conditional-access snapshots, the archived Entra sign-in activity report and the archived Windows server activity report. Evidence window: Resource snapshots 6 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived. Pillar colours and issue severities follow the thresholds in rating_rules.json. Unprotected-device counts match Defender discovery to the EDR agent inventory (SentinelOne or CrowdStrike) by hostname, count only active Windows, Linux and Mac devices, and may include a small number of guest devices. Recovery ability is inferred from backup products and versions, not proven by restore tests. The conditional-access MFA check counts policies requiring MFA for all users and cannot see exclusions. MFA registration status and the MFA status of individual admin-portal sign-ins could not be measured. No individual users or hosts are named in this report.",
  "_review": {
   "rules_fired": [
    "B1",
    "E1",
-   "E3",
+   "E6",
    "P1",
    "P2",
    "V1",
-   "D2",
+   "D1",
    "I1",
    "L1"
   ],

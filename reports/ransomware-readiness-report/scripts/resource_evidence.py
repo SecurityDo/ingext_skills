@@ -146,19 +146,22 @@ def main(d, out):
                        "pending_uninstall": bool(x.get("isPendingUninstall")),
                        "detect_only": x.get("mitigationMode") != "protect",
                        "susp_detect_only": x.get("mitigationModeSuspicious") != "protect",
-                       "mode": x.get("mitigationMode"), "susp_mode": x.get("mitigationModeSuspicious")})
+                       "mode": x.get("mitigationMode"), "susp_mode": x.get("mitigationModeSuspicious"),
+                       "stale_days": 7, "infected": bool(x.get("infected")) or (x.get("activeThreats") or 0) > 0})
     for x in (fal or []):
         if x.get("host_hidden_status") == "hidden":
             continue
         off = days_since(x.get("last_seen"))
-        prev = ((x.get("device_policies") or {}).get("prevention") or {}).get("applied")
-        if prev is None:
-            prev = any(p.get("policy_type") == "prevention" and p.get("applied") for p in (x.get("policies") or []))
+        dp = x.get("device_policies") or {}
+        applied = lambda name: (dp.get(name) or {}).get("applied") is True
+        prev = applied("prevention")
+        rfm = x.get("reduced_functionality_mode")
         agents.append({"vendor": "CrowdStrike", "name": host(x.get("hostname")),
                        "type": "server" if x.get("product_type_desc") in ("Server", "Domain Controller") else "workstation",
                        "os": x.get("os_product_name") or x.get("os_version"), "off": off,
-                       "connected": off is not None and off <= 3, "reduced": x.get("reduced_functionality_mode") == "yes",
-                       "no_prevention": not prev, "not_provisioned": x.get("provision_status") not in ("Provisioned", None),
+                       "connected": off is not None and off <= 3, "reduced": bool(rfm) and rfm != "no", "stale_days": 14,
+                       "no_prevention": not prev, "no_firewall": not applied("firewall"),
+                       "no_sensor_update": not applied("sensor_update"), "rtr_off": x.get("rtr_state") != "enabled", "not_provisioned": x.get("provision_status") not in ("Provisioned", None),
                        "contained": x.get("status") == "contained"})
     if agents:
         sf = [a for a in agents if a["vendor"] == "SentinelOne"]
@@ -169,6 +172,9 @@ def main(d, out):
             "by_type": dict(Counter(a["type"] for a in agents)),
             "stale_7d": sum(1 for a in agents if a["off"] is not None and a["off"] > 7),
             "stale_30d": sum(1 for a in agents if a["off"] is not None and a["off"] > 30),
+            "stale": sum(1 for a in agents if a["off"] is not None and a["off"] > a["stale_days"]),
+            "stale_by_type": dict(Counter(a["type"] for a in agents if a["off"] is not None and a["off"] > a["stale_days"])),
+            "stale_days_by_vendor": {v: next(a["stale_days"] for a in agents if a["vendor"] == v) for v in {a["vendor"] for a in agents}},
             "stale_7d_by_type": dict(Counter(a["type"] for a in agents if a["off"] is not None and a["off"] > 7)),
             "os": dict(Counter(a["os"] for a in agents).most_common(15)),
             "eol_os": {k: v for k, v in Counter(a["os"] for a in agents if EOL_OS.search(a["os"] or "")).items()},
@@ -180,6 +186,8 @@ def main(d, out):
                 "pending_uninstall": sum(a["pending_uninstall"] for a in sf),
                 "detect_only": sum(a["detect_only"] for a in sf),
                 "suspicious_detect_only": sum(a["susp_detect_only"] for a in sf),
+                "mitigation_issues": sum(a["detect_only"] or a["susp_detect_only"] for a in sf),
+                "infected": sum(a["infected"] for a in sf),
                 "detect_only_basis": len(sf),
                 "mitigation_modes": dict(Counter(a["mode"] for a in sf)),
                 "suspicious_modes": dict(Counter(a["susp_mode"] for a in sf)),
@@ -189,6 +197,9 @@ def main(d, out):
             ev["endpoint"].update({
                 "reduced_functionality": sum(a["reduced"] for a in cf),
                 "no_prevention_policy": sum(a["no_prevention"] for a in cf),
+                "no_firewall_policy": sum(a["no_firewall"] for a in cf),
+                "no_sensor_update_policy": sum(a["no_sensor_update"] for a in cf),
+                "rtr_not_enabled": sum(a["rtr_off"] for a in cf),
                 "not_provisioned": sum(a["not_provisioned"] for a in cf),
                 "contained": sum(a["contained"] for a in cf),
             })
@@ -325,6 +336,16 @@ def main(d, out):
         ti = lambda t, k: (t.get("threatInfo") or {}).get(k)
         all_thr = thr
         thr = [t for t in all_thr if days_since(ti(t, "createdAt")) is not None and days_since(ti(t, "createdAt")) <= 90]
+        # Same definition as the sentinelOneConfig report: not resolved and not marked benign, across the whole dump.
+        unres = [t for t in all_thr if ti(t, "incidentStatus") != "resolved" and ti(t, "mitigationStatus") != "marked_as_benign"]
+        per_agent = Counter(((t.get("agentRealtimeInfo") or {}).get("agentComputerName")) for t in unres)
+        def _crit(t):
+            ind = t.get("indicators") or []
+            cats = {i.get("category") for i in ind}
+            obf = any(re.search(r"obfuscation|packing|encrypted|compressed|high entropy", str(i.get("description") or ""), re.I) for i in ind)
+            risky = bool(cats & {"Exploitation", "Persistence", "Defense Evasion", "Credential Access", "Lateral Movement"})
+            return bool(cats & {"Credential Access", "Lateral Movement"}) or (obf and risky) or per_agent[(t.get("agentRealtimeInfo") or {}).get("agentComputerName")] > 1
+        crit_unres = [t for t in unres if _crit(t)]
         ev["threats"] = {
             "in_dump": len(all_thr), "window_days": 90,
             "total": len(thr),
@@ -334,7 +355,8 @@ def main(d, out):
             "on_detect_only_agent": sum((t.get("agentDetectionInfo") or {}).get("agentMitigationMode") != "protect" for t in thr),
             "ransomware_class": sum(ti(t, "classification") == "Ransomware" for t in thr),
             "by_mitigation": dict(Counter(ti(t, "mitigationStatus") for t in thr)),
-            "unresolved": sum(ti(t, "incidentStatus") not in ("resolved",) for t in thr),
+            "unresolved": len(unres),
+            "unresolved_critical": len(crit_unres),
             "unmitigated_malicious": sum(ti(t, "confidenceLevel") == "malicious" and ti(t, "mitigationStatus") == "not_mitigated" for t in thr),
             "unmitigated": sum(ti(t, "mitigationStatus") == "not_mitigated" for t in thr),
             "by_confidence": dict(Counter(ti(t, "confidenceLevel") for t in thr)),
