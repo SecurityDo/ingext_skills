@@ -78,13 +78,19 @@ reported.
    `assets/backup_advisories.json` (the Veeam advisory list; edit that file when advisories or fixed versions change and
    the logic stays the same). Each row is VULNERABLE, fixed or newer, or "CVE status not verified". An unlisted product or
    version is never reported as safe.
-6. **Select the top issues** (6 to 10), ranked Critical, High, Medium by how directly they enable encryption or block
-   recovery. Backup compromise and unprotected devices outrank hygiene items. For each: finding (with numbers), why
-   the board should care (one or two sentences, no jargon), recommendation, owner, target (7, 14, 30, 60 or 90 days),
-   MITRE technique.
-7. **Collect strengths:** controls that are compliant. A board needs balance.
-8. **Write `findings.json`** in the shape of `assets/sample_findings_acme.json`. Fields: `tenant`, `assessment_date`
-   (YYYY-MM-DD), `evidence_window` (built from the `coverage` and `sources` fields: for example "resource snapshot 5 Nov; Windows audit 1 of 30 days; sign-ins 30 of 30 days"), `kpi_label`, `kpi_value`, `summary_headline`, `summary`, `board_ask`,
+6. **Rate and draft.** Run `python3 scripts/rate_evidence.py --resource evidence.json --windows windows_evidence.json
+   --entra entra_evidence.json --tenant "<Name>" --out draft_findings.json`. Pillar colours, issue severities and ranking
+   come only from the thresholds in `assets/rating_rules.json`, so the same evidence always gives the same rating; change
+   a threshold there, never a colour by hand. The draft holds the ranked issues (6 to 10) with the numbers filled in, owner,
+   target (7, 14, 30, 60 or 90 days) and MITRE technique, the strengths, the 90-day roadmap and the evidence window.
+   A source that is missing makes its pillars amber, "not measurable, visibility gap". `_review` lists the rules that fired,
+   the evidence gaps and any unfilled placeholder.
+7. **Review the draft.** Sharpen the wording where the data needs it (plain language, no jargon, board-safe, no individual
+   names), check the summary and board ask, and add what the rules cannot know. If an issue or colour must differ from the
+   rules, say why in the methodology. `assets/sample_evidence/gramfg/` holds a worked evidence set to compare with.
+8. **Write `findings.json`**: the reviewed draft without the `_review` block, in the shape of
+   `assets/sample_findings_acme.json`. Fields: `tenant`, `assessment_date`
+   (YYYY-MM-DD), `evidence_window` (built from the `coverage` and `sources` fields), `kpi_label`, `kpi_value`, `summary_headline`, `summary`, `board_ask`,
    `pillars` (eight of `{name, status red|amber|green, detail}`), `issues`, `roadmap`, `strengths`, `methodology`.
    Text is inserted as HTML: write `&amp;`, `&lt;`, `&gt;`.
 9. **Render:** `python3 scripts/render_report.py findings.json <out_dir>` writes
@@ -92,7 +98,9 @@ reported.
    stamp; `--no-pdf` skips the PDF.
 10. **Reply briefly:** the overall rating, the top three issues and the file names.
 
-## Scoring (computed by the renderer)
+## Scoring
+
+`scripts/rate_evidence.py` applies `assets/rating_rules.json`; `render_report.py` then computes the overall rating from the pillar statuses.
 
 - Pillar **red / At risk**: any Critical issue in the pillar, or a control absent fleet-wide. **Amber / Needs work**:
   High or Medium issues, or partial coverage or no data. **Green / Healthy**: no material issues.

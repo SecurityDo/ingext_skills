@@ -1,0 +1,197 @@
+{
+ "tenant": "Grand River Aseptic Mfg",
+ "assessment_date": "2026-11-06",
+ "evidence_window": "Resource snapshots 5 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived",
+ "overall_rating": "Elevated Risk",
+ "kpi_label": "Device Secure Score",
+ "kpi_value": "489",
+ "summary_headline": "Not yet ransomware-ready, but the fixes are well defined",
+ "summary": "2 critical, 4 high and 3 medium issues across the eight pillars. 787 of 788 SentinelOne agents are connected. Most urgent: Backup servers exposed to critical remote-code-execution flaws; 167 active devices have no endpoint protection.",
+ "board_ask": "approve immediate action on patch Veeam and isolate backup servers (7 days); agent or isolate the 167 unprotected devices (30 days), and sponsor a 90-day hardening program to close the remaining findings. Most actions use tools the organization already licenses.",
+ "pillars": [
+  {
+   "name": "Backup &amp; Recovery",
+   "status": "red",
+   "detail": "Critical flaw on 6 domain-joined backup servers"
+  },
+  {
+   "name": "Endpoint Coverage",
+   "status": "red",
+   "detail": "167 unprotected active devices; 69 laptops silent &gt;7 days"
+  },
+  {
+   "name": "Prevention &amp; Hardening",
+   "status": "red",
+   "detail": "19 anti-ransomware rules and LAPS not enabled fleet-wide"
+  },
+  {
+   "name": "Vulnerability Exposure",
+   "status": "amber",
+   "detail": "498 devices with exploitable CVEs"
+  },
+  {
+   "name": "Detection &amp; Response",
+   "status": "amber",
+   "detail": "Suspicious threats alert-only on 788 agents"
+  },
+  {
+   "name": "Identity &amp; Access",
+   "status": "amber",
+   "detail": "34.6% of successful sign-ins single-factor (2 days)"
+  },
+  {
+   "name": "Logging &amp; Forensics",
+   "status": "amber",
+   "detail": "24 security-log clears in 1 day(s)"
+  },
+  {
+   "name": "Threat Activity",
+   "status": "green",
+   "detail": "No material issues"
+  }
+ ],
+ "issues": [
+  {
+   "severity": "Critical",
+   "title": "Backup servers exposed to critical remote-code-execution flaws",
+   "finding": "Veeam Backup &amp; Replication build 12.3.2.3617 runs on 6 servers; 6 are joined to the production domain. This build is affected by CVE-2025-48983, CVE-2025-48984 (CVSS 9.9), which let any authenticated domain user execute code on domain-joined backup servers. The fix shipped in 12.3.2.4165 (Veeam KB4771, Oct 2025). Other backup components are listed as CVE status not verified.",
+   "why": "Ransomware crews target backups first so the organization cannot recover without paying. A single phished employee password could be enough to reach them.",
+   "recommendation": "Upgrade to 12.3.2.4165 or later within 7 days. Move backup servers to a separate workgroup or management domain, enforce immutable or offline copies, and test a full restore.",
+   "owner": "Infrastructure",
+   "target": "7 days",
+   "mitre": "T1490 Inhibit System Recovery"
+  },
+  {
+   "severity": "Critical",
+   "title": "167 active devices have no endpoint protection",
+   "finding": "Defender device discovery sees 167 active Windows, Linux and Mac devices that are neither onboarded to Defender nor matched to a SentinelOne agent. They include 5 servers and 9 end-of-life systems. Phones, inactive and duplicate records are excluded. Matching is by hostname, so a small number may be guest or personal devices.",
+   "why": "Attackers look for the one machine nobody is watching. Anything unprotected is a free foothold to start encrypting from.",
+   "recommendation": "Install the endpoint agent on, or isolate, every unprotected device, servers and end-of-life systems first. Alert when a new device appears without an agent.",
+   "owner": "IT Operations",
+   "target": "30 days",
+   "mitre": "T1133 / T1210"
+  },
+  {
+   "severity": "High",
+   "title": "Core anti-ransomware hardening is reported as switched off",
+   "finding": "19 Defender hardening rules are reported non-compliant on every assessed device, including \"Use advanced protection against ransomware\", \"Block process creations originating from PSExec and WMI commands\" and \"Block rebooting machine in Safe Mode\". Credential Guard is off on 294 of 634 devices. Device Secure Score is 489. Because every rule fails on every device, the tenant may simply not report these policies: confirm the policy state before closing this item.",
+   "why": "These settings stop ransomware from spreading and from stealing administrator passwords once it is inside. Without them one infected laptop can reach many others.",
+   "recommendation": "Confirm the policy state, then enable the attack-surface-reduction rules (audit, then block) and LAPS, and turn on Credential Guard.",
+   "owner": "Endpoint Engineering",
+   "target": "60 days",
+   "mitre": "T1021 / T1570 Lateral Movement"
+  },
+  {
+   "severity": "High",
+   "title": "Exploitable vulnerabilities are widespread and aging",
+   "finding": "498 devices carry critical or high CVEs with a known exploit (159 CVEs); on 367 the exposure is older than 30 days and on 118 older than 90 days. 89 devices have exploitable criticals. Main drivers: unpatched Chrome on 111 devices, Teams Classic on 104. Only 1 of 60 servers reports into Defender vulnerability management, so server exposure is largely unmeasured.",
+   "why": "Known exploits are what attackers use to get in. Every month an exposure stays open raises the odds it is used.",
+   "recommendation": "Set patch deadlines (critical exploitable in 14 days), enforce browser auto-update, remove retired software, and onboard servers to vulnerability management.",
+   "owner": "IT Operations",
+   "target": "30 days",
+   "mitre": "T1190 / T1203"
+  },
+  {
+   "severity": "High",
+   "title": "Suspicious activity is detected but never blocked",
+   "finding": "788 of 788 SentinelOne agents run the \"suspicious\" policy in detect-only mode. Of 9 threats in the last 90 days, 8 were on agents that only detect, and 1 was not mitigated. A network-scanning tool (Angry IP Scanner) is installed on 6 endpoints.",
+   "why": "The product can see an attack starting but is told not to stop it, so a real intrusion would only be noticed afterwards.",
+   "recommendation": "Switch the suspicious policy to Protect, starting with servers. Remove or approve any scanning tool, and review unmitigated detections.",
+   "owner": "Security Operations",
+   "target": "14 days",
+   "mitre": "T1046 Network Service Discovery"
+  },
+  {
+   "severity": "High",
+   "title": "Windows security logs are being cleared",
+   "finding": "24 security-log-cleared events were recorded in 1 archived day(s) (12 for event ID 1102 and 12 for event ID 104); 24 have no recorded actor. Windows audit covers 1 of 30 days, so the pattern over the month is not yet known.",
+   "why": "Clearing logs destroys the evidence needed to investigate an attack and makes an attacker's own cleanup look routine.",
+   "recommendation": "Find what clears the logs and stop it; forward logs off the server and alert on event ID 1102 and 104.",
+   "owner": "Security Operations",
+   "target": "14 days",
+   "mitre": "T1070.001 Clear Windows Event Logs"
+  },
+  {
+   "severity": "Medium",
+   "title": "69 agents have not checked in for over a week",
+   "finding": "69 of 788 agents have not been active for more than 7 days and 33 for more than 30 days (laptops 69).",
+   "why": "A device that has gone quiet may be switched off, lost or have its protection removed, and it will not stop an attack while it is silent.",
+   "recommendation": "Review silent agents weekly, remove retired devices and investigate any that are active on the network but silent to the agent.",
+   "owner": "IT Operations",
+   "target": "30 days",
+   "mitre": "T1562.001 Impair Defenses"
+  },
+  {
+   "severity": "Medium",
+   "title": "End-of-life systems and remote-access tool sprawl",
+   "finding": "23 devices run systems past end of support (21 Windows 10, 2 Server 2012 R2); 13 Server 2016 hosts reach the end of extended support on 12 Jan 2027. Splashtop (743 endpoints, 21 servers) and ManageEngine (716 endpoints, 37 servers) are treated as the organization's own tools. A further 14 endpoints run other remote-access tools (VNC 11, TeamViewer 3, PDQ 2).",
+   "why": "Old systems no longer get security fixes, and every extra remote-access tool is another way in that has to be secured.",
+   "recommendation": "Retire or upgrade end-of-life systems, approve one set of remote-access tools and remove the rest.",
+   "owner": "IT Operations",
+   "target": "90 days",
+   "mitre": "T1219 Remote Access Software"
+  },
+  {
+   "severity": "Medium",
+   "title": "Admin portals and tenant sign-ins rely on passwords alone too often",
+   "finding": "Across the 2 days of sign-in data, 34.6% of successful sign-ins (4,732 of 13,659) were single-factor, and 360 sign-ins reached admin portals or tools such as the Azure Portal and Azure CLI. None of the 6 enabled conditional-access policies requires MFA for all users. 24 sign-ins used legacy authentication, which cannot use MFA, and 41 were flagged risky. There are 5 Global Administrators. Whether the admin-portal sign-ins used MFA cannot be joined in the archive, and MFA registration data is not collected.",
+   "why": "A stolen password is the most common way in. Administrator access without a second factor lets an attacker take over the tenant.",
+   "recommendation": "Require MFA for all users and for every admin portal through conditional access, block legacy authentication, and review risky sign-ins.",
+   "owner": "Identity &amp; Access",
+   "target": "30 days",
+   "mitre": "T1078 Valid Accounts"
+  }
+ ],
+ "roadmap": [
+  {
+   "window": "0&ndash;14 days",
+   "actions": "Patch Veeam and isolate backup servers; Switch the suspicious policy to Protect on servers; remove unapproved scanning tools; Find and stop the security-log clearing; alert on event IDs 1102 and 104.",
+   "outcome": "Recovery capability protected; Reconnaissance blocked; Forensic trail restored."
+  },
+  {
+   "window": "15&ndash;30 days",
+   "actions": "Agent or isolate the 167 unprotected devices; Patch deadlines and browser auto-update; onboard servers to vulnerability management; Clean up silent agents; Require MFA for admin portals and all users through conditional access.",
+   "outcome": "No blind spots on the network; Known-exploit exposure closed; Accurate coverage; Credential-only access closed."
+  },
+  {
+   "window": "31&ndash;60 days",
+   "actions": "Confirm and enable the attack-surface-reduction rules, LAPS and Credential Guard.",
+   "outcome": "Ransomware spread and credential theft made much harder."
+  },
+  {
+   "window": "61&ndash;90 days",
+   "actions": "Retire end-of-life systems and standardise remote-access tools.",
+   "outcome": "Smaller attack surface."
+  }
+ ],
+ "strengths": [
+  "787 of 788 SentinelOne agents are connected.",
+  "Confirmed threats are blocked automatically on 788 of 788 agents (Protect mode).",
+  "All 9 threats in the last 90 days are resolved.",
+  "10 protective settings, for example \"Disable WDigest Authentication\", \"Disable SMBv1 server\", \"Turn on Microsoft Defender Firewall\", are compliant on 95% or more of devices.",
+  "Global Administrator accounts are few (5) and cloud-only."
+ ],
+ "methodology": "Findings were derived from Grand River Aseptic Mfg&rsquo;s Fluency / Ingext datalake: endpoint, vulnerability, hardening, identity and conditional-access snapshots, the archived Entra sign-in activity report and the archived Windows server activity report. Evidence window: Resource snapshots 5 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived. Pillar colours and issue severities follow the thresholds in rating_rules.json. Unprotected-device counts match Defender discovery to SentinelOne by hostname, count only active Windows, Linux and Mac devices, and may include a small number of guest devices. MFA registration status and the MFA status of individual admin-portal sign-ins could not be measured. No individual users or hosts are named in this report.",
+ "_review": {
+  "rules_fired": [
+   "B1",
+   "E1",
+   "E3",
+   "P1",
+   "P2",
+   "V1",
+   "D2",
+   "I1",
+   "L1"
+  ],
+  "evidence_gaps": [
+   "10 or more hardening rules fail on every applicable device: the tenant may not report them. Word the finding as 'not confirmed' unless the policy state is verified.",
+   "Per-user MFA registration is not in the resource dumps (admin MFA comes from the sign-in events)",
+   "Log clearing, new services and account changes are event data: see windows_evidence.json (archived WindowsSrv_Activity_Report)",
+   "Windows audit covers 1 of 30 expected days; counts are for the archived days only",
+   "Single-factor status of admin-portal sign-ins is not joint in the archive (apps and auth requirement are separate facets); admin MFA is judged from conditional-access policies and the single-factor share"
+  ],
+  "unresolved_placeholders": [],
+  "note": "Colours and severities are rule-based. Sharpen the wording and check the summary and board ask before rendering."
+ }
+}

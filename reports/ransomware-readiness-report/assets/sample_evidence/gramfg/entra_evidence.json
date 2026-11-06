@@ -1,0 +1,70 @@
+{
+  "gaps": [
+    "Single-factor status of admin-portal sign-ins is not joint in the archive (apps and auth requirement are separate facets); admin MFA is judged from conditional-access policies and the single-factor share"
+  ],
+  "days_covered": 2,
+  "coverage": {
+    "expected_days": 2,
+    "archived_days": 2,
+    "missing_days": 0
+  },
+  "script_versions": 1,
+  "signins": {
+    "events": 19190,
+    "failed": 5531,
+    "interactive": 19190,
+    "mfaRequired": 11609,
+    "singleFactorOk": 4732,
+    "caFailures": 2,
+    "risky": 41,
+    "guests": 538,
+    "legacyAuth": 24,
+    "successful": 13659,
+    "single_factor_share_pct": 34.6
+  },
+  "auth_requirement": {
+    "multiFactorAuthentication": 11609,
+    "singleFactorAuthentication": 7581
+  },
+  "risk_levels": {
+    "medium": 40,
+    "low": 1
+  },
+  "ca_status": {
+    "success": 17520,
+    "notApplied": 1668,
+    "failure": 2
+  },
+  "conditional_access_applied_signins": 17522,
+  "conditional_access_applied_share_pct": 91.3,
+  "user_types": {
+    "member": 18615,
+    "guest": 538,
+    "(not recorded)": 37
+  },
+  "legacy_clients": {
+    "Authenticated SMTP": 24
+  },
+  "admin_portal_signins": {
+    "events": 360,
+    "apps": [
+      "Azure Active Directory PowerShell",
+      "Azure Portal",
+      "Exchange Admin Center",
+      "Microsoft 365 Admin portal",
+      "Microsoft Azure",
+      "Microsoft Azure CLI",
+      "Microsoft Azure PowerShell"
+    ]
+  },
+  "directory_changes": {
+    "events": 11166,
+    "failed": 282,
+    "userChanges": 1430,
+    "groupChanges": 582,
+    "roleChanges": 70,
+    "appChanges": 2,
+    "policyChanges": 12,
+    "passwordEvents": 383
+  }
+}

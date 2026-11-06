@@ -203,6 +203,9 @@ def main(d, out):
         ev["backup_vulnerable"] = {"endpoints": len(vul_hosts), "domain_joined": len(joined),
                                    "workgroup_or_unknown": len(vul_hosts) - len(joined),
                                    "exploitable_now": len(joined) if needs_domain else len(vul_hosts),
+                                   "versions": ", ".join(sorted({a.get("version") for a in apps if BACKUP.search(a.get("name") or "")
+                                                                 and advisory_status(a.get("name"), a.get("version"), adv)[0] == "VULNERABLE"})),
+                                   "cves": ", ".join(sorted({c for x in adv for c in x.get("cves", [])})),
                                    "note": "The advisory applies only to domain-joined servers." if needs_domain else ""}
         ev["backup_domains"] = sorted({(a.get("agentDomain") or "").upper() for a in apps
                                       if BACKUP.search(a.get("name") or "") and a.get("agentDomain")})
@@ -268,6 +271,7 @@ def main(d, out):
             "top_software": [{"software": k, "devices": int(x)} for k, x in exp.groupby("SoftwareName")["DeviceId"].nunique().sort_values(ascending=False).head(8).items()],
             "servers_in_vulnerability_data": int(vul[vul["OSPlatform"].astype(str).str.startswith("WindowsServer")]["DeviceId"].nunique()),
             "servers_in_edr": (ev.get("endpoint") or {}).get("by_type", {}).get("server"),
+            "server_vuln_coverage_pct": round(100 * int(vul[vul["OSPlatform"].astype(str).str.startswith("WindowsServer")]["DeviceId"].nunique()) / max(1, (ev.get("endpoint") or {}).get("by_type", {}).get("server") or 1), 1),
             "servers_onboarded_to_defender": sum(m.get("onboardingStatus") == "Onboarded" and str(m.get("osPlatform")).startswith("WindowsServer") for m in (mac or [])),
             "top_cves": [{"cve": k, "devices": int(x)} for k, x in exp.groupby("CveId")["DeviceId"].nunique().sort_values(ascending=False).head(10).items()],
         }
@@ -285,6 +289,9 @@ def main(d, out):
             "on_detect_only_agent": sum((t.get("agentDetectionInfo") or {}).get("agentMitigationMode") != "protect" for t in thr),
             "ransomware_class": sum(ti(t, "classification") == "Ransomware" for t in thr),
             "by_mitigation": dict(Counter(ti(t, "mitigationStatus") for t in thr)),
+            "unresolved": sum(ti(t, "incidentStatus") not in ("resolved",) for t in thr),
+            "unmitigated_malicious": sum(ti(t, "confidenceLevel") == "malicious" and ti(t, "mitigationStatus") == "not_mitigated" for t in thr),
+            "unmitigated": sum(ti(t, "mitigationStatus") == "not_mitigated" for t in thr),
             "by_confidence": dict(Counter(ti(t, "confidenceLevel") for t in thr)),
             "scanner_named": sum(bool(SCANNER.search(str(ti(t, "threatName") or ""))) for t in thr),
             "top_names": dict(Counter(str(ti(t, "threatName")) for t in thr).most_common(6)),

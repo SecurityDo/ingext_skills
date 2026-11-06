@@ -1,0 +1,782 @@
+{
+  "generated": "2026-11-05",
+  "gaps": [
+    "10 or more hardening rules fail on every applicable device: the tenant may not report them. Word the finding as 'not confirmed' unless the policy state is verified.",
+    "Per-user MFA registration is not in the resource dumps (admin MFA comes from the sign-in events)",
+    "Log clearing, new services and account changes are event data: see windows_evidence.json (archived WindowsSrv_Activity_Report)"
+  ],
+  "sources": {
+    "sentinelOneAgent": 788,
+    "sentinelOneApplication": 25378,
+    "sentinelOneThreat": 9,
+    "msDefenderMachine": 2917,
+    "msDefenderSecureConfig": 111506,
+    "office365User": 4177,
+    "office365ConditionalAccessPolicy": 8,
+    "msDefenderVulnerability": 1542875
+  },
+  "endpoint": {
+    "agents": 788,
+    "connected": 787,
+    "by_type": {
+      "server": 60,
+      "laptop": 708,
+      "desktop": 20
+    },
+    "stale_7d": 69,
+    "stale_30d": 33,
+    "stale_7d_by_type": {
+      "laptop": 69
+    },
+    "not_up_to_date": 15,
+    "pending_uninstall": 1,
+    "detect_only": 0,
+    "suspicious_detect_only": 788,
+    "mitigation_modes": {
+      "protect": 788
+    },
+    "suspicious_modes": {
+      "detect": 788
+    },
+    "os": {
+      "Windows 11 Pro": 706,
+      "Windows Server 2019 Datacenter": 27,
+      "Windows 10 Pro": 21,
+      "Windows Server 2022 Datacenter": 17,
+      "Windows Server 2016 Datacenter": 13,
+      "Windows Server 2012 R2 Standard": 1,
+      "Windows Server 2012 R2 Datacenter": 1,
+      "Windows 11 Home": 1,
+      "Windows Server 2025 Datacenter": 1
+    },
+    "eol_os": {
+      "Windows 10 Pro": 21,
+      "Windows Server 2012 R2 Standard": 1,
+      "Windows Server 2012 R2 Datacenter": 1
+    },
+    "eol_approaching": {
+      "Windows Server 2016 (extended support ends 12 Jan 2027)": 13
+    }
+  },
+  "unprotected": {
+    "defender_onboarded": 723,
+    "can_be_onboarded_raw": 617,
+    "excluded_not_an_endpoint_platform": 51,
+    "excluded_inactive": 307,
+    "not_in_edr_agent_list": 167,
+    "of_which_servers": 5,
+    "of_which_end_of_life": 9,
+    "by_os": {
+      "Windows10": 131,
+      "Windows7": 6,
+      "WindowsServer2022": 1,
+      "Ubuntu": 18,
+      "WindowsServer2019": 1,
+      "WindowsServer2008R2": 1,
+      "Windows11": 7,
+      "WindowsServer2012R2": 2
+    },
+    "note": "Active Windows, Linux and Mac devices Defender can see with no matching EDR agent; phones, embedded and unknown platforms, duplicates and inactive devices are excluded. Matched by short hostname, so a rename can mis-match."
+  },
+  "backup": [
+    {
+      "product": "Veeam Backup & Replication",
+      "version": "12.3.2.3617",
+      "endpoints": 6,
+      "advisory": "VULNERABLE",
+      "detail": "veeam-kb4771: CVE-2025-48983, CVE-2025-48984 (fixed in 12.3.2.4165)"
+    },
+    {
+      "product": "Veeam Backup Transport",
+      "version": "12.3.2.3617",
+      "endpoints": 58,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Installer Service",
+      "version": "12.3.2.3617",
+      "endpoints": 50,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Agent for Microsoft Windows",
+      "version": "6.3.2.1205",
+      "endpoints": 32,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Installer Service",
+      "version": "12.1.2.172",
+      "endpoints": 23,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Backup Transport",
+      "version": "12.1.2.172",
+      "endpoints": 9,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Agent for Microsoft Windows",
+      "version": "6.1.2.134",
+      "endpoints": 7,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam VSS Hardware Provider",
+      "version": "6.3.2.1205",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Agent for Mac Redistributable",
+      "version": "2.3.1.1009",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Backup vPowerNFS",
+      "version": "12.3.0.310",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Agent for Linux Redistributable",
+      "version": "6.3.2.1207",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Agent for Unix Redistributable",
+      "version": "4.6.1.1789",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Nutanix AHV Plug-In for Veeam Backup & Replication",
+      "version": "12.7.1.12",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Proxmox Virtual Environment Plug-In for Veeam Backup & Replication",
+      "version": "12.1.3.217",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Threat Hunter",
+      "version": "12.3.2.3617",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "AWS Plug-In for Veeam Backup & Replication",
+      "version": "12.9.0.281",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Microsoft Azure Plug-In for Veeam Backup & Replication",
+      "version": "12.8.0.293",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Mount Service",
+      "version": "12.3.2.3617",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Distribution Service",
+      "version": "12.3.2.3617",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Plug-ins for Enterprise Applications Redistributable",
+      "version": "12.3.1.1139",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Backup VSS Integration",
+      "version": "12.3.0.310",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Agent for Microsoft Windows Redistributable",
+      "version": "6.3.2.1205",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Kasten Plug-In for Veeam Backup & Replication",
+      "version": "12.1.4.15",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "oVirt KVM Plug-In for Veeam Backup & Replication",
+      "version": "12.6.2.6",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Google Cloud Plug-In for Veeam Backup & Replication",
+      "version": "12.6.1.10",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Microsoft Entra ID Plug-in for Veeam Backup & Replication",
+      "version": "1.1.1.77",
+      "endpoints": 5,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam WAN Accelerator Service",
+      "version": "12.3.2.3617",
+      "endpoints": 4,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Agent for Microsoft Windows",
+      "version": "13.0.2.1102",
+      "endpoints": 4,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Acronis Cyber Protect Home Office",
+      "version": "27.5.40338",
+      "endpoints": 1,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    },
+    {
+      "product": "Veeam Installer Service",
+      "version": "12.1.0.2131",
+      "endpoints": 1,
+      "advisory": "CVE status not verified",
+      "detail": ""
+    }
+  ],
+  "backup_vulnerable": {
+    "endpoints": 6,
+    "domain_joined": 6,
+    "workgroup_or_unknown": 0,
+    "exploitable_now": 6,
+    "versions": "12.3.2.3617",
+    "cves": "CVE-2025-48983, CVE-2025-48984",
+    "note": "The advisory applies only to domain-joined servers."
+  },
+  "backup_domains": [
+    "GRAM",
+    "WORKGROUP"
+  ],
+  "scanner_tools": [
+    {
+      "tool": "Angry IP Scanner",
+      "endpoints": 6
+    }
+  ],
+  "remote_tools": [
+    {
+      "family": "splashtop",
+      "endpoints": 743,
+      "servers": 21,
+      "status": "sanctioned"
+    },
+    {
+      "family": "manageengine",
+      "endpoints": 716,
+      "servers": 37,
+      "status": "sanctioned"
+    },
+    {
+      "family": "vnc",
+      "endpoints": 11,
+      "servers": 0,
+      "status": "other"
+    },
+    {
+      "family": "teamviewer",
+      "endpoints": 3,
+      "servers": 1,
+      "status": "other"
+    },
+    {
+      "family": "pdq",
+      "endpoints": 2,
+      "servers": 2,
+      "status": "other"
+    }
+  ],
+  "remote_other_families": 3,
+  "remote_other_endpoints": 14,
+  "remote_sanctioned_basis": "inferred: tools on 40% or more of agents are treated as the organisation's own",
+  "hardening": [
+    {
+      "configurationName": "Block Adobe Reader from creating child processes",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block executable files from running unless they meet a prevalence, age, or trusted list criterion",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Require LDAP client signing to prevent tampering and protect directory authentication",
+      "configurationImpact": 7,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Ensure LAPS is enabled on every endpoint and server",
+      "configurationImpact": 8,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block use of copied or impersonated system tools",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block untrusted and unsigned processes that run from USB",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block rebooting machine in Safe Mode",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block JavaScript or VBScript from launching downloaded executable content",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block persistence through WMI event subscription",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block execution of potentially obfuscated scripts",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block process creations originating from PSExec and WMI commands",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block executable content from email client and webmail",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block all Office applications from creating child processes",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block abuse of exploited vulnerable signed drivers",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block Win32 API calls from Office macros",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block Office communication application from creating child processes",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block Office applications from injecting code into other processes",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Block Office applications from creating executable content",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Use advanced protection against ransomware",
+      "configurationImpact": 9,
+      "devices": 643,
+      "noncompliant": 643,
+      "pct": 100.0,
+      "possible_reporting_gap": true
+    },
+    {
+      "configurationName": "Turn on Microsoft Defender Credential Guard",
+      "configurationImpact": 8,
+      "devices": 634,
+      "noncompliant": 294,
+      "pct": 46.4,
+      "possible_reporting_gap": false
+    },
+    {
+      "configurationName": "Enable 'Network Protection'",
+      "configurationImpact": 8,
+      "devices": 643,
+      "noncompliant": 35,
+      "pct": 5.4,
+      "possible_reporting_gap": false
+    },
+    {
+      "configurationName": "Set controlled folder access to enabled or audit mode",
+      "configurationImpact": 8,
+      "devices": 643,
+      "noncompliant": 35,
+      "pct": 5.4,
+      "possible_reporting_gap": false
+    },
+    {
+      "configurationName": "Enable Microsoft Defender Antivirus real-time behavior monitoring",
+      "configurationImpact": 5,
+      "devices": 643,
+      "noncompliant": 29,
+      "pct": 4.5,
+      "possible_reporting_gap": false
+    },
+    {
+      "configurationName": "Turn on real-time protection",
+      "configurationImpact": 10,
+      "devices": 643,
+      "noncompliant": 29,
+      "pct": 4.5,
+      "possible_reporting_gap": false
+    },
+    {
+      "configurationName": "Block credential stealing from the Windows local security authority subsystem (lsass.exe)",
+      "configurationImpact": 9,
+      "devices": 12,
+      "noncompliant": 12,
+      "pct": 100.0,
+      "possible_reporting_gap": false
+    }
+  ],
+  "hardening_devices": 1009,
+  "strong_controls": [
+    {
+      "configurationName": "Disable 'WDigest Authentication'",
+      "devices": 643,
+      "compliant": 643,
+      "pct_compliant": 100.0
+    },
+    {
+      "configurationName": "Disable SMBv1 server",
+      "devices": 643,
+      "compliant": 643,
+      "pct_compliant": 100.0
+    },
+    {
+      "configurationName": "Set Microsoft Defender SmartScreen Microsoft Edge site and download checking to block or warn",
+      "devices": 643,
+      "compliant": 643,
+      "pct_compliant": 100.0
+    },
+    {
+      "configurationName": "Set Microsoft Defender SmartScreen app and file checking to block or warn",
+      "devices": 643,
+      "compliant": 643,
+      "pct_compliant": 100.0
+    },
+    {
+      "configurationName": "Disable SMBv1 client driver",
+      "devices": 643,
+      "compliant": 641,
+      "pct_compliant": 99.7
+    },
+    {
+      "configurationName": "Enable cloud-delivered protection",
+      "devices": 643,
+      "compliant": 641,
+      "pct_compliant": 99.7
+    },
+    {
+      "configurationName": "Ensure BitLocker drive compatibility",
+      "devices": 643,
+      "compliant": 641,
+      "pct_compliant": 99.7
+    },
+    {
+      "configurationName": "Turn on Microsoft Defender Firewall",
+      "devices": 643,
+      "compliant": 641,
+      "pct_compliant": 99.7
+    },
+    {
+      "configurationName": "Disable Microsoft Defender Firewall notifications when programs are blocked for Domain profile",
+      "devices": 643,
+      "compliant": 638,
+      "pct_compliant": 99.2
+    },
+    {
+      "configurationName": "Resume BitLocker protection on all drives",
+      "devices": 643,
+      "compliant": 638,
+      "pct_compliant": 99.2
+    }
+  ],
+  "hardening_rules_failing_everywhere": 19,
+  "secure_score": 489,
+  "vulnerabilities": {
+    "rows_total": 1542875,
+    "critical_high_devices": 676,
+    "critical_devices": 663,
+    "older_than_30d_devices": 618,
+    "server_devices": 1,
+    "exploit_available_cves": 159,
+    "exploit_available_devices": 498,
+    "exploit_levels": {
+      "NoExploit": 992394,
+      "ExploitIsVerified": 3117,
+      "ExploitIsPublic": 199,
+      "ExploitIsInKit": 10
+    },
+    "exploitable_older_than_30d_devices": 367,
+    "exploitable_older_than_90d_devices": 118,
+    "exploitable_critical_devices": 89,
+    "top_software": [
+      {
+        "software": "windows_11",
+        "devices": 399
+      },
+      {
+        "software": "chrome",
+        "devices": 111
+      },
+      {
+        "software": "teams_classic",
+        "devices": 104
+      },
+      {
+        "software": "acrobat_reader_dc",
+        "devices": 44
+      },
+      {
+        "software": "manageengine_patch_manager_plus",
+        "devices": 20
+      },
+      {
+        "software": "activemq",
+        "devices": 14
+      },
+      {
+        "software": "android",
+        "devices": 8
+      },
+      {
+        "software": "edge_chromium-based",
+        "devices": 7
+      }
+    ],
+    "servers_in_vulnerability_data": 1,
+    "servers_in_edr": 60,
+    "server_vuln_coverage_pct": 1.7,
+    "servers_onboarded_to_defender": 0,
+    "top_cves": [
+      {
+        "cve": "CVE-2026-96951",
+        "devices": 406
+      },
+      {
+        "cve": "CVE-2026-81963",
+        "devices": 219
+      },
+      {
+        "cve": "CVE-2026-68820",
+        "devices": 132
+      },
+      {
+        "cve": "CVE-2026-87491",
+        "devices": 116
+      },
+      {
+        "cve": "CVE-2026-85046",
+        "devices": 115
+      },
+      {
+        "cve": "CVE-2026-11645",
+        "devices": 111
+      },
+      {
+        "cve": "CVE-2026-5281",
+        "devices": 109
+      },
+      {
+        "cve": "CVE-2026-3910",
+        "devices": 109
+      },
+      {
+        "cve": "CVE-2026-3909",
+        "devices": 109
+      },
+      {
+        "cve": "CVE-2023-4863",
+        "devices": 109
+      }
+    ]
+  },
+  "threats": {
+    "in_dump": 9,
+    "window_days": 90,
+    "total": 9,
+    "by_classification": {
+      "Ransomware": 5,
+      "Malware": 4
+    },
+    "by_verdict": {
+      "false_positive": 8,
+      "suspicious": 1
+    },
+    "by_incident_status": {
+      "resolved": 9
+    },
+    "on_detect_only_agent": 8,
+    "ransomware_class": 5,
+    "by_mitigation": {
+      "marked_as_benign": 8,
+      "not_mitigated": 1
+    },
+    "unresolved": 0,
+    "unmitigated_malicious": 0,
+    "unmitigated": 1,
+    "by_confidence": {
+      "suspicious": 8,
+      "malicious": 1
+    },
+    "scanner_named": 0,
+    "top_names": {
+      "updater.exe": 1,
+      "dcagentservice.exe": 1,
+      "zen.exe": 1,
+      "dcconfig.exe": 1,
+      "SrTasks.exe": 1,
+      "DocuWare.DesktopService.exe": 1
+    }
+  },
+  "identity": {
+    "users": 4177,
+    "enabled": 1761,
+    "guests": 499,
+    "synced_from_ad": 0,
+    "password_never_expires": 161,
+    "global_admins": 5,
+    "global_admins_enabled": 5,
+    "global_admins_cloud_only": 5,
+    "admin_role_holders": 15,
+    "admin_roles": {
+      "Azure AD Joined Device Local Administrator": 8,
+      "SharePoint Administrator": 7,
+      "User Administrator": 6,
+      "Global Administrator": 5,
+      "Authentication Administrator": 3,
+      "Exchange Recipient Administrator": 3,
+      "Purview Workload Content Administrator": 2,
+      "Exchange Administrator": 2,
+      "Helpdesk Administrator": 2,
+      "Teams Administrator": 1,
+      "Power Platform Administrator": 1
+    }
+  },
+  "conditional_access": {
+    "policies": 8,
+    "enabled": 6,
+    "mfa_all_users": 0,
+    "mfa_policies": 4,
+    "legacy_auth_block": 1,
+    "report_only": 2
+  }
+}

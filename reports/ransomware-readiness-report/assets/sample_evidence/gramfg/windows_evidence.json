@@ -1,0 +1,53 @@
+{
+  "gaps": [
+    "Windows audit covers 1 of 30 expected days; counts are for the archived days only"
+  ],
+  "days_covered": 1,
+  "coverage": {
+    "expected_days": 30,
+    "archived_days": 1,
+    "missing_days": 29
+  },
+  "totals": {
+    "events": 500788,
+    "logsCleared": 24,
+    "auditPolicyChanges": 7232,
+    "servicesInstalled": 47,
+    "tasksCreated": 4,
+    "accountCreated": 0,
+    "accountDeleted": 0,
+    "accountDisabled": 0,
+    "accountEnabled": 0,
+    "groupAdds": 0,
+    "passwordChanges": 0,
+    "lockouts": 0,
+    "logonsOk": 39121,
+    "logonsFailed": 57,
+    "ntlmFailures": 176,
+    "kerberosFailures": 0,
+    "explicitCreds": 36,
+    "privLogons": 0,
+    "rdpLogons": 6,
+    "networkLogons": 38329,
+    "powershellScripts": 3,
+    "processCreations": 3
+  },
+  "log_clearing": {
+    "events": 24,
+    "days_with_clears": 1,
+    "by_event_id": {
+      "104": 12,
+      "1102": 12
+    },
+    "clears_with_no_recorded_actor": 24
+  },
+  "persistence": {
+    "distinct_items": 44,
+    "services": 42,
+    "tasks": 2,
+    "suspect_names": []
+  },
+  "failed_logon_sources": {
+    "Probe": 19
+  }
+}

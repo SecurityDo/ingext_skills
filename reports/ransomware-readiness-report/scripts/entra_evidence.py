@@ -98,6 +98,7 @@ def main(paths, out, expected=30):
         ev["gaps"].append("The archived script changed inside the window; counts are summed but days may not be strictly comparable")
     ev["signins"] = {m: sign[m] for m in SIGN}
     ok = sign["events"] - sign["failed"]
+    ev["signins"]["successful"] = ok
     ev["signins"]["single_factor_share_pct"] = round(100 * sign["singleFactorOk"] / ok, 1) if ok else None
     ev["auth_requirement"] = dict(auth)
     ev["risk_levels"] = {k: v for k, v in risk.items() if k not in ("none", "(not recorded)", "", "hidden")}
