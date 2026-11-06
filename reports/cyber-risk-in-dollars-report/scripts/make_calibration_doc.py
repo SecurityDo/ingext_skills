@@ -39,7 +39,8 @@ L = ["# Calibration rules", "", "Generated from `assets/calibration_rules.json` 
      f"Loss per event is a reference organization of {R['reference_users']:,} accounts, scaled by (accounts / {R['reference_users']:,}) to the power {R['scale_exponent']}, limited to "
      f"{R['scale_clamp'][0]} to {R['scale_clamp'][1]} times. When revenue or a daily downtime cost is supplied, business interruption is days of disruption "
      f"({R['downtime']['days']['min']}, {R['downtime']['days']['ml']}, {R['downtime']['days']['max']}) times the daily cost (times {R['downtime']['daily_factor']['min']}, {R['downtime']['daily_factor']['ml']}, {R['downtime']['daily_factor']['max']}), "
-     f"with the daily cost taken as {round(R['downtime']['daily_from_revenue'] * 100)}% of daily revenue when only revenue is given, and the extortion maximum is {round(R['ransom']['revenue_share'] * 100)}% of revenue between {m(R['ransom']['floor'])} and {m(R['ransom']['cap'])}.", ""]
+     f"with the daily cost taken as {round(R['downtime']['daily_from_revenue'] * 100)}% of daily revenue when only revenue is given, and the extortion maximum is {round(R['ransom']['revenue_share'] * 100)}% of revenue between {m(R['ransom']['floor'])} and {m(R['ransom']['cap'])}. "
+     f"As in the Fluency footprint tools, loss per event is limited to {round(R['revenue_cap']['ml_share'] * 100)}% of revenue (most likely) and {round(R['revenue_cap']['max_share'] * 100)}% (maximum) when revenue is supplied.", ""]
 for sid, sc in R["scenarios"].items():
     L += [f"## {html.unescape(sc['name'])}", "", f"Baseline {sc['baseline_lef']} events a year; weight cap {sc['weight_cap']}.", "", "| Evidence factor | Adds | When |", "|---|---|---|"]
     for f in sc["factors"]:

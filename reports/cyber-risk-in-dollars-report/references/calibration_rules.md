@@ -4,7 +4,7 @@ Generated from `assets/calibration_rules.json` by `scripts/make_calibration_doc.
 
 Frequency (events a year) is `baseline x (1 + sum of the weights of the factors that apply)`, with the sum capped per scenario. Minimum is the most likely value divided by 3; maximum is the most likely value times 3, widened by 10% for every input the telemetry cannot measure (capped at 60%). Missing data widens the range and is never treated as zero risk. All weights and loss figures are Fluency proposals for a mid-market organization, not measurements.
 
-Loss per event is a reference organization of 1,700 accounts, scaled by (accounts / 1,700) to the power 0.5, limited to 0.3 to 3.0 times. When revenue or a daily downtime cost is supplied, business interruption is days of disruption (2, 7, 21) times the daily cost (times 0.6, 1.0, 1.6), with the daily cost taken as 50% of daily revenue when only revenue is given, and the extortion maximum is 2% of revenue between $250,000 and $5,000,000.
+Loss per event is a reference organization of 1,700 accounts, scaled by (accounts / 1,700) to the power 0.5, limited to 0.3 to 3.0 times. When revenue or a daily downtime cost is supplied, business interruption is days of disruption (2, 7, 21) times the daily cost (times 0.6, 1.0, 1.6), with the daily cost taken as 50% of daily revenue when only revenue is given, and the extortion maximum is 2% of revenue between $250,000 and $5,000,000. As in the Fluency footprint tools, loss per event is limited to 5% of revenue (most likely) and 15% (maximum) when revenue is supplied.
 
 ## Ransomware & operational extortion
 

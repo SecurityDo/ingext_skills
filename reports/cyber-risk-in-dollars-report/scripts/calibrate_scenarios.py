@@ -157,6 +157,17 @@ def main():
             else:
                 vals = {k: ref[k] * scale for k in ("min", "ml", "max")}
             loss.append({"name": c["name"], **{k: rnd(v) for k, v in vals.items()}})
+        if revenue and R.get("revenue_cap"):
+            rc = R["revenue_cap"]
+            for key, share in (("ml", rc["ml_share"]), ("max", rc["max_share"])):
+                tot = sum(c[key] for c in loss)
+                lim = revenue * share
+                if tot > lim and tot > 0:
+                    for c in loss:
+                        c[key] = rnd(c[key] * lim / tot)
+                    review["defaults_used"].append(f"{sc['name']}: {key} loss per event limited to {int(share*100)}% of revenue")
+            for c in loss:
+                c["ml"] = min(c["ml"], c["max"]); c["min"] = min(c["min"], c["ml"])
         top = sorted(applied, key=lambda x: -x["weight"])[:3]
         why = ("the most likely value rises above the baseline because of " + ", ".join(x["label"] for x in top)) if top else "no evidence raises it above the baseline"
         cal = (f"Baseline frequency for a mid-market organization is {sc['baseline_lef']} events a year; {why}. "
