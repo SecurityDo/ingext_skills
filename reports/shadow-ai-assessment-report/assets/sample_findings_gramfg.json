@@ -1,0 +1,284 @@
+{
+ "tenant": "Grand River Aseptic Mfg",
+ "grid_account": "",
+ "assessment_date": "2026-11-06",
+ "prepared_for": "Chief Information Security Officer",
+ "sanctioned_list_provided": false,
+ "posture": "Moderate",
+ "posture_reason": "Highest assessed path risk is medium across 3 of 5 paths; 2 paths could not be assessed with the evidence available.",
+ "executive_summary": [
+  "Grand River Aseptic Mfg uses generative AI. 6 AI services are connected to Entra and 88 users have granted them access.",
+  "No local model runners were found in the endpoint software inventory.",
+  "Network traffic to AI services and data-exposure signals could not be assessed from the evidence available, so the posture reflects only the paths that were measured."
+ ],
+ "kpis": {
+  "ai_services": 6,
+  "users": 88,
+  "hosts": 9,
+  "upload_volume": "n/a",
+  "high_risk_apps": 0,
+  "local_llm_hosts": 0
+ },
+ "paths": [
+  {
+   "id": "saas",
+   "status": "assessed",
+   "risk": "medium",
+   "headline": "3 third-party AI services found in Entra (ChatGPT / OpenAI, Otter.ai, Read AI); 88 users have granted access.",
+   "sources": [
+    "office365Application",
+    "office365InstalledApp",
+    "office365User"
+   ],
+   "metrics": [
+    {
+     "label": "AI services",
+     "value": "4"
+    },
+    {
+     "label": "users with a grant",
+     "value": "88"
+    },
+    {
+     "label": "unverified publishers",
+     "value": "1"
+    }
+   ]
+  },
+  {
+   "id": "network",
+   "status": "no_data",
+   "risk": "none",
+   "headline": "Not assessed: no archived report carries proxy, DNS or firewall traffic to AI services.",
+   "sources": [],
+   "metrics": []
+  },
+  {
+   "id": "endpoint",
+   "status": "assessed",
+   "risk": "low",
+   "headline": "No local model runners; AI desktop apps (Grammarly, Notion AI) on up to 8 hosts of 788 inventoried hosts.",
+   "sources": [
+    "sentinelOneApplication"
+   ],
+   "metrics": [
+    {
+     "label": "AI desktop services",
+     "value": "2"
+    },
+    {
+     "label": "local LLM hosts",
+     "value": "0"
+    }
+   ]
+  },
+  {
+   "id": "data",
+   "status": "no_data",
+   "risk": "none",
+   "headline": "Not assessed: no DLP source on this tenant.",
+   "sources": [],
+   "metrics": []
+  },
+  {
+   "id": "detection",
+   "status": "assessed",
+   "risk": "medium",
+   "headline": "0 enabled rule(s) specific to AI use; 2 generic consent rule(s).",
+   "sources": [
+    "eventwatch_rule_list"
+   ],
+   "metrics": [
+    {
+     "label": "AI-specific rules",
+     "value": "0"
+    },
+    {
+     "label": "consent rules",
+     "value": "2"
+    }
+   ]
+  }
+ ],
+ "services": [
+  {
+   "service": "ChatGPT / OpenAI",
+   "category": "Generative chat",
+   "tier": "T2",
+   "seen_in": [
+    "saas"
+   ],
+   "users": 83,
+   "hosts": 0,
+   "volume": "n/a",
+   "status": "unverified",
+   "risk": "medium"
+  },
+  {
+   "service": "Microsoft Copilot",
+   "category": "Generative chat",
+   "tier": "T3",
+   "seen_in": [
+    "saas",
+    "endpoint"
+   ],
+   "users": 0,
+   "hosts": 595,
+   "volume": "n/a",
+   "status": "unverified",
+   "risk": "none"
+  },
+  {
+   "service": "Otter.ai",
+   "category": "Meeting note-taker",
+   "tier": "T1",
+   "seen_in": [
+    "saas"
+   ],
+   "users": 5,
+   "hosts": 0,
+   "volume": "n/a",
+   "status": "unverified",
+   "risk": "medium"
+  },
+  {
+   "service": "Read AI",
+   "category": "Meeting note-taker",
+   "tier": "T1",
+   "seen_in": [
+    "saas"
+   ],
+   "users": 0,
+   "hosts": 0,
+   "volume": "n/a",
+   "status": "unverified",
+   "risk": "medium"
+  },
+  {
+   "service": "Grammarly",
+   "category": "Desktop client",
+   "tier": "-",
+   "seen_in": [
+    "endpoint"
+   ],
+   "users": 0,
+   "hosts": 8,
+   "volume": "n/a",
+   "status": "unverified",
+   "risk": "low"
+  },
+  {
+   "service": "Notion AI",
+   "category": "Desktop client",
+   "tier": "-",
+   "seen_in": [
+    "endpoint"
+   ],
+   "users": 0,
+   "hosts": 1,
+   "volume": "n/a",
+   "status": "unverified",
+   "risk": "low"
+  }
+ ],
+ "findings": [
+  {
+   "severity": "medium",
+   "path": "saas",
+   "title": "Consumer-grade AI services connected to the tenant",
+   "detail": "Otter.ai (Tier 1: may keep or train on prompts) have been granted access by 5 users without a verified publisher.",
+   "evidence": "Entra applications and user grants.",
+   "mitre": "T1528"
+  },
+  {
+   "severity": "medium",
+   "path": "saas",
+   "title": "Widely used AI service with no approved-AI list",
+   "detail": "ChatGPT / OpenAI (83 users) is connected for users across the organization. No approved-AI list was supplied, so the service is reported as unverified rather than unsanctioned.",
+   "evidence": "Entra user grants.",
+   "mitre": ""
+  },
+  {
+   "severity": "low",
+   "path": "endpoint",
+   "title": "AI desktop applications installed",
+   "detail": "Grammarly (8 hosts), Notion AI (1 host) are installed, the most common on 8 hosts.",
+   "evidence": "Endpoint software inventory.",
+   "mitre": ""
+  },
+  {
+   "severity": "medium",
+   "path": "detection",
+   "title": "No detection is specific to AI use",
+   "detail": "2 generic consent rule(s) exist, but nothing alerts on a new AI service, an AI-classified consent or a local model runner.",
+   "evidence": "EventWatch rule catalog.",
+   "mitre": ""
+  }
+ ],
+ "recommendations": [
+  {
+   "horizon": "Immediate",
+   "title": "Review and revoke unverified AI grants",
+   "detail": "Confirm the business need for each Tier 1 service; revoke the grant and require admin consent for new AI apps.",
+   "owner": "M365 / IAM admin"
+  },
+  {
+   "horizon": "30 days",
+   "title": "Publish an approved-AI list",
+   "detail": "Record which AI services are approved, at which tier and for which data, so use can be reported as sanctioned or not.",
+   "owner": "CISO / Legal"
+  },
+  {
+   "horizon": "90 days",
+   "title": "Add AI desktop apps to the software policy",
+   "detail": "State which AI clients are approved; remove the rest through the endpoint tool.",
+   "owner": "Endpoint team"
+  },
+  {
+   "horizon": "30 days",
+   "title": "Enable the proposed AI detections",
+   "detail": "Add the detections listed in this report so new AI adoption is seen as it happens.",
+   "owner": "Fluency SOC"
+  }
+ ],
+ "detections_to_add": [
+  {
+   "name": "New OAuth consent to an AI-classified app",
+   "logic": "Office365 'Consent to application' where the target app matches the AI catalog",
+   "path": "saas"
+  },
+  {
+   "name": "Local LLM runner installed",
+   "logic": "Software inventory delta where a name matches Ollama, LM Studio, GPT4All, Jan, llama.cpp, koboldcpp, text-generation-webui or LocalAI",
+   "path": "endpoint"
+  }
+ ],
+ "coverage_gaps": [
+  "Granted permission names are not in the application dump for some AI apps (only ids): high-risk scope checks cover apps whose permissions are named.",
+  "Per-user grants are matched by application name; grant scopes and consent time are not in the user dump.",
+  "Network egress (proxy, DNS, firewall) to AI services is not assessed: no archived report carries it.",
+  "Data exposure (DLP matches coinciding with AI use) is not assessed: no DLP source; bulk downloads are only context."
+ ],
+ "evidence": [
+  {
+   "source": "office365Application",
+   "reference": "resource dump",
+   "note": ""
+  },
+  {
+   "source": "office365InstalledApp",
+   "reference": "resource dump",
+   "note": ""
+  },
+  {
+   "source": "office365User",
+   "reference": "resource dump",
+   "note": ""
+  },
+  {
+   "source": "sentinelOneApplication",
+   "reference": "resource dump",
+   "note": ""
+  }
+ ]
+}

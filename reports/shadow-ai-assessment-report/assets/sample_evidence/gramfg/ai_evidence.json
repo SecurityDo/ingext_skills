@@ -1,0 +1,141 @@
+{
+ "sanctioned_list_provided": false,
+ "saas": {
+  "status": "assessed",
+  "services": [
+   {
+    "service": "ChatGPT / OpenAI",
+    "category": "Generative chat",
+    "tier": "T2",
+    "first_party": false,
+    "registered_apps": 5,
+    "service_principals": 3,
+    "verified": 3,
+    "unverified": 0,
+    "tenant_owned": 5,
+    "users": 83,
+    "scopes_unresolved": 2,
+    "high_risk_scopes": [],
+    "content_scope": false,
+    "offline_access": false,
+    "status": "unverified",
+    "persistent_content_access": false
+   },
+   {
+    "service": "Microsoft Copilot",
+    "category": "Generative chat",
+    "tier": "T3",
+    "first_party": true,
+    "registered_apps": 31,
+    "service_principals": 22,
+    "verified": 1,
+    "unverified": 0,
+    "tenant_owned": 31,
+    "users": 0,
+    "scopes_unresolved": 0,
+    "high_risk_scopes": [],
+    "content_scope": false,
+    "offline_access": false,
+    "status": "unverified",
+    "persistent_content_access": false
+   },
+   {
+    "service": "Otter.ai",
+    "category": "Meeting note-taker",
+    "tier": "T1",
+    "first_party": false,
+    "registered_apps": 0,
+    "service_principals": 1,
+    "verified": 0,
+    "unverified": 1,
+    "tenant_owned": 0,
+    "users": 5,
+    "scopes_unresolved": 0,
+    "high_risk_scopes": [],
+    "content_scope": false,
+    "offline_access": false,
+    "status": "unverified",
+    "persistent_content_access": false
+   },
+   {
+    "service": "Read AI",
+    "category": "Meeting note-taker",
+    "tier": "T1",
+    "first_party": false,
+    "registered_apps": 0,
+    "service_principals": 1,
+    "verified": 1,
+    "unverified": 0,
+    "tenant_owned": 0,
+    "users": 0,
+    "scopes_unresolved": 0,
+    "high_risk_scopes": [],
+    "content_scope": false,
+    "offline_access": false,
+    "status": "unverified",
+    "persistent_content_access": false
+   }
+  ],
+  "users_with_ai_grant": 88,
+  "ai_services": 4,
+  "users_total": 4179,
+  "registered_ai_apps": 36,
+  "ai_service_principals": 27,
+  "unverified_third_party": 1,
+  "persistent_content_access_apps": 0,
+  "t1_services": 2,
+  "scopes_unresolved": 2
+ },
+ "endpoint": {
+  "status": "assessed",
+  "hosts_with_inventory": 788,
+  "ai_desktop": [
+   {
+    "service": "Microsoft Copilot",
+    "hosts": 595
+   },
+   {
+    "service": "Grammarly",
+    "hosts": 8
+   },
+   {
+    "service": "Notion AI",
+    "hosts": 1
+   }
+  ],
+  "local_runners": [],
+  "hosts_with_ai": 9,
+  "local_llm_hosts": 0
+ },
+ "network": {
+  "status": "no_data"
+ },
+ "data": {
+  "status": "no_data"
+ },
+ "detection": {
+  "status": "assessed",
+  "rules_checked": 4,
+  "relevant_rules": [
+   "O365_AzureAD_Consent_To_Application",
+   "O365_AzureAD_Consent_To_Application_Admin"
+  ],
+  "ai_specific": [],
+  "consent_rules": [
+   "O365_AzureAD_Consent_To_Application",
+   "O365_AzureAD_Consent_To_Application_Admin"
+  ]
+ },
+ "gaps": [
+  "Granted permission names are not in the application dump for some AI apps (only ids): high-risk scope checks cover apps whose permissions are named.",
+  "Per-user grants are matched by application name; grant scopes and consent time are not in the user dump.",
+  "Network egress (proxy, DNS, firewall) to AI services is not assessed: no archived report carries it.",
+  "Data exposure (DLP matches coinciding with AI use) is not assessed: no DLP source; bulk downloads are only context."
+ ],
+ "sources": [
+  "office365Application",
+  "office365InstalledApp",
+  "office365User",
+  "sentinelOneApplication"
+ ]
+}
