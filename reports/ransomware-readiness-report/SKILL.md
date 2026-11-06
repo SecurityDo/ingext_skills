@@ -91,7 +91,7 @@ reported.
    the evidence gaps and any unfilled placeholder.
 7. **Review the draft.** Sharpen the wording where the data needs it (plain language, no jargon, board-safe, no individual
    names), check the summary and board ask, and add what the rules cannot know. If an issue or colour must differ from the
-   rules, say why in the methodology. `assets/sample_evidence/gramfg/` holds a worked evidence set to compare with.
+   rules, say why in the methodology. `assets/sample_evidence/sample/` holds a worked evidence set to compare with.
 8. **Write `findings.json`**: the reviewed draft without the `_review` block, in the shape of
    `assets/sample_findings_acme.json`. Fields: `tenant`, `assessment_date`
    (YYYY-MM-DD), `evidence_window` (built from the `coverage` and `sources` fields), `kpi_label`, `kpi_value`, `summary_headline`, `summary`, `board_ask`,

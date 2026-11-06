@@ -3,7 +3,7 @@
 
   render_report.py scenarios.json [OUT_DIR] [--date DDMonYY] [--no-pdf] [--iterations N]
 
-scenarios.json is the output of calibrate_scenarios.py (schema: assets/sample_scenarios_gramfg.json). Per scenario the
+scenarios.json is the output of calibrate_scenarios.py (schema: assets/sample_scenarios.json). Per scenario the
 loss event frequency (events a year) and each loss component are min / most likely / max ranges; the simulation samples
 PERT distributions, draws a Poisson event count per simulated year and sums the losses. It runs the current state and the
 state after the recommended actions. Text fields may use the tokens {TENANT} {ALE} {P90} {P95} {TALE} {SAVED} {TOP_NAME}

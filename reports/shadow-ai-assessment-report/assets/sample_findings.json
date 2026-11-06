@@ -1,5 +1,5 @@
 {
- "tenant": "Grand River Aseptic Mfg",
+ "tenant": "Example Manufacturing",
  "grid_account": "",
  "assessment_date": "2026-11-06",
  "prepared_for": "Chief Information Security Officer",
@@ -7,7 +7,7 @@
  "posture": "Moderate",
  "posture_reason": "Highest assessed path risk is medium across 3 of 5 paths; 2 paths could not be assessed with the evidence available.",
  "executive_summary": [
-  "Grand River Aseptic Mfg uses generative AI. 6 AI services are connected to Entra and 88 users have granted them access.",
+  "Example Manufacturing uses generative AI. 6 AI services are connected to Entra and 88 users have granted them access.",
   "No local model runners were found in the endpoint software inventory.",
   "Network traffic to AI services and data-exposure signals could not be assessed from the evidence available, so the posture reflects only the paths that were measured."
  ],

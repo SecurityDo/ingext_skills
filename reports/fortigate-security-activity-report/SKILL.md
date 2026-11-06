@@ -33,7 +33,7 @@ see `references/archive_format.md`, section "Producing the archive").
 
 | Input | Rule |
 |---|---|
-| Connector | The MCP connector the user names (for example Conekt). Use its tools directly. |
+| Connector | The MCP connector the user names (for example the tenant's own MCP connector). Use its tools directly. |
 | Tenant | One account. Call `list_accounts` and match the user's name; stop if ambiguous. Never merge tenants. |
 | Period | A calendar month by default (the last full month if none is named). At most 92 days per download; for a quarter, download month by month and pass every file to the script. |
 | Report name | `Fortigate_Security_Activity_Report` unless the user's tenant uses another name. |
@@ -59,7 +59,7 @@ download is too large, download 10 to 15 days at a time and pass every file to t
 
 ```bash
 python3 scripts/build_report.py --archive ARCHIVE1.json [ARCHIVE2.json ...] \
-  --from 2026-10-01 --to 2026-10-31 --tenant "Acme" --site Conekt \
+  --from 2026-10-01 --to 2026-10-31 --tenant "Acme" --site <site> \
   --out WORKDIR/report.html --csv WORKDIR/fortigate.csv --summary-json WORKDIR/fortigate_summary.json [--no-actors]
 ```
 

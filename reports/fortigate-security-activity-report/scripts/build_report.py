@@ -2,7 +2,7 @@
 """Build the FortiGate Security Activity report from the scheduled-report ARCHIVE only (HTML + CSV + summary JSON).
 
   build_report.py --archive day1.json [day2.json ...] --out report.html [--csv report.csv] [--summary-json s.json]
-                  [--from YYYY-MM-DD --to YYYY-MM-DD] [--tenant NAME --site Conekt] [--top 10] [--no-actors]
+                  [--from YYYY-MM-DD --to YYYY-MM-DD] [--tenant NAME --site NAME] [--top 10] [--no-actors]
 
 Each --archive file is the saved result of download_report_archive (days[] of {entry, result}); several files and
 several days per file are merged. This script never queries a tenant. Rules: the per-day trend rows are summed; the

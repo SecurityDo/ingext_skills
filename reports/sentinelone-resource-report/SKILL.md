@@ -46,7 +46,7 @@ A run has three parts:
 
 | Input | Rule |
 |---|---|
-| Connector | The MCP connector the user names (for example Conekt). Use its tools directly. |
+| Connector | The MCP connector the user names (for example the tenant's own MCP connector). Use its tools directly. |
 | Tenant | One account. Call `list_accounts` and match the user's name; stop if ambiguous. Never merge tenants. |
 | Period | The last few days (for "current state") or a month; the report shows the latest day in the period. At most 92 days per download. |
 | Report name | `SentinelOne_Resource_Report` unless the tenant uses another name. |

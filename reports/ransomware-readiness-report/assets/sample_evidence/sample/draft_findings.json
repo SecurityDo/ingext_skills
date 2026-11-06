@@ -1,5 +1,5 @@
 {
- "tenant": "Grand River",
+ "tenant": "Example Manufacturing",
  "assessment_date": "2026-11-06",
  "evidence_window": "Resource snapshots 6 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived",
  "overall_rating": "Elevated Risk",
@@ -171,7 +171,7 @@
   "10 protective settings, for example \"Disable WDigest Authentication\", \"Disable SMBv1 server\", \"Turn on Microsoft Defender Firewall\", are compliant on 95% or more of devices.",
   "Global Administrator accounts are few (5) and cloud-only."
  ],
- "methodology": "Findings were derived from Grand River&rsquo;s Fluency / Ingext datalake: endpoint, vulnerability, hardening, identity and conditional-access snapshots, the archived Entra sign-in activity report and the archived Windows server activity report. Evidence window: Resource snapshots 6 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived. Pillar colours and issue severities follow the thresholds in rating_rules.json. Unprotected-device counts match Defender discovery to the EDR agent inventory (SentinelOne or CrowdStrike) by hostname, count only active Windows, Linux and Mac devices, and may include a small number of guest devices. Recovery ability is inferred from backup products and versions, not proven by restore tests. Conditional access is evaluated from the policy definitions (scope, exclusions, grant controls), not from per-user MFA registration, and excluded groups are not expanded into people. MFA registration status and the MFA status of individual admin-portal sign-ins could not be measured. No individual users or hosts are named in this report.",
+ "methodology": "Findings were derived from Example Manufacturing&rsquo;s Fluency / Ingext datalake: endpoint, vulnerability, hardening, identity and conditional-access snapshots, the archived Entra sign-in activity report and the archived Windows server activity report. Evidence window: Resource snapshots 6 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived. Pillar colours and issue severities follow the thresholds in rating_rules.json. Unprotected-device counts match Defender discovery to the EDR agent inventory (SentinelOne or CrowdStrike) by hostname, count only active Windows, Linux and Mac devices, and may include a small number of guest devices. Recovery ability is inferred from backup products and versions, not proven by restore tests. Conditional access is evaluated from the policy definitions (scope, exclusions, grant controls), not from per-user MFA registration, and excluded groups are not expanded into people. MFA registration status and the MFA status of individual admin-portal sign-ins could not be measured. No individual users or hosts are named in this report.",
  "_review": {
   "rules_fired": [
    "B1",

@@ -5,7 +5,7 @@ Four lanes (SOC Manager, Administrator, Operator, Investigator) plus product pos
 from files in --evidence-dir; nothing is typed in by hand. A missing file is shown as "not collected",
 never as zero or healthy.
 
-  build_report.py --evidence-dir DIR --out sitrep.html [--json sitrep.json] --site Conekt --days 7 [--as-of ISO]
+  build_report.py --evidence-dir DIR --out sitrep.html [--json sitrep.json] --site NAME --days 7 [--as-of ISO]
 
 Layout of DIR:
   accounts.json            list_accounts result: {"entries": [{"name", "displayName"}]}

@@ -1,5 +1,5 @@
 {
- "tenant": "gramfg",
+ "tenant": "example",
  "assessment_date": "2026-11-06",
  "evidence_window": "Resource snapshots 6 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived",
  "headline": "{TENANT} faces about {ALE} of expected cyber loss a year, and a bad year could exceed {P90}",

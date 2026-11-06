@@ -38,7 +38,7 @@ A backfill cannot reconstruct a past state: it records today's directory under t
 
 | Input | Rule |
 |---|---|
-| Connector | The MCP connector the user names (for example Conekt). Use its tools directly. |
+| Connector | The MCP connector the user names (for example the tenant's own MCP connector). Use its tools directly. |
 | Tenant | One account. Call `list_accounts` and match the user's name; stop if ambiguous. Never merge tenants. |
 | Period | A calendar month by default (last full month if none is named); for "current state" use the last few days. At most 92 days per download. |
 | Report name | `Office365_Resource_Inventory_Report` unless the tenant uses another name. |
@@ -60,7 +60,7 @@ do not print it or copy numbers by hand.
 
 ```bash
 python3 scripts/build_report.py --archive ARCHIVE1.json [ARCHIVE2.json ...] \
-  --from 2026-10-01 --to 2026-10-31 --tenant "Acme" --site Conekt \
+  --from 2026-10-01 --to 2026-10-31 --tenant "Acme" --site <site> \
   --out WORKDIR/report.html --interactive WORKDIR/report_interactive.html \
   --csv WORKDIR/users_no_mfa.csv --summary-json WORKDIR/summary.json [--top 50] [--no-actors]
 ```

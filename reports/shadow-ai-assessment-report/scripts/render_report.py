@@ -4,7 +4,7 @@
   render_report.py findings.json [OUT_DIR] [--date DDMonYY] [--no-pdf]
 
 Writes Shadow_AI_Assessment_<Tenant>_<DDMonYY>.html and .pdf. The layout is fixed; findings.json supplies the words and
-numbers (shape of assets/sample_findings_gramfg.json, the original skill's schema). Posture is recomputed from the path
+numbers (shape of assets/sample_findings.json, the original skill's schema). Posture is recomputed from the path
 risks (rating_rules.json); a mismatch is reported. Text fields are HTML: escape & < > as &amp; &lt; &gt;.
 """
 import argparse, datetime, json, os, re, sys

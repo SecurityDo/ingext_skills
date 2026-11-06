@@ -37,7 +37,7 @@ Exchange activity, inbox rules, OAuth consents and a geolocated source-IP map.
 |---|---|---|
 | `username` | UPN / login of the mailbox | `user@contoso.com` |
 | `from` / `to` | Window as **epoch milliseconds** | `1773862340254` |
-| connector | Which Ingext/Fluency MCP connector (tenant) | e.g. the Anico connector |
+| connector | Which Ingext/Fluency MCP connector (tenant) | e.g. the tenant's own connector |
 
 `username` is required — if it's missing, use `AskUserQuestion` to collect it. Match `username`
 **case-insensitively** — the stored `UserId` casing often differs from what the user types.

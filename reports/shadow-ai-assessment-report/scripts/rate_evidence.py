@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn ai_evidence.json into a draft findings.json (paths, posture, services, findings, recommendations).
 
-  rate_evidence.py evidence.json --tenant "Grand River Aseptic" --date 2026-11-06 [--out draft_findings.json]
+  rate_evidence.py evidence.json --tenant "Example Manufacturing" --date 2026-11-06 [--out draft_findings.json]
 
 Risk levels and posture come only from assets/rating_rules.json and the original skill's scoring, so the same evidence
 always gives the same rating. Board-safe: counts and service names only, never users, hosts or IPs.

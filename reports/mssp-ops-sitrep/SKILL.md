@@ -48,7 +48,7 @@ Run the accounts in parallel. An account whose search fails is left out and show
 
 ```bash
 python3 scripts/build_report.py --evidence-dir WORKDIR --out WORKDIR/sitrep.html \
-  --json WORKDIR/sitrep.json --site Conekt --days 7 --as-of 2026-10-27T00:00:00Z
+  --json WORKDIR/sitrep.json --site <site> --days 7 --as-of 2026-10-27T00:00:00Z
 ```
 
 `--as-of` is the end of the window; it fixes ticket ages. The script prints the totals and warns when an
