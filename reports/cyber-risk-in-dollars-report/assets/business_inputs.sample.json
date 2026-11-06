@@ -1,0 +1,12 @@
+{
+ "annual_revenue": null,
+ "daily_downtime_cost": null,
+ "insurance_limit": null,
+ "insurance_deductible": null,
+ "risk_appetite_p90": null,
+ "control_costs": {
+  "endpoint": null,
+  "mfa": null
+ },
+ "note": "All fields optional. annual_revenue and daily_downtime_cost are in US dollars. risk_appetite_p90 is the largest 1-in-10-year loss the board will tolerate. control_costs is keyed by action id (see references/calibration_rules.md) with the annual cost in dollars."
+}
