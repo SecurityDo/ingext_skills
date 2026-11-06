@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{title}}</title>
+<style>
+:root{--red:#111827;--blu:#4b5563;--amb:#374151;--grn:#6b7280;--gry:#9ca3af;--bg:#f5f5f5;--card:#fff;--ink:#1f2328;--m:#6b7280;--line:#e5e5e5;--acc:#374151;--navy:#1f2328}
+@media(prefers-color-scheme:dark){:root{--red:#f5f5f5;--blu:#bdbdbd;--amb:#d4d4d4;--grn:#9ca3af;--gry:#6b7280;--bg:#111111;--card:#1a1a1a;--ink:#eeeeee;--m:#9a9a9a;--line:#2b2b2b;--acc:#f5f5f5;--navy:#eeeeee}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
+header{background:linear-gradient(135deg,#111827,#374151);color:#fff;padding:26px 0 18px}
+.w{max-width:1180px;margin:0 auto;padding:0 20px}
+.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#d4d4d4;font-weight:600}
+h1{margin:4px 0 8px;font-size:26px}
+.chip{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:2px 11px;font-size:12px;margin:0 8px 4px 0}
+nav{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap}
+nav .w{display:flex;gap:2px}
+nav button{background:none;border:0;border-bottom:3px solid transparent;color:var(--m);font:600 13px inherit;padding:12px 14px;cursor:pointer}
+nav button.on{color:var(--acc);border-color:var(--acc)}
+main{padding:18px 20px 48px;max-width:1180px;margin:0 auto}
+.g{display:grid;gap:12px}.k4{grid-template-columns:repeat(4,1fr)}.k3{grid-template-columns:repeat(3,1fr)}.c2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:800px){.k4,.k3,.c2{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.k4,.k3,.c2{grid-template-columns:1fr}}
+.k{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--c);border-radius:10px;padding:12px 14px}
+.k[data-go]{cursor:pointer}.k[data-go]:hover{box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.k b{display:block;font-size:26px;color:var(--c);line-height:1.15}
+.k span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--m);font-weight:600}
+.k small{display:block;color:var(--m);font-size:11px}
+.p{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px}
+.p:first-child{margin-top:0}.g>.p{margin-top:0}
+.p h3{margin:0 0 8px;font-size:14px}
+.warn{border-left:4px solid #374151;background:rgba(180,83,9,.1)}.read{border-left:4px solid var(--acc)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--m);padding:8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);cursor:pointer;white-space:nowrap}
+td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
+td.w{white-space:normal;min-width:240px;overflow-wrap:anywhere}
+.r{text-align:right;font-variant-numeric:tabular-nums}
+.tw{max-height:600px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.m{color:var(--m)}.sm{font-size:12px}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+input[type=search],select,button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit}
+input[type=search]{min-width:220px;flex:1}
+button{cursor:pointer}button:disabled{opacity:.4;cursor:default}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:600;background:rgba(180,83,9,.15);color:var(--amb);white-space:nowrap}
+.pill.bad{background:rgba(17,24,39,.15);color:var(--red)}.pill.ok{background:rgba(107,114,128,.15);color:var(--grn)}.pill.mute{background:var(--line);color:var(--m)}
+.stack{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line);margin:10px 0 6px}
+.stack i{display:block}
+.lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+.row{display:grid;grid-template-columns:38% 1fr 56px;gap:8px;align-items:center;margin:4px 0;font-size:12px;border-radius:4px;padding:1px 4px}
+.row[data-f]{cursor:pointer}.row[data-f]:hover{background:var(--line)}
+.lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row b{text-align:right}
+.bar2{background:var(--line);height:8px;border-radius:4px;overflow:hidden}.bar2 i{display:block;height:100%;background:var(--acc)}
+.chart{width:100%;height:auto}.gl{stroke:var(--line)}.ax{fill:var(--m);font-size:11px}
+.hl{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+.sel{margin-left:8px}
+@media print{nav{display:none}.tw{max-height:none}}
+</style>
+</head>
+<body>
+<header><div class="w"><div class="eyebrow">Google Workspace users and activity</div><h1 id="ttl"></h1><div id="chips"></div></div></header>
+<nav><div class="w"></div></nav>
+<main id="main"></main>
+<script id="data" type="application/json">{{data}}</script>
+<script>
+const D=JSON.parse(document.getElementById('data').textContent);
+const $=s=>document.querySelector(s);
+const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=v=>typeof v==='number'?v.toLocaleString():esc(v);
+const A=null;
+const CM={'#1f2328':'var(--navy)','#111827':'var(--red)','#4b5563':'var(--blu)','#374151':'var(--amb)','#6b7280':'var(--grn)','#9ca3af':'var(--gry)'};const cc=c=>CM[c]||c;
+const PRE={};            // filters to apply when a tab opens (set by clicks on the overview)
+let tableRoots={};
+function kpi(l,v,c,s,go,f){c=cc(c);return `<div class="k" style="--c:${c}" ${go?`data-go="${go}"`:''} ${f?`data-pre='${esc(JSON.stringify(f))}'`:''}><span>${esc(l)}</span><b>${esc(v)}</b><small>${esc(s||'')}</small></div>`}
+function na(t,why){return `<div class="p warn"><b>${esc(t)}</b> not available: ${esc(why||'no data for this resource in the snapshot')}</div>`}
+function kv(t,pairs){return `<div class="p"><h3>${esc(t)}</h3><table>${pairs.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="r">${fmt(v)}</td></tr>`).join('')}</table></div>`}
+function pct(a,b){return b?(Math.round(1000*a/b)/10)+'%':'n/a'}
+function stack(parts,total){if(!total)return'';return `<div class="stack">${parts.filter(p=>p[1]).map(p=>`<i title="${esc(p[0])}: ${p[1].toLocaleString()}" style="width:${100*p[1]/total}%;background:${p[2]}"></i>`).join('')}</div><div class="m sm">${parts.map(p=>`<span class="lg"><i style="background:${p[2]}"></i>${esc(p[0])} ${p[1].toLocaleString()}</span>`).join(' ')}</div>`}
+/* bar list; items are [label,count,filterKey,filterValue]; a click opens the table with that filter */
+function bars(title,items,go,sub){items=items.filter(i=>i[1]);const mx=Math.max(1,...items.map(i=>i[1]));
+ return `<div class="p"><h3>${esc(title)}${sub?` <span class="m">${esc(sub)}</span>`:''}</h3>${items.length?items.map(([k,v,fk,fv])=>`<div class="row" ${go&&fk?`data-go="${go}" data-pre='${esc(JSON.stringify({[fk]:fv==null?k:fv}))}'`:''} ${go&&fk?'data-f="1"':''}><span class="lb" title="${esc(k)}">${esc(k)}</span><span class="bar2"><i style="width:${100*v/mx}%"></i></span><b>${v.toLocaleString()}</b></div>`).join(''):'<div class="m sm">No data.</div>'}</div>`}
+const CLS={'Needs action':'bad','Watch':'','Healthy':'ok','Disabled':'mute','High':'bad','Medium':'','Low':'mute','yes':'','no':'','Yes':'ok'};
+/* generic searchable, sortable, paged table with filters and CSV export of the filtered view */
+function dt(cols,rows,opts){opts=opts||{};const S={q:'',sort:opts.sort||null,dir:opts.dir||1,page:0,size:25,f:Object.assign({},opts.pre||{})};if(S.f.q!==undefined){S.q=S.f.q;delete S.f.q}const root=document.createElement('div');root.className='p';
+ const filters=opts.filters||[];
+ function view(){let r=rows.filter(x=>{for(const f of filters){const v=S.f[f.key];if(v&&String(x[f.key])!==v)return false}
+  if(S.q){const q=S.q.toLowerCase();if(!cols.some(c=>String(x[c.k]==null?'':x[c.k]).toLowerCase().includes(q)))return false}return true});
+  if(S.sort){const k=S.sort;r=r.slice().sort((a,b)=>{const x=a[k],y=b[k];return (typeof x==='number'&&typeof y==='number'?x-y:String(x).localeCompare(String(y)))*S.dir})}return r}
+ function draw(){const r=view(),pages=Math.max(1,Math.ceil(r.length/S.size));if(S.page>=pages)S.page=pages-1;const sl=r.slice(S.page*S.size,(S.page+1)*S.size);
+  root.innerHTML=`<h3>${esc(opts.title||'')} <span class="m">(<span data-n>${r.length.toLocaleString()}</span> of ${rows.length.toLocaleString()})</span></h3><div class="bar">
+   <input type="search" placeholder="Search" value="${esc(S.q)}" data-a="q">
+   ${filters.map(f=>`<select data-f="${f.key}"><option value="">${esc(f.label)}: all</option>${f.opts.map(o=>`<option ${S.f[f.key]===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`).join('')}
+   <select data-a="size">${[25,50,100,250].map(n=>`<option ${n===S.size?'selected':''}>${n}</option>`).join('')}</select>
+   <button data-a="csv">Export CSV</button></div>
+   <div class="tw"><table><thead><tr>${cols.map(c=>`<th data-s="${c.k}" class="${c.num?'r':''}">${esc(c.h)}${S.sort===c.k?(S.dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>${sl.map(x=>`<tr>${cols.map(c=>`<td class="${c.num?'r':''} ${c.host?'hl':''} ${c.w?'w':''}">${c.pill?`<span class="pill ${CLS[x[c.k]]||''}">${esc(x[c.k])}</span>`:fmt(x[c.k])}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${cols.length}" class="m">No rows match.</td></tr>`}</tbody></table></div>
+   <div class="bar"><button data-a="prev" ${S.page?'':'disabled'}>Prev</button><span class="m">Page ${S.page+1} of ${pages}</span><button data-a="next" ${S.page<pages-1?'':'disabled'}>Next</button></div>`;
+  const q=root.querySelector('[data-a=q]');q.oninput=e=>{S.q=e.target.value;S.page=0;const p=e.target.selectionStart;draw();const n=root.querySelector('[data-a=q]');n.focus();n.setSelectionRange(p,p)};
+  root.querySelectorAll('[data-f]').forEach(s=>s.onchange=e=>{S.f[s.dataset.f]=e.target.value;S.page=0;draw()});
+  root.querySelector('[data-a=size]').onchange=e=>{S.size=+e.target.value;S.page=0;draw()};
+  root.querySelector('[data-a=prev]').onclick=()=>{S.page--;draw()};root.querySelector('[data-a=next]').onclick=()=>{S.page++;draw()};
+  root.querySelectorAll('th[data-s]').forEach(h=>h.onclick=()=>{if(S.sort===h.dataset.s)S.dir*=-1;else{S.sort=h.dataset.s;S.dir=1}draw()});
+  root.querySelector('[data-a=csv]').onclick=()=>{const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';const t=[cols.map(c=>q(c.h)).join(',')].concat(view().map(x=>cols.map(c=>q(x[c.k])).join(','))).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download=(opts.file||'export')+'.csv';a.click()}}
+ draw();return root}
+const uniq=(rows,k)=>[...new Set(rows.map(r=>r[k]))].filter(v=>v!==''&&v!=null).sort();
+const V={};
+const E=D.summary,ST=D.status,DY=D.daily,US=D.users;
+const TABS=[['ov','Overview'],['us','Users'],['ou','Org units and domains'],['gr','Groups'],['ev','Audit activity'],['cv','Coverage'],['da','Daily counts']];
+/* SVG column chart of one daily counter */
+function chart(key,color){const n=DY.length;if(!n)return '<div class="m">No days.</div>';const W=1000,H=210,L=40,B=26,T=10,R=8;const mx=Math.max(1,...DY.map(d=>d[key]));
+ const bw=(W-L-R)/n;let s=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily ${esc(key)}">`;
+ const q=mx<4?mx:4;for(let i=0;i<=q;i++){const y=T+(H-T-B)*(1-i/q);s+=`<line class="gl" x1="${L}" x2="${W-R}" y1="${y}" y2="${y}"/><text class="ax" x="${L-6}" y="${y+4}" text-anchor="end">${Math.round(mx*i/q).toLocaleString()}</text>`}
+ DY.forEach((d,i)=>{const h=(H-T-B)*d[key]/mx,x=L+i*bw;s+=`<rect x="${x+1}" y="${H-B-h}" width="${Math.max(1,bw-2)}" height="${h}" fill="${color}" rx="1"><title>${esc(d.day)}: ${d[key].toLocaleString()}</title></rect>`;
+  if(i%Math.ceil(n/8)===0)s+=`<text class="ax" x="${x+bw/2}" y="${H-8}" text-anchor="middle">${esc(d.day.slice(5))}</text>`});
+ return s+'</svg>'}
+const MET=[['events','All audit events','#4b5563'],['logins','Successful sign-ins','#1f2328'],['loginFailures','Failed sign-ins','#111827'],['suspicious','Suspicious sign-ins','#111827'],['adminChanges','Admin changes','#374151'],['tokenGrants','App authorizations','#6b7280'],['mobile','Mobile device events','#9ca3af']];
+/* ---------------- Overview ---------------- */
+V.ov=()=>{const c=document.createElement('div');
+ const kp=[kpi('Users',E.users.toLocaleString(),'#1f2328',E.active.toLocaleString()+' active, '+E.disabled.toLocaleString()+' disabled','us'),
+  kpi('Need action',ST.needsAction.toLocaleString(),ST.needsAction?'#111827':'#6b7280',ST.watch.toLocaleString()+' more on watch','us',{state:'Needs action'}),
+  kpi('Admins without 2SV',E.adminNo2sv.toLocaleString(),E.adminNo2sv?'#111827':'#6b7280',E.admins.toLocaleString()+' admins, '+E.delegatedAdmins.toLocaleString()+' delegated','us',{admin:'yes',enrolled2sv:'no'}),
+  kpi('2-Step Verification',pct(E.enrolled2sv,E.users),E.gap2sv?'#374151':'#6b7280',E.gap2sv.toLocaleString()+' active users not enrolled','us',{enrolled2sv:'no'}),
+  kpi('No sign-in 90 days',E.stale90.toLocaleString(),E.stale90?'#374151':'#6b7280',E.neverSignedIn.toLocaleString()+' never signed in','us'),
+  kpi('Suspicious sign-ins',E.suspiciousLogins.toLocaleString(),E.suspiciousLogins?'#111827':'#6b7280',E.loginFailures.toLocaleString()+' failed of '+(E.logins+E.loginFailures).toLocaleString(),'ev')];
+ c.innerHTML=`<div class="g k3">${kp.join('')}</div>
+  <div class="p"><h3>Account health <span class="m">${E.users.toLocaleString()} users</span></h3>${stack([['Needs action',ST.needsAction,'#111827'],['Watch',ST.watch,'#374151'],['Healthy',ST.healthy,'#6b7280'],['Disabled',ST.disabled,'#9ca3af']],E.users)}</div>
+  <div class="p"><h3>Trend explorer <select id="msel" class="sel">${MET.map(m=>`<option value="${m[0]}">${esc(m[1])}</option>`).join('')}</select></h3><div id="chartbox"></div></div>
+  <div class="g c2" id="g1" style="margin-top:12px"></div>
+  <div class="p read" style="margin-top:12px">Snapshot <b>${esc(D.snapshot)}</b>. Users and groups are the snapshot from that day; audit counts are added over ${E.windowDays} archived day${E.windowDays==1?'':'s'}. Click a tile or a bar to open the table behind it.</div>`;
+ const draw=()=>{const m=MET.find(x=>x[0]===c.querySelector('#msel').value);c.querySelector('#chartbox').innerHTML=chart(m[0],m[2])};
+ c.querySelector('#msel').onchange=draw;draw();
+ const g=c.querySelector('#g1');
+ g.insertAdjacentHTML('beforeend',bars('2-Step Verification',[['Enrolled',E.enrolled2sv,'enrolled2sv','yes'],['Not enrolled (active)',E.gap2sv,'enrolled2sv','no'],['Admins not enrolled',E.adminNo2sv,'admin','yes'],['Enforced, not enrolled',E.enforcedNotEnrolled]],'us'));
+ g.insertAdjacentHTML('beforeend',bars('Hygiene',[['No sign-in over 90 days',E.stale90,'q','No sign-in for more than 90'],['No sign-in over 30 days',E.stale30,'q','No sign-in for more than 30'],['Never signed in',E.neverSignedIn,'q','Never signed in'],['No recovery email or phone',E.noRecovery,'recovery','no'],['Outside the main domain',E.external,'external','yes']],'us'));
+ return c};
+/* ---------------- Users ---------------- */
+V.us=()=>{const c=document.createElement('div');
+ c.innerHTML=`<div class="g k4">${kpi('Need action',ST.needsAction.toLocaleString(),'#111827','score 3 or more')}${kpi('Watch',ST.watch.toLocaleString(),'#374151','score 1 to 2')}${kpi('Healthy',ST.healthy.toLocaleString(),'#6b7280','score 0')}${kpi('Disabled',ST.disabled.toLocaleString(),'#9ca3af','suspended or archived')}</div>
+  ${ST.truncated?`<div class="p warn" style="margin-top:12px">The report lists the first ${ST.listedCap.toLocaleString()} of ${E.users.toLocaleString()} users.</div>`:''}<div style="height:12px"></div>`;
+ const cols=[{k:'email',h:'User',host:1},{k:'name',h:'Name'},{k:'state',h:'Status',pill:1},{k:'score',h:'Score',num:1},{k:'orgUnit',h:'Org unit'},{k:'admin',h:'Admin'},{k:'delegated',h:'Delegated admin'},{k:'enrolled2sv',h:'2SV enrolled'},{k:'enforced2sv',h:'2SV enforced'},{k:'recovery',h:'Recovery info'},{k:'external',h:'Outside main domain'},{k:'created',h:'Created'},{k:'lastLogin',h:'Last sign-in'},{k:'daysSince',h:'Days since sign-in',num:1},{k:'suspended',h:'Suspended'},{k:'archived',h:'Archived'},{k:'reasons',h:'Why',w:1}];
+ c.appendChild(dt(cols,US,{title:'Users',file:'googleworkspace_users',sort:'score',dir:-1,pre:PRE.us,
+  filters:[{key:'state',label:'Status',opts:['Needs action','Watch','Healthy','Disabled']},{key:'admin',label:'Admin',opts:['yes','no']},{key:'enrolled2sv',label:'2SV enrolled',opts:['yes','no']},{key:'recovery',label:'Recovery info',opts:['yes','no']},{key:'external',label:'Outside main domain',opts:['yes','no']},{key:'orgUnit',label:'Org unit',opts:uniq(US,'orgUnit')}]}));
+ return c};
+/* ---------------- Org units and domains ---------------- */
+V.ou=()=>{const c=document.createElement('div');
+ c.innerHTML=`<div class="g k3">${kpi('Org units',E.orgUnits.toLocaleString(),'#1f2328','with users')}${kpi('Main domain',E.topDomain||'n/a','#4b5563','the most common email domain')}${kpi('Outside main domain',E.external.toLocaleString(),E.external?'#374151':'#6b7280','active users')}</div><div style="height:12px"></div>`;
+ c.appendChild(dt([{k:'orgUnit',h:'Org unit',host:1},{k:'users',h:'Users',num:1},{k:'admins',h:'Admins',num:1},{k:'no2sv',h:'Not enrolled in 2SV',num:1},{k:'stale90',h:'No sign-in 90 days',num:1},{k:'needsAction',h:'Need action',num:1}],D.orgUnits,{title:'Org units',file:'googleworkspace_org_units',sort:'needsAction',dir:-1}));
+ const d=dt([{k:'domain',h:'Email domain',host:1},{k:'users',h:'Users',num:1},{k:'external',h:'Outside main domain'}],D.domains,{title:'Email domains',file:'googleworkspace_domains',sort:'users',dir:-1});d.style.marginTop='12px';c.appendChild(d);
+ return c};
+/* ---------------- Groups ---------------- */
+V.gr=()=>{const c=document.createElement('div');
+ c.innerHTML=`<div class="g k3">${kpi('Groups',E.groups.toLocaleString(),'#1f2328','in the directory')}${kpi('Direct members',E.groupMembers.toLocaleString(),'#4b5563','across all groups')}${kpi('Empty groups',E.emptyGroups.toLocaleString(),E.emptyGroups?'#374151':'#6b7280','no direct members')}</div><div style="height:12px"></div>`;
+ c.appendChild(dt([{k:'email',h:'Group',host:1,w:1},{k:'name',h:'Name'},{k:'members',h:'Direct members',num:1},{k:'adminCreated',h:'Admin created'},{k:'aliases',h:'Aliases',num:1}],D.groups,{title:'Groups (top '+D.groups.length+' by members)',file:'googleworkspace_groups',sort:'members',dir:-1}));
+ return c};
+/* ---------------- Audit activity ---------------- */
+V.ev=()=>{const c=document.createElement('div');
+ c.innerHTML=`<div class="g k4">${kpi('Audit events',E.events.toLocaleString(),'#1f2328','from '+E.actors.toLocaleString()+' accounts, '+E.windowDays+' archived day'+(E.windowDays==1?'':'s'))}${kpi('Sign-ins',E.logins.toLocaleString(),'#4b5563',E.loginFailures.toLocaleString()+' failed')}${kpi('Admin changes',E.adminChanges.toLocaleString(),E.adminChanges?'#374151':'#6b7280','admin console')}${kpi('App authorizations',E.tokenGrants.toLocaleString(),'#6b7280','OAuth token grants')}</div><div style="height:12px"></div>`;
+ c.appendChild(dt([{k:'app',h:'Application'},{k:'type',h:'Type'},{k:'name',h:'Event',host:1,w:1},{k:'events',h:'Events',num:1},{k:'actors',h:'Accounts',num:1}],D.events,{title:'Audit events by type',file:'googleworkspace_events',sort:'events',dir:-1,filters:[{key:'app',label:'Application',opts:uniq(D.events,'app')}]}));
+ const a=dt([{k:'time',h:'Time (UTC)'},{k:'actor',h:'By',host:1},{k:'name',h:'Change',w:1},{k:'target',h:'Target'},{k:'oldValue',h:'Old value'},{k:'newValue',h:'New value'}],D.admin,{title:'Admin changes (latest '+D.admin.length+')',file:'googleworkspace_admin_changes',sort:'time',dir:-1});a.style.marginTop='12px';c.appendChild(a);
+ const s=dt([{k:'time',h:'Time (UTC)'},{k:'user',h:'User',host:1},{k:'ip',h:'IP address',host:1},{k:'country',h:'Country'},{k:'name',h:'Event'},{k:'loginType',h:'Login type'}],D.suspicious,{title:'Suspicious sign-ins (latest '+D.suspicious.length+')',file:'googleworkspace_suspicious',sort:'time',dir:-1});s.style.marginTop='12px';c.appendChild(s);
+ return c};
+/* ---------------- Coverage ---------------- */
+V.cv=()=>{const c=document.createElement('div');
+ c.innerHTML=`<div class="p"><h3>Archive: snapshot ${esc(D.snapshot)}</h3><table><thead><tr><th>Archived query</th><th>Status</th><th>Detail</th></tr></thead><tbody>${D.sources.map(s=>`<tr><td>${esc(s.source)}</td><td>${esc(s.status)}</td><td class="m">${esc(s.detail)}</td></tr>`).join('')}</tbody></table></div>
+  ${D.notes.length?`<div class="p warn"><h3>Data notes</h3><ul>${D.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`:''}
+  <div class="p"><h3>How the numbers are worked out</h3><ul>${D.method.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`;return c};
+/* ---------------- Daily counts (last tab) ---------------- */
+V.da=()=>{const c=document.createElement('div');
+ c.appendChild(dt([{k:'day',h:'Day',host:1},{k:'events',h:'Events',num:1},{k:'logins',h:'Successful sign-ins',num:1},{k:'loginFailures',h:'Failed sign-ins',num:1},{k:'suspicious',h:'Suspicious',num:1},{k:'adminChanges',h:'Admin changes',num:1},{k:'tokenGrants',h:'App authorizations',num:1},{k:'mobile',h:'Mobile events',num:1}],DY,{title:'Daily counts',file:'googleworkspace_daily',sort:'day',dir:-1}));
+ return c};
+function show(t,pre){tab=t;if(pre!==undefined)PRE[t]=pre;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));const m=$('#main');m.innerHTML='';m.appendChild(V[t]());
+ m.querySelectorAll('[data-go]').forEach(k=>k.onclick=()=>{const f=k.dataset.pre?JSON.parse(k.dataset.pre):{};show(k.dataset.go,f)});PRE[t]=undefined;history.replaceState(null,'','#'+t);window.scrollTo(0,0)}
+let tab='ov';
+$('nav .w').innerHTML=TABS.map(t=>`<button data-t="${t[0]}">${t[1]}</button>`).join('');
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.t,{}));
+$('#chips').innerHTML=[D.account,'snapshot '+D.snapshot,E.users.toLocaleString()+' users, '+E.events.toLocaleString()+' events, '+E.windowDays+' archived day'+(E.windowDays==1?'':'s')].filter(Boolean).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
+$('#ttl').textContent=(D.customer||D.account||'Tenant')+' Google Workspace Resource Report';document.title=$('#ttl').textContent;
+show(TABS.some(t=>t[0]===location.hash.slice(1))?location.hash.slice(1):'ov',{});
+</script>
+</body>
+</html>

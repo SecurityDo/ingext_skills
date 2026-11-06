@@ -1,6 +1,6 @@
 ---
 name: compliance-assessment
-version: 1.8.1
+version: 1.8.2
 description: >-
   Produce a customer-facing compliance evidence report for ONE Ingext/Fluency tenant and ONE
   calendar month, built from read-only queries through the tenant's MCP connector (KQL over

@@ -15,7 +15,7 @@ datalake, running a report, investigating a user, checking site health, and more
 - Change history is in [`release_notes/`](./release_notes).
 
 Each skill is versioned independently in its `SKILL.md` frontmatter. The inventory below
-lists all **53 skills** across `SKILLS/` and `reports/`, with the version, source and
+lists all **54 skills** across `SKILLS/` and `reports/`, with the version, source and
 matching downloadable package. Packages are ZIP archives with a `.skill` extension.
 
 ## Installation
@@ -244,6 +244,7 @@ in both source and archives; it does not check that their full file contents mat
 | [cyber-risk-in-dollars-report](./reports/cyber-risk-in-dollars-report/SKILL.md) | 1.0.0 | [Source](./reports/cyber-risk-in-dollars-report) | [Download](./cowork/cyber-risk-in-dollars-report.skill) | Board cyber risk in dollars: expected annual loss, 1-in-10 and 1-in-20 year loss, loss exceedance curve, risk register and the dollar value of each action (FAIR Monte Carlo) → HTML + PDF |
 | [defender-resource-report](./reports/defender-resource-report/SKILL.md) | 1.0.1 | [Source](./reports/defender-resource-report) | [Download](./cowork/defender-resource-report.skill) | Microsoft Defender for Endpoint devices in one report (enrolment, check-in, antivirus, vulnerabilities, secure configuration, recommendations, alerts, ranked devices) from the archive of the scheduled report Defender_Resource_Report, with an interactive HTML view |
 | [guardduty-resource-report](./reports/guardduty-resource-report/SKILL.md) | 1.0.0 | [Source](./reports/guardduty-resource-report) | [Download](./cowork/guardduty-resource-report.skill) | AWS GuardDuty findings in one report (severity, finding types and categories, accounts and regions, resources, repeat-heavy findings, ranked findings, 30 days of daily counts) from the archive of the scheduled report GuardDuty_Resource_Report, with an interactive HTML view |
+| [googleworkspace-resource-report](./reports/googleworkspace-resource-report/SKILL.md) | 1.0.0 | [Source](./reports/googleworkspace-resource-report) | [Download](./cowork/googleworkspace-resource-report.skill) | Google Workspace users and activity in one report (user health score, 2-Step Verification and admin gaps, stale and never-signed-in accounts, org units, groups, 30 days of sign-ins, suspicious logins and admin changes) from the archive of the scheduled report GoogleWorkspace_Resource_Report, with an interactive HTML view |
 
 ---
 
@@ -751,6 +752,18 @@ severity (high, medium, low), findings updated in the last 24 hours and 7 days, 
 and categories, accounts and regions, the resources affected, repeat-heavy findings, GuardDuty's current list,
 a ranked list of findings that need action with the reasons, and 30 days of daily counts. The interactive HTML
 file has tabs, a trend dropdown, search, sort and filter on every table and CSV export.
+
+### googleworkspace-resource-report
+
+Produces a Google Workspace users, groups and activity report for **one tenant** as HTML (print-style and
+interactive), PDF and CSV, built **only from the archive of the scheduled report
+`GoogleWorkspace_Resource_Report`** (an FPL report in the Scripts repo, daily). It never runs a search and never
+reads a resource dump. Every user gets a documented score (Needs action, Watch, Healthy; suspended and archived
+accounts are Disabled). It covers 2-Step Verification enrolment and enforcement, admins without it, stale and
+never-signed-in accounts, recovery info, accounts outside the main domain, org units, groups, and the sign-ins,
+failed and suspicious logins, admin changes and app authorizations of every archived day (each run is one day;
+users and scores are the latest snapshot, activity is added across days, missing days are shown as gaps). The interactive HTML file has tabs,
+a trend dropdown, search, sort and filter on every table and CSV export.
 
 ### incident-investigation
 
