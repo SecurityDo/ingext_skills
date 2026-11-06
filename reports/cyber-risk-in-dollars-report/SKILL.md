@@ -66,10 +66,12 @@ loss, the largest scenario) is filled in from the simulation, so it always match
 ## Limits to state in the report
 
 - **Three scenarios.** Ransomware, business email compromise and credential-driven cloud breach. Accidental and insider
-  exposure (including shadow AI) is not modelled because no DLP or generative-AI egress source exists in the archives or
-  resource dumps. Third-party compromise is not modelled separately so as not to double count ransomware.
-- **Business email compromise is calibrated from sign-in data only.** Inbox rules, forwarding, mailbox permissions and
-  payment controls are not in any archive, so each widens the range. An Office 365 workload archive would close this.
+  exposure (including shadow AI) is not modelled: the Office 365 archive counts sharing and external-access events but
+  reports zero DLP matches, which cannot separate "no DLP policy" from "no matches", and no generative-AI egress source
+  exists. Third-party compromise is not modelled separately so as not to double count ransomware.
+- **Business email compromise** is calibrated from sign-in data and the Office 365 archive's counts of inbox-rule and
+  mailbox-permission changes. Forwarding targets, who made the changes and payment controls are not in any archive, so
+  they widen the range. The weights for rule and permission volume are proposals; the sources do not define them.
 - **Recovery is unproven.** No backup job, age, immutability or restore-test data is available (see the
   ransomware-readiness skill), which widens the ransomware range.
 - **Losses are gross.** Insurance recoveries and deductibles are not netted off; a supplied limit is only compared with

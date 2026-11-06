@@ -2,69 +2,73 @@
   "gaps": [
     "Single-factor status of admin-portal sign-ins is not joint in the archive (apps and auth requirement are separate facets); admin MFA is judged from conditional-access policies and the single-factor share"
   ],
-  "days_covered": 2,
+  "days_covered": 3,
   "coverage": {
-    "expected_days": 2,
-    "archived_days": 2,
+    "expected_days": 3,
+    "archived_days": 3,
     "missing_days": 0
   },
   "script_versions": 1,
   "signins": {
-    "events": 19190,
-    "failed": 5531,
-    "interactive": 19190,
-    "mfaRequired": 11609,
-    "singleFactorOk": 4732,
+    "events": 28553,
+    "failed": 7865,
+    "interactive": 28553,
+    "mfaRequired": 17211,
+    "singleFactorOk": 7348,
     "caFailures": 2,
-    "risky": 41,
-    "guests": 538,
-    "legacyAuth": 24,
-    "successful": 13659,
-    "single_factor_share_pct": 34.6
+    "risky": 61,
+    "guests": 749,
+    "legacyAuth": 36,
+    "successful": 20688,
+    "single_factor_share_pct": 35.5
   },
-  "auth_requirement": {
-    "multiFactorAuthentication": 11609,
-    "singleFactorAuthentication": 7581
-  },
-  "risk_levels": {
-    "medium": 40,
-    "low": 1
-  },
-  "ca_status": {
-    "success": 17520,
-    "notApplied": 1668,
-    "failure": 2
-  },
-  "conditional_access_applied_signins": 17522,
-  "conditional_access_applied_share_pct": 91.3,
-  "user_types": {
-    "member": 18615,
-    "guest": 538,
-    "(not recorded)": 37
-  },
-  "legacy_clients": {
-    "Authenticated SMTP": 24
-  },
+  "auth_requirement": {},
+  "risk_levels": {},
+  "ca_status": {},
+  "conditional_access_applied_signins": 0,
+  "conditional_access_applied_share_pct": null,
+  "user_types": {},
+  "legacy_clients": {},
   "admin_portal_signins": {
-    "events": 360,
-    "apps": [
-      "Azure Active Directory PowerShell",
-      "Azure Portal",
-      "Exchange Admin Center",
-      "Microsoft 365 Admin portal",
-      "Microsoft Azure",
-      "Microsoft Azure CLI",
-      "Microsoft Azure PowerShell"
-    ]
+    "events": 0,
+    "apps": []
   },
   "directory_changes": {
-    "events": 11166,
-    "failed": 282,
-    "userChanges": 1430,
-    "groupChanges": 582,
-    "roleChanges": 70,
-    "appChanges": 2,
-    "policyChanges": 12,
-    "passwordEvents": 383
+    "events": 0,
+    "failed": 0,
+    "userChanges": 0,
+    "groupChanges": 0,
+    "roleChanges": 0,
+    "appChanges": 0,
+    "policyChanges": 0,
+    "passwordEvents": 0
+  },
+  "o365": {
+    "events": 2118611,
+    "failedOps": 6138,
+    "adminOps": 7257,
+    "loginsOk": 25872,
+    "loginsFailed": 7525,
+    "mailItemsAccessed": 892114,
+    "mailSent": 24898,
+    "hardDeletes": 2987,
+    "inboxRuleChanges": 1523,
+    "mailboxPermissionChanges": 46,
+    "sharingEvents": 6947,
+    "externalAccess": 415,
+    "adminConfigChanges": 1046,
+    "securityAlerts": 434,
+    "dlpEvents": 0,
+    "copilotEvents": 696,
+    "days": 3,
+    "max_day_inbox_rule_changes": 1011,
+    "dlp_enabled_unknown": true
+  },
+  "service_principals": {
+    "events": 27159,
+    "failed": 0,
+    "secretErrors": 0,
+    "secretAuth": 23716,
+    "assertionAuth": 3443
   }
 }

@@ -1,5 +1,5 @@
 {
- "tenant": "Grand River Aseptic Mfg",
+ "tenant": "gramfg",
  "assessment_date": "2026-11-06",
  "evidence_window": "Resource snapshots 6 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived",
  "headline": "{TENANT} faces about {ALE} of expected cyber loss a year, and a bad year could exceed {P90}",
@@ -15,7 +15,7 @@
    "lef": {
     "min": 0.048,
     "ml": 0.144,
-    "max": 0.475
+    "max": 0.518
    },
    "loss": [
     {
@@ -49,20 +49,21 @@
     "19 anti-ransomware hardening rules reported as failing on every assessed device",
     "788 of 788 EDR agents are not fully in Protect mode",
     "369 devices carry an exploitable vulnerability older than 30 days",
-    "24 security-log-cleared events in the audit window",
+    "Log clearing",
     "14 endpoints run remote-access tools outside the sanctioned set",
-    "Not measurable: backup success, age, immutability and restore tests cannot be measured, so recovery ability is unproven"
+    "Not measurable: backup success, age, immutability and restore tests cannot be measured, so recovery ability is unproven",
+    "Not measurable: no Windows audit archive, so log clearing and persistence are unknown"
    ],
-   "calibration": "Baseline frequency for a mid-market organization is 0.08 events a year; the most likely value rises above the baseline because of exposed backup servers, devices without endpoint protection, anti-ransomware hardening not confirmed. The range is widened by 10% at the top end because 1 input cannot be measured. Per-event cost is anchored to the IBM 2025 average cost of a ransomware or extortion incident ($5.08M) and scaled to organization size."
+   "calibration": "Baseline frequency for a mid-market organization is 0.08 events a year; the most likely value rises above the baseline because of exposed backup servers, devices without endpoint protection, anti-ransomware hardening not confirmed. The range is widened by 20% at the top end because 2 inputs cannot be measured. Per-event cost is anchored to the IBM 2025 average cost of a ransomware or extortion incident ($5.08M) and scaled to organization size."
   },
   {
    "id": "bec",
    "name": "Business email compromise &amp; payment fraud",
    "description": "A compromised or spoofed mailbox redirects a payment or invoice.",
    "lef": {
-    "min": 0.275,
-    "ml": 0.825,
-    "max": 2.722
+    "min": 0.297,
+    "ml": 0.89,
+    "max": 2.937
    },
    "loss": [
     {
@@ -79,12 +80,14 @@
     }
    ],
    "evidence": [
-    "34.6% of successful sign-ins were single-factor (4,732 of 13,659, 2 days)",
+    "35.5% of successful sign-ins were single-factor (7,348 of 20,688, 3 days)",
     "No enforced conditional-access policy requires MFA for all users on all apps",
-    "24 legacy-authentication sign-ins, which cannot use MFA",
-    "41 sign-ins flagged risky",
-    "5,531 of 19,190 sign-in attempts failed, a pattern consistent with password attacks",
-    "Not measurable: inbox rules, mail forwarding, mailbox permissions and payment-verification controls cannot be measured (no Office 365 workload archive)"
+    "36 legacy-authentication sign-ins, which cannot use MFA",
+    "61 sign-ins flagged risky",
+    "7,865 of 28,553 sign-in attempts failed, a pattern consistent with password attacks",
+    "1,523 inbox-rule changes over 3 archived days, up to 1,011 in one day; mail-client syncs are included, so this raises frequency only modestly",
+    "46 mailbox-permission changes over 3 archived days",
+    "Not measurable: forwarding targets, who changed inbox rules and payment-verification controls cannot be measured (the archive counts rule and permission changes, not their content)"
    ],
    "calibration": "Baseline frequency for a mid-market organization is 0.5 events a year; the most likely value rises above the baseline because of single-factor sign-ins, no all-users MFA, legacy authentication in use. The range is widened by 10% at the top end because 1 input cannot be measured. Per-event loss uses the FBI IC3 average BEC loss (about $130K) with a long tail for large wires."
   },
@@ -118,9 +121,9 @@
     }
    ],
    "evidence": [
-    "34.6% of successful sign-ins were single-factor",
+    "35.5% of successful sign-ins were single-factor",
     "No enforced conditional-access policy requires MFA for all users on all apps",
-    "41 sign-ins flagged risky",
+    "61 sign-ins flagged risky",
     "5 Global Administrators",
     "Not measurable: MFA registration, OAuth consents and file-download volumes cannot be measured"
    ],
@@ -233,7 +236,7 @@
   "Extortion payment is modelled as usually not paid (most likely $0), consistent with IBM 2025 reporting that most victims refuse to pay.",
   "Annual control costs were not supplied, so return on investment is not calculated: cost to be supplied.",
   "Treatment effects are expert estimates of how much each control reduces frequency or cost, not measurements.",
-  "Accidental and insider data exposure, including shadow AI, is not modelled: no DLP or generative-AI egress source is available in the archives or resource dumps.",
+  "Accidental and insider data exposure, including shadow AI, is not modelled: the Office 365 archive counts sharing and external-access events but shows zero DLP matches, which cannot separate \"no DLP policy\" from \"no matches\", and there is no generative-AI egress source.",
   "Third-party and remote-tool compromise is not modelled separately to avoid double counting; extra remote-access tools already raise the ransomware frequency.",
   "Frequency and cost ranges come from fixed calibration rules (references/calibration_rules.md), applied to the ransomware-readiness evidence (Resource snapshots 6 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived)."
  ],
@@ -308,6 +311,16 @@
      "id": "spray",
      "label": "high failed sign-in share",
      "weight": 0.1
+    },
+    {
+     "id": "inboxrules",
+     "label": "inbox-rule activity",
+     "weight": 0.08
+    },
+    {
+     "id": "mailperm",
+     "label": "mailbox-permission changes",
+     "weight": 0.05
     }
    ],
    "breach": [
@@ -335,10 +348,11 @@
   },
   "gaps": {
    "ransomware": [
-    "Backup success, age, immutability and restore tests cannot be measured, so recovery ability is unproven"
+    "Backup success, age, immutability and restore tests cannot be measured, so recovery ability is unproven",
+    "No Windows audit archive, so log clearing and persistence are unknown"
    ],
    "bec": [
-    "Inbox rules, mail forwarding, mailbox permissions and payment-verification controls cannot be measured (no Office 365 workload archive)"
+    "Forwarding targets, who changed inbox rules and payment-verification controls cannot be measured (the archive counts rule and permission changes, not their content)"
    ],
    "breach": [
     "MFA registration, OAuth consents and file-download volumes cannot be measured"

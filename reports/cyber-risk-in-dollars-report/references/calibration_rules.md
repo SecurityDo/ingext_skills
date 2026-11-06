@@ -49,8 +49,11 @@ Baseline 0.5 events a year; weight cap 1.0.
 | legacy authentication in use | +0.1 | legacy-authentication sign-ins: at least 1 |
 | risky sign-ins | +0.1 | risky sign-ins: at least 1 |
 | high failed sign-in share | +0.1 | failed sign-ins: at least 25% of sign-in attempts |
+| inbox-rule activity | +0.15 | n.o365.inboxRuleChanges: at least 0% of n.o365.events |
+| inbox-rule activity | +0.08 | n.o365.inboxRuleChanges: at least 0% of n.o365.events |
+| mailbox-permission changes | +0.05 | n.o365.mailboxPermissionChanges: at least 0% of n.o365.events |
 
-Not measurable (each widens the maximum): Inbox rules, mail forwarding, mailbox permissions and payment-verification controls cannot be measured (no Office 365 workload archive); No sign-in archive, so credential-attack pressure is unmeasured.
+Not measurable (each widens the maximum): Forwarding targets, who changed inbox rules and payment-verification controls cannot be measured (the archive counts rule and permission changes, not their content); No sign-in archive, so credential-attack pressure is unmeasured; No Office 365 workload archive, so inbox-rule and mailbox-permission activity is unmeasured.
 
 | Loss component (reference size) | Min | Likely | Max | Scaling |
 |---|---|---|---|---|
@@ -100,7 +103,7 @@ An effect multiplies the frequency (lef) or the cost per event (lm); 0.5 halves 
 
 ## Not modelled
 
-- Accidental and insider data exposure, including shadow AI, is not modelled: no DLP or generative-AI egress source is available in the archives or resource dumps.
+- Accidental and insider data exposure, including shadow AI, is not modelled: the Office 365 archive counts sharing and external-access events but shows zero DLP matches, which cannot separate "no DLP policy" from "no matches", and there is no generative-AI egress source.
 - Third-party and remote-tool compromise is not modelled separately to avoid double counting; extra remote-access tools already raise the ransomware frequency.
 
 ## Benchmarks

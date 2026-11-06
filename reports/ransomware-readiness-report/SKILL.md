@@ -63,10 +63,11 @@ reported.
    (To test before a tenant has the archive, one `run_report` result for a single day has the same shape and is accepted.)
 3c. **Sign-in events: archive only.** Call `list_report_archive` for `Office365_Entra_Activity_Report` (that exact name; no other
    name is accepted) and
-   `download_report_archive` for the last 30 days with `objects` set to `signin_trend`, `signin_facets`, `audit_trend`
-   and `sources`. Save the result to a file and run `python3 scripts/entra_evidence.py <file> -o entra_evidence.json`.
+   `download_report_archive` for the last 30 days with `objects` set to `signin_trend`, `signin_facets`, `audit_trend`,
+   `o365_trend`, `sp_trend` and `sources`. Save the result to a file and run `python3 scripts/entra_evidence.py <file> -o entra_evidence.json`.
    It returns sign-in counts, the single-factor share, how many sign-ins had conditional access applied, legacy-auth
-   clients, admin-portal sign-in volume and directory changes. Hidden risk levels or an unavailable table become gaps.
+   clients, admin-portal sign-in volume, directory changes and Office 365 workload counts (inbox-rule and
+   mailbox-permission changes, sharing, DLP matches), which the dollars report uses. Hidden risk levels or an unavailable table become gaps.
    If there is no archive the identity sign-in checks are "not measurable, visibility gap"; never query AzureSigninLogs.
 4. **Map the evidence to the eight pillars.** Backup and recovery (`backup`, `backup_vulnerable`); Endpoint coverage
    (`endpoint`, `unprotected`); Prevention and hardening (`hardening`, `secure_score`, detect-only modes); Vulnerability

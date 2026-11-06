@@ -327,18 +327,66 @@
           ],
           "text": "{n.signins.failed} of {n.signins.events} sign-in attempts failed, a pattern consistent with password attacks",
           "label": "high failed sign-in share"
+        },
+        {
+          "id": "inboxrules",
+          "tiers": [
+            {
+              "when": [
+                {
+                  "path": "n.o365.inboxRuleChanges",
+                  "op": ">=",
+                  "value": 0.001,
+                  "ratio_of": "n.o365.events"
+                }
+              ],
+              "weight": 0.15
+            },
+            {
+              "when": [
+                {
+                  "path": "n.o365.inboxRuleChanges",
+                  "op": ">=",
+                  "value": 0.0003,
+                  "ratio_of": "n.o365.events"
+                }
+              ],
+              "weight": 0.08
+            }
+          ],
+          "text": "{n.o365.inboxRuleChanges} inbox-rule changes over {n.o365.days} archived days, up to {n.o365.max_day_inbox_rule_changes} in one day; mail-client syncs are included, so this raises frequency only modestly",
+          "label": "inbox-rule activity"
+        },
+        {
+          "id": "mailperm",
+          "weight": 0.05,
+          "when": [
+            {
+              "path": "n.o365.mailboxPermissionChanges",
+              "op": ">=",
+              "value": 1e-05,
+              "ratio_of": "n.o365.events"
+            }
+          ],
+          "text": "{n.o365.mailboxPermissionChanges} mailbox-permission changes over {n.o365.days} archived days",
+          "label": "mailbox-permission changes"
         }
       ],
       "gaps": [
         {
           "id": "mailbox",
           "always": true,
-          "text": "Inbox rules, mail forwarding, mailbox permissions and payment-verification controls cannot be measured (no Office 365 workload archive)"
+          "text": "Forwarding targets, who changed inbox rules and payment-verification controls cannot be measured (the archive counts rule and permission changes, not their content)"
         },
         {
           "id": "signins",
           "missing": "n.signins",
           "text": "No sign-in archive, so credential-attack pressure is unmeasured"
+        },
+        {
+          "id": "o365",
+          "missing": "n.o365",
+          "text": "No Office 365 workload archive, so inbox-rule and mailbox-permission activity is unmeasured"
         }
       ],
       "loss": [
@@ -492,7 +540,7 @@
   "not_modelled": [
     {
       "id": "exposure",
-      "text": "Accidental and insider data exposure, including shadow AI, is not modelled: no DLP or generative-AI egress source is available in the archives or resource dumps."
+      "text": "Accidental and insider data exposure, including shadow AI, is not modelled: the Office 365 archive counts sharing and external-access events but shows zero DLP matches, which cannot separate \"no DLP policy\" from \"no matches\", and there is no generative-AI egress source."
     },
     {
       "id": "thirdparty",
