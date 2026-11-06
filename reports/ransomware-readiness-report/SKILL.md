@@ -6,10 +6,10 @@ description: >-
   a board-level report (HTML and PDF): an overall rating, an eight-pillar scorecard, 6 to 10 ranked issues
   with owners, targets and MITRE techniques, a 90-day roadmap and the strengths to keep. Examines backup
   server exposure, EDR coverage and unprotected devices, ASR and LAPS hardening, exploitable
-  vulnerabilities, detect-only EDR policy, admin MFA, domain-controller log clearing and remote-access tool
-  sprawl, from SentinelOne, Defender, Entra ID and Windows audit tables. USE THIS SKILL for "ransomware
+  vulnerabilities, detect-only EDR policy, admin MFA, DC log clearing and remote-access tool
+  sprawl, from SentinelOne, CrowdStrike, Defender, Entra ID and Windows audit tables. USE THIS SKILL for "ransomware
   readiness", "would we survive ransomware", "ransomware resilience or preparedness", "board ransomware
-  briefing", "Board Rpt 2". Read-only through the tenant's MCP connector. DO NOT use it for one incident
+  briefing", "Board Rpt 2". Read-only via the tenant MCP connector. DO NOT use it for one incident
   (incident-investigation) or a general endpoint hygiene page (defender-resource-report, falcon-resource-report,
   sentinelone-resource-report). The cyber-risk-in-dollars report reuses this skill's evidence.
 ---
@@ -40,8 +40,8 @@ reported.
    report: resource data comes from dumps, event data from archived reports. The queries in the playbook are reference
    only, for a person checking a number by hand.
 3. **Resource data: download and parse locally.** Never query resource tables with KQL. Call
-   `list_resource_dumps` for the tenant, then `get_resource_dump_url` for each of: sentinelOneAgent,
-   sentinelOneApplication, sentinelOneThreat, msDefenderMachine, msDefenderSecureConfig (parquet),
+   `list_resource_dumps` for the tenant, then `get_resource_dump_url` for each of: the EDR agent inventory
+   (sentinelOneAgent and/or falconAgent; use whichever exist, both are merged), sentinelOneApplication, sentinelOneThreat, msDefenderMachine, msDefenderSecureConfig (parquet),
    msDefenderSecureScore, msDefenderVulnerability (parquet, over a million rows), office365User and
    office365ConditionalAccessPolicy. Download each file with `curl -o <dump_dir>/<resource>.jsonl.gz` (or
    `.parquet`) in a shell that can reach the tenant host (links expire in 15 minutes; fetch them in one go), then run
@@ -49,7 +49,10 @@ reported.
    writes aggregate counts only: coverage and stale agents, detect-only modes, Defender devices with no EDR agent, backup
    products and versions, remote-access tools, end-of-life OS, ASR, LAPS and Credential Guard gaps, Critical and High
    vulnerabilities with exploit availability, threat classes, user counts and conditional-access MFA policies. A dump that
-   is missing is listed under `gaps`: a visibility gap, never a guess. If the shell cannot reach the tenant host, tell the
+   is missing is listed under `gaps`: a visibility gap, never a guess. A CrowdStrike-only tenant has no application or threat
+   inventory and no detect-versus-block setting, so backup software, remote-access tools, threats and detect-only mode
+   show as visibility gaps; for those tenants the report uses coverage, silent agents, reduced functionality mode,
+   missing prevention policy, provisioning, containment and end-of-life systems from the Falcon inventory. If the shell cannot reach the tenant host, tell the
    user the host must be allowed or the download run on their own computer.
 3b. **Windows audit: archive only.** Call `list_report_archive` for `WindowsSrv_Activity_Report` and
    `download_report_archive` for the last 30 days (save the result to a file), then run
@@ -97,6 +100,16 @@ reported.
    `Ransomware_Readiness_<Tenant>_<DDMonYY>.html` and the matching `.pdf` (same base name). `--date DDMonYY` overrides the
    stamp; `--no-pdf` skips the PDF.
 10. **Reply briefly:** the overall rating, the top three issues and the file names.
+
+## Limits to state in the report
+
+- **Recovery ability is inferred, not proven.** Backup exposure comes from the backup products and versions installed on endpoints.
+  Backup job success, restore tests, backup age and immutability are not in the resource dumps, so the report cannot say
+  whether the organization could actually recover.
+- **The conditional-access MFA check is a heuristic.** It counts enabled policies that require MFA with "All users" in scope and
+  cannot see exclusions, named-location carve-outs or per-user MFA registration. Treat it as a pointer to review, not proof.
+- **EDR prevention mode.** Detect-only mode is measured for SentinelOne only; CrowdStrike reports the prevention policy as
+  applied or not, not its detect or block setting.
 
 ## Scoring
 

@@ -29,6 +29,8 @@ LABEL = {
     "w.persistence.suspect_count": "services or tasks with attacker-tool names",
     "r.threats.unmitigated_malicious": "malicious threats not mitigated",
     "r.threats.unresolved": "unresolved threats",
+    "r.endpoint.reduced_functionality": "CrowdStrike agents in reduced functionality mode",
+    "r.endpoint.no_prevention_policy": "CrowdStrike agents with no prevention policy applied",
     "r.endpoint.agents": "agents",
     "r.endpoint.connected": "connected agents",
     "r.endpoint.mitigation_modes.protect": "agents in Protect mode",

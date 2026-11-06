@@ -110,6 +110,7 @@ def main(d, out):
     ev = {"generated": NOW.strftime("%Y-%m-%d"), "gaps": []}
     gap = ev["gaps"].append
     s1 = rows(d, "sentinelOneAgent")
+    fal = rows(d, "falconAgent")
     apps = rows(d, "sentinelOneApplication")
     thr = rows(d, "sentinelOneThreat")
     mac = rows(d, "msDefenderMachine")
@@ -121,34 +122,78 @@ def main(d, out):
     for n, v in [("sentinelOneAgent", s1), ("sentinelOneApplication", apps), ("sentinelOneThreat", thr),
                  ("msDefenderMachine", mac), ("msDefenderSecureConfig", cfg), ("msDefenderSecureScore", score),
                  ("msDefenderVulnerability", vul), ("office365User", usr), ("office365ConditionalAccessPolicy", cap)]:
-        if v is None:
+        if v is None and n == "sentinelOneAgent":
+            if fal is None:
+                gap("No EDR agent inventory (sentinelOneAgent or falconAgent dump): endpoint coverage is not measurable")
+        elif v is None and n == "sentinelOneApplication":
+            gap("No endpoint application inventory (sentinelOneApplication dump): backup software and remote-access tools are not measurable")
+        elif v is None and n == "sentinelOneThreat":
+            gap("No EDR threat inventory (sentinelOneThreat dump): threat counts are not measurable")
+        elif v is None:
             gap(f"{n} dump not available")
 
     ev["sources"] = {n: (None if v is None else len(v)) for n, v in [
-        ("sentinelOneAgent", s1), ("sentinelOneApplication", apps), ("sentinelOneThreat", thr), ("msDefenderMachine", mac),
+        ("sentinelOneAgent", s1), ("falconAgent", fal), ("sentinelOneApplication", apps), ("sentinelOneThreat", thr), ("msDefenderMachine", mac),
         ("msDefenderSecureConfig", cfg), ("office365User", usr), ("office365ConditionalAccessPolicy", cap), ("msDefenderVulnerability", vul)]}
-    # ---- Endpoint coverage + detect-only EDR + EOL OS
-    if s1 is not None:
-        live = [a for a in s1 if not a.get("isDecommissioned")]
-        off = [days_since(a.get("lastActiveDate")) for a in live]
+    # ---- Endpoint coverage + detect-only EDR + EOL OS (SentinelOne and/or CrowdStrike Falcon)
+    agents = []
+    for x in (s1 or []):
+        if x.get("isDecommissioned"):
+            continue
+        agents.append({"vendor": "SentinelOne", "name": host(x.get("computerName")), "type": x.get("machineType"),
+                       "os": x.get("osName"), "off": days_since(x.get("lastActiveDate")),
+                       "connected": x.get("networkStatus") == "connected", "up_to_date": x.get("isUpToDate"),
+                       "pending_uninstall": bool(x.get("isPendingUninstall")),
+                       "detect_only": x.get("mitigationMode") != "protect",
+                       "susp_detect_only": x.get("mitigationModeSuspicious") != "protect",
+                       "mode": x.get("mitigationMode"), "susp_mode": x.get("mitigationModeSuspicious")})
+    for x in (fal or []):
+        if x.get("host_hidden_status") == "hidden":
+            continue
+        off = days_since(x.get("last_seen"))
+        prev = ((x.get("device_policies") or {}).get("prevention") or {}).get("applied")
+        if prev is None:
+            prev = any(p.get("policy_type") == "prevention" and p.get("applied") for p in (x.get("policies") or []))
+        agents.append({"vendor": "CrowdStrike", "name": host(x.get("hostname")),
+                       "type": "server" if x.get("product_type_desc") in ("Server", "Domain Controller") else "workstation",
+                       "os": x.get("os_product_name") or x.get("os_version"), "off": off,
+                       "connected": off is not None and off <= 3, "reduced": x.get("reduced_functionality_mode") == "yes",
+                       "no_prevention": not prev, "not_provisioned": x.get("provision_status") not in ("Provisioned", None),
+                       "contained": x.get("status") == "contained"})
+    if agents:
+        sf = [a for a in agents if a["vendor"] == "SentinelOne"]
         ev["endpoint"] = {
-            "agents": len(live),
-            "connected": sum(a.get("networkStatus") == "connected" for a in live),
-            "by_type": dict(Counter(a.get("machineType") for a in live)),
-            "stale_7d": sum(1 for x in off if x is not None and x > 7),
-            "stale_30d": sum(1 for x in off if x is not None and x > 30),
-            "stale_7d_by_type": dict(Counter(a.get("machineType") for a, x in zip(live, off) if x is not None and x > 7)),
-            "not_up_to_date": sum(a.get("isUpToDate") is False for a in live),
-            "pending_uninstall": sum(bool(a.get("isPendingUninstall")) for a in live),
-            "detect_only": sum(a.get("mitigationMode") != "protect" for a in live),
-            "suspicious_detect_only": sum(a.get("mitigationModeSuspicious") != "protect" for a in live),
-            "mitigation_modes": dict(Counter(a.get("mitigationMode") for a in live)),
-            "suspicious_modes": dict(Counter(a.get("mitigationModeSuspicious") for a in live)),
-            "os": dict(Counter(a.get("osName") for a in live).most_common(15)),
-            "eol_os": {k: v for k, v in Counter(a.get("osName") for a in live if EOL_OS.search(a.get("osName") or "")).items()},
-            "eol_approaching": {"Windows Server 2016 (extended support ends 12 Jan 2027)": sum("server 2016" in (a.get("osName") or "").lower() for a in live)},
+            "vendors": dict(Counter(a["vendor"] for a in agents)),
+            "agents": len(agents),
+            "connected": sum(a["connected"] for a in agents),
+            "by_type": dict(Counter(a["type"] for a in agents)),
+            "stale_7d": sum(1 for a in agents if a["off"] is not None and a["off"] > 7),
+            "stale_30d": sum(1 for a in agents if a["off"] is not None and a["off"] > 30),
+            "stale_7d_by_type": dict(Counter(a["type"] for a in agents if a["off"] is not None and a["off"] > 7)),
+            "os": dict(Counter(a["os"] for a in agents).most_common(15)),
+            "eol_os": {k: v for k, v in Counter(a["os"] for a in agents if EOL_OS.search(a["os"] or "")).items()},
+            "eol_approaching": {"Windows Server 2016 (extended support ends 12 Jan 2027)": sum("server 2016" in (a["os"] or "").lower() for a in agents)},
         }
-        names = {host(a.get("computerName")) for a in live}
+        if sf:
+            ev["endpoint"].update({
+                "not_up_to_date": sum(a["up_to_date"] is False for a in sf),
+                "pending_uninstall": sum(a["pending_uninstall"] for a in sf),
+                "detect_only": sum(a["detect_only"] for a in sf),
+                "suspicious_detect_only": sum(a["susp_detect_only"] for a in sf),
+                "detect_only_basis": len(sf),
+                "mitigation_modes": dict(Counter(a["mode"] for a in sf)),
+                "suspicious_modes": dict(Counter(a["susp_mode"] for a in sf)),
+            })
+        cf = [a for a in agents if a["vendor"] == "CrowdStrike"]
+        if cf:
+            ev["endpoint"].update({
+                "reduced_functionality": sum(a["reduced"] for a in cf),
+                "no_prevention_policy": sum(a["no_prevention"] for a in cf),
+                "not_provisioned": sum(a["not_provisioned"] for a in cf),
+                "contained": sum(a["contained"] for a in cf),
+            })
+            gap("CrowdStrike prevention settings (detect-only versus block) are not in the agent inventory: detect-only mode is not measurable for CrowdStrike agents")
+        names = {a["name"] for a in agents}
     else:
         names = set()
     if mac is not None:
@@ -157,7 +202,7 @@ def main(d, out):
                 and not m.get("mergedIntoMachineId") and not m.get("isPotentialDuplication")]
         ep = [m for m in cand if ENDPOINT_OS.match(m.get("osPlatform") or "")]
         act = [m for m in ep if m.get("healthStatus") == "Active"]
-        miss = [m for m in act if host(m.get("computerDnsName")) not in names] if s1 is not None else None
+        miss = [m for m in act if host(m.get("computerDnsName")) not in names] if agents else None
         ev["unprotected"] = {
             "defender_onboarded": sum(m.get("onboardingStatus") == "Onboarded" for m in mac),
             "can_be_onboarded_raw": len(cand),
@@ -217,7 +262,7 @@ def main(d, out):
             fam_srv.setdefault(key, set()).update(rsrv.get(nm, set()))
         ev["scanner_tools"] = sorted(({"tool": k, "endpoints": len(v)} for k, v in scan.items()), key=lambda x: -x["endpoints"])
         allow = load_allowlist()
-        live_n = len([x for x in s1 if not x.get("isDecommissioned")]) if s1 is not None else 0
+        live_n = (ev.get("endpoint") or {}).get("agents", 0)
         top = max(fam, key=lambda f: len(fam[f])) if fam else None
         inferred = [f for f in fam if not allow and live_n and len(fam[f]) >= 0.4 * live_n]
         sanctioned = set(allow) | set(inferred)

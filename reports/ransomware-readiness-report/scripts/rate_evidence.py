@@ -50,12 +50,23 @@ def derive(r, w):
         m = re.match(r"Windows (Server \d+) \(extended support ends (.+)\)", k)
         out.append(f"{v} {m.group(1)} hosts reach the end of extended support on {m.group(2)}" if m else f"{v} {k}")
     d["approaching_eol_text"] = "; ".join(out) or "no systems are approaching end of support"
+    ep = r.get("endpoint") or {}
+    vend = list((ep.get("vendors") or {}).keys())
+    d["edr_name"] = " and ".join(vend) if vend else "endpoint"
+    st = ep.get("stale_7d") or 0
+    srv = (ep.get("stale_7d_by_type") or {}).get("server", 0)
+    d["stale7_split"] = f"{st - srv} workstations and {srv} servers" if srv else f"{st} workstations"
     tools = r.get("remote_tools") or []
     san = [t for t in tools if t.get("status") == "sanctioned"]
     oth = [t for t in tools if t.get("status") != "sanctioned"]
     nm = lambda f: NAMES.get(f, f.title())
     parts = [f"{nm(t['family'])} ({t['endpoints']} endpoints" + (f", {t['servers']} servers" if t.get("servers") else "") + ")" for t in san]
     d["remote_sanctioned_text"] = (" and ".join(parts) + (" are" if len(parts) > 1 else " is") + " treated as the organization's own tool" + ("s." if len(parts) > 1 else ".")) if parts else ""
+    n_o = r.get("remote_other_endpoints") or 0
+    other_list = ", ".join(f"{nm(t['family'])} {t['endpoints']}" for t in oth)
+    d["remote_other_sentence"] = f"A further {n_o} endpoints run other remote-access tools ({other_list})." if n_o else ""
+    d["remote_title"] = "End-of-life systems and remote-access tool sprawl" if n_o else "End-of-life systems"
+    d["remote_headline_tail"] = f" and {n_o} endpoints with extra remote tools" if n_o else ""
     d["remote_other_text"] = ", ".join(f"{nm(t['family'])} {t['endpoints']}" for t in oth) or "none"
     hard = [h for h in (r.get("hardening") or []) if h.get("possible_reporting_gap")]
     pick = []
@@ -222,8 +233,8 @@ def main():
         "roadmap": roadmap, "strengths": strengths,
         "methodology": (f"Findings were derived from {html.escape(a.tenant)}&rsquo;s Fluency / Ingext datalake: endpoint, vulnerability, hardening, identity and conditional-access snapshots, "
                         f"the archived Entra sign-in activity report and the archived Windows server activity report. Evidence window: {window}. Pillar colours and issue severities follow the thresholds in rating_rules.json. "
-                        "Unprotected-device counts match Defender discovery to SentinelOne by hostname, count only active Windows, Linux and Mac devices, and may include a small number of guest devices. "
-                        "MFA registration status and the MFA status of individual admin-portal sign-ins could not be measured. No individual users or hosts are named in this report."),
+                        "Unprotected-device counts match Defender discovery to the EDR agent inventory (SentinelOne or CrowdStrike) by hostname, count only active Windows, Linux and Mac devices, and may include a small number of guest devices. "
+                        "Recovery ability is inferred from backup products and versions, not proven by restore tests. The conditional-access MFA check counts policies requiring MFA for all users and cannot see exclusions. MFA registration status and the MFA status of individual admin-portal sign-ins could not be measured. No individual users or hosts are named in this report."),
         "_review": {"rules_fired": list(fired), "evidence_gaps": allgaps, "unresolved_placeholders": sorted(set(MISSING)),
                     "note": "Colours and severities are rule-based. Sharpen the wording and check the summary and board ask before rendering."}}
     json.dump(draft, open(a.out, "w"), indent=1, ensure_ascii=False)

@@ -11,6 +11,8 @@ A pillar is **red** if any of its issues is Critical or a rule marks it red, **a
 | E1 | Endpoint Coverage | Critical | (active devices with no EDR agent: at least 50 or unprotected servers: at least 1) | IT Operations | 30 days | red |
 | E2 | Endpoint Coverage | High | active devices with no EDR agent: at least 1 (not when E1 fired) | IT Operations | 30 days | amber |
 | E3 | Endpoint Coverage | Medium | agents silent for over 7 days: at least 5% of agents | IT Operations | 30 days | amber |
+| E4 | Endpoint Coverage | High | CrowdStrike agents in reduced functionality mode: at least 1% of agents | Security Operations | 14 days | amber |
+| E5 | Endpoint Coverage | High | CrowdStrike agents with no prevention policy applied: at least 1% of agents | Security Operations | 14 days | amber |
 | P1 | Prevention & Hardening | High | hardening rules failing on every device: at least 5 | Endpoint Engineering | 60 days | red regardless of severity |
 | P2 | Prevention & Hardening | Medium | (end-of-life devices: at least 1 or endpoints with a non-sanctioned remote-access tool: at least 1) | IT Operations | 90 days | amber |
 | V1 | Vulnerability Exposure | High | devices with an exploitable CVE older than 30 days: at least 25 | IT Operations | 30 days | amber |
@@ -28,7 +30,7 @@ A pillar is **red** if any of its issues is Critical or a rule marks it red, **a
 
 A strength is listed when its test is true:
 
-- connected agents: at least 95% of agents → N of N SentinelOne agents are connected.
+- connected agents: at least 95% of agents → N of N N agents are connected.
 - agents in Protect mode: at least 95% of agents → Confirmed threats are blocked automatically on N of N agents (Protect mode).
 - threats in the last 90 days: at least 1 and unresolved threats: exactly 0 → All N threats in the last N days are resolved.
 - protective settings compliant on 95% or more of devices: at least 3 → N protective settings, for example N, are compliant on 95% or more of devices.
