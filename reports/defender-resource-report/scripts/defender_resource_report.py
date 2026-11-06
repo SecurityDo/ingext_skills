@@ -2,7 +2,7 @@
 """Microsoft Defender resource report: enrolment, device health, antivirus, vulnerabilities, configuration and alerts in one page.
 
 Archive only. Reads the archived daily runs of the scheduled FPL report Defender_Resource_Report (the
-download_report_archive output for one Fluency / Ingext account), takes the latest completed day and writes
+download_report_archive output for one Fluency / Ingext account), merges the archived days (alerts add up; devices are the latest day) and writes
 facts.json, four CSVs, a Fluency-branded print HTML page and a self-contained interactive HTML file.
 Standard library plus the fluency-report brand kit (charts and PDF). It never queries the tenant.
 
@@ -44,9 +44,74 @@ TABLES = ["mderes_summary", "mderes_hosts", "mderes_onboarding", "mderes_seen", 
 
 
 # ---------------------------------------------------------------- loading
-def load_archive(paths):
-    """Read download_report_archive output (one or more files). Returns
-    {"asOf", "days", "lastDay", "firstDay", "tables": {name: [row dicts]}} for the latest completed day, or None."""
+SUMMARY = "mderes_summary"
+
+def _tables_of(res):
+    tables = {}
+    for o in res.get("objects") or []:
+        tb = o.get("table") or {}
+        tables[o.get("name")] = tb.get("rows") or []
+    return tables
+
+
+def _num(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _int(v):
+    n = _num(v)
+    return int(n) if n == int(n) else n
+
+
+def _covered(summ, rng):
+    """(asOf, days covered, window): a run with windowDays N covers the N UTC days ending the day before asOf."""
+    as_of = str(summ.get("asOf") or rng)[:10]
+    try:
+        end = dt.date.fromisoformat(as_of)
+    except ValueError:
+        return as_of, [], 1
+    w = max(1, int(_num(summ.get("windowDays")) or 1))
+    return as_of, [(end - dt.timedelta(days=i + 1)).isoformat() for i in range(w)], w
+
+
+def _sum_by(runs, name, keys, sums=(), maxes=(), mins=(), pick=None, limit=None, order=None):
+    """Merge one table across runs. Rows with the same key are combined: `sums` add, `maxes` and `mins` keep the largest and smallest,
+    every other column comes from the row of the latest run (or from the row with the largest `pick` column)."""
+    out = {}
+    for r in runs:                                          # runs are in date order, so later rows overwrite plain columns
+        for row in r["tables"].get(name, []):
+            k = tuple(str(row.get(c) or "") for c in keys)
+            cur = out.get(k)
+            if cur is None:
+                cur = dict(row)
+                for c in sums:
+                    cur[c] = _int(row.get(c))
+                out[k] = cur
+                continue
+            for c in sums:
+                cur[c] = _int(cur.get(c)) + _int(row.get(c))
+            for c in maxes:
+                if _num(row.get(c)) > _num(cur.get(c)) or (str(row.get(c) or "") > str(cur.get(c) or "") and not _num(row.get(c))):
+                    cur[c] = row.get(c)
+            for c in mins:
+                if row.get(c) and (not cur.get(c) or str(row.get(c)) < str(cur.get(c))):
+                    cur[c] = row.get(c)
+            if pick is None or _num(row.get(pick)) >= _num(cur.get(pick)):
+                for c, v in row.items():
+                    if c not in sums and c not in maxes and c not in mins and c not in keys:
+                        cur[c] = v
+    rows = list(out.values())
+    if order:
+        rows.sort(key=order)
+    return rows[:limit] if limit else rows
+
+
+def _plan(paths):
+    """Read the archive file(s) into runs sorted by date and decide which ones are merged.
+    Returns (kept_runs, latest_run, info) or None. Daily runs (windowDays 1) are merged; if there are none, the latest run alone is used."""
     if isinstance(paths, str):
         paths = [paths]
     cands = []
@@ -62,18 +127,83 @@ def load_archive(paths):
                     cands.append((str(ent.get("rangeTo") or ""), str(ent.get("completedOn") or ""), res))
         elif isinstance(data, dict):
             cands.append(("", "", data.get("result") or data))
-    if not cands:
+    runs = []
+    for rng, done, res in cands:
+        tb = _tables_of(res)
+        if tb.get(SUMMARY):
+            as_of, cov, w = _covered(tb[SUMMARY][0], rng)
+            runs.append({"rng": rng, "done": done, "tables": tb, "asOf": as_of, "cov": cov, "w": w})
+    if not runs:
         return None
-    cands.sort(key=lambda c: (c[0], c[1]))
-    rng, _, res = cands[-1]
-    tables = {}
-    for o in res.get("objects") or []:
-        tb = o.get("table") or {}
-        tables[o.get("name")] = tb.get("rows") or []
-    if not tables.get("mderes_summary"):
+    runs.sort(key=lambda r: (r["asOf"], r["rng"], r["done"]))
+    latest = runs[-1]
+    daily = [r for r in runs if r["w"] == 1]
+    legacy = len(runs) - len(daily)
+    if not daily:                                    # only 30-day snapshots: the old behaviour, latest day alone
+        return [latest], latest, {"legacy": True, "legacyIgnored": 0, "overlap": False, "covered": latest["cov"], "gaps": [], "expected": 1,
+                                  "days": len(runs), "firstDay": runs[0]["rng"], "lastDay": runs[-1]["rng"]}
+    by_day = {}
+    for r in daily:                                  # the same day archived twice: the latest run wins
+        by_day[r["asOf"]] = r
+    kept = [by_day[k] for k in sorted(by_day)]
+    covered = sorted(d for r in kept for d in r["cov"])
+    first, last = covered[0], covered[-1]
+    expected = (dt.date.fromisoformat(last) - dt.date.fromisoformat(first)).days + 1
+    d0 = dt.date.fromisoformat(first)
+    have = set(covered)
+    gaps = [(d0 + dt.timedelta(days=i)).isoformat() for i in range(expected) if (d0 + dt.timedelta(days=i)).isoformat() not in have]
+    return kept, kept[-1], {"legacy": False, "legacyIgnored": legacy, "overlap": len(daily) != len(kept), "covered": covered, "gaps": gaps,
+                            "expected": expected, "days": len(covered), "firstDay": first, "lastDay": last}
+
+
+def _period_notes(arc):
+    """Notes on the archived period: gaps, runs left out, a day archived twice, or a legacy 30-day archive."""
+    n = []
+    if arc.get("legacy"):
+        n.append("This archive holds only 30-day runs from before the daily schedule, so the latest day is used and days are not added together. "
+                 "The alert and finding counts cover the 30 days before that run.")
+        return n
+    gaps = arc.get("gaps") or []
+    if gaps:
+        n.append("No archived run covers %d day%s in this period (%s%s). Those days are missing from the counts; they are not zero."
+                 % (len(gaps), "" if len(gaps) == 1 else "s", ", ".join(gaps[:6]), ", ..." if len(gaps) > 6 else ""))
+    if arc.get("legacyIgnored"):
+        n.append("%d earlier 30-day run%s from before the daily schedule %s left out, because their windows overlap each other."
+                 % (arc["legacyIgnored"], "" if arc["legacyIgnored"] == 1 else "s", "was" if arc["legacyIgnored"] == 1 else "were"))
+    if arc.get("overlap"):
+        n.append("A day archived more than once is counted once, using its latest run.")
+    return n
+
+
+def load_archive(paths):
+    """Read download_report_archive output (one or more files). Returns
+    {"asOf", "days", "firstDay", "lastDay", "expected", "gaps", "legacy", "tables": {name: [row dicts]}} or None.
+    Devices, vulnerabilities, configuration and scores are a snapshot from the latest completed day. The alerts and incidents (the
+    mderes_alerts, mderes_alert_titles, mderes_incidents and mderes_alert_hosts tables and the alert counts in mderes_summary) are merged
+    across every archived day: each alert or incident is counted on the day it was created, so counts add, a day archived twice keeps the
+    latest run, devices are added up by device id, and the distinct device counts are the busiest day."""
+    plan = _plan(paths)
+    if not plan:
         return None
-    summ = tables["mderes_summary"][0]
-    return {"asOf": str(summ.get("asOf") or rng)[:10], "days": len(cands), "firstDay": cands[0][0], "lastDay": cands[-1][0], "tables": tables}
+    kept, latest, info = plan
+    tables = dict(latest["tables"])
+    if not info["legacy"]:
+        by_alerts = lambda x: -_num(x.get("alerts"))
+        tables["mderes_alerts"] = _sum_by(kept, "mderes_alerts", ["serviceSource", "severity", "status", "category"], sums=["alerts"], order=by_alerts)
+        tables["mderes_alert_titles"] = _sum_by(kept, "mderes_alert_titles", ["title"], sums=["alerts", "open"], order=by_alerts, limit=10)
+        tables["mderes_incidents"] = _sum_by(kept, "mderes_incidents", ["severity", "status"], sums=["incidents"], order=lambda x: -_num(x.get("incidents")))
+        tables["mderes_alert_hosts"] = _sum_by(kept, "mderes_alert_hosts", ["device_id", "hostname"], sums=["alerts", "openAlerts", "highOpen"], maxes=["lastAlert"],
+                                               pick="alerts", order=lambda x: (-_num(x.get("highOpen")), -_num(x.get("openAlerts"))), limit=25)
+        summ = dict(latest["tables"][SUMMARY][0])
+        for c in ['alertsOpen', 'alertsOpenHigh']:
+            summ[c] = sum(_int(r["tables"][SUMMARY][0].get(c)) for r in kept)
+        for c in ['alertDevices', 'devicesOpenHigh', 'devicesOpen']:
+            summ[c] = max([_int(r["tables"][SUMMARY][0].get(c)) for r in kept] or [0])
+        summ["windowDays"] = info["days"]
+        tables[SUMMARY] = [summ]
+    return {"asOf": str(latest["tables"][SUMMARY][0].get("asOf") or latest["rng"])[:10], "days": info["days"], "firstDay": info["firstDay"], "lastDay": info["lastDay"],
+            "expected": info["expected"], "gaps": info["gaps"], "legacy": info["legacy"], "legacyIgnored": info["legacyIgnored"], "overlap": info["overlap"],
+            "tables": tables}
 
 
 def pct(n, d):
@@ -248,7 +378,7 @@ def default_narrative(f):
           "<strong>%s devices carry known vulnerabilities</strong> and <strong>%s of them have a High or Critical CVE with a verified exploit</strong>. "
           "Secure configuration checks are <strong>%s%% compliant</strong>, and Secure Score is %s points.</p>"
           % (num(av["active"]), num(av["devices"]), num(av["notActive"]), num(v["devices"]), num(v["exploitDevices"]), cfgpct, num(f["secureScore"]["score"])))
-    s3 = ("<p>In the %d-day window Defender raised <strong>%s alerts</strong>; <strong>%s open endpoint alert%s</strong> above informational severity, %s high. "
+    s3 = ("<p>In the %d archived day(s) Defender raised <strong>%s alerts</strong>; <strong>%s open endpoint alert%s</strong> above informational severity, %s high. "
           "%s incidents are open.</p>" % (a["windowDays"], num(a["total"]), num(a["mdeOpenScored"]), "" if a["mdeOpenScored"] == 1 else "s", num(a["openHigh"]), num(a["incidentsOpen"])))
     return [s1, s2, s3]
 
@@ -327,8 +457,10 @@ def kpi(label, value, color, note=""):
 def coverage_notes(arc, f, now):
     notes = []
     age = (now.date() - dt.date.fromisoformat(arc["asOf"])).days
-    notes.append("Built from the archived %s for %s (latest completed day in the file; the file holds %d day%s, %s to %s). Each archived day is a snapshot of the Defender console, so days are never added together."
-                 % (REPORT, arc["asOf"], arc["days"], "" if arc["days"] == 1 else "s", arc["firstDay"] or "?", arc["lastDay"] or "?"))
+    notes.append("Built from the archived %s: %d archived day%s from %s to %s. Devices, vulnerabilities, configuration and scores are the console on %s (the latest day). "
+                 "Alerts and incidents are added across the archived days: each is counted on the day it was created, with its status at the end of that day, so one resolved later still counts as open, "
+                 "and the device scores include only the alerts of the latest day." % (REPORT, arc["days"], "" if arc["days"] == 1 else "s", arc["firstDay"] or "?", arc["lastDay"] or "?", arc["asOf"]))
+    notes.extend(_period_notes(arc))
     if age > MAX_AGE_DAYS:
         notes.append("The latest archived day is %d days old, so these figures are not current. Check the scheduled report." % age)
     if f["hosts"]["truncated"]:
@@ -418,7 +550,7 @@ def cmd_render(args):
                    "%s active, %s with a public exploit" % (num(f["recs"]["count"]), num(f["recs"]["publicExploit"]))))
     # alerts
     g.append(panel("Alerts by severity and status", bars(al["bySeverity"], al["total"] or 1, "var(--red)", "No alerts in the window.") + '<div style="height:12px"></div>' + bars(al["byStatus"], al["total"] or 1, "var(--amber)"), 6,
-                   "%d-day window, all Defender products" % al["windowDays"]))
+                   "%d archived day(s), all Defender products" % al["windowDays"]))
     src_names = {"microsoftDefenderForEndpoint": "Defender for Endpoint", "microsoftDefenderForOffice365": "Defender for Office 365", "dataLossPrevention": "Data loss prevention"}
     srcb = [{"name": src_names.get(x["name"], x["name"]), "count": x["count"]} for x in al["bySource"]]
     inc = [{"name": "%s, %s" % (x["severity"], x["status"]), "count": x["count"]} for x in al["incidents"][:5]]
@@ -438,12 +570,12 @@ def cmd_render(args):
     app = [panel("Devices needing attention", table(["Device", "OS", "Days", "Status", "Why"], rows, ["26%", "12%", "6%", "17%", "39%"], "data devlist") if rows
                  else '<p class="panel-subtitle">No device has an open issue.</p>', 12, "%d of %s%s" % (len(attn), num(e["needsAction"] + e["watch"]), note), "page-break")]
     method = ('<div class="method">'
-              '<div><b>Source.</b> The archived daily run of the scheduled report %s for %s. Each day is a snapshot of the Defender console at that run, and the latest completed day is used. Scores cover onboarded devices only.</div>'
+              '<div><b>Source.</b> The archived daily run of the scheduled report %s for %s. Each run covers one day. Devices, vulnerabilities and configuration are the console on the latest day; alerts and incidents are added across the archived days. Scores cover onboarded devices only.</div>'
               '<div><b>Last seen.</b> Days from the device\'s last seen time to the end of the run window. More than %d days is stale; more than %d days is silent.</div>'
               '<div><b>Needs action.</b> Score of 3 or more. Points: not seen for over 30 days 3 (inactive sensor or over 7 days 2); risk score High 3, Medium 2, Low 1; exposure level High 1; antivirus disabled or EDR-blocked 2; antivirus signatures out of date 2; engine or platform out of date 1; 10 or more exploitable High or Critical CVEs 2; 100 or more critical CVEs 1; an open high severity alert 3 and any other open alert above informational 1. Watch is 1 to 2.</div>'
               '<div><b>Vulnerabilities.</b> Per device, distinct CVEs. Exploitable means a High or Critical CVE with a verified exploit or an exploit kit.</div>'
               '<div><b>Secure configuration.</b> Only checks that apply to the device count. Compliance is compliant checks divided by applicable checks.</div>'
-              '<div><b>Alerts.</b> Defender alerts created in the %d-day window, each counted once at its latest state. Informational alerts are listed but are not scored or counted as open.</div></div>'
+              '<div><b>Alerts.</b> Defender alerts created in the %d archived day(s), each counted once on the day it was created, with its status at the end of that day. Informational alerts are listed but are not scored or counted as open.</div></div>'
               % (REPORT, esc(f["asOf"]), STALE_DAYS, LONG_STALE_DAYS, al["windowDays"]))
     app.append(panel("How to read this report", method, 12))
     app.append(panel("Data notes", '<div class="method">%s</div>' % "".join("<div>%s</div>" % esc(x) for x in notes), 12))
@@ -512,7 +644,7 @@ def build_interactive(path, args, f, eps, arc, notes):
                      "score": x["score"], "state": x["state"], "reasons": x["reasons"]})
     srcs = [{"source": r.get("source"), "status": r.get("status"), "detail": str(r.get("detail") or "")[:160]} for r in arc["tables"].get("sources", [])]
     method = [
-        "Source: the archived daily run of the scheduled report %s; the latest completed day (%s) is used. Each day is a snapshot of the Defender console. Scores cover onboarded devices only." % (REPORT, f["asOf"]),
+        "Source: the archived daily run of the scheduled report %s; devices, vulnerabilities and configuration are the console on the latest day (%s); alerts and incidents are added across the archived days. Scores cover onboarded devices only." % (REPORT, f["asOf"]),
         "Last seen: days from the last seen time to the end of the run window. More than %d days is stale; more than %d days is silent." % (STALE_DAYS, LONG_STALE_DAYS),
         "Needs action is a score of 3 or more. Points: not seen over 30 days 3 (inactive sensor or over 7 days 2); risk score High 3, Medium 2, Low 1; exposure High 1; antivirus disabled or EDR-blocked 2; signatures out of date 2; engine or platform out of date 1; 10 or more exploitable CVEs 2; 100 or more critical CVEs 1; open high alert 3, other open alert above informational 1.",
         "Watch is 1 to 2. Healthy (0) devices are counted but not listed.",

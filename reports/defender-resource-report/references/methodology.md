@@ -5,8 +5,8 @@
 The report reads the archive of the scheduled FPL report `Defender_Resource_Report`, one UTC day per archived run, and uses the latest
 completed day. Each day carries the tables below, all computed in the tenant from the Defender resource tables (`msDefenderMachine`,
 `msDefenderAvHealth`, `msDefenderVulnerability`, `msDefenderSecureConfig`, `msDefenderRecommendation`, `msDefenderSecureScore`; snapshots
-of the console, no history) and the `MSDefenderAlert` and `MSDefenderIncident` streams (the 30 days before the run). `asOf` is the end of
-the run window. Days are never added together.
+of the console, no history) and the `MSDefenderAlert` and `MSDefenderIncident` streams (the alerts and incidents created in the one-day run window). `asOf` is the end of
+the run window. The device tables are never added across days; the alert and incident tables are (see Merging archived days).
 
 | Table | Holds |
 |---|---|
@@ -66,3 +66,19 @@ settings are ranked by devices failing multiplied by the setting's impact.
 Alert rows are snapshots, so each alert is reduced to its latest state. Open means status `new` or `inProgress`. The cross-tab keeps all
 products (endpoint, Office 365, data loss prevention); only Defender for Endpoint alerts map to devices. Incidents are listed by severity and
 status.
+
+## Merging archived days
+
+Each archived run covers one UTC day (`windowDays` 1, ending the day before `asOf`). The script merges them as follows.
+
+- **Added across days:** `alertsOpen` and `alertsOpenHigh` in `mderes_summary`, and the counts in `mderes_alerts`, `mderes_alert_titles`,
+  `mderes_incidents` and `mderes_alert_hosts` (by device id). Each alert or incident is counted on the day it was created.
+- **Busiest day:** `alertDevices`, `devicesOpenHigh` and `devicesOpen`, because the same device can have alerts on several days.
+- **Lists are lower bounds:** the daily top lists (alert titles, devices) are cut per day, so a merged list can miss an item that was never in a
+  day's top list.
+- **Latest day:** every device, vulnerability, configuration, recommendation, antivirus and score table.
+- **Open means open when last seen:** an alert's status is its state at the end of the day it was created. One resolved afterwards still counts as
+  open, and the device scores include only the latest day's alerts.
+- **Gaps and repeats:** a day archived twice keeps the latest run; a missing day is listed as a gap and is not counted as zero.
+- **Old archives:** runs from before the daily schedule have a 30-day window and overlap each other. They are used alone when no daily run
+  exists, and are left out (with a note) when daily runs do.

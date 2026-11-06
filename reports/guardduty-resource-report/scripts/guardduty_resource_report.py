@@ -2,7 +2,7 @@
 """AWS GuardDuty resource report: findings by severity, type, account, resource and day in one page.
 
 Archive only. Reads the archived daily runs of the scheduled FPL report GuardDuty_Resource_Report (the
-download_report_archive output for one Fluency / Ingext account), takes the latest completed day and writes
+download_report_archive output for one Fluency / Ingext account), merges the archived days (new findings and updates add up; the snapshot is the latest day) and writes
 facts.json, four CSVs, a Fluency-branded print HTML page and a self-contained interactive HTML file.
 Standard library plus the fluency-report brand kit (charts and PDF). It never queries the tenant.
 
@@ -41,9 +41,74 @@ STATUS_COLOR = {"Needs action": "#b3242e", "Watch": "#a06c00", "Low priority": "
 
 
 # ---------------------------------------------------------------- loading
-def load_archive(paths):
-    """Read download_report_archive output (one or more files). Returns
-    {"asOf", "days", "lastDay", "firstDay", "tables": {name: [row dicts]}} for the latest completed day, or None."""
+SUMMARY = "gdres_summary"
+
+def _tables_of(res):
+    tables = {}
+    for o in res.get("objects") or []:
+        tb = o.get("table") or {}
+        tables[o.get("name")] = tb.get("rows") or []
+    return tables
+
+
+def _num(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _int(v):
+    n = _num(v)
+    return int(n) if n == int(n) else n
+
+
+def _covered(summ, rng):
+    """(asOf, days covered, window): a run with windowDays N covers the N UTC days ending the day before asOf."""
+    as_of = str(summ.get("asOf") or rng)[:10]
+    try:
+        end = dt.date.fromisoformat(as_of)
+    except ValueError:
+        return as_of, [], 1
+    w = max(1, int(_num(summ.get("windowDays")) or 1))
+    return as_of, [(end - dt.timedelta(days=i + 1)).isoformat() for i in range(w)], w
+
+
+def _sum_by(runs, name, keys, sums=(), maxes=(), mins=(), pick=None, limit=None, order=None):
+    """Merge one table across runs. Rows with the same key are combined: `sums` add, `maxes` and `mins` keep the largest and smallest,
+    every other column comes from the row of the latest run (or from the row with the largest `pick` column)."""
+    out = {}
+    for r in runs:                                          # runs are in date order, so later rows overwrite plain columns
+        for row in r["tables"].get(name, []):
+            k = tuple(str(row.get(c) or "") for c in keys)
+            cur = out.get(k)
+            if cur is None:
+                cur = dict(row)
+                for c in sums:
+                    cur[c] = _int(row.get(c))
+                out[k] = cur
+                continue
+            for c in sums:
+                cur[c] = _int(cur.get(c)) + _int(row.get(c))
+            for c in maxes:
+                if _num(row.get(c)) > _num(cur.get(c)) or (str(row.get(c) or "") > str(cur.get(c) or "") and not _num(row.get(c))):
+                    cur[c] = row.get(c)
+            for c in mins:
+                if row.get(c) and (not cur.get(c) or str(row.get(c)) < str(cur.get(c))):
+                    cur[c] = row.get(c)
+            if pick is None or _num(row.get(pick)) >= _num(cur.get(pick)):
+                for c, v in row.items():
+                    if c not in sums and c not in maxes and c not in mins and c not in keys:
+                        cur[c] = v
+    rows = list(out.values())
+    if order:
+        rows.sort(key=order)
+    return rows[:limit] if limit else rows
+
+
+def _plan(paths):
+    """Read the archive file(s) into runs sorted by date and decide which ones are merged.
+    Returns (kept_runs, latest_run, info) or None. Daily runs (windowDays 1) are merged; if there are none, the latest run alone is used."""
     if isinstance(paths, str):
         paths = [paths]
     cands = []
@@ -59,18 +124,123 @@ def load_archive(paths):
                     cands.append((str(ent.get("rangeTo") or ""), str(ent.get("completedOn") or ""), res))
         elif isinstance(data, dict):
             cands.append(("", "", data.get("result") or data))
-    if not cands:
+    runs = []
+    for rng, done, res in cands:
+        tb = _tables_of(res)
+        if tb.get(SUMMARY):
+            as_of, cov, w = _covered(tb[SUMMARY][0], rng)
+            runs.append({"rng": rng, "done": done, "tables": tb, "asOf": as_of, "cov": cov, "w": w})
+    if not runs:
         return None
-    cands.sort(key=lambda c: (c[0], c[1]))
-    rng, _, res = cands[-1]
-    tables = {}
-    for o in res.get("objects") or []:
-        tb = o.get("table") or {}
-        tables[o.get("name")] = tb.get("rows") or []
-    if not tables.get("gdres_summary"):
+    runs.sort(key=lambda r: (r["asOf"], r["rng"], r["done"]))
+    latest = runs[-1]
+    daily = [r for r in runs if r["w"] == 1]
+    legacy = len(runs) - len(daily)
+    if not daily:                                    # only 30-day snapshots: the old behaviour, latest day alone
+        return [latest], latest, {"legacy": True, "legacyIgnored": 0, "overlap": False, "covered": latest["cov"], "gaps": [], "expected": 1,
+                                  "days": len(runs), "firstDay": runs[0]["rng"], "lastDay": runs[-1]["rng"]}
+    by_day = {}
+    for r in daily:                                  # the same day archived twice: the latest run wins
+        by_day[r["asOf"]] = r
+    kept = [by_day[k] for k in sorted(by_day)]
+    covered = sorted(d for r in kept for d in r["cov"])
+    first, last = covered[0], covered[-1]
+    expected = (dt.date.fromisoformat(last) - dt.date.fromisoformat(first)).days + 1
+    d0 = dt.date.fromisoformat(first)
+    have = set(covered)
+    gaps = [(d0 + dt.timedelta(days=i)).isoformat() for i in range(expected) if (d0 + dt.timedelta(days=i)).isoformat() not in have]
+    return kept, kept[-1], {"legacy": False, "legacyIgnored": legacy, "overlap": len(daily) != len(kept), "covered": covered, "gaps": gaps,
+                            "expected": expected, "days": len(covered), "firstDay": first, "lastDay": last}
+
+
+def _band(m):
+    m = _num(m)
+    return "High" if m >= 7 else ("Medium" if m >= 4 else "Low")
+
+
+def _period_notes(arc):
+    """Notes on the archived period: gaps, runs left out, a day archived twice, or a legacy 30-day archive."""
+    n = []
+    if arc.get("legacy"):
+        n.append("This archive holds only 30-day runs from before the daily schedule, so the latest day is used and days are not added together. "
+                 "The alert and finding counts cover the 30 days before that run.")
+        return n
+    gaps = arc.get("gaps") or []
+    if gaps:
+        n.append("No archived run covers %d day%s in this period (%s%s). Those days are missing from the counts; they are not zero."
+                 % (len(gaps), "" if len(gaps) == 1 else "s", ", ".join(gaps[:6]), ", ..." if len(gaps) > 6 else ""))
+    if arc.get("legacyIgnored"):
+        n.append("%d earlier 30-day run%s from before the daily schedule %s left out, because their windows overlap each other."
+                 % (arc["legacyIgnored"], "" if arc["legacyIgnored"] == 1 else "s", "was" if arc["legacyIgnored"] == 1 else "were"))
+    if arc.get("overlap"):
+        n.append("A day archived more than once is counted once, using its latest run.")
+    return n
+
+
+def load_archive(paths):
+    """Read download_report_archive output (one or more files). Returns
+    {"asOf", "days", "firstDay", "lastDay", "expected", "gaps", "legacy", "tables": {name: [row dicts]}} or None.
+    The finding snapshot (gdres_snapshot) is the resource table on the latest completed day. The finding tables are merged across every
+    archived day: a finding is counted on the day it was created (gdres_findings, gdres_types, gdres_accounts, gdres_resources,
+    gdres_repeat, gdres_created and the new* counts), updates add up, one row per day is kept once (the latest run wins), and the
+    distinct counts (accounts, regions, resource types) are taken from the merged tables."""
+    plan = _plan(paths)
+    if not plan:
         return None
-    summ = tables["gdres_summary"][0]
-    return {"asOf": str(summ.get("asOf") or rng)[:10], "days": len(cands), "firstDay": cands[0][0], "lastDay": cands[-1][0], "tables": tables}
+    kept, latest, info = plan
+    tables = dict(latest["tables"])
+    if not info["legacy"]:
+        for name in ("gdres_daily", "gdres_created"):
+            byday = {}
+            for r in kept:
+                for row in r["tables"].get(name, []):
+                    byday[str(row.get("day") or "")[:10]] = row
+            tables[name] = [byday[k] for k in sorted(byday) if k]
+        seen, finds = set(), []
+        for r in reversed(kept):
+            for row in r["tables"].get("gdres_findings", []):
+                if row.get("id") not in seen:
+                    seen.add(row.get("id"))
+                    finds.append(row)
+        finds.sort(key=lambda x: (-_num(x.get("severity")), str(x.get("lastUpdate") or "")), reverse=False)
+        tables["gdres_findings"] = finds[:200]
+        tables["gdres_types"] = _sum_by(kept, "gdres_types", ["type"], sums=["findings", "updates"], maxes=["maxSeverity", "resources", "accounts", "lastUpdate"], mins=["firstUpdate"],
+                                        order=lambda x: (-_num(x.get("maxSeverity")), -_num(x.get("findings"))), limit=100)
+        for row in tables["gdres_types"]:
+            row["band"] = _band(row.get("maxSeverity"))
+        tables["gdres_accounts"] = _sum_by(kept, "gdres_accounts", ["account", "region"], sums=["findings", "high", "medium", "low", "updates"], maxes=["resources", "lastUpdate"],
+                                           order=lambda x: (-_num(x.get("high")), -_num(x.get("findings"))), limit=100)
+        tables["gdres_resources"] = _sum_by(kept, "gdres_resources", ["resourceType", "resource"], sums=["findings", "updates"], maxes=["maxSeverity", "types", "lastUpdate"], mins=["firstUpdate"],
+                                            order=lambda x: (-_num(x.get("maxSeverity")), -_num(x.get("findings")), -_num(x.get("updates"))), limit=100)
+        for row in tables["gdres_resources"]:
+            row["band"] = _band(row.get("maxSeverity"))
+        have = {}
+        for r in kept:
+            for row in r["tables"].get("gdres_repeat", []):
+                have[row.get("id")] = row
+        tables["gdres_repeat"] = sorted(have.values(), key=lambda x: -_num(x.get("updates")))[:25]
+        summ = dict(latest["tables"][SUMMARY][0])
+        runs = [r["tables"][SUMMARY][0] for r in kept]
+        for c in ("events", "newFindings", "newHigh", "newMedium", "newLow"):
+            summ[c] = sum(_int(s.get(c)) for s in runs)
+        # the headline counts are the findings raised in the period, the same basis as the merged tables
+        summ["findings"], summ["high"], summ["medium"], summ["low"] = summ["newFindings"], summ["newHigh"], summ["newMedium"], summ["newLow"]
+        summ["repeat10"] = max([_int(s.get("repeat10")) for s in runs] or [0])
+        summ["active24h"] = _int(runs[-1].get("active24h"))           # findings updated on the latest day
+        summ["active7d"] = max([_int(s.get("findings")) for s in runs[-7:]] or [0])      # at least: the busiest of the last 7 days
+        summ["accounts"] = len({row.get("account") for row in tables["gdres_accounts"]})
+        summ["regions"] = len({row.get("region") for row in tables["gdres_accounts"]})
+        summ["resourceTypes"] = len({row.get("resourceType") for row in tables["gdres_resources"]})
+        summ["resources"] = len(tables["gdres_resources"])
+        fu = [str(s.get("firstUpdate")) for s in runs if s.get("firstUpdate")]
+        lu = [str(s.get("lastUpdate")) for s in runs if s.get("lastUpdate")]
+        summ["firstUpdate"], summ["lastUpdate"] = (min(fu) if fu else ""), (max(lu) if lu else "")
+        summ["windowDays"] = info["days"]
+        tables[SUMMARY] = [summ]
+
+    return {"asOf": str(latest["tables"][SUMMARY][0].get("asOf") or latest["rng"])[:10], "days": info["days"], "firstDay": info["firstDay"], "lastDay": info["lastDay"],
+            "expected": info["expected"], "gaps": info["gaps"], "legacy": info["legacy"], "legacyIgnored": info["legacyIgnored"], "overlap": info["overlap"],
+            "tables": tables}
 
 
 def pct(n, d):
@@ -248,10 +418,10 @@ def default_narrative(f):
     s, st = f["summary"], f["status"]
     if not s["findings"]:
         return ["<p>GuardDuty raised <strong>no findings</strong> in the %d days to %s. %s finding%s in the current snapshot.</p>" % (s["windowDays"], esc(f["asOf"]), num(s["snapshot"]), "" if s["snapshot"] == 1 else "s")]
-    s1 = ("<p>In the %d days to %s GuardDuty updated <strong>%s findings</strong> across %s account%s and %s region%s: <strong>%s high</strong>, %s medium and %s low severity. "
-          "<strong>%s need action</strong> and %s are worth watching; %s were updated in the last 7 days and %s were first raised in the window.</p>"
+    s1 = ("<p>In the %d days to %s GuardDuty raised <strong>%s new findings</strong> across %s account%s and %s region%s: <strong>%s high</strong>, %s medium and %s low severity. "
+          "<strong>%s need action</strong> and %s are worth watching; %s were updated in the last 7 days (at least) and %s were updated 10 or more times.</p>"
           % (s["windowDays"], esc(f["asOf"]), num(s["findings"]), num(s["accounts"]), "" if s["accounts"] == 1 else "s", num(s["regions"]), "" if s["regions"] == 1 else "s",
-             num(s["high"]), num(s["medium"]), num(s["low"]), num(st["needsAction"]), num(st["watch"]), num(s["active7d"]), num(s["newFindings"])))
+             num(s["high"]), num(s["medium"]), num(s["low"]), num(st["needsAction"]), num(st["watch"]), num(s["active7d"]), num(s["repeat10"])))
     top = f["types"][0] if f["types"] else None
     big = max(f["types"], key=lambda t: t["findings"], default=None)
     s2 = ("<p>The findings touch <strong>%s resources</strong> of %s type%s. The most severe finding type is <strong>%s</strong> (severity %s)%s. "
@@ -339,8 +509,10 @@ def daily_chart(daily):
 def coverage_notes(arc, f, now):
     notes = []
     age = (now.date() - dt.date.fromisoformat(arc["asOf"])).days
-    notes.append("Built from the archived %s for %s (latest completed day in the file; the file holds %d day%s, %s to %s). Each archived day is a snapshot, so days are never added together."
-                 % (REPORT, arc["asOf"], arc["days"], "" if arc["days"] == 1 else "s", arc["firstDay"] or "?", arc["lastDay"] or "?"))
+    notes.append("Built from the archived %s: %d archived day%s from %s to %s. A finding is counted on the day it was created, so the findings, types, accounts and resources add up across the days; "
+                 "updates are added up too. The list of current findings is the resource table on %s (the latest day). The finding types, severities and counts are as they stood on the day each finding was created."
+                 % (REPORT, arc["days"], "" if arc["days"] == 1 else "s", arc["firstDay"] or "?", arc["lastDay"] or "?", arc["asOf"]))
+    notes.extend(_period_notes(arc))
     if age > MAX_AGE_DAYS:
         notes.append("The latest archived day is %d days old, so these figures are not current. Check the scheduled report." % age)
     st, s = f["status"], f["summary"]
@@ -380,7 +552,7 @@ def cmd_render(args):
     f["narrative"] = {"summary": summary, "nextSteps": steps, "custom": bool(narr)}
 
     kp = [
-        kpi("Findings", num(s["findings"]), "navy", "%s updates in %d days" % (num(s["events"]), s["windowDays"])),
+        kpi("Findings raised", num(s["findings"]), "navy", "%s updates in %d days" % (num(s["events"]), s["windowDays"])),
         kpi("High severity", num(s["high"]), "red" if s["high"] else "green", "%s medium, %s low" % (num(s["medium"]), num(s["low"]))),
         kpi("Need action", num(st["needsAction"]), "red" if st["needsAction"] else "green", "%s more on watch" % num(st["watch"])),
         kpi("Active, last 7 days", num(s["active7d"]), "amber" if s["active7d"] else "green", "%s in the last 24 hours" % num(s["active24h"])),
@@ -399,7 +571,7 @@ def cmd_render(args):
     g.append(panel("Findings by category", bars(cb, s["findings"] or None, empty="No findings."), 6, "colored by the most severe finding type in each category"))
     if any(d["findings"] for d in f["daily"]):
         lg = '<div class="legend">%s</div>' % "".join('<span class="lg"><i style="background:%s"></i>%s severity</span>' % (BAND_COLOR[b], b) for b in BANDS)
-        g.append(panel("Findings updated per day", lg + daily_chart(f["daily"]), 12, "distinct findings per UTC day, %d days; hover a bar for the day" % s["windowDays"]))
+        g.append(panel("Findings updated per day", lg + daily_chart(f["daily"]), 12, "distinct findings updated per UTC day, %d days; hover a bar for the day" % s["windowDays"]))
     tr = [[td(t["type"], True), '<td>%s</td>' % chip("%s %s" % (t["band"], sev(t["severity"])), BAND_COLOR[t["band"]]), tdn(t["findings"]), tdn(t["updates"]), tdn(t["resources"]), td(t["last"])] for t in f["types"][:10]]
     g.append(panel("Finding types", table(["Type", "Severity", "Findings", "Updates", "Resources", "Last update"], tr, ["38%", "16%", "11%", "11%", "11%", "13%"]) if tr else '<p class="panel-subtitle">No findings.</p>', 12,
                    "%d type%s; top 10 by severity" % (len(f["types"]), "" if len(f["types"]) == 1 else "s")))
@@ -423,7 +595,7 @@ def cmd_render(args):
     app = [panel("Findings needing attention", table(["Finding", "Type", "Resource", "Status", "Last update", "Updates", "Why"], rows, ["20%", "17%", "13%", "11%", "9%", "7%", "23%"], "data devlist") if rows
                  else '<p class="panel-subtitle">No findings in the window.</p>', 12, "%d of %s%s" % (len(shown), num(st["needsAction"] + st["watch"]), note), "page-break")]
     method = ('<div class="method">'
-              '<div><b>Source.</b> The archived daily run of the scheduled report %s for %s. Each day is a snapshot and the latest completed day is used. The findings come from GuardDuty finding updates in the last %d days and from GuardDuty\'s current list.</div>'
+              '<div><b>Source.</b> The archived daily run of the scheduled report %s for %s. Each run covers one day. A finding is counted on the day it was created, and the days are added up; the current list is the resource table on the latest day. The period is %d archived day(s).</div>'
               '<div><b>Counting.</b> GuardDuty re-sends a finding each time it sees more of the same activity. A finding is counted once, by its id, at its latest update. Updates is the number of times it was sent in the window.</div>'
               '<div><b>Severity.</b> GuardDuty severity: 7 or more High, 4 up to 7 Medium, below 4 Low.</div>'
               '<div><b>Attention rating.</b> A finding scores High 3, Medium 2, Low 1, plus 1 when it was updated in the last 7 days of the window. Archived findings score 0. 3 or more is Needs action, 2 is Watch, 1 is Low priority.</div>'
@@ -489,7 +661,7 @@ def build_interactive(path, args, f, finds, snap, arc, notes):
                 "state": x["state"], "reasons": x["reasons"]}
     srcs = [{"source": r.get("source"), "status": r.get("status"), "detail": str(r.get("detail") or "")[:160]} for r in arc["tables"].get("sources", [])]
     method = [
-        "Source: the archived daily run of the scheduled report %s; the latest completed day (%s) is used. Each day is a snapshot." % (REPORT, f["asOf"]),
+        "Source: the archived daily run of the scheduled report %s; findings are counted on the day they were created and added across the archived days; the current list is the latest day (%s)." % (REPORT, f["asOf"]),
         "GuardDuty re-sends a finding each time it sees more of the same activity. A finding is counted once, by its id, at its latest update. Updates is the number of times it was sent in the window (%d days)." % f["summary"]["windowDays"],
         "Severity: 7 or more High, 4 up to 7 Medium, below 4 Low.",
         "Attention rating: High 3, Medium 2, Low 1, plus 1 when the finding was updated in the last 7 days of the window; archived findings score 0. 3 or more Needs action, 2 Watch, 1 Low priority.",

@@ -2,7 +2,7 @@
 """CrowdStrike Falcon resource report: sensor health, versions, policies and detections in one page.
 
 Archive only. Reads the archived daily runs of the scheduled FPL report CrowdStrike_Resource_Report (the
-download_report_archive output for one Fluency / Ingext account), takes the latest completed day and writes
+download_report_archive output for one Fluency / Ingext account), merges the archived days (detections add up; hosts are the latest day) and writes
 facts.json, three CSVs, a Fluency-branded print HTML page and a self-contained interactive HTML file.
 Standard library plus the fluency-report brand kit (charts and PDF). It never queries the tenant.
 
@@ -39,9 +39,74 @@ ASSETS = os.path.join(os.path.dirname(HERE), "assets")
 
 
 # ---------------------------------------------------------------- loading
-def load_archive(paths):
-    """Read download_report_archive output (one or more files). Returns
-    {"asOf", "days", "lastDay", "firstDay", "tables": {name: [row dicts]}} for the latest completed day, or None."""
+SUMMARY = "falres_summary"
+
+def _tables_of(res):
+    tables = {}
+    for o in res.get("objects") or []:
+        tb = o.get("table") or {}
+        tables[o.get("name")] = tb.get("rows") or []
+    return tables
+
+
+def _num(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _int(v):
+    n = _num(v)
+    return int(n) if n == int(n) else n
+
+
+def _covered(summ, rng):
+    """(asOf, days covered, window): a run with windowDays N covers the N UTC days ending the day before asOf."""
+    as_of = str(summ.get("asOf") or rng)[:10]
+    try:
+        end = dt.date.fromisoformat(as_of)
+    except ValueError:
+        return as_of, [], 1
+    w = max(1, int(_num(summ.get("windowDays")) or 1))
+    return as_of, [(end - dt.timedelta(days=i + 1)).isoformat() for i in range(w)], w
+
+
+def _sum_by(runs, name, keys, sums=(), maxes=(), mins=(), pick=None, limit=None, order=None):
+    """Merge one table across runs. Rows with the same key are combined: `sums` add, `maxes` and `mins` keep the largest and smallest,
+    every other column comes from the row of the latest run (or from the row with the largest `pick` column)."""
+    out = {}
+    for r in runs:                                          # runs are in date order, so later rows overwrite plain columns
+        for row in r["tables"].get(name, []):
+            k = tuple(str(row.get(c) or "") for c in keys)
+            cur = out.get(k)
+            if cur is None:
+                cur = dict(row)
+                for c in sums:
+                    cur[c] = _int(row.get(c))
+                out[k] = cur
+                continue
+            for c in sums:
+                cur[c] = _int(cur.get(c)) + _int(row.get(c))
+            for c in maxes:
+                if _num(row.get(c)) > _num(cur.get(c)) or (str(row.get(c) or "") > str(cur.get(c) or "") and not _num(row.get(c))):
+                    cur[c] = row.get(c)
+            for c in mins:
+                if row.get(c) and (not cur.get(c) or str(row.get(c)) < str(cur.get(c))):
+                    cur[c] = row.get(c)
+            if pick is None or _num(row.get(pick)) >= _num(cur.get(pick)):
+                for c, v in row.items():
+                    if c not in sums and c not in maxes and c not in mins and c not in keys:
+                        cur[c] = v
+    rows = list(out.values())
+    if order:
+        rows.sort(key=order)
+    return rows[:limit] if limit else rows
+
+
+def _plan(paths):
+    """Read the archive file(s) into runs sorted by date and decide which ones are merged.
+    Returns (kept_runs, latest_run, info) or None. Daily runs (windowDays 1) are merged; if there are none, the latest run alone is used."""
     if isinstance(paths, str):
         paths = [paths]
     cands = []
@@ -57,18 +122,84 @@ def load_archive(paths):
                     cands.append((str(ent.get("rangeTo") or ""), str(ent.get("completedOn") or ""), res))
         elif isinstance(data, dict):
             cands.append(("", "", data.get("result") or data))
-    if not cands:
+    runs = []
+    for rng, done, res in cands:
+        tb = _tables_of(res)
+        if tb.get(SUMMARY):
+            as_of, cov, w = _covered(tb[SUMMARY][0], rng)
+            runs.append({"rng": rng, "done": done, "tables": tb, "asOf": as_of, "cov": cov, "w": w})
+    if not runs:
         return None
-    cands.sort(key=lambda c: (c[0], c[1]))
-    rng, _, res = cands[-1]
-    tables = {}
-    for o in res.get("objects") or []:
-        tb = o.get("table") or {}
-        tables[o.get("name")] = tb.get("rows") or []
-    if not tables.get("falres_summary"):
+    runs.sort(key=lambda r: (r["asOf"], r["rng"], r["done"]))
+    latest = runs[-1]
+    daily = [r for r in runs if r["w"] == 1]
+    legacy = len(runs) - len(daily)
+    if not daily:                                    # only 30-day snapshots: the old behaviour, latest day alone
+        return [latest], latest, {"legacy": True, "legacyIgnored": 0, "overlap": False, "covered": latest["cov"], "gaps": [], "expected": 1,
+                                  "days": len(runs), "firstDay": runs[0]["rng"], "lastDay": runs[-1]["rng"]}
+    by_day = {}
+    for r in daily:                                  # the same day archived twice: the latest run wins
+        by_day[r["asOf"]] = r
+    kept = [by_day[k] for k in sorted(by_day)]
+    covered = sorted(d for r in kept for d in r["cov"])
+    first, last = covered[0], covered[-1]
+    expected = (dt.date.fromisoformat(last) - dt.date.fromisoformat(first)).days + 1
+    d0 = dt.date.fromisoformat(first)
+    have = set(covered)
+    gaps = [(d0 + dt.timedelta(days=i)).isoformat() for i in range(expected) if (d0 + dt.timedelta(days=i)).isoformat() not in have]
+    return kept, kept[-1], {"legacy": False, "legacyIgnored": legacy, "overlap": len(daily) != len(kept), "covered": covered, "gaps": gaps,
+                            "expected": expected, "days": len(covered), "firstDay": first, "lastDay": last}
+
+
+def _period_notes(arc):
+    """Notes on the archived period: gaps, runs left out, a day archived twice, or a legacy 30-day archive."""
+    n = []
+    if arc.get("legacy"):
+        n.append("This archive holds only 30-day runs from before the daily schedule, so the latest day is used and days are not added together. "
+                 "The alert and finding counts cover the 30 days before that run.")
+        return n
+    gaps = arc.get("gaps") or []
+    if gaps:
+        n.append("No archived run covers %d day%s in this period (%s%s). Those days are missing from the counts; they are not zero."
+                 % (len(gaps), "" if len(gaps) == 1 else "s", ", ".join(gaps[:6]), ", ..." if len(gaps) > 6 else ""))
+    if arc.get("legacyIgnored"):
+        n.append("%d earlier 30-day run%s from before the daily schedule %s left out, because their windows overlap each other."
+                 % (arc["legacyIgnored"], "" if arc["legacyIgnored"] == 1 else "s", "was" if arc["legacyIgnored"] == 1 else "were"))
+    if arc.get("overlap"):
+        n.append("A day archived more than once is counted once, using its latest run.")
+    return n
+
+
+def load_archive(paths):
+    """Read download_report_archive output (one or more files). Returns
+    {"asOf", "days", "firstDay", "lastDay", "expected", "gaps", "legacy", "tables": {name: [row dicts]}} or None.
+    Hosts, versions, policies and scores are a snapshot from the latest completed day. The detections (the falres_alert_* tables and the
+    alert counts in falres_summary) are merged across every archived day: each detection is counted on the day it was raised, so counts
+    add, a day archived twice keeps the latest run, hosts are added up by device id, and the distinct host counts are the busiest day."""
+    plan = _plan(paths)
+    if not plan:
         return None
-    summ = tables["falres_summary"][0]
-    return {"asOf": str(summ.get("asOf") or rng)[:10], "days": len(cands), "firstDay": cands[0][0], "lastDay": cands[-1][0], "tables": tables}
+    kept, latest, info = plan
+    tables = dict(latest["tables"])
+    if not info["legacy"]:
+        by_alerts = lambda x: -_num(x.get("alerts"))
+        tables["falres_alert_sev"] = _sum_by(kept, "falres_alert_sev", ["severity"], sums=["alerts"], order=by_alerts)
+        tables["falres_alert_status"] = _sum_by(kept, "falres_alert_status", ["status"], sums=["alerts"], order=by_alerts)
+        tables["falres_alert_tactics"] = _sum_by(kept, "falres_alert_tactics", ["tactic"], sums=["alerts"], order=by_alerts, limit=25)
+        tables["falres_alert_names"] = _sum_by(kept, "falres_alert_names", ["name"], sums=["alerts"], order=by_alerts, limit=10)
+        tables["falres_alert_hosts"] = _sum_by(kept, "falres_alert_hosts", ["device_id", "hostname"], sums=["alerts", "openAlerts", "highOpen"], maxes=["lastAlert"],
+                                               pick="alerts", order=lambda x: (-_num(x.get("highOpen")), -_num(x.get("openAlerts"))), limit=25)
+        tables["falres_alert_other"] = _sum_by(kept, "falres_alert_other", ["product", "type"], sums=["alerts", "open"], maxes=["hosts"], order=by_alerts)
+        summ = dict(latest["tables"][SUMMARY][0])
+        for c in ['alerts', 'alertsOpen', 'alertsOpenHigh', 'leads', 'leadsOpen']:
+            summ[c] = sum(_int(r["tables"][SUMMARY][0].get(c)) for r in kept)
+        for c in ['hostsWithAlerts', 'hostsOpenHigh', 'hostsOpen', 'alertScored']:
+            summ[c] = max([_int(r["tables"][SUMMARY][0].get(c)) for r in kept] or [0])
+        summ["windowDays"] = info["days"]
+        tables[SUMMARY] = [summ]
+    return {"asOf": str(latest["tables"][SUMMARY][0].get("asOf") or latest["rng"])[:10], "days": info["days"], "firstDay": info["firstDay"], "lastDay": info["lastDay"],
+            "expected": info["expected"], "gaps": info["gaps"], "legacy": info["legacy"], "legacyIgnored": info["legacyIgnored"], "overlap": info["overlap"],
+            "tables": tables}
 
 
 def ts(value):
@@ -353,8 +484,10 @@ def kpi(label, value, color, note=""):
 def coverage_notes(arc, f, now):
     notes = []
     age = (now.date() - dt.date.fromisoformat(arc["asOf"])).days
-    notes.append("Built from the archived %s for %s (latest completed day in the file; the file holds %d day%s, %s to %s). Each archived day is a snapshot of the console, so days are never added together."
-                 % (REPORT, arc["asOf"], arc["days"], "" if arc["days"] == 1 else "s", arc["firstDay"] or "?", arc["lastDay"] or "?"))
+    notes.append("Built from the archived %s: %d archived day%s from %s to %s. Hosts, sensors, policies and scores are the console on %s (the latest day). "
+                 "Detections are added across the archived days: each is counted on the day it was raised, with its status at the end of that day, so a detection closed later still counts as open, "
+                 "and the host scores include only the detections of the latest day." % (REPORT, arc["days"], "" if arc["days"] == 1 else "s", arc["firstDay"] or "?", arc["lastDay"] or "?", arc["asOf"]))
+    notes.extend(_period_notes(arc))
     if age > MAX_AGE_DAYS:
         notes.append("The latest archived day is %d days old, so these figures are not current. Check the scheduled report." % age)
     if f["hosts"]["truncated"]:
@@ -447,7 +580,7 @@ def cmd_render(args):
     app = [panel("Hosts needing attention", table(["Host", "Role", "OS", "Sensor", "Status", "Why"], rows, ["16%", "10%", "17%", "11%", "13%", "33%"], "data devlist") if rows
                  else '<p class="panel-subtitle">No host has an open issue.</p>', 12, "%d of %s%s" % (len(attn), "{:,}".format(e["needsAction"] + e["watch"]), note), "page-break")]
     method = ('<div class="method">'
-              '<div><b>Source.</b> The archived daily run of the scheduled report %s for %s. Each day is a snapshot of the Falcon console at that run, and the latest completed day is used.</div>'
+              '<div><b>Source.</b> The archived daily run of the scheduled report %s for %s. Each run covers one day. Hosts, sensors and policies are the console on the latest day; detections are added across the archived days.</div>'
               '<div><b>Last check-in.</b> Days from the host\'s last_seen to the end of the run window. More than %d days is stale; more than %d days is silent.</div>'
               '<div><b>Current sensor.</b> A host is current when its sensor major.minor release is one of the newest %d releases found in this fleet (N, N-1, N-2), not the latest Falcon release.</div>'
               '<div><b>Needs action.</b> Score of 3 or more: reduced functionality mode, not provisioned or no prevention policy (3 each), silent over %d days (3), prevention not applied, silent %d to %d days, contained or uninstall protection in maintenance mode (2 each). Watch is 1 to 2: uninstall protection off, older sensor, safe mode.</div>'
@@ -519,12 +652,12 @@ def build_interactive(path, args, f, eps, arc, notes, now):
             "score": x["score"], "state": x["state"], "reasons": x["reasons"]})
     srcs = [{"source": r.get("source"), "status": r.get("status"), "detail": str(r.get("detail") or "")[:160]} for r in arc["tables"].get("sources", [])]
     method = [
-        "Source: the archived daily run of the scheduled report %s; the latest completed day (%s) is used. Each day is a snapshot of the Falcon console." % (REPORT, f["asOf"]),
+        "Source: the archived daily run of the scheduled report %s; hosts, sensors and policies are the console on the latest day (%s); detections are added across the archived days." % (REPORT, f["asOf"]),
         "Last check-in: days from last_seen to the end of the run window. More than %d days is stale; more than %d days is silent." % (STALE_DAYS, LONG_STALE_DAYS),
         "Current sensor: the host's major.minor release is one of the newest %d releases found in this fleet (N, N-1, N-2), not the latest Falcon release." % SENSOR_WINDOW,
         "Needs action is a score of 3 or more: reduced functionality mode, not provisioned or no prevention policy (3 each), silent over %d days (3), prevention not applied, silent %d to %d days, contained or uninstall protection in maintenance mode (2 each)." % (LONG_STALE_DAYS, STALE_DAYS + 1, LONG_STALE_DAYS),
         "Watch is 1 to 2: uninstall protection off on Windows or Mac, older sensor, safe mode. Last reboot age is shown for context only.",
-        "Detections: FalconAlert rows created in the %d-day window. Endpoint detections and automated leads count; an open high or critical detection scores 3, any other open detection or lead scores 1. Identity, data protection and cloud alerts are context only." % ((f.get("alerts") or {}).get("windowDays", 30)),
+        "Detections: FalconAlert rows created in the %d archived day(s), each counted on the day it was created, with its status at the end of that day. Endpoint detections and automated leads count; an open high or critical detection scores 3, any other open detection or lead scores 1. Identity, data protection and cloud alerts are context only." % ((f.get("alerts") or {}).get("windowDays", 30)),
     ]
     data = {"title": "CrowdStrike Falcon Resource Report", "account": args.account, "customer": args.customer, "snapshot": f["asOf"],
             "staleDays": STALE_DAYS, "silentDays": LONG_STALE_DAYS, "window": SENSOR_WINDOW, "latestVersion": f["latestVersion"], "currentReleases": f["currentReleases"],

@@ -9,7 +9,7 @@ description: >-
 
 Answers: how many devices does Defender for Endpoint know of and how many are onboarded, how many have stopped reporting, how healthy
 antivirus is, how many devices carry vulnerabilities and exploitable CVEs, how compliant the secure configuration checks are, which
-recommendations expose the most devices, how many alerts and incidents were raised in the last 30 days, and which devices need action
+recommendations expose the most devices, how many alerts and incidents were raised in the period, and which devices need action
 first. It is read-only and archive-only. It writes a print-style HTML page, a self-contained interactive HTML file (tabs, search, sort,
 filters, CSV export, dark mode), a PDF and CSVs.
 
@@ -17,14 +17,17 @@ filters, CSV export, dark mode), a PDF and CSVs.
 `list_resource_dumps`, `get_resource_dump_url` or anything else that queries the tenant. Every figure comes from
 `download_report_archive`. If days are missing, say so and offer `backfill_report_archive`; never fill a gap by searching.
 
-The archive is written by the scheduled report `Defender_Resource_Report` (an FPL report, one UTC day per run, 30-day alert window,
+The archive is written by the scheduled report `Defender_Resource_Report` (an FPL report, one UTC day per run, alerts created that day,
 archive enabled; source `fplProcessors/code/Defender_Resource_Report.js` in the Scripts repo). If `list_scheduled_report` shows none on
 the tenant, stop and tell the user to deploy it first.
 
-**These are snapshots, not events.** The Defender device, vulnerability and configuration tables have no history. Each archived day is
-the state when that day's run took the snapshot (the alerts are the 30 days before it). Never add days; the report uses the latest
-completed day. A backfill cannot reconstruct a past device state: it records today's devices under the past date, so say that when
-offering it.
+**Devices are a snapshot; alerts are events.** The Defender device, vulnerability and configuration tables have no history, so they come from
+the latest archived day and are never added across days. Alerts and incidents are added across every archived day in the period: each is
+counted on the day it was created, with its status at the end of that day, so one resolved later still counts as open, and the device scores
+include only the latest day's alerts. A day archived twice is counted once (the latest run wins); a day with no run is a gap, not a zero, and
+is named in the report. A backfill cannot reconstruct a past device state: it records today's devices under the past date, so say that when
+offering it. Archives from before the daily schedule (30-day runs) are used only when no daily archive exists, and then the latest day alone
+is read.
 
 `<skill-dir>` below means this skill's base directory.
 
@@ -32,9 +35,9 @@ offering it.
 
 | Input | Rule |
 |---|---|
-| Connector | The MCP connector the user names (for example Conekt). Use its tools directly. |
+| Connector | The MCP connector the user names (for example the tenant's own MCP connector). Use its tools directly. |
 | Tenant | One account. Call `list_accounts` and match the user's name; stop if ambiguous. Never merge tenants. |
-| Period | The last few days; the report reads the latest archived day in it. At most 92 days per download, and one or two days is enough. |
+| Period | The period to report on, at most 92 days per download. Every archived day in it is merged. |
 | Report name | `Defender_Resource_Report` unless the tenant uses another name. |
 | Customer name | Optional; shown in the subtitle. |
 
@@ -52,7 +55,7 @@ than the period end: say which date they are as of, and offer `backfill_report_a
 
 `download_report_archive(account, name, from=<last day or two>, to=<last day>)` and save the result as `<work>/archive.json`. A day is
 about 0.3 MB (counts and up to 500 device names with scores, no user names); use the saved file as is and do not print it or copy
-numbers by hand. If several files were downloaded, pass all of them; the script takes the latest completed day across them.
+numbers by hand. If several files were downloaded, pass all of them; the script merges the archived days across them.
 
 ### 3. Health check
 

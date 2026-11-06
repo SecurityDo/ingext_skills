@@ -9,21 +9,24 @@ description: >-
 
 Answers: how many hosts does Falcon manage, how many have stopped checking in, how many run an older sensor release, which hosts have
 a protection gap (reduced functionality mode, sensor not provisioned, no prevention policy, contained, uninstall protection off), how
-complete the policy coverage is, how many endpoint detections were raised in the last 30 days, how many are still open, and which
-hosts need action first. It is read-only and archive-only. It writes a print-style HTML page, a self-contained interactive HTML file (tabs, search,
+complete the policy coverage is, how many endpoint detections were raised in the period and how many were still open at the end of the day they were raised,
+and which hosts need action first. It is read-only and archive-only. It writes a print-style HTML page, a self-contained interactive HTML file (tabs, search,
 sort, filters, CSV export, dark mode), a PDF and CSVs.
 
 **The rule that defines this skill: no live searches and no dumps.** Never call `kql_search`, `run_report`, `lake_search`,
 `list_resource_dumps`, `get_resource_dump_url` or anything else that queries the tenant. Every figure comes from
 `download_report_archive`. If days are missing, say so and offer `backfill_report_archive`; never fill a gap by searching.
 
-The archive is written by the scheduled report `CrowdStrike_Resource_Report` (an FPL report, one UTC day per run, 30-day detection
-window, archive enabled, daily 04:35 UTC; source `fplProcessors/code/CrowdStrike_Resource_Report.js` in the Scripts repo). If
+The archive is written by the scheduled report `CrowdStrike_Resource_Report` (an FPL report, one UTC day per run, detections created that day,
+archive enabled, daily 04:35 UTC; source `fplProcessors/code/CrowdStrike_Resource_Report.js` in the Scripts repo). If
 `list_scheduled_report` shows none on the tenant, stop and tell the user to deploy it first.
 
-**These are snapshots, not events.** The Falcon host table has no history. Each archived day is the state when that day's run took the
-snapshot (the detections are the 30 days before it). Never add days; the report uses the latest completed day. A backfill cannot
-reconstruct a past host state: it records today's hosts under the past date, so say that when offering it.
+**Hosts are a snapshot; detections are events.** The Falcon host table has no history, so hosts, sensors, policies and scores come from
+the latest archived day and are never added across days. Detections are added across every archived day in the period: each is counted
+on the day it was raised, with its status at the end of that day, so one closed later still counts as open, and the host scores include only
+the latest day's detections. A day archived twice is counted once (the latest run wins); a day with no run is a gap, not a zero, and is named
+in the report. A backfill cannot reconstruct a past host state: it records today's hosts under the past date, so say that when offering it.
+Archives from before the daily schedule (30-day runs) are used only when no daily archive exists, and then the latest day alone is read.
 
 `<skill-dir>` below means this skill's base directory.
 
@@ -31,9 +34,9 @@ reconstruct a past host state: it records today's hosts under the past date, so 
 
 | Input | Rule |
 |---|---|
-| Connector | The MCP connector the user names (for example Conekt). Use its tools directly. |
+| Connector | The MCP connector the user names (for example the tenant's own MCP connector). Use its tools directly. |
 | Tenant | One account. Call `list_accounts` and match the user's name; stop if ambiguous. Never merge tenants. |
-| Period | The last few days; the report reads the latest archived day in it. At most 92 days per download, and one or two days is enough. |
+| Period | The period to report on, at most 92 days per download. Every archived day in it is merged. |
 | Report name | `CrowdStrike_Resource_Report` unless the tenant uses another name. |
 | Customer name | Optional; shown in the subtitle. |
 
@@ -51,7 +54,7 @@ than the period end: say which date they are as of, and offer `backfill_report_a
 
 `download_report_archive(account, name, from=<last day or two>, to=<last day>)` and save the result as `<work>/archive.json`. A day is
 about 0.25 MB (counts and up to 500 host names with scores, no user names); use the saved file as is and do not print it or copy
-numbers by hand. If several files were downloaded, pass all of them; the script takes the latest completed day across them.
+numbers by hand. If several files were downloaded, pass all of them; the script merges the archived days across them.
 
 ### 3. Health check
 

@@ -2,10 +2,8 @@
 
 ## Data
 
-The report reads the archive of the scheduled FPL report `CrowdStrike_Resource_Report`, one UTC day per archived run, and uses the
-latest completed day. Each day carries the tables below, all computed in the tenant from the `falconAgent` host table (a snapshot of
-the console, no history) and the `FalconAlert` stream (the 30 days before the run). `asOf` is the end of the run window. Days are never
-added together.
+The report reads the archive of the scheduled FPL report `CrowdStrike_Resource_Report`, one UTC day per archived run, and merges the archived days: the host tables from the latest day, the detections added across all days. Each day carries the tables below, all computed in the tenant from the `falconAgent` host table (a snapshot of
+the console, no history) and the `FalconAlert` stream (the detections created in the one-day run window). `asOf` is the end of the run window. The host tables are never added across days; the detection tables are (see Merging archived days).
 
 | Table | Holds |
 |---|---|
@@ -66,7 +64,7 @@ hosts with the policy assigned, the hosts without it, and the hosts where it is 
 - **Uninstall protection** is `IGNORE` on Linux, where it does not apply. It is only scored on Windows and Mac.
 - **A tenant without Falcon** has no host rows: the archived summary is empty or has zero hosts and `check` reports PROBLEM.
 - **`last_seen` is the sensor check-in**, not a user login.
-- **A stale archive.** The report is a snapshot as of the latest archived day; `check` flags a day older than 3 days. A missing day is
+- **A stale archive.** The host figures are as of the latest archived day; `check` flags a day older than 3 days. A missing day is
   never filled by searching; `backfill_report_archive` records today's state under the past date.
 - **Archived query failures** appear in `sources` and the Data notes; the panel for a failed query is empty.
 
@@ -84,3 +82,20 @@ health of the sensor, and on a busy tenant they outnumber endpoint detections by
 
 Pitfall: a single noisy host can hold most of the volume (one test host had 922 PUP detections in 30 days). The report shows
 counts per host so that one host does not read as a fleet problem.
+
+## Merging archived days
+
+Each archived run covers one UTC day (`windowDays` 1, ending the day before `asOf`). The script merges them as follows.
+
+- **Added across days:** `alerts`, `alertsOpen`, `alertsOpenHigh`, `leads` and `leadsOpen` in `falres_summary`, and the counts in
+  `falres_alert_sev`, `falres_alert_status`, `falres_alert_tactics`, `falres_alert_names`, `falres_alert_hosts` (by device id) and
+  `falres_alert_other`. Each detection is counted on the day it was created.
+- **Busiest day:** `hostsWithAlerts`, `hostsOpenHigh`, `hostsOpen` and `alertScored`, because the same host can have detections on several days.
+- **Lists are lower bounds:** the daily top lists (detection names, tactics, hosts) are cut per day, so a merged list can miss an item that was
+  never in a day's top list.
+- **Latest day:** every host, sensor, policy and score table.
+- **Open means open when last seen:** a detection's status is its state at the end of the day it was created. One closed afterwards still counts
+  as open, and the host scores include only the latest day's detections.
+- **Gaps and repeats:** a day archived twice keeps the latest run; a missing day is listed as a gap and is not counted as zero.
+- **Old archives:** runs from before the daily schedule have a 30-day window and overlap each other. They are used alone when no daily run
+  exists, and are left out (with a note) when daily runs do.

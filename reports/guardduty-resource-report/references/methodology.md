@@ -2,11 +2,10 @@
 
 ## Data
 
-The report reads the archive of the scheduled FPL report `GuardDuty_Resource_Report`, one UTC day per archived run, and uses the latest
-completed day. Each day carries the tables below, computed in the tenant from two sources: the `GuardDuty` stream table (one row every
-time GuardDuty sends or updates a finding) over the 30 days before the run, and the `GuarddutyFinding` resource table (GuardDuty's own
-current list of recently updated findings, a snapshot with no history). `asOf` is the end of the run window. Days are never added
-together.
+The report reads the archive of the scheduled FPL report `GuardDuty_Resource_Report`, one UTC day per archived run, and merges the archived
+days: findings are counted on the day they were created and added up, and the current list is the latest day. Each day carries the tables below, computed in the tenant from two sources: the `GuardDuty` stream table (one row every
+time GuardDuty sends or updates a finding) over the one-day run window, and the `GuarddutyFinding` resource table (GuardDuty's own
+current list of recently updated findings, a snapshot with no history). `asOf` is the end of the run window. The current list is never added across days; the finding tables are (see Merging archived days).
 
 | Table | Holds |
 |---|---|
@@ -51,3 +50,19 @@ a medium one reaches it only when it is also recent, and a low one never does.
 
 Category is the part of the finding type before the first colon (for example `Recon`, `UnauthorizedAccess`, `Exfiltration`). The resource
 of a finding is its instance, else its EKS cluster, else its S3 bucket, else the access key owner.
+
+## Merging archived days
+
+Each archived run covers one UTC day (`windowDays` 1, ending the day before `asOf`). The script merges them as follows.
+
+- **Added across days:** `events`, `newFindings`, `newHigh`, `newMedium` and `newLow` in `gdres_summary`, the counts in `gdres_types`,
+  `gdres_accounts` and `gdres_resources` (a finding is in the tables of the day it was created), and one row per day in `gdres_daily` and
+  `gdres_created`. The headline `findings`, `high`, `medium` and `low` are the findings created in the period, the same basis as the tables.
+- **Not added:** the summary counts of findings updated in a run (`active24h`, `active7d`, `repeat10`) count a finding on every day it changes.
+  `active24h` is the latest day, `active7d` is at least the busiest of the last 7 days, and `repeat10` is the busiest day.
+- **Distinct counts:** accounts, regions, resource types and resources are counted from the merged tables, so the resource count is a lower bound
+  (the daily tables are cut to the top rows).
+- **Latest day:** `gdres_snapshot` and the `snapshot*` counts.
+- **Gaps and repeats:** a day archived twice keeps the latest run; a missing day is listed as a gap and is not counted as zero.
+- **Old archives:** runs from before the daily schedule have a 30-day window and overlap each other. They are used alone when no daily run
+  exists, and are left out (with a note) when daily runs do.

@@ -7,7 +7,7 @@ description: >-
 
 # AWS GuardDuty Resource Report
 
-Answers: how many GuardDuty findings were updated in the last 30 days, how many are high, medium and low severity, which need action
+Answers: how many GuardDuty findings were raised in the period, how many are high, medium and low severity, which need action
 first, which finding types and categories dominate, which AWS accounts, regions and resources are affected, which findings keep being
 re-sent, and how the daily counts moved. It is read-only and archive-only. It writes a print-style HTML page, a self-contained interactive
 HTML file (tabs, search, sort, filters, CSV export, dark mode), a PDF and CSVs.
@@ -16,13 +16,17 @@ HTML file (tabs, search, sort, filters, CSV export, dark mode), a PDF and CSVs.
 `list_resource_dumps`, `get_resource_dump_url` or anything else that queries the tenant. Every figure comes from
 `download_report_archive`. If days are missing, say so and offer `backfill_report_archive`; never fill a gap by searching.
 
-The archive is written by the scheduled report `GuardDuty_Resource_Report` (an FPL report, one UTC day per run, 30-day window, archive
+The archive is written by the scheduled report `GuardDuty_Resource_Report` (an FPL report, one UTC day per run, archive
 enabled; source `fplProcessors/code/GuardDuty_Resource_Report.js` in the Scripts repo). If `list_scheduled_report` shows none on the
 tenant, stop and tell the user to deploy it first.
 
-**Each archived day is a snapshot of the window ending that day.** Days are never added: GuardDuty sends a new event every time it sees
-more of the same activity, so adding days would count the same finding again. The report uses the latest completed day. A backfill
-re-runs the window for a past date, so it is a faithful rebuild of that day except for the GuardDuty current list, which is today's.
+**Findings are counted on the day they were created and added across the archived days.** GuardDuty sends a new event every time it sees more
+of the same activity, so the processor counts a finding once, on the day it was created, and the findings, types, accounts, resources, per-day
+counts and updates add up across the period. Counts of findings updated in a run are not added: they count a finding on every day it changes.
+The list of current findings (`gdres_snapshot`) is the resource table on the latest archived day and is never added. A day archived twice is
+counted once (the latest run wins); a day with no run is a gap, not a zero, and is named in the report. A backfill re-runs one day, so it is a
+faithful rebuild of that day except for the current list, which is today's. Archives from before the daily schedule (30-day runs) are used
+only when no daily archive exists, and then the latest day alone is read.
 
 `<skill-dir>` below means this skill's base directory.
 
@@ -32,7 +36,7 @@ re-runs the window for a past date, so it is a faithful rebuild of that day exce
 |---|---|
 | Connector | The MCP connector the user names (for example the tenant's own MCP connector). Use its tools directly. |
 | Tenant | One account. Call `list_accounts` and match the user's name; stop if ambiguous. Never merge tenants. |
-| Period | The last few days; the report reads the latest archived day in it. At most 92 days per download, and one or two days is enough. |
+| Period | The period to report on, at most 92 days per download. Every archived day in it is merged. |
 | Report name | `GuardDuty_Resource_Report` unless the tenant uses another name. |
 | Customer name | Optional; shown in the subtitle. |
 
@@ -50,7 +54,7 @@ the period end: say which date they are as of, and offer `backfill_report_archiv
 
 `download_report_archive(account, name, from=<last day or two>, to=<last day>)` and save the result as `<work>/archive.json`. A day is
 small (counts plus up to 200 findings and 200 current-list rows, no IP addresses); use the saved file as is and do not print it or copy
-numbers by hand. If several files were downloaded, pass all of them; the script takes the latest completed day across them.
+numbers by hand. If several files were downloaded, pass all of them; the script merges the archived days across them.
 
 ### 3. Health check
 
