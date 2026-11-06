@@ -20,9 +20,9 @@ LEGACY = re.compile(r"exchange activesync|imap|pop|smtp|authenticated smtp|other
 SIGN = ["events", "failed", "interactive", "mfaRequired", "singleFactorOk", "caFailures", "risky", "guests", "legacyAuth"]
 O365 = ["events", "failedOps", "adminOps", "loginsOk", "loginsFailed", "mailItemsAccessed", "mailSent", "hardDeletes",
         "inboxRuleChanges", "mailboxPermissionChanges", "sharingEvents", "externalAccess", "adminConfigChanges",
-        "securityAlerts", "dlpEvents", "copilotEvents"]
+        "securityAlerts", "dlpEvents", "copilotEvents", "fileDownloads", "forwardingChanges"]
 SP = ["events", "failed", "secretErrors", "secretAuth", "assertionAuth"]
-AUD = ["events", "failed", "userChanges", "groupChanges", "roleChanges", "appChanges", "policyChanges", "passwordEvents"]
+AUD = ["events", "failed", "userChanges", "groupChanges", "roleChanges", "appChanges", "policyChanges", "passwordEvents", "consentGrants"]
 
 
 def results(doc):
@@ -37,6 +37,11 @@ def results(doc):
 def rows(o):
     t = (o.get("value") or o).get("table")
     return t["rows"] if t else []
+
+
+def cols(o):
+    t = (o.get("value") or o).get("table")
+    return {c.get("name") for c in (t or {}).get("columns", [])}
 
 
 def facet(o, key):
@@ -73,12 +78,15 @@ def main(paths, out, expected=30):
         json.dump(ev, open(out, "w"), indent=2); print(json.dumps(ev, indent=2)); return
     sign, aud, o365, sp = Counter(), Counter(), Counter(), Counter()
     o365_days = []
+    o365_cols, aud_cols = set(), set()
     auth, risk, ca, app, client, utype, proto = (Counter() for _ in range(7))
     unavailable = Counter()
     for date, (_, b) in sorted(perday.items()):
         for r in rows(b.get("signin_trend", {})):
             for m in SIGN:
                 sign[m] += r.get(m) or 0
+        o365_cols |= cols(b.get("o365_trend", {}))
+        aud_cols |= cols(b.get("audit_trend", {}))
         for r in rows(b.get("o365_trend", {})):
             for m in O365:
                 o365[m] += r.get(m) or 0
@@ -123,9 +131,14 @@ def main(paths, out, expected=30):
     ev["legacy_clients"] = {k: v for k, v in client.items() if LEGACY.search(k)}
     ev["admin_portal_signins"] = {"events": sum(v for k, v in app.items() if ADMIN_APP.search(k)),
                                   "apps": sorted(k for k in app if ADMIN_APP.search(k))}
-    ev["directory_changes"] = {m: aud[m] for m in AUD}
+    ev["directory_changes"] = {m: aud[m] for m in AUD if m in aud_cols or m != "consentGrants"}
+    if "consentGrants" not in aud_cols:
+        ev["gaps"].append("Application consent grants are not in the archive (the archived script predates consentGrants)")
     if o365_days:
-        ev["o365"] = {m: o365[m] for m in O365}
+        ev["o365"] = {m: o365[m] for m in O365 if m in o365_cols}
+        for m in ("fileDownloads", "forwardingChanges"):
+            if m not in o365_cols:
+                ev["gaps"].append(f"{m} is not in the archive (the archived script predates it): re-deploy Office365_Entra_Activity_Report and backfill")
         ev["o365"]["days"] = len(o365_days)
         ev["o365"]["max_day_inbox_rule_changes"] = max(d.get("inboxRuleChanges") or 0 for d in o365_days)
         ev["o365"]["dlp_enabled_unknown"] = o365["dlpEvents"] == 0

@@ -1,5 +1,8 @@
 {
   "gaps": [
+    "Application consent grants are not in the archive (the archived script predates consentGrants)",
+    "fileDownloads is not in the archive (the archived script predates it): re-deploy Office365_Entra_Activity_Report and backfill",
+    "forwardingChanges is not in the archive (the archived script predates it): re-deploy Office365_Entra_Activity_Report and backfill",
     "Single-factor status of admin-portal sign-ins is not joint in the archive (apps and auth requirement are separate facets); admin MFA is judged from conditional-access policies and the single-factor share"
   ],
   "days_covered": 3,
@@ -34,14 +37,14 @@
     "apps": []
   },
   "directory_changes": {
-    "events": 0,
-    "failed": 0,
-    "userChanges": 0,
-    "groupChanges": 0,
-    "roleChanges": 0,
-    "appChanges": 0,
-    "policyChanges": 0,
-    "passwordEvents": 0
+    "events": 17042,
+    "failed": 458,
+    "userChanges": 2450,
+    "groupChanges": 820,
+    "roleChanges": 104,
+    "appChanges": 6,
+    "policyChanges": 15,
+    "passwordEvents": 618
   },
   "o365": {
     "events": 2118611,

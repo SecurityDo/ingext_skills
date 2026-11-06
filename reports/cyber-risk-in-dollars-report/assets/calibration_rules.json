@@ -370,13 +370,40 @@
           ],
           "text": "{n.o365.mailboxPermissionChanges} mailbox-permission changes over {n.o365.days} archived days",
           "label": "mailbox-permission changes"
+        },
+        {
+          "id": "forwarding",
+          "tiers": [
+            {
+              "when": [
+                {
+                  "path": "n.o365.forwardingChanges",
+                  "op": ">=",
+                  "value": 5
+                }
+              ],
+              "weight": 0.25
+            },
+            {
+              "when": [
+                {
+                  "path": "n.o365.forwardingChanges",
+                  "op": ">=",
+                  "value": 1
+                }
+              ],
+              "weight": 0.15
+            }
+          ],
+          "text": "{n.o365.forwardingChanges} mailbox or rule changes that set a forwarding address or forward, redirect or blind-copy action over {n.o365.days} archived days",
+          "label": "mail forwarding set"
         }
       ],
       "gaps": [
         {
           "id": "mailbox",
           "always": true,
-          "text": "Forwarding targets, who changed inbox rules and payment-verification controls cannot be measured (the archive counts rule and permission changes, not their content)"
+          "text": "The destination of forwards, who made rule changes and payment-verification controls cannot be measured (the archive counts changes, not their content, and rules saved by an Outlook client carry no detail)"
         },
         {
           "id": "signins",
@@ -387,6 +414,11 @@
           "id": "o365",
           "missing": "n.o365",
           "text": "No Office 365 workload archive, so inbox-rule and mailbox-permission activity is unmeasured"
+        },
+        {
+          "id": "fwd",
+          "missing": "n.o365.forwardingChanges",
+          "text": "Forwarding changes are not in the archive (the archived script predates the counter)"
         }
       ],
       "loss": [
@@ -491,18 +523,65 @@
           ],
           "text": "{r.identity.global_admins} Global Administrators",
           "label": "many standing Global Administrators"
+        },
+        {
+          "id": "consents",
+          "weight": 0.05,
+          "when": [
+            {
+              "path": "n.directory_changes.consentGrants",
+              "op": ">=",
+              "value": 1
+            }
+          ],
+          "text": "{n.directory_changes.consentGrants} application consent or permission grants over {n.days_covered} archived days",
+          "label": "application consents"
+        },
+        {
+          "id": "downloads",
+          "tiers": [
+            {
+              "when": [
+                {
+                  "path": "n.o365.fileDownloads",
+                  "op": ">=",
+                  "value": 0.1,
+                  "ratio_of": "n.o365.events"
+                }
+              ],
+              "weight": 0.1
+            },
+            {
+              "when": [
+                {
+                  "path": "n.o365.fileDownloads",
+                  "op": ">=",
+                  "value": 0.03,
+                  "ratio_of": "n.o365.events"
+                }
+              ],
+              "weight": 0.05
+            }
+          ],
+          "text": "{n.o365.fileDownloads} file downloads over {n.o365.days} archived days; a high volume lets bulk copying by a stolen account pass unnoticed",
+          "label": "high file-download volume"
         }
       ],
       "gaps": [
         {
           "id": "mfareg",
           "always": true,
-          "text": "MFA registration, OAuth consents and file-download volumes cannot be measured"
+          "text": "MFA registration cannot be measured, and consent and download counts are totals that do not show whether any were malicious"
         },
         {
           "id": "signins",
           "missing": "n.signins",
           "text": "No sign-in archive"
+        },
+        {
+          "id": "dl",
+          "missing": "n.o365.fileDownloads",
+          "text": "File-download volume is not in the archive (the archived script predates the counter)"
         }
       ],
       "loss": [

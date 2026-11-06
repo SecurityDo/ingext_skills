@@ -63,7 +63,7 @@
    "lef": {
     "min": 0.297,
     "ml": 0.89,
-    "max": 2.937
+    "max": 3.204
    },
    "loss": [
     {
@@ -87,9 +87,10 @@
     "7,865 of 28,553 sign-in attempts failed, a pattern consistent with password attacks",
     "1,523 inbox-rule changes over 3 archived days, up to 1,011 in one day; mail-client syncs are included, so this raises frequency only modestly",
     "46 mailbox-permission changes over 3 archived days",
-    "Not measurable: forwarding targets, who changed inbox rules and payment-verification controls cannot be measured (the archive counts rule and permission changes, not their content)"
+    "Not measurable: the destination of forwards, who made rule changes and payment-verification controls cannot be measured (the archive counts changes, not their content, and rules saved by an Outlook client carry no detail)",
+    "Not measurable: forwarding changes are not in the archive (the archived script predates the counter)"
    ],
-   "calibration": "Baseline frequency for a mid-market organization is 0.5 events a year; the most likely value rises above the baseline because of single-factor sign-ins, no all-users MFA, legacy authentication in use. The range is widened by 10% at the top end because 1 input cannot be measured. Per-event loss uses the FBI IC3 average BEC loss (about $130K) with a long tail for large wires."
+   "calibration": "Baseline frequency for a mid-market organization is 0.5 events a year; the most likely value rises above the baseline because of single-factor sign-ins, no all-users MFA, legacy authentication in use. The range is widened by 20% at the top end because 2 inputs cannot be measured. Per-event loss uses the FBI IC3 average BEC loss (about $130K) with a long tail for large wires."
   },
   {
    "id": "breach",
@@ -98,7 +99,7 @@
    "lef": {
     "min": 0.052,
     "ml": 0.155,
-    "max": 0.512
+    "max": 0.558
    },
    "loss": [
     {
@@ -125,9 +126,10 @@
     "No enforced conditional-access policy requires MFA for all users on all apps",
     "61 sign-ins flagged risky",
     "5 Global Administrators",
-    "Not measurable: MFA registration, OAuth consents and file-download volumes cannot be measured"
+    "Not measurable: MFA registration cannot be measured, and consent and download counts are totals that do not show whether any were malicious",
+    "Not measurable: file-download volume is not in the archive (the archived script predates the counter)"
    ],
-   "calibration": "Baseline frequency for a mid-market organization is 0.1 events a year; the most likely value rises above the baseline because of single-factor sign-ins, no all-users MFA, risky sign-ins. The range is widened by 10% at the top end because 1 input cannot be measured. Per-event cost sits below the IBM 2025 global average breach ($4.44M) at mid-market scale, with a tail toward the US average ($10.22M)."
+   "calibration": "Baseline frequency for a mid-market organization is 0.1 events a year; the most likely value rises above the baseline because of single-factor sign-ins, no all-users MFA, risky sign-ins. The range is widened by 20% at the top end because 2 inputs cannot be measured. Per-event cost sits below the IBM 2025 global average breach ($4.44M) at mid-market scale, with a tail toward the US average ($10.22M)."
   }
  ],
  "treatments": [
@@ -352,10 +354,12 @@
     "No Windows audit archive, so log clearing and persistence are unknown"
    ],
    "bec": [
-    "Forwarding targets, who changed inbox rules and payment-verification controls cannot be measured (the archive counts rule and permission changes, not their content)"
+    "The destination of forwards, who made rule changes and payment-verification controls cannot be measured (the archive counts changes, not their content, and rules saved by an Outlook client carry no detail)",
+    "Forwarding changes are not in the archive (the archived script predates the counter)"
    ],
    "breach": [
-    "MFA registration, OAuth consents and file-download volumes cannot be measured"
+    "MFA registration cannot be measured, and consent and download counts are totals that do not show whether any were malicious",
+    "File-download volume is not in the archive (the archived script predates the counter)"
    ]
   },
   "defaults_used": [

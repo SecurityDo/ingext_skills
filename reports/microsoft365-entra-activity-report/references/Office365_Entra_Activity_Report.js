@@ -64,7 +64,10 @@ function validateTimeRange(from, to) {
 // loginsOk / loginsFailed (Azure AD UserLoggedIn / UserLoginFailed); mailItemsAccessed; mailSent; hardDeletes;
 // inboxRuleChanges; mailboxPermissionChanges; sharingEvents (links, invitations, group adds);
 // externalAccess (events flagged ExternalAccess); adminConfigChanges (Exchange New-/Set-/Remove-/Enable-/Disable-);
-// securityAlerts (Security and Compliance alerts); dlpEvents; copilotEvents.
+// securityAlerts (Security and Compliance alerts); dlpEvents; copilotEvents; fileDownloads (FileDownloaded and
+// FileSyncDownloadedFull); forwardingChanges (Exchange Set-Mailbox, New/Set-InboxRule and New/Set-TransportRule whose
+// parameters set a forwarding address or a forward, redirect or blind-copy action; rules an Outlook client saves
+// (UpdateInboxRules) carry no parameters and are counted only in inboxRuleChanges).
 function GetO365Trend(status, rangeFrom, rangeTo, interval) {
     let query = `
     Office365
@@ -85,7 +88,9 @@ function GetO365Trend(status, rangeFrom, rangeTo, interval) {
         adminConfigChanges = countif(Workload == "Exchange" and (Operation startswith "Set-" or Operation startswith "New-" or Operation startswith "Remove-" or Operation startswith "Enable-" or Operation startswith "Disable-")),
         securityAlerts = countif(Workload == "SecurityComplianceCenter" and Operation == "AlertTriggered"),
         dlpEvents = countif(Operation has "Dlp"),
-        copilotEvents = countif(Workload == "Copilot")
+        copilotEvents = countif(Workload == "Copilot"),
+        fileDownloads = countif(Operation in ("FileDownloaded", "FileSyncDownloadedFull")),
+        forwardingChanges = countif(Operation in ("Set-Mailbox", "New-InboxRule", "Set-InboxRule", "New-TransportRule", "Set-TransportRule") and tostring(Parameters) has_any ("ForwardingSmtpAddress", "ForwardingAddress", "ForwardTo", "ForwardAsAttachmentTo", "RedirectTo", "RedirectMessageTo", "BlindCopyTo"))
         by Date = bin(timestamp, ${interval})
     | sort by Date asc
     `
@@ -171,7 +176,8 @@ function GetSigninFacets(status, rangeFrom, rangeTo) {
 
 // ---- Entra directory-audit logs --------------------------------------------------------------------------
 // events; failed (Result failure); userChanges, groupChanges, roleChanges, appChanges, policyChanges (by Category);
-// adds, updates, deletes (by AADOperationType); passwordEvents (activity names that mention a password).
+// adds, updates, deletes (by AADOperationType); passwordEvents (activity names that mention a password);
+// consentGrants (application consent and delegated-permission or app-role grants).
 function GetAuditTrend(status, rangeFrom, rangeTo, interval) {
     let query = `
     AzureAuditLogs
@@ -187,7 +193,8 @@ function GetAuditTrend(status, rangeFrom, rangeTo, interval) {
         adds = countif(AADOperationType == "Add"),
         updates = countif(AADOperationType == "Update"),
         deletes = countif(AADOperationType == "Delete"),
-        passwordEvents = countif(ActivityDisplayName has "password")
+        passwordEvents = countif(ActivityDisplayName has "password"),
+        consentGrants = countif(ActivityDisplayName in ("Consent to application", "Add OAuth2PermissionGrant", "Add app role assignment to service principal", "Add delegated permission grant", "Add app role assignment grant to user"))
         by Date = bin(TimeGenerated, ${interval})
     | sort by Date asc
     `

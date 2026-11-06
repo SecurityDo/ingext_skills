@@ -52,8 +52,10 @@ Baseline 0.5 events a year; weight cap 1.0.
 | inbox-rule activity | +0.15 | n.o365.inboxRuleChanges: at least 0% of n.o365.events |
 | inbox-rule activity | +0.08 | n.o365.inboxRuleChanges: at least 0% of n.o365.events |
 | mailbox-permission changes | +0.05 | n.o365.mailboxPermissionChanges: at least 0% of n.o365.events |
+| mail forwarding set | +0.25 | n.o365.forwardingChanges: at least 5 |
+| mail forwarding set | +0.15 | n.o365.forwardingChanges: at least 1 |
 
-Not measurable (each widens the maximum): Forwarding targets, who changed inbox rules and payment-verification controls cannot be measured (the archive counts rule and permission changes, not their content); No sign-in archive, so credential-attack pressure is unmeasured; No Office 365 workload archive, so inbox-rule and mailbox-permission activity is unmeasured.
+Not measurable (each widens the maximum): The destination of forwards, who made rule changes and payment-verification controls cannot be measured (the archive counts changes, not their content, and rules saved by an Outlook client carry no detail); No sign-in archive, so credential-attack pressure is unmeasured; No Office 365 workload archive, so inbox-rule and mailbox-permission activity is unmeasured; Forwarding changes are not in the archive (the archived script predates the counter).
 
 | Loss component (reference size) | Min | Likely | Max | Scaling |
 |---|---|---|---|---|
@@ -74,8 +76,11 @@ Baseline 0.1 events a year; weight cap 1.0.
 | privileged roles exempt from MFA | +0.15 | readiness rule I4 fired |
 | risky sign-ins | +0.1 | risky sign-ins: at least 1 |
 | many standing Global Administrators | +0.05 | Global Administrators: at least 5 |
+| application consents | +0.05 | n.directory_changes.consentGrants: at least 1 |
+| high file-download volume | +0.1 | n.o365.fileDownloads: at least 10% of n.o365.events |
+| high file-download volume | +0.05 | n.o365.fileDownloads: at least 3% of n.o365.events |
 
-Not measurable (each widens the maximum): MFA registration, OAuth consents and file-download volumes cannot be measured; No sign-in archive.
+Not measurable (each widens the maximum): MFA registration cannot be measured, and consent and download counts are totals that do not show whether any were malicious; No sign-in archive; File-download volume is not in the archive (the archived script predates the counter).
 
 | Loss component (reference size) | Min | Likely | Max | Scaling |
 |---|---|---|---|---|

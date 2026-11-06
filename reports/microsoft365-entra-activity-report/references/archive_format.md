@@ -11,9 +11,9 @@
 
 | Source key | Table | Trend metrics (one row per day) |
 |---|---|---|
-| `o365` | Office365 | events, failedOps, adminOps, loginsOk, loginsFailed, mailItemsAccessed, mailSent, hardDeletes, inboxRuleChanges, mailboxPermissionChanges, sharingEvents, externalAccess, adminConfigChanges, securityAlerts, dlpEvents, copilotEvents |
+| `o365` | Office365 | events, failedOps, adminOps, loginsOk, loginsFailed, mailItemsAccessed, mailSent, hardDeletes, inboxRuleChanges, mailboxPermissionChanges, sharingEvents, externalAccess, adminConfigChanges, securityAlerts, dlpEvents, copilotEvents, fileDownloads, forwardingChanges |
 | `signin` | AzureSigninLogs | events, failed, interactive, mfaRequired, singleFactorOk, caFailures, risky, guests, legacyAuth |
-| `audit` | AzureAuditLogs | events, failed, userChanges, groupChanges, roleChanges, appChanges, policyChanges, adds, updates, deletes, passwordEvents |
+| `audit` | AzureAuditLogs | events, failed, userChanges, groupChanges, roleChanges, appChanges, policyChanges, adds, updates, deletes, passwordEvents, consentGrants |
 | `sp` | AADServicePrincipalSignInLogs | events, failed, secretErrors, secretAuth, assertionAuth |
 | `ni` | AADNonInteractiveUserSignInLogs | events, failed, guests |
 
@@ -56,3 +56,9 @@ A large tenant can take minutes a day, longer than a synchronous `run_report` wa
 `o365_facets`: user, failedUser, failedIp, adminActor. `signin_facets`: user, failedUser, failedIp. `audit_facets`:
 actor, failedActor. `sp_facets`: failedIp. `ni_facets`: failedUser, failedIp. user and actor cover every event, the rest
 label events outside the subset "(none)". The engine keeps 100 values a facet a day. They hold personal data.
+
+## Script version 4 additions
+
+`o365_trend` gains `fileDownloads` and `forwardingChanges`; `audit_trend` gains `consentGrants`. Days archived by an
+earlier script lack these columns and read as 0; the script hash differs, so the report's changed-script note applies
+and a total over mixed days understates them. Backfill the archive to restate earlier days.
