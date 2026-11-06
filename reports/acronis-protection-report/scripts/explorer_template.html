@@ -1,0 +1,315 @@
+<title>Acronis Protection Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sticky control bar (tabs, date range) over KPI strip, one drag-to-select daily chart, facet panels, table panels. Same look as the Entra activity explorer. */
+:root{--bg:#f5f5f5;--panel:#fff;--ink:#1f2328;--muted:#6b7280;--line:#e5e5e5;--accent:#374151;--accent-soft:#e5e7eb;--warn:#111827;--warn-soft:#e5e7eb;--gap:#aab2bf;--ok:#6b7280;
+--sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111111;--panel:#1a1a1a;--ink:#eeeeee;--muted:#9a9a9a;--line:#2b2b2b;--accent:#d4d4d4;--accent-soft:#2b2b2b;--warn:#f5f5f5;--warn-soft:#2b2b2b;--gap:#6b7280;--ok:#9ca3af;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#111111;--panel:#1a1a1a;--ink:#eeeeee;--muted:#9a9a9a;--line:#2b2b2b;--accent:#d4d4d4;--accent-soft:#2b2b2b;--warn:#f5f5f5;--warn-soft:#2b2b2b;--gap:#6b7280;--ok:#9ca3af;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45;margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));padding-block:0 40px}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:14px 10px;border-bottom:1px solid var(--line)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:13px;margin:2px 0 0}
+.row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin-top:10px}
+.tabs,.chips,.presets{display:flex;flex-wrap:wrap;gap:6px}
+button,input{font:inherit;color:inherit}
+.tab,.chip,.pre{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:5px 10px;cursor:pointer}
+.tab[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip[aria-pressed=true],.pre[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.tab:hover,.chip:hover,.pre:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible,th:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.dates{display:flex;gap:6px;align-items:center;color:var(--muted)}
+input[type=date],input[type=search]{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:4px 8px;font-family:var(--mono);font-size:13px}
+input[type=search]{font-family:var(--sans);min-width:200px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px;margin-top:16px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.kpi .l{color:var(--muted);font-size:12px}
+.kpi .v{font-family:var(--mono);font-size:22px;font-weight:500;font-variant-numeric:tabular-nums}
+.kpi .d{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.kpi .d.up{color:var(--warn)}
+.kpi.risk .v{color:var(--warn)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;margin-top:16px;min-width:0}
+.panel h2{font-size:14px;font-weight:600;margin:0 0 2px}
+.hint{color:var(--muted);font-size:12px;margin:0 0 8px}
+#chart{width:100%;height:240px;display:block;touch-action:pan-y;user-select:none}
+.axis{fill:var(--muted);font-family:var(--mono);font-size:10px}
+.grid{stroke:var(--line);stroke-width:1}
+.bar-ok{fill:var(--accent)}.bar-risk{fill:var(--warn)}.bar-dim{opacity:.28}
+.gapbar{fill:url(#hatch)}
+.sel{fill:var(--accent);opacity:.12}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);padding:6px 9px;border-radius:6px;font-size:12px;z-index:20;font-family:var(--mono);white-space:nowrap}
+.facets{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;margin-top:16px}
+.facets .panel{margin-top:0}
+.fr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:3px 0;font-size:13px;position:relative}
+.fr .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fr .c{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--muted)}
+.fr .b{grid-column:1/-1;height:3px;background:var(--accent-soft);border-radius:2px}
+.fr .b i{display:block;height:100%;background:var(--accent);border-radius:2px}
+.more{margin-top:6px;border:0;background:none;color:var(--accent);cursor:pointer;padding:2px 0}
+.tw{overflow-x:auto;margin-top:8px;max-height:420px;overflow-y:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{padding:5px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--panel)}
+th.t,td.t{text-align:left}
+th{cursor:pointer;color:var(--muted);font-weight:500;position:sticky;top:0;background:var(--panel)}
+td{font-family:var(--mono);font-variant-numeric:tabular-nums}
+td.t{font-family:var(--sans)}
+tr.gap td{color:var(--gap)}
+.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:0 8px;font-size:11px;font-family:var(--sans)}
+.pill.bad{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:6px}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:var(--accent)}
+.legend .g::before{background:repeating-linear-gradient(45deg,var(--gap) 0 2px,transparent 2px 4px);border:1px solid var(--gap)}
+.legend .r::before{background:var(--warn)}
+.note{color:var(--muted);font-size:12px;margin-top:20px;max-width:75ch}
+.empty{color:var(--muted);padding:6px 0}
+.snap{border-left:3px solid var(--accent);padding:6px 10px;margin-top:14px;color:var(--muted);font-size:12.5px;background:var(--panel);border-radius:0 6px 6px 0}
+</style>
+<div class="wrap">
+<div class="bar">
+ <h1 id="h1">Acronis protection explorer</h1>
+ <p class="sub" id="sub"></p>
+ <div class="row">
+  <div class="tabs" id="tabs" role="group" aria-label="Area"></div>
+ </div>
+ <div class="row" id="ctl">
+  <div class="presets" id="presets" role="group" aria-label="Range"></div>
+  <div class="dates"><label for="d1">From</label><input type="date" id="d1"><label for="d2">to</label><input type="date" id="d2"></div>
+  <input type="search" id="q" placeholder="Filter values" aria-label="Filter values">
+ </div>
+</div>
+<div id="snapnote"></div>
+<div class="kpis" id="kpis"></div>
+<section class="panel" id="chartpanel">
+ <h2 id="ct">Daily</h2>
+ <p class="hint">Pick a measure, hover a day, drag across the chart to select a range.</p>
+ <div class="chips" id="chips" role="group" aria-label="Measure"></div>
+ <svg id="chart" role="img" aria-label="Daily chart"></svg>
+ <div class="legend"><span>Selected range</span><span class="r">Risk measure</span><span class="g">No archived result</span></div>
+</section>
+<div class="facets" id="facets"></div>
+<div id="tables"></div>
+<section class="panel" id="daypanel">
+ <h2>Day by day</h2>
+ <p class="hint">Click a column heading to sort.</p>
+ <div class="tw"><table id="tbl"></table></div>
+</section>
+<p class="note" id="note"></p>
+</div>
+<div class="tip" id="tip" hidden></div>
+<script>
+const D=__DATA__;
+const days=D.days,fmt=n=>Number(n).toLocaleString("en-US");
+const $=id=>document.getElementById(id);
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+const addDays=(d,n)=>{const t=new Date(d+"T00:00:00Z");t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10)};
+const rangeDays=(a,b)=>days.filter(d=>d>=a&&d<=b);
+const have=d=>!!D.d[d];
+const pct=(a,b)=>b?(a/b*100).toFixed(1)+"%":"n/a";
+const A=D.al.map(r=>({day:r[0],id:r[1],type:r[2],dev:r[3],sev:r[4],ev:r[5],res:r[6],dom:r[7]}));
+const IC=D.ic.map(r=>({day:r[0],short:r[1],host:r[2],state:r[3],mit:r[4],xfer:r[5],ev:r[6]}));
+const TR=D.tr.map(r=>({day:r[0],inc:r[1],dev:r[2],mit:r[3],trg:r[4],det:r[5]}));
+const UF=D.uf.map(r=>({day:r[0],agent:r[1],unit:r[2],type:r[3],failed:r[4],err:r[5]}));
+const BK=D.bk.map(r=>({day:r[0],dev:r[1],plan:r[2],runs:r[3],ok:r[4],failed:r[5],gb:r[6],err:r[7]}));
+const inSet=ds=>{const s=new Set(ds);return r=>s.has(r.day)};
+const sum=(m,ds)=>{let t=0;for(const d of ds){const r=D.d[d];if(r)t+=r[m]||0}return t};
+const uniq=(arr,f)=>new Set(arr.map(f)).size;
+
+/* distinct alerts in a range: merged by alert id, attributes from the latest day */
+function alerts(ds){const m=new Map(),f=inSet(ds);for(const r of A){if(!f(r))continue;const o=m.get(r.id);if(!o)m.set(r.id,Object.assign({},r));else{o.ev+=r.ev;o.res+=r.res;o.day=r.day;o.type=r.type||o.type;o.dev=r.dev||o.dev;o.sev=r.sev||o.sev;o.dom=o.dom||r.dom}}return[...m.values()]}
+/* EDR: latest state per case in the range; open = not mitigated or not closed, minus incidents merged into another */
+function edr(ds){const f=inSet(ds),tr=new Map(),ic=new Map();
+ for(const r of TR){if(f(r))tr.set(r.inc+"|"+r.dev.toLowerCase(),r)}
+ for(const r of IC){if(f(r))ic.set(r.short+"|"+r.host.toLowerCase(),r)}
+ const merged=new Set([...ic.values()].filter(r=>r.xfer).map(r=>r.short));
+ const o=new Set();for(const r of tr.values())if(r.mit==="NOT_MITIGATED")o.add(r.inc);
+ for(const r of ic.values())if(r.state!=="CLOSED"||r.mit==="NOT_MITIGATED")o.add(r.short);
+ for(const x of merged)o.delete(x);
+ return{trig:[...tr.values()],inc:[...ic.values()],open:[...o].sort(),merged}}
+const UPD_FAIL=ds=>UF.filter(inSet(ds));
+const BKR=ds=>BK.filter(inSet(ds));
+function bkAgg(ds){const m=new Map();for(const r of BKR(ds)){const k=r.dev+"|"+r.plan,o=m.get(k)||{dev:r.dev,plan:r.plan,runs:0,ok:0,failed:0,gb:0,err:new Set()};o.runs+=r.runs;o.ok+=r.ok;o.failed+=r.failed;o.gb+=r.gb;for(const c of r.err)o.err.add(c);m.set(k,o)}return[...m.values()]}
+function ranked(map){return Object.entries(map).sort((a,b)=>b[1]-a[1])}
+function count(arr,f,w){const m={};for(const r of arr){const k=f(r);if(k==null||k==="")continue;m[k]=(m[k]||0)+(w?w(r):1)}return ranked(m)}
+
+const NICE={TotalProtectDeniedCategoryURLDetected:"URL category blocked",MachineOffline30:"Machine offline 30+ days",MaliciousUrlBlocked:"Malicious URL blocked",MachineOffline20:"Machine offline 20+ days",MiMonitoringMetricGatheringFailed:"Monitoring metrics failed",EDRIncidentDetected:"EDR incident detected",ProtectionServiceNotWorking:"Protection service not working",UpdateVapm:"Definition update (VAPM)",AutoUpdateStandby:"Auto-update standby",DownloadInstaller:"Installer download",Download:"Component download",UpdateAgent:"Agent update"};
+const nice=t=>NICE[t]||String(t||"(none)").replace(/([a-z0-9])([A-Z])/g,"$1 $2");
+
+const TABS=[
+ {key:"events",title:"Events and alerts",
+  metrics:[["events","Events"],["alertEvents","Alert events"],["activityEvents","Activity events"],["incidentEvents","EDR incident events"],["alertsActive","Alerts active"]],
+  kpis:[["Events",ds=>sum("events",ds)],["Alert events",ds=>sum("alertEvents",ds)],["Unique alerts",ds=>alerts(ds).length],["Devices with alerts",ds=>uniq(alerts(ds).filter(a=>a.dev),a=>a.dev)],["Activity events",ds=>sum("activityEvents",ds)],["EDR incident events",ds=>sum("incidentEvents",ds)]],
+  facets:[
+   ["Alerts by type","Distinct alerts in the range",ds=>count(alerts(ds),a=>nice(a.type))],
+   ["Alerts by severity","Distinct alerts",ds=>count(alerts(ds),a=>a.sev||"(none)")],
+   ["Devices with the most alerts","Distinct alerts per device",ds=>count(alerts(ds),a=>a.dev||"(none)")],
+   ["Devices with the most alert events","Events, including Acronis re-sends",ds=>count(alerts(ds),a=>a.dev||"(none)",a=>a.ev)],
+   ["Blocked domains and processes","Distinct alerts with a domain or process",ds=>count(alerts(ds),a=>a.dom)]],
+  tables:[]},
+ {key:"edr",title:"EDR cases",risk:["open"],
+  metrics:[["incidentEvents","Incident events"],["edrTriggers","EDR trigger alerts"]],
+  kpis:[["Incidents",ds=>uniq(edr(ds).inc,r=>r.short)],["Open cases",ds=>edr(ds).open.length,true],["Trigger alerts",ds=>edr(ds).trig.length],["Devices affected",ds=>uniq(edr(ds).trig,r=>r.dev.toLowerCase())],["Not mitigated",ds=>edr(ds).trig.filter(r=>r.mit==="NOT_MITIGATED").length,true]],
+  facets:[
+   ["Trigger files","Incident and device pairs per trigger file",ds=>count(edr(ds).trig,r=>r.trg)],
+   ["Mitigation state","Incident and device pairs",ds=>count(edr(ds).trig,r=>(r.mit||"").replace(/_/g," ").toLowerCase())],
+   ["Devices","Incident and device pairs",ds=>count(edr(ds).trig,r=>r.dev)]],
+  tables:[["EDR cases in the range","Latest state of each incident and device. Open = not mitigated, and not merged into another incident.",["Incident","Host","Trigger file","Detected","State"],ds=>{const e=edr(ds);return e.trig.map(r=>[r.inc,r.dev,r.trg||"",(r.det||"").slice(0,16).replace("T"," ")+" UTC",e.merged.has(r.inc)?"Merged":(r.mit==="NOT_MITIGATED"?"Open":"Closed")])},[0,1,2,3,4]]]},
+ {key:"updates",title:"Updates",risk:["updFail"],
+  metrics:[["updRuns","Update runs"],["updFail","Failed update runs"]],
+  kpis:[["Update runs",ds=>sum("updRuns",ds)],["Failed runs",ds=>sum("updFail",ds),true],["Failure rate",ds=>pct(sum("updFail",ds),sum("updRuns",ds))],["Agents with a failure",ds=>uniq(UPD_FAIL(ds),r=>r.agent),true]],
+  facets:[
+   ["Failures by update type","Failed runs",ds=>count(UPD_FAIL(ds),r=>nice(r.type),r=>r.failed)],
+   ["Failures by error code","Failed runs",ds=>count(UPD_FAIL(ds),r=>r.err||"(no code)",r=>r.failed)],
+   ["Failures by unit","Failed runs",ds=>count(UPD_FAIL(ds),r=>r.unit||"(none)",r=>r.failed)],
+   ["Agents with the most failures","Failed runs per agent (id shortened)",ds=>count(UPD_FAIL(ds),r=>r.agent,r=>r.failed)]],
+  tables:[]},
+ {key:"backup",title:"Backup",risk:["bkFail"],
+  metrics:[["bkRuns","Backup runs"],["bkOk","Succeeded"],["bkFail","Failed"],["bkGb","GB read"]],
+  kpis:[["Backup runs",ds=>sum("bkRuns",ds)],["Succeeded",ds=>sum("bkOk",ds)],["Failed",ds=>sum("bkFail",ds),true],["Success rate",ds=>pct(sum("bkOk",ds),sum("bkRuns",ds))],["GB read",ds=>Math.round(sum("bkGb",ds))],["Devices",ds=>uniq(BKR(ds),r=>r.dev)]],
+  facets:[
+   ["Failed runs by device","Failed runs",ds=>count(BKR(ds).filter(r=>r.failed),r=>r.dev,r=>r.failed)],
+   ["Runs by device","All runs",ds=>count(BKR(ds),r=>r.dev,r=>r.runs)],
+   ["Runs by plan","All runs",ds=>count(BKR(ds),r=>r.plan||"(none)",r=>r.runs)]],
+  tables:[["Backup by device and plan","Runs summed over the range; error codes are the top five seen.",["Device","Plan","Runs","OK","Failed","GB read","Errors"],ds=>bkAgg(ds).map(o=>[o.dev,o.plan,o.runs,o.ok,o.failed,Math.round(o.gb),[...o.err].join(", ")]),[0,1]]]},
+ {key:"agents",title:"Agents",snapshot:true,
+  metrics:[],
+  kpis:[],facets:[],tables:[]}
+];
+const S={tab:TABS[0].key,metric:null,from:days[0],to:days[days.length-1],ex:{},sort:{}};
+const tab=()=>TABS.find(t=>t.key===S.tab);
+const inR=d=>d>=S.from&&d<=S.to;
+function setRange(a,b){S.from=a<days[0]?days[0]:a;S.to=b>days[days.length-1]?days[days.length-1]:b;render()}
+
+function head(){
+ $("h1").textContent=(D.client?D.client+" · ":"")+"Acronis protection explorer";
+ const gaps=days.filter(d=>!have(d)).length;
+ $("sub").textContent="Tenant "+D.tenant+" · "+fmt(days.length-gaps)+" archived days"+(gaps?" ("+gaps+" without a result)":"")+", "+days[0]+" to "+days[days.length-1]+" (UTC) · hosts and units named";
+ const t=$("tabs");t.replaceChildren();
+ for(const x of TABS){const b=el("button","tab",x.title);b.setAttribute("aria-pressed",x.key===S.tab);b.onclick=()=>{S.tab=x.key;S.metric=null;render()};t.appendChild(b)}
+ const p=$("presets");p.replaceChildren();
+ const last=days[days.length-1];
+ [["7 days",6],["30 days",29],["All",null]].forEach(([l,n])=>{const a=n==null?days[0]:addDays(last,-n),lo=a<days[0]?days[0]:a;const b=el("button","pre",l);b.setAttribute("aria-pressed",S.from===lo&&S.to===last);b.onclick=()=>setRange(a,last);p.appendChild(b)});
+ const months=[...new Set(days.map(d=>d.slice(0,7)))];
+ if(months.length>1)months.forEach(m=>{const ds=days.filter(d=>d.startsWith(m)),lo=ds[0],hi=ds[ds.length-1];const nm=new Date(m+"-01T00:00:00Z").toLocaleString("en-US",{month:"long",timeZone:"UTC"});const b=el("button","pre",nm);b.setAttribute("aria-pressed",S.from===lo&&S.to===hi);b.onclick=()=>setRange(lo,hi);p.appendChild(b)});
+ $("d1").min=$("d2").min=days[0];$("d1").max=$("d2").max=last;$("d1").value=S.from;$("d2").value=S.to;
+ const snap=tab().snapshot;$("ctl").style.display=snap?"none":"";
+}
+function snapnote(){
+ const b=$("snapnote");b.replaceChildren();
+ if(tab().snapshot){const s=D.snap;b.appendChild(el("div","snap","Inventory snapshot as at "+s.asOf+" (from the "+s.day+" run"+(s.backfilled?", which was backfilled: it shows the inventory as it was when the backfill ran, not on that day":", written by the schedule")+"). The inventory has no history, so this tab does not follow the date range."))}
+}
+function kpis(){
+ const x=tab(),ds=rangeDays(S.from,S.to),n=ds.length,pd=rangeDays(addDays(S.from,-n),addDays(S.from,-1)),box=$("kpis");box.replaceChildren();
+ if(x.snapshot){const s=D.inv.summary,onl=s.defsStaleOnline;
+  const items=[["Agents",fmt(s.agents)],["Online",fmt(s.online)],["On latest installer",pct(s.onLatest,s.agents)+" ("+s.latestInstaller+")"],["Stale definitions",fmt(s.defsStale),1],["Online and stale",fmt(onl),1],["No Active Protection",fmt(s.noActiveProtection),1],["Duplicate hosts",fmt(s.duplicateHosts)],["Units",fmt(s.units)]];
+  for(const [l,v,r] of items){const k=el("div","kpi"+(r?" risk":""));k.appendChild(el("div","l",l));k.appendChild(el("div","v",v));box.appendChild(k)}return}
+ for(const [l,f,risk] of x.kpis){
+  const v=f(ds),k=el("div","kpi"+(risk?" risk":""));k.appendChild(el("div","l",l));k.appendChild(el("div","v",typeof v==="number"?fmt(v):v));
+  if(typeof v==="number"){
+   if(pd.length===n){const pv=f(pd);if(pv>0){const c=(v-pv)/pv*100;k.appendChild(el("div","d"+(c>0&&risk?" up":""),(c>=0?"+":"")+c.toFixed(0)+"% vs prior "+n+"d"))}else k.appendChild(el("div","d","prior period: 0"))}
+   else k.appendChild(el("div","d","no prior period"));
+  }
+  box.appendChild(k);
+ }
+}
+function chips(){
+ const x=tab(),c=$("chips");c.replaceChildren();$("chartpanel").style.display=x.snapshot?"none":"";$("daypanel").style.display=x.snapshot?"none":"";
+ if(x.snapshot)return;
+ if(!S.metric||!x.metrics.find(m=>m[0]===S.metric))S.metric=x.metrics[0][0];
+ for(const m of x.metrics){const b=el("button","chip",m[1]);b.setAttribute("aria-pressed",m[0]===S.metric);b.onclick=()=>{S.metric=m[0];render()};c.appendChild(b)}
+}
+const NS="http://www.w3.org/2000/svg";
+function sv(t,a,p){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e}
+function chart(){
+ const x=tab();if(x.snapshot)return;
+ const m=S.metric,svg=$("chart");svg.replaceChildren();
+ const W=svg.clientWidth||900,H=240,L=46,R=8,T=10,B=26,pw=W-L-R,ph=H-T-B;
+ svg.setAttribute("viewBox","0 0 "+W+" "+H);
+ const vals=days.map(d=>D.d[d]?(D.d[d][m]||0):null);
+ const mx=Math.max(1,...vals.map(v=>v||0));
+ const nice1=(q=>{const p=Math.pow(10,Math.floor(Math.log10(q))),f=q/p;return(f<=1?1:f<=2?2:f<=5?5:10)*p})(mx);
+ $("ct").textContent=x.title+" · "+x.metrics.find(q=>q[0]===m)[1]+" per day";
+ const defs=sv("defs",{},svg),pt=sv("pattern",{id:"hatch",width:6,height:6,patternUnits:"userSpaceOnUse",patternTransform:"rotate(45)"},defs);
+ sv("rect",{width:6,height:6,fill:"none"},pt);sv("line",{x1:0,y1:0,x2:0,y2:6,stroke:"var(--gap)","stroke-width":2},pt);
+ for(let i=0;i<=4;i++){const y=T+ph-ph*i/4,v=nice1*i/4;sv("line",{x1:L,x2:W-R,y1:y,y2:y,class:"grid"},svg);const t=sv("text",{x:L-6,y:y+3,"text-anchor":"end",class:"axis"},svg);t.textContent=v>=1000?(v/1000)+"k":v}
+ const bw=pw/days.length,risk=(x.risk||[]).includes(m);
+ days.forEach((d,i)=>{
+  const px=L+i*bw,v=vals[i];
+  if(v==null){sv("rect",{x:px+1,y:T,width:Math.max(1,bw-2),height:ph,class:"gapbar"},svg);return}
+  const h=ph*v/nice1;
+  sv("rect",{x:px+1,y:T+ph-h,width:Math.max(1,bw-2),height:Math.max(v>0?1:0,h),class:(risk?"bar-risk":"bar-ok")+(inR(d)?"":" bar-dim")},svg);
+ });
+ const step=Math.ceil(days.length/Math.max(4,Math.floor(pw/70)));
+ days.forEach((d,i)=>{if(i%step===0){const t=sv("text",{x:L+i*bw+bw/2,y:H-8,"text-anchor":"middle",class:"axis"},svg);t.textContent=d.slice(5)}});
+ const sel=sv("rect",{y:T,height:ph,class:"sel",x:0,width:0},svg);
+ const tip=$("tip");
+ const idx=e=>{const r=svg.getBoundingClientRect(),px=(e.clientX-r.left)*(W/r.width)-L;return Math.max(0,Math.min(days.length-1,Math.floor(px/bw)))};
+ let a=null;
+ svg.onpointermove=e=>{const i=idx(e),d=days[i],v=vals[i];tip.hidden=false;tip.textContent=d+"  "+(v==null?"no archived result":fmt(v));tip.style.left=Math.min(innerWidth-170,e.clientX+12)+"px";tip.style.top=(e.clientY-34)+"px";
+  if(a!=null){const lo=Math.min(a,i),hi=Math.max(a,i);sel.setAttribute("x",L+lo*bw);sel.setAttribute("width",(hi-lo+1)*bw)}};
+ svg.onpointerleave=()=>{tip.hidden=true};
+ svg.onpointerdown=e=>{a=idx(e);svg.setPointerCapture(e.pointerId)};
+ svg.onpointerup=e=>{if(a==null)return;const i=idx(e),lo=Math.min(a,i),hi=Math.max(a,i);a=null;if(hi>lo)setRange(days[lo],days[hi]);else{sel.setAttribute("width",0)}};
+}
+function facetPanel(box,key,title,sub,rows,q){
+ const p=el("section","panel");p.appendChild(el("h2","",title));p.appendChild(el("p","hint",sub));
+ if(q)rows=rows.filter(r=>String(r[0]).toLowerCase().includes(q));
+ if(!rows.length){if(q)return;p.appendChild(el("div","empty","No values in this range."));box.appendChild(p);return}
+ const tot=rows.reduce((s,r)=>s+r[1],0),max=Math.max(...rows.map(r=>r[1])),open=S.ex[key]||q,shown=open?rows:rows.slice(0,8);
+ for(const [v,c] of shown){const r=el("div","fr");r.appendChild(el("span","n",v)).title=v;r.appendChild(el("span","c",fmt(c)+(tot?" · "+(c/tot*100).toFixed(c/tot<.1?1:0)+"%":"")));const b=el("div","b"),i=el("i");i.style.width=(c/max*100)+"%";b.appendChild(i);r.appendChild(b);p.appendChild(r)}
+ if(rows.length>8&&!q){const b=el("button","more",open?"Show top 8":"Show all "+rows.length);b.onclick=()=>{S.ex[key]=!open;facets()};p.appendChild(b)}
+ box.appendChild(p);
+}
+function sortable(table,headers,rows,textCols,key){
+ table.replaceChildren();
+ const st=S.sort[key]||(S.sort[key]={k:-1,dir:1});
+ const tr=el("tr");headers.forEach((h,i)=>{const th=el("th",textCols.includes(i)?"t":"",h+(st.k===i?(st.dir<0?" ↓":" ↑"):""));th.tabIndex=0;const go=()=>{if(st.k===i)st.dir=-st.dir;else{st.k=i;st.dir=textCols.includes(i)?1:-1}facets()};th.onclick=go;th.onkeydown=e=>{if(e.key==="Enter")go()};tr.appendChild(th)});
+ const hd=el("thead");hd.appendChild(tr);table.appendChild(hd);
+ const out=rows.slice();if(st.k>=0)out.sort((a,b)=>{const x=a[st.k],y=b[st.k];return(typeof x==="number"&&typeof y==="number"?x-y:String(x).localeCompare(String(y)))*st.dir});
+ const tb=el("tbody");for(const r of out){const row=el("tr");r.forEach((c,i)=>{const td=el("td",textCols.includes(i)?"t":"");if(c==="Open"){td.appendChild(el("span","pill bad","Open"))}else if(c==="Closed"||c==="Merged"||c==="Online"||c==="Offline"){td.appendChild(el("span","pill",c))}else td.textContent=typeof c==="number"?fmt(c):c;row.appendChild(td)});tb.appendChild(row)}
+ table.appendChild(tb);
+}
+function facets(){
+ const x=tab(),box=$("facets"),tb=$("tables");box.replaceChildren();tb.replaceChildren();
+ const q=$("q").value.trim().toLowerCase();
+ if(x.snapshot){const I=D.inv;
+  facetPanel(box,"a1","Definition age","Agents by age of the latest protection-definition update",I.defsAge,q);
+  facetPanel(box,"a2","Installer versions","Agents per installer release",I.versions.map(v=>[v[0]+(v[2]?" (current)":""),v[1]]),q);
+  facetPanel(box,"a3","Units","Agents per Acronis unit",I.units.map(u=>[u[0],u[1]]),q);
+  facetPanel(box,"a4","Stale agents per unit","Agents with definitions 30 days or more old",I.units.filter(u=>u[3]).map(u=>[u[0],u[3]]).sort((a,b)=>b[1]-a[1]),q);
+  const tp=(key,title,sub,headers,rows,tc)=>{const f=q?rows.filter(r=>r.join(" ").toLowerCase().includes(q)):rows;const p=el("section","panel");p.appendChild(el("h2","",title+" ("+fmt(f.length)+")"));p.appendChild(el("p","hint",sub));const w=el("div","tw"),t=el("table");w.appendChild(t);p.appendChild(w);tb.appendChild(p);sortable(t,headers,f,tc,key)};
+  tp("t1","Online agents with no Active Protection","Online and without an ACTIVE_PROTECTION component",["Host","Unit","Installer","Age (days)"],I.noAp,[0,1,2]);
+  tp("t2","Stale agents","Definitions 30 days or more old (the archive keeps the first 300, oldest first)",["Host","Unit","State","Age (days)","Installer","OS"],I.stale.map(r=>[r[0],r[1],r[2]?"Online":"Offline",r[3],r[4],r[5]]),[0,1,2,4,5]);
+  tp("t3","Hosts with more than one agent record","Duplicate agent records",["Host","Records","Units","States"],I.dups,[0,2,3]);
+  return}
+ const ds=rangeDays(S.from,S.to);
+ x.facets.forEach((f,i)=>facetPanel(box,x.key+i,f[0],f[1],f[2](ds),q));
+ (x.tables||[]).forEach((t,i)=>{const rows=t[3](ds),f=q?rows.filter(r=>r.join(" ").toLowerCase().includes(q)):rows;const p=el("section","panel");p.appendChild(el("h2","",t[0]+" ("+fmt(f.length)+")"));p.appendChild(el("p","hint",t[1]));const w=el("div","tw"),tbl=el("table");w.appendChild(tbl);p.appendChild(w);tb.appendChild(p);sortable(tbl,t[2],f,t[4],x.key+"t"+i)});
+}
+let sortK="date",sortDir=-1;
+function table(){
+ const x=tab();if(x.snapshot)return;
+ const t=$("tbl"),ds=rangeDays(S.from,S.to);t.replaceChildren();
+ const cols=x.metrics,tr=el("tr");
+ const th=(k,l)=>{const h=el("th","",l+(sortK===k?(sortDir<0?" ↓":" ↑"):""));h.tabIndex=0;const go=()=>{if(sortK===k)sortDir=-sortDir;else{sortK=k;sortDir=-1}table()};h.onclick=go;h.onkeydown=e=>{if(e.key==="Enter")go()};tr.appendChild(h)};
+ th("date","Day");cols.forEach(c=>th(c[0],c[1]));
+ const hd=el("thead");hd.appendChild(tr);t.appendChild(hd);
+ const rows=ds.map(d=>({d,r:D.d[d]||null}));
+ rows.sort((a,b)=>{const p=sortK==="date"?a.d:(a.r?a.r[sortK]||0:-1),q=sortK==="date"?b.d:(b.r?b.r[sortK]||0:-1);return(p>q?1:p<q?-1:0)*sortDir});
+ const tb=el("tbody");
+ for(const {d,r} of rows){const row=el("tr",r?"":"gap");row.appendChild(el("td","",d));cols.forEach(c=>row.appendChild(el("td","",r?fmt(r[c[0]]||0):"gap")));tb.appendChild(row)}
+ if(x.key!=="events"||true){const tot=el("tr");tot.appendChild(el("td","","Total"));cols.forEach(c=>tot.appendChild(el("td","",c[0]==="alertsActive"||c[0]==="edrTriggers"?"–":fmt(Math.round(sum(c[0],ds))))));tot.style.fontWeight=600;tb.appendChild(tot)}
+ t.appendChild(tb);
+}
+function render(){head();snapnote();kpis();chips();chart();facets();table()}
+$("d1").onchange=()=>{if($("d1").value)setRange($("d1").value,S.to<$("d1").value?$("d1").value:S.to)};
+$("d2").onchange=()=>{if($("d2").value)setRange(S.from>$("d2").value?$("d2").value:S.from,$("d2").value)};
+$("q").oninput=facets;
+$("note").textContent="Built from the daily scheduled-report archive. Each day is one stored run for that UTC day, so the page answers any range without searching. It names hosts and Acronis units (administrator names, without e-mail addresses), so share it with care. Alerts, incidents, EDR cases and failed updates are merged by Acronis's own id across the range, so an alert seen on several days is one alert; distinct counts are taken over the merged rows and never added across days. Activity and backup run counts are summed by day, so a run re-sent across a day boundary is counted twice. Alerts and failure lists are capped per day (3,000 alerts, 1,000 failures), and the stale-agent list keeps the first 300. The Agents tab is one inventory snapshot, not a history. A day with no archived result shows as a gap, never as zero. Event counts before the Acronis connector's first import read as zero. This is evidence of activity volume, not a verdict on any alert: the feed has file names but no hashes, signers or parent processes.";
+let rz;addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(chart,120)});
+render();
+</script>
