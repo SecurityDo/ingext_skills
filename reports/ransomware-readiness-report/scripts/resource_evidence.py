@@ -106,6 +106,94 @@ def host(name):
     return (name or "").split(".")[0].strip().lower()
 
 
+GLOBAL_ADMIN_ROLE = "62e90394-69f5-4237-9190-012177145e10"  # Entra Global Administrator role template id
+LEGACY_CLIENTS = {"exchangeActiveSync", "other"}
+
+
+def ca_evaluate(cap):
+    """Evaluate enabled conditional-access policies from the policy JSON itself (scope, exclusions, grant controls).
+
+    A policy counts toward a control only if it is enabled (not report-only), has no narrowing condition (risk level,
+    platform, location, device filter, user action) and covers the client types that matter. Exclusion counts are reported
+    for the policy with the fewest exclusions. Group membership is not resolved: an excluded group is counted as one group.
+    """
+    cond = lambda p: p.get("conditions") or {}
+    usr = lambda p: cond(p).get("users") or {}
+    app = lambda p: cond(p).get("applications") or {}
+    grant = lambda p: p.get("grantControls") or {}
+
+    def strict_mfa(p):
+        g = grant(p)
+        if g.get("authenticationStrength"):
+            return True
+        bi = [str(c).lower() for c in (g.get("builtInControls") or [])]
+        return "mfa" in bi and (g.get("operator") == "AND" or len(bi) == 1)
+
+    def bypassable_mfa(p):
+        g = grant(p)
+        bi = [str(c).lower() for c in (g.get("builtInControls") or [])]
+        return "mfa" in bi and not strict_mfa(p)
+
+    def risk_free(p):
+        c = cond(p)
+        if any(c.get(k) for k in ("userRiskLevels", "signInRiskLevels", "servicePrincipalRiskLevels", "insiderRiskLevels", "authenticationFlows", "clientApplications")):
+            return False
+        a = app(p)
+        return not (a.get("includeUserActions") or a.get("applicationFilter") or a.get("includeAuthenticationContextClassReferences"))
+
+    def full_scope(p):
+        # also no location, platform or device condition
+        c = cond(p)
+        loc, plat = c.get("locations") or {}, c.get("platforms") or {}
+        narrowed = (loc and (loc.get("excludeLocations") or [x for x in (loc.get("includeLocations") or []) if x != "All"])) \
+            or (plat and (plat.get("excludePlatforms") or [x for x in (plat.get("includePlatforms") or []) if x != "all"])) \
+            or c.get("devices")
+        return risk_free(p) and not narrowed
+
+    def modern_clients(p):
+        t = set(cond(p).get("clientAppTypes") or [])
+        return "all" in t or {"browser", "mobileAppsAndDesktopClients"} <= t
+
+    all_users = lambda p: "All" in (usr(p).get("includeUsers") or [])
+    all_apps = lambda p: "All" in (app(p).get("includeApplications") or []) and not app(p).get("excludeApplications")
+    excl = lambda p: {"users": len(usr(p).get("excludeUsers") or []), "groups": len(usr(p).get("excludeGroups") or []), "roles": len(usr(p).get("excludeRoles") or [])}
+    fewest = lambda ps: min((excl(p) for p in ps), key=lambda e: (e["roles"], e["users"] + e["groups"]), default={"users": 0, "groups": 0, "roles": 0})
+    en = [p for p in cap if p.get("state") == "enabled"]
+    ro = [p for p in cap if p.get("state") == "enabledForReportingButNotEnforced"]
+
+    mfa_all = [p for p in en if strict_mfa(p) and all_users(p) and all_apps(p) and full_scope(p) and modern_clients(p)]
+    mfa_all_cond = [p for p in en if strict_mfa(p) and all_users(p) and all_apps(p) and risk_free(p) and not full_scope(p) and modern_clients(p)]
+    mfa_all_ro = [p for p in ro if strict_mfa(p) and all_users(p) and all_apps(p) and full_scope(p) and modern_clients(p)]
+
+    def admin_ok(p):
+        u = usr(p)
+        if GLOBAL_ADMIN_ROLE in (u.get("excludeRoles") or []):
+            return False
+        covers = all_users(p) or GLOBAL_ADMIN_ROLE in (u.get("includeRoles") or [])
+        apps = app(p).get("includeApplications") or []
+        return covers and ("All" in apps or "MicrosoftAdminPortals" in apps) and not app(p).get("excludeApplications")
+
+    admin = [p for p in en if strict_mfa(p) and admin_ok(p) and full_scope(p) and modern_clients(p)]
+    legacy = [p for p in en if "block" in [str(c).lower() for c in (grant(p).get("builtInControls") or [])] and LEGACY_CLIENTS & set(cond(p).get("clientAppTypes") or [])]
+    legacy_all = [p for p in legacy if all_users(p) and all_apps(p) and full_scope(p)]
+    return {
+        "policies": len(cap), "enabled": len(en), "report_only": len(ro), "disabled": sum(p.get("state") == "disabled" for p in cap),
+        "mfa_policies": sum(strict_mfa(p) for p in en),
+        "mfa_all_users": len(mfa_all),
+        "mfa_all_users_exclusions": fewest(mfa_all),
+        "mfa_all_users_conditional": len(mfa_all_cond),
+        "mfa_all_users_conditional_exclusions": fewest(mfa_all_cond),
+        "mfa_all_users_report_only": len(mfa_all_ro),
+        "mfa_bypassable_policies": sum(bypassable_mfa(p) for p in en),
+        "admin_mfa_policies": len(admin),
+        "admin_mfa_all_apps": sum(1 for p in admin if all_apps(p)),
+        "legacy_auth_block": len(legacy),
+        "legacy_auth_block_all_users_all_apps": len(legacy_all),
+        "legacy_auth_block_exclusions": fewest(legacy_all),
+    }
+
+
+
 def main(d, out):
     ev = {"generated": NOW.strftime("%Y-%m-%d"), "gaps": []}
     gap = ev["gaps"].append
@@ -381,18 +469,8 @@ def main(d, out):
             "admin_roles": dict(Counter(r for u in usr for r in (u.get("roles") or []) if "Administrator" in r).most_common(12)),
         })
     if cap is not None:
-        def mfa(p): return "mfa" in json.dumps((p.get("grantControls") or {})).lower()
-        def alluser(p): return "All" in ((p.get("conditions") or {}).get("users") or {}).get("includeUsers", [])
-        def legacy(p): return any(x in ("exchangeActiveSync", "other") for x in (p.get("conditions") or {}).get("clientAppTypes", []))
-        en = [p for p in cap if p.get("state") == "enabled"]
-        ev["conditional_access"] = {
-            "policies": len(cap), "enabled": len(en),
-            "mfa_all_users": sum(mfa(p) and alluser(p) for p in en),
-            "mfa_policies": sum(mfa(p) for p in en),
-            "legacy_auth_block": sum(legacy(p) and "block" in json.dumps(p.get("grantControls") or {}).lower() for p in en),
-            "report_only": sum(p.get("state") == "enabledForReportingButNotEnforced" for p in cap),
-        }
-    gap("Per-user MFA registration is not in the resource dumps (admin MFA comes from the sign-in events)")
+        ev["conditional_access"] = ca_evaluate(cap)
+    gap("Per-user MFA registration is not in the resource dumps: conditional access shows what is required, not who has registered a method")
     gap("Log clearing, new services and account changes are event data: see windows_evidence.json (archived WindowsSrv_Activity_Report)")
     json.dump(ev, open(out, "w"), indent=2, default=str)
     print(json.dumps(ev, indent=2, default=str))

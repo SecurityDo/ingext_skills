@@ -106,8 +106,10 @@ reported.
 - **Recovery ability is inferred, not proven.** Backup exposure comes from the backup products and versions installed on endpoints.
   Backup job success, restore tests, backup age and immutability are not in the resource dumps, so the report cannot say
   whether the organization could actually recover.
-- **The conditional-access MFA check is a heuristic.** It counts enabled policies that require MFA with "All users" in scope and
-  cannot see exclusions, named-location carve-outs or per-user MFA registration. Treat it as a pointer to review, not proof.
+- **Conditional access is evaluated from the policy JSON, not from sign-ins.** An enabled policy counts only when it has no risk,
+  location, platform, device or user-action narrowing; report-only policies are listed but not counted. Exclusions are counted
+  per policy, but excluded groups are not expanded into people, and MFA registration (who has actually enrolled a method) is
+  not in the dumps.
 - **EDR prevention mode.** Detect-only mode is measured for SentinelOne only; CrowdStrike reports the prevention policy as
   applied or not, not its detect or block setting.
 

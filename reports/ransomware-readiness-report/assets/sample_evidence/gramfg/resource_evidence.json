@@ -2,7 +2,7 @@
   "generated": "2026-11-06",
   "gaps": [
     "10 or more hardening rules fail on every applicable device: the tenant may not report them. Word the finding as 'not confirmed' unless the policy state is verified.",
-    "Per-user MFA registration is not in the resource dumps (admin MFA comes from the sign-in events)",
+    "Per-user MFA registration is not in the resource dumps: conditional access shows what is required, not who has registered a method",
     "Log clearing, new services and account changes are event data: see windows_evidence.json (archived WindowsSrv_Activity_Report)"
   ],
   "sources": {
@@ -789,9 +789,31 @@
   "conditional_access": {
     "policies": 8,
     "enabled": 6,
-    "mfa_all_users": 0,
+    "report_only": 2,
+    "disabled": 0,
     "mfa_policies": 4,
+    "mfa_all_users": 0,
+    "mfa_all_users_exclusions": {
+      "users": 0,
+      "groups": 0,
+      "roles": 0
+    },
+    "mfa_all_users_conditional": 0,
+    "mfa_all_users_conditional_exclusions": {
+      "users": 0,
+      "groups": 0,
+      "roles": 0
+    },
+    "mfa_all_users_report_only": 0,
+    "mfa_bypassable_policies": 0,
+    "admin_mfa_policies": 1,
+    "admin_mfa_all_apps": 0,
     "legacy_auth_block": 1,
-    "report_only": 2
+    "legacy_auth_block_all_users_all_apps": 1,
+    "legacy_auth_block_exclusions": {
+      "users": 3,
+      "groups": 0,
+      "roles": 0
+    }
   }
 }

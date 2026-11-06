@@ -134,7 +134,7 @@
   {
    "severity": "Medium",
    "title": "Admin portals and tenant sign-ins rely on passwords alone too often",
-   "finding": "Across the 2 days of sign-in data, 34.6% of successful sign-ins (4,732 of 13,659) were single-factor, and 360 sign-ins reached admin portals or tools such as the Azure Portal and Azure CLI. None of the 6 enabled conditional-access policies requires MFA for all users. 24 sign-ins used legacy authentication, which cannot use MFA, and 41 were flagged risky. There are 5 Global Administrators. Whether the admin-portal sign-ins used MFA cannot be joined in the archive, and MFA registration data is not collected.",
+   "finding": "Across the 2 days of sign-in data, 34.6% of successful sign-ins (4,732 of 13,659) were single-factor, and 360 sign-ins reached admin portals or tools such as the Azure Portal and Azure CLI. None of the 6 enabled conditional-access policies requires MFA for all users on all apps. Global Administrators must use MFA on the admin portals only. Legacy authentication is blocked for all apps except 3 excluded users and 0 excluded groups. 24 sign-ins used legacy authentication, which cannot use MFA, and 41 were flagged risky. There are 5 Global Administrators. Whether the admin-portal sign-ins used MFA cannot be joined in the archive, and MFA registration data is not collected.",
    "why": "A stolen password is the most common way in. Administrator access without a second factor lets an attacker take over the tenant.",
    "recommendation": "Require MFA for all users and for every admin portal through conditional access, block legacy authentication, and review risky sign-ins.",
    "owner": "Identity &amp; Access",
@@ -171,7 +171,7 @@
   "10 protective settings, for example \"Disable WDigest Authentication\", \"Disable SMBv1 server\", \"Turn on Microsoft Defender Firewall\", are compliant on 95% or more of devices.",
   "Global Administrator accounts are few (5) and cloud-only."
  ],
- "methodology": "Findings were derived from Grand River&rsquo;s Fluency / Ingext datalake: endpoint, vulnerability, hardening, identity and conditional-access snapshots, the archived Entra sign-in activity report and the archived Windows server activity report. Evidence window: Resource snapshots 6 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived. Pillar colours and issue severities follow the thresholds in rating_rules.json. Unprotected-device counts match Defender discovery to the EDR agent inventory (SentinelOne or CrowdStrike) by hostname, count only active Windows, Linux and Mac devices, and may include a small number of guest devices. Recovery ability is inferred from backup products and versions, not proven by restore tests. The conditional-access MFA check counts policies requiring MFA for all users and cannot see exclusions. MFA registration status and the MFA status of individual admin-portal sign-ins could not be measured. No individual users or hosts are named in this report.",
+ "methodology": "Findings were derived from Grand River&rsquo;s Fluency / Ingext datalake: endpoint, vulnerability, hardening, identity and conditional-access snapshots, the archived Entra sign-in activity report and the archived Windows server activity report. Evidence window: Resource snapshots 6 Nov 2026; sign-ins 2 of 2 days archived; Windows audit 1 of 30 days archived. Pillar colours and issue severities follow the thresholds in rating_rules.json. Unprotected-device counts match Defender discovery to the EDR agent inventory (SentinelOne or CrowdStrike) by hostname, count only active Windows, Linux and Mac devices, and may include a small number of guest devices. Recovery ability is inferred from backup products and versions, not proven by restore tests. Conditional access is evaluated from the policy definitions (scope, exclusions, grant controls), not from per-user MFA registration, and excluded groups are not expanded into people. MFA registration status and the MFA status of individual admin-portal sign-ins could not be measured. No individual users or hosts are named in this report.",
  "_review": {
   "rules_fired": [
    "B1",
@@ -186,7 +186,7 @@
   ],
   "evidence_gaps": [
    "10 or more hardening rules fail on every applicable device: the tenant may not report them. Word the finding as 'not confirmed' unless the policy state is verified.",
-   "Per-user MFA registration is not in the resource dumps (admin MFA comes from the sign-in events)",
+   "Per-user MFA registration is not in the resource dumps: conditional access shows what is required, not who has registered a method",
    "Log clearing, new services and account changes are event data: see windows_evidence.json (archived WindowsSrv_Activity_Report)",
    "Windows audit covers 1 of 30 expected days; counts are for the archived days only",
    "Single-factor status of admin-portal sign-ins is not joint in the archive (apps and auth requirement are separate facets); admin MFA is judged from conditional-access policies and the single-factor share"

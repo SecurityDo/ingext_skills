@@ -36,7 +36,7 @@ def short_os(n):
     return re.sub(r"\s+", " ", n).strip()
 
 
-def derive(r, w):
+def derive(r, w, n=None):
     d = {}
     eol = (r.get("endpoint") or {}).get("eol_os") or {}
     merged = {}
@@ -91,8 +91,44 @@ def derive(r, w):
     sc = r.get("scanner_tools") or []
     d["scanner_text"] = f"A network-scanning tool ({sc[0]['tool']}) is installed on {sc[0]['endpoints']} endpoints." if sc else ""
     ca = r.get("conditional_access") or {}
-    d["mfa_policy_text"] = (f"None of the {ca.get('enabled')} enabled conditional-access policies requires MFA for all users." if ca.get("mfa_all_users") == 0
-                            else f"{ca.get('mfa_all_users')} conditional-access policies require MFA for all users." if ca else "")
+    sg_ = (n or {}).get("signins")
+    if sg_:
+        cv, ap_ = (n.get("coverage") or {}), (n.get("admin_portal_signins") or {})
+        d["signin_headline"] = f"{sg_.get('single_factor_share_pct')}% of successful sign-ins single-factor ({cv.get('archived_days')} days)"
+        d["signin_sentence"] = (f"Across the {cv.get('archived_days')} days of sign-in data, {sg_.get('single_factor_share_pct')}% of successful sign-ins ({sg_.get('singleFactorOk'):,} of {sg_.get('successful'):,}) were single-factor, "
+                                f"and {ap_.get('events', 0):,} sign-ins reached admin portals or tools such as the Azure Portal and Azure CLI.")
+        d["legacy_sentence"] = f"{sg_.get('legacyAuth')} sign-ins used legacy authentication, which cannot use MFA, and {sg_.get('risky')} were flagged risky."
+        d["signin_limits"] = "Whether the admin-portal sign-ins used MFA cannot be joined in the archive, and MFA registration data is not collected."
+    else:
+        d["signin_headline"] = "MFA is not enforced for every user"
+        d["signin_sentence"] = "No sign-in archive was available, so the share of single-factor sign-ins could not be measured."
+        d["legacy_sentence"] = ""
+        d["signin_limits"] = "MFA registration data is not collected."
+    ex = lambda e: f"{e.get('users', 0)} users, {e.get('groups', 0)} groups and {e.get('roles', 0)} directory roles"
+    if not ca:
+        d["mfa_policy_text"] = ""
+    else:
+        parts = []
+        if ca.get("mfa_all_users"):
+            parts.append(f"{ca['mfa_all_users']} enforced conditional-access policy requires MFA for all users on all apps; the strictest excludes {ex(ca.get('mfa_all_users_exclusions') or {})}.")
+        elif ca.get("mfa_all_users_conditional"):
+            parts.append("MFA for all users is only enforced under conditions such as outside trusted locations or on some platforms; the broadest such policy excludes "
+                         f"{ex(ca.get('mfa_all_users_conditional_exclusions') or {})}.")
+        elif ca.get("mfa_all_users_report_only"):
+            parts.append("A policy that would require MFA for all users exists but is in report-only mode, so it is not enforced.")
+        else:
+            parts.append(f"None of the {ca.get('enabled')} enabled conditional-access policies requires MFA for all users on all apps.")
+        if ca.get("admin_mfa_policies"):
+            parts.append("Global Administrators must use MFA" + (" on every app." if ca.get("admin_mfa_all_apps") else " on the admin portals only."))
+        else:
+            parts.append("No enabled policy requires MFA for Global Administrators.")
+        if ca.get("legacy_auth_block_all_users_all_apps"):
+            le = ca.get("legacy_auth_block_exclusions") or {}
+            n_ex = le.get("users", 0) + le.get("groups", 0)
+            parts.append("Legacy authentication is blocked for all apps" + (f" except {le.get('users', 0)} excluded users and {le.get('groups', 0)} excluded groups." if n_ex else "."))
+        else:
+            parts.append("Legacy authentication is not blocked for all users and apps.")
+        d["mfa_policy_text"] = " ".join(parts)
     sg = r.get("strong_controls") or []
     d["strong_controls_count"] = len(sg)
     ex = []
@@ -164,7 +200,7 @@ def main():
     load = lambda p: json.load(open(p)) if p and os.path.exists(p) else None
     r, w, n = load(a.resource) or {}, load(a.windows), load(a.entra)
     rules = json.load(open(a.rules))
-    derive(r, w)
+    derive(r, w, n)
     ev = {"r": r, "w": w or {}, "n": n or {}}
     order = [q["id"] for q in rules["rules"]]
     fired = {}
@@ -240,7 +276,7 @@ def main():
         "methodology": (f"Findings were derived from {html.escape(a.tenant)}&rsquo;s Fluency / Ingext datalake: endpoint, vulnerability, hardening, identity and conditional-access snapshots, "
                         f"the archived Entra sign-in activity report and the archived Windows server activity report. Evidence window: {window}. Pillar colours and issue severities follow the thresholds in rating_rules.json. "
                         "Unprotected-device counts match Defender discovery to the EDR agent inventory (SentinelOne or CrowdStrike) by hostname, count only active Windows, Linux and Mac devices, and may include a small number of guest devices. "
-                        "Recovery ability is inferred from backup products and versions, not proven by restore tests. The conditional-access MFA check counts policies requiring MFA for all users and cannot see exclusions. MFA registration status and the MFA status of individual admin-portal sign-ins could not be measured. No individual users or hosts are named in this report."),
+                        "Recovery ability is inferred from backup products and versions, not proven by restore tests. Conditional access is evaluated from the policy definitions (scope, exclusions, grant controls), not from per-user MFA registration, and excluded groups are not expanded into people. MFA registration status and the MFA status of individual admin-portal sign-ins could not be measured. No individual users or hosts are named in this report."),
         "_review": {"rules_fired": list(fired), "evidence_gaps": allgaps, "unresolved_placeholders": sorted(set(MISSING)),
                     "note": "Colours and severities are rule-based. Sharpen the wording and check the summary and board ask before rendering."}}
     json.dump(draft, open(a.out, "w"), indent=1, ensure_ascii=False)

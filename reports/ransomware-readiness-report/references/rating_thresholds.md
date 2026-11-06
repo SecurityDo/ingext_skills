@@ -24,8 +24,11 @@ A pillar is **red** if any of its issues is Critical or a rule marks it red, **a
 | V1 | Vulnerability Exposure | High | devices with an exploitable CVE older than 30 days: at least 25 | IT Operations | 30 days | amber |
 | V2 | Vulnerability Exposure | Medium | devices with an exploitable CVE: at least 1 (not when V1 fired) | IT Operations | 30 days | amber |
 | D1 | Detection & Response | High | SentinelOne agents with either mitigation mode not in Protect: at least 1 | Security Operations | 14 days | amber |
-| I1 | Identity & Access | Medium | (single-factor share of successful sign-ins (%): at least 5 or conditional-access policies requiring MFA for all users: exactly 0 or legacy-authentication sign-ins: at least 1) | Identity & Access | 30 days | amber |
+| I1 | Identity & Access | Medium | (single-factor share of successful sign-ins (%): at least 5 or enforced conditional-access policies requiring MFA for all users on all apps: exactly 0 or legacy-authentication sign-ins: at least 1) | Identity & Access | 30 days | amber |
 | I2 | Identity & Access | High | single-factor share of successful sign-ins (%): at least 50 | Identity & Access | 30 days | amber |
+| I3 | Identity & Access | High | enforced policies requiring MFA for Global Administrators: exactly 0 | Identity & Access | 14 days | amber |
+| I4 | Identity & Access | High | enforced conditional-access policies requiring MFA for all users on all apps: at least 1 and directory roles excluded from the all-users MFA policy: at least 1 | Identity & Access | 30 days | amber |
+| I5 | Identity & Access | Medium | enforced policies blocking legacy authentication for all users and apps: exactly 0 | Identity & Access | 30 days | amber |
 | L1 | Logging & Forensics | High | security-log-cleared events: at least 1 | Security Operations | 14 days | amber |
 | L2 | Logging & Forensics | High | services or tasks with attacker-tool names: at least 1 | Security Operations | 7 days | amber |
 | T3 | Threat Activity | Critical | agents reporting an active infection: at least 1 | Security Operations | 24 hours | red |

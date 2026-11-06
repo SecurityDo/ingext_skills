@@ -505,9 +505,9 @@
      "value": 1
     }
    ],
-   "headline": "{n.signins.single_factor_share_pct}% of successful sign-ins single-factor ({n.coverage.archived_days} days)",
+   "headline": "{r.signin_headline}",
    "title": "Admin portals and tenant sign-ins rely on passwords alone too often",
-   "finding": "Across the {n.coverage.archived_days} days of sign-in data, {n.signins.single_factor_share_pct}% of successful sign-ins ({n.signins.singleFactorOk} of {n.signins.successful}) were single-factor, and {n.admin_portal_signins.events} sign-ins reached admin portals or tools such as the Azure Portal and Azure CLI. {r.mfa_policy_text} {n.signins.legacyAuth} sign-ins used legacy authentication, which cannot use MFA, and {n.signins.risky} were flagged risky. There are {r.identity.global_admins} Global Administrators. Whether the admin-portal sign-ins used MFA cannot be joined in the archive, and MFA registration data is not collected.",
+   "finding": "{r.signin_sentence} {r.mfa_policy_text} {r.legacy_sentence} There are {r.identity.global_admins} Global Administrators. {r.signin_limits}",
    "why": "A stolen password is the most common way in. Administrator access without a second factor lets an attacker take over the tenant.",
    "recommendation": "Require MFA for all users and for every admin portal through conditional access, block legacy authentication, and review risky sign-ins.",
    "owner": "Identity &amp; Access",
@@ -537,6 +537,77 @@
    "mitre": "T1078 Valid Accounts",
    "action": "Require MFA for all users",
    "outcome": "Credential-only access closed"
+  },
+  {
+   "pillar": "identity",
+   "owner": "Identity &amp; Access",
+   "mitre": "T1078 Valid Accounts",
+   "id": "I3",
+   "severity": "High",
+   "target": "14 days",
+   "when": [
+    {
+     "path": "r.conditional_access.admin_mfa_policies",
+     "op": "==",
+     "value": 0
+    }
+   ],
+   "headline": "No policy enforces MFA for Global Administrators",
+   "title": "Nothing forces administrators to use MFA",
+   "finding": "No enabled conditional-access policy requires MFA for Global Administrators. {r.identity.global_admins} Global Administrators exist. Report-only and risk-based policies were not counted.",
+   "why": "An administrator with only a password lets one stolen credential take over the whole tenant.",
+   "recommendation": "Require MFA for all administrator roles on every app through an enforced conditional-access policy.",
+   "action": "Enforce MFA for every administrator role",
+   "outcome": "Administrator accounts need a second factor"
+  },
+  {
+   "pillar": "identity",
+   "owner": "Identity &amp; Access",
+   "mitre": "T1078 Valid Accounts",
+   "id": "I4",
+   "severity": "High",
+   "target": "30 days",
+   "when": [
+    {
+     "path": "r.conditional_access.mfa_all_users",
+     "op": ">=",
+     "value": 1
+    },
+    {
+     "path": "r.conditional_access.mfa_all_users_exclusions.roles",
+     "op": ">=",
+     "value": 1
+    }
+   ],
+   "headline": "The all-users MFA policy excludes directory roles",
+   "title": "The MFA policy for all users excludes privileged roles",
+   "finding": "The strictest policy requiring MFA for all users excludes {r.conditional_access.mfa_all_users_exclusions.roles} directory roles, which are usually the most privileged accounts.",
+   "why": "Exempting privileged roles removes the protection from exactly the accounts attackers want.",
+   "recommendation": "Remove role exclusions from the MFA policy and use a break-glass group with monitoring instead.",
+   "action": "Remove role exclusions from the MFA policy",
+   "outcome": "No privileged account is exempt"
+  },
+  {
+   "pillar": "identity",
+   "owner": "Identity &amp; Access",
+   "mitre": "T1078 Valid Accounts",
+   "id": "I5",
+   "severity": "Medium",
+   "target": "30 days",
+   "when": [
+    {
+     "path": "r.conditional_access.legacy_auth_block_all_users_all_apps",
+     "op": "==",
+     "value": 0
+    }
+   ],
+   "headline": "Legacy authentication is not blocked tenant-wide",
+   "title": "Legacy sign-in methods are still allowed",
+   "finding": "No enabled conditional-access policy blocks legacy authentication for all users on all apps, and legacy protocols cannot use MFA.",
+   "why": "Legacy protocols such as SMTP and IMAP bypass MFA, so password spraying against them works.",
+   "recommendation": "Block legacy authentication for all users and apps, with a short, reviewed list of exceptions.",
+   "action": "Block legacy authentication tenant-wide",
+   "outcome": "No MFA bypass through old protocols"
   },
   {
    "id": "L1",
