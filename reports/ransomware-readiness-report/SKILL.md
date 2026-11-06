@@ -101,6 +101,8 @@ reported.
 ## Scoring
 
 `scripts/rate_evidence.py` applies `assets/rating_rules.json`; `render_report.py` then computes the overall rating from the pillar statuses.
+The thresholds, rule by rule, are listed in `references/rating_thresholds.md`, generated from the rules file by
+`scripts/make_thresholds_doc.py` (run it after every change to `assets/rating_rules.json`).
 
 - Pillar **red / At risk**: any Critical issue in the pillar, or a control absent fleet-wide. **Amber / Needs work**:
   High or Medium issues, or partial coverage or no data. **Green / Healthy**: no material issues.
