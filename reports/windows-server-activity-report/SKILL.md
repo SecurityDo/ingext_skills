@@ -113,7 +113,7 @@ media that each table has `scrollWidth <= clientWidth`. If you cannot look at th
 - The user, source-IP and actor lists are personal data. Say so when delivering and share them only with the customer
   who owns the data, or build with `--no-actors`.
 - Only the `WindowsAudit` table is read. Older nxlogAD events held in the default table are not part of this report;
-  on a tenant that still has both, the counts matched on the one tenant checked (navasotavalley, 29 Oct 2026), apart
+  on a tenant that still has both, the counts matched on the one tenant checked (29 Oct 2026), apart
   from 48 events with no event ID that only `WindowsAudit` holds.
 - Never write "compliant", "certified" or "attested". Rows are related to controls, not equivalent.
 

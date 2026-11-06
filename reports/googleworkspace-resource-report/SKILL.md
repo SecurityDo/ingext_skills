@@ -34,7 +34,7 @@ today's directory, so it fills activity gaps only.
 
 | Input | Rule |
 |---|---|
-| Connector | The MCP connector the user names (for example Conekt). Use its tools directly. |
+| Connector | The MCP connector the user names (for example the tenant's own MCP connector). Use its tools directly. |
 | Tenant | One account. Call `list_accounts` and match the user's name; stop if ambiguous. Never merge tenants. |
 | Period | The last few days; the report reads the latest archived day in it. At most 92 days per download, and one or two days is enough. |
 | Report name | `GoogleWorkspace_Resource_Report` unless the tenant uses another name. |
