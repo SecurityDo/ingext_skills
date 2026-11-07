@@ -92,7 +92,7 @@ the common ones are worth recognizing rather than looking up every time:
 | `0` | success |
 | `50053` | account locked out / smart lockout |
 | `50055`, `50057` | expired password, disabled account |
-| `50072`, `50074` | MFA enrolment required, MFA required and not satisfied |
+| `50072`, `50074` | MFA enrolment required; MFA required (an interrupt, not a block: the outcome is in the rows after it) |
 | `50126` | invalid username or password |
 | `50158` | external security challenge not satisfied (conditional access) |
 | `53003` | blocked by conditional access policy |

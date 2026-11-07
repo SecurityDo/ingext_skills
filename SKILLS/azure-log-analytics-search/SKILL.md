@@ -1,6 +1,6 @@
 ---
 name: azure-log-analytics-search
-version: 1.0.0
+version: 1.0.1
 description: >
   Search a customer's own Azure Log Analytics / Microsoft Sentinel workspace live, with KQL,
   through the azure_logs_* tools. Use this skill whenever the user asks to query, search,

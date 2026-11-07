@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.6.7
+version: 1.6.8
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -815,11 +815,24 @@ returns null like every other `@` name (see "Bounded queries").
 | `502xx` | Interrupts in the strong-auth (SAS) flow | Confirm the specific code; not a guess at a password |
 
 **An MFA prompt's outcome is in the rows after it.** A `50074` or `50076` row records the
-prompt, not the answer. The answer is the next seconds on the same address: `Office365`
-`UserLoggedIn` rows with `SAS:BeginAuth` and `SAS:EndAuth` (Success), or a `0` in the
-sign-in logs, mean it was approved. Read the subject's `Office365` rows for a few minutes
-after the prompt before writing "the push was never completed": in one run that phrase
-stood on a single `50074` row, followed a second later by nine successful `SAS:EndAuth`.
+prompt, not the answer: it is an MFA-required interrupt, not a block. Read the subject's
+rows on the same address for the next 10 minutes, by `RequestType`:
+- **`SAS:BeginAuth` and `SAS:EndAuth` never mean approved.** Office365 logs the push being
+  sent (`BeginAuth`) and the client polling for the answer (`EndAuth`, about once a
+  second) as `UserLoggedIn` with ErrorNumber 0 whether or not anyone approves. Never
+  write "MFA completed" from their time.
+- **Approved:** an Office365 `UserLoggedIn` with ErrorNumber 0 of any other request type
+  (`SAS:ProcessAuth`, `OAuth2:*`, `Login:*`), or a `0` (or "MFA successfully completed"
+  in `AuthenticationDetails`) on the prompt's own sign-in `Id` in the sign-in logs.
+- **Denied or failed:** a later `UserLoginFailed` (`500121` denied or failed, `50089` the
+  flow expired, `50158` an external challenge).
+- **Undetermined:** only `BeginAuth`/`EndAuth` rows. Office365 does not log every
+  completion: a prompt answered on a phone whose app then signs in non-interactively can
+  leave nothing else there. Settle it from the sign-in logs (the prompt's `Id`, and a
+  ResultType `0` non-interactive sign-in from the same address); neither present, say the
+  outcome is not established.
+Do not write "the push was never completed" from the `50074` row alone either: in one run
+that phrase stood on a `50074` that the same sign-in completed seconds later.
 
 Then check *where* they came from. Five `50126` on the user's own Entra-joined,
 compliant, managed laptop from the corporate egress, each followed by success seven
