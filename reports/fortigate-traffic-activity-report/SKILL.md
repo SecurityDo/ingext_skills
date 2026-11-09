@@ -4,16 +4,13 @@ version: 1.0.0
 description: >-
   Produce a FortiGate Traffic Activity report for ONE Ingext/Fluency tenant and a period (a calendar month by
   default) as HTML, PDF and CSV, built ONLY from the archive of the scheduled report
-  Fortigate_Traffic_Activity_Report. It never runs kql_search, run_report or any other live search: it lists the
-  archive, downloads the archived daily results, merges them and lays out firewall traffic volume (events, blocks,
-  bytes sent and received), applications and categories, services, destination countries, firewall
-  policies, reporting devices, the largest internal senders and a generative-AI summary, with the archive
-  coverage, gap days and scans the tenant could not run. It also writes the GenAI evidence (per application,
-  source, destination and policy) that the separate GenAI Egress report reads. USE THIS SKILL for "FortiGate
-  traffic report", "firewall bandwidth and top talkers last month", "what applications and countries does the
-  firewall see", "GenAI traffic through the firewall". DO NOT use it to search firewall logs, for VPN logins,
-  administrator changes or IPS events (fortigate-security-activity-report), to investigate an incident, or for a
-  tenant that has no archive (set up the scheduled report first).
+  Fortigate_Traffic_Activity_Report. It never runs kql_search, run_report or any other live search: it merges the
+  archived daily results into firewall traffic volume (events, blocks, bytes), applications, categories,
+  services, destination countries, policies, devices, top internal senders and a generative-AI summary, with
+  archive coverage and gap days. It also writes the GenAI evidence the separate GenAI Egress report reads. USE
+  THIS SKILL for "FortiGate traffic report", "firewall bandwidth and top talkers last month", "GenAI traffic
+  through the firewall". DO NOT use it to search firewall logs, for VPN logins, admin changes or IPS events
+  (fortigate-security-activity-report), to investigate an incident, or for a tenant with no archive.
 ---
 
 # FortiGate Traffic Activity Report
