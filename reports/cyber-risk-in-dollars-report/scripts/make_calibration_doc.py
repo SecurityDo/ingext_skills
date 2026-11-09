@@ -11,6 +11,10 @@ LABEL = {
     "n.signins.single_factor_share_pct": "single-factor share of successful sign-ins (%)", "n.signins.legacyAuth": "legacy-authentication sign-ins",
     "n.signins.risky": "risky sign-ins", "n.signins.failed": "failed sign-ins", "n.signins.events": "sign-in attempts",
     "r.conditional_access.mfa_all_users": "enforced policies requiring MFA for all users on all apps", "r.identity.global_admins": "Global Administrators",
+    "d.policy.channels_covered": "channels with a DLP policy (of 5)", "d.policy.enforcing": "DLP policies enforcing (false = audit-only)",
+    "d.matches.overridden_share": "share of DLP matches overridden by users", "d.sharing.anonymous_share": "share of external shares that are anonymous links",
+    "d.bulk.days_over_10x": "days with downloads above 10 times the tenant median", "d.ai.unblocked_uploads": "unblocked uploads to generative-AI services",
+    "d.ai.dlp_matches_with_ai": "DLP matches coinciding with generative-AI use", "d.rating": "DLP report rating",
 }
 OPW = {">=": "at least", ">": "more than", "<=": "at most", "<": "fewer than", "==": "exactly", "!=": "not"}
 plain = lambda s: html.unescape(re.sub(r"<[^>]+>", "", re.sub(r"\{[^}]+\}", "N", s)))
@@ -42,7 +46,7 @@ L = ["# Calibration rules", "", "Generated from `assets/calibration_rules.json` 
      f"with the daily cost taken as {round(R['downtime']['daily_from_revenue'] * 100)}% of daily revenue when only revenue is given, and the extortion maximum is {round(R['ransom']['revenue_share'] * 100)}% of revenue between {m(R['ransom']['floor'])} and {m(R['ransom']['cap'])}. "
      f"As in the Fluency footprint tools, loss per event is limited to {round(R['revenue_cap']['ml_share'] * 100)}% of revenue (most likely) and {round(R['revenue_cap']['max_share'] * 100)}% (maximum) when revenue is supplied.", ""]
 for sid, sc in R["scenarios"].items():
-    L += [f"## {html.unescape(sc['name'])}", "", f"Baseline {sc['baseline_lef']} events a year; weight cap {sc['weight_cap']}.", "", "| Evidence factor | Adds | When |", "|---|---|---|"]
+    L += [f"## {html.unescape(sc['name'])}", "", ("Modelled only when `--dlp dlp_evidence.json` (the DLP report evidence) is supplied. " if sc.get("requires") else "") + f"Baseline {sc['baseline_lef']} events a year; weight cap {sc['weight_cap']}.", "", "| Evidence factor | Adds | When |", "|---|---|---|"]
     for f in sc["factors"]:
         if f.get("tiers"):
             for t in f["tiers"]:

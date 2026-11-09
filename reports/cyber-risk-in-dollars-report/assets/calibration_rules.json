@@ -1,798 +1,1002 @@
 {
-  "about": "Calibration rules for the Cyber Risk in Dollars report. Every weight, threshold and loss figure here is a Fluency proposal for a mid-market organization and is listed in references/calibration_rules.md. Change this file, then run scripts/make_calibration_doc.py.",
-  "reference_users": 1700,
-  "scale_exponent": 0.5,
-  "scale_clamp": [
-    0.3,
-    3.0
-  ],
-  "widen_per_gap": 0.1,
-  "widen_cap": 1.6,
-  "lef_min_divisor": 3,
-  "lef_max_multiplier": 3,
-  "downtime": {
-    "days": {
-      "min": 2,
-      "ml": 7,
-      "max": 21
+ "about": "Calibration rules for the Cyber Risk in Dollars report. Every weight, threshold and loss figure here is a Fluency proposal for a mid-market organization and is listed in references/calibration_rules.md. Change this file, then run scripts/make_calibration_doc.py.",
+ "reference_users": 1700,
+ "scale_exponent": 0.5,
+ "scale_clamp": [
+  0.3,
+  3.0
+ ],
+ "widen_per_gap": 0.1,
+ "widen_cap": 1.6,
+ "lef_min_divisor": 3,
+ "lef_max_multiplier": 3,
+ "downtime": {
+  "days": {
+   "min": 2,
+   "ml": 7,
+   "max": 21
+  },
+  "daily_factor": {
+   "min": 0.6,
+   "ml": 1.0,
+   "max": 1.6
+  },
+  "daily_from_revenue": 0.5
+ },
+ "ransom": {
+  "revenue_share": 0.02,
+  "floor": 250000,
+  "cap": 5000000
+ },
+ "benchmarks": {
+  "as_of": "IBM Cost of a Data Breach 2025 and FBI IC3",
+  "text": "IBM Cost of a Data Breach 2025: global average breach $4.44M, US average $10.22M, ransomware or extortion incident $5.08M, shadow AI adds about $670K. FBI IC3: BEC loss per complaint roughly $130K. Verify with a web search when more than a year old."
+ },
+ "scenarios": {
+  "ransomware": {
+   "name": "Ransomware &amp; operational extortion",
+   "description": "Encryption of servers and endpoints, with possible data theft, halting operations.",
+   "baseline_lef": 0.08,
+   "weight_cap": 1.5,
+   "factors": [
+    {
+     "id": "backup",
+     "weight": 0.25,
+     "fired_any": [
+      "B1"
+     ],
+     "text": "{r.backup_vulnerable.exploitable_now} backup servers on a build with a critical flaw ({r.backup_vulnerable.cves}) and joined to the production domain",
+     "label": "exposed backup servers"
     },
-    "daily_factor": {
-      "min": 0.6,
-      "ml": 1.0,
-      "max": 1.6
+    {
+     "id": "unprotected",
+     "weight": 0.15,
+     "when": [
+      {
+       "path": "r.unprotected.not_in_edr_agent_list",
+       "op": ">=",
+       "ratio_of": "r.endpoint.agents",
+       "value": 0.05
+      }
+     ],
+     "text": "{r.unprotected.not_in_edr_agent_list} active devices have no EDR agent, including {r.unprotected.of_which_servers} servers and {r.unprotected.of_which_end_of_life} end-of-life systems",
+     "label": "devices without endpoint protection"
     },
-    "daily_from_revenue": 0.5
+    {
+     "id": "hardening",
+     "weight": 0.15,
+     "fired_any": [
+      "P1"
+     ],
+     "text": "{r.hardening_rules_failing_everywhere} anti-ransomware hardening rules reported as failing on every assessed device",
+     "label": "anti-ransomware hardening not confirmed"
+    },
+    {
+     "id": "prevention",
+     "weight": 0.1,
+     "fired_any": [
+      "D1"
+     ],
+     "text": "{r.endpoint.mitigation_issues} of {r.endpoint.agents} EDR agents are not fully in Protect mode",
+     "label": "EDR agents not in Protect mode"
+    },
+    {
+     "id": "falcon",
+     "weight": 0.1,
+     "fired_any": [
+      "E4",
+      "E5"
+     ],
+     "text": "{r.endpoint.reduced_functionality} agents in reduced functionality mode and {r.endpoint.no_prevention_policy} without a prevention policy applied",
+     "label": "CrowdStrike sensors with reduced protection"
+    },
+    {
+     "id": "vuln",
+     "weight": 0.05,
+     "fired_any": [
+      "V1"
+     ],
+     "text": "{r.vulnerabilities.exploitable_older_than_30d_devices} devices carry an exploitable vulnerability older than 30 days",
+     "label": "aging exploitable vulnerabilities"
+    },
+    {
+     "id": "logs",
+     "weight": 0.05,
+     "fired_any": [
+      "L1"
+     ],
+     "text": "{w.log_clearing.events} security-log-cleared events in the audit window",
+     "label": "log clearing"
+    },
+    {
+     "id": "persistence",
+     "weight": 0.05,
+     "fired_any": [
+      "L2"
+     ],
+     "text": "Services or scheduled tasks with attacker-tool names were created in the audit window",
+     "label": "suspicious persistence"
+    },
+    {
+     "id": "threat",
+     "weight": 0.25,
+     "fired_any": [
+      "T1",
+      "T3",
+      "T4"
+     ],
+     "text": "Active threats: {r.threats.unmitigated_malicious} malicious threats not mitigated, {r.endpoint.infected} infected agents",
+     "label": "active threats"
+    },
+    {
+     "id": "adminmfa",
+     "weight": 0.1,
+     "fired_any": [
+      "I3"
+     ],
+     "text": "No enforced policy requires MFA for Global Administrators",
+     "label": "administrators without enforced MFA"
+    },
+    {
+     "id": "remote",
+     "weight": 0.05,
+     "fired_any": [
+      "P2"
+     ],
+     "when": [
+      {
+       "path": "r.remote_other_endpoints",
+       "op": ">=",
+       "value": 1
+      }
+     ],
+     "text": "{r.remote_other_endpoints} endpoints run remote-access tools outside the sanctioned set",
+     "label": "extra remote-access tools"
+    }
+   ],
+   "gaps": [
+    {
+     "id": "recovery",
+     "always": true,
+     "text": "Backup success, age, immutability and restore tests cannot be measured, so recovery ability is unproven"
+    },
+    {
+     "id": "backupinv",
+     "missing": "r.backup",
+     "text": "No endpoint application inventory, so backup software exposure is unknown"
+    },
+    {
+     "id": "threats",
+     "missing": "r.threats",
+     "text": "No EDR threat inventory"
+    },
+    {
+     "id": "windows",
+     "missing": "w.log_clearing",
+     "text": "No Windows audit archive, so log clearing and persistence are unknown"
+    }
+   ],
+   "loss": [
+    {
+     "name": "Business interruption",
+     "scale": "downtime",
+     "ref": {
+      "min": 1000000,
+      "ml": 2500000,
+      "max": 8000000
+     }
+    },
+    {
+     "name": "Response, recovery &amp; rebuild",
+     "scale": "size",
+     "ref": {
+      "min": 500000,
+      "ml": 1500000,
+      "max": 4000000
+     }
+    },
+    {
+     "name": "Extortion payment",
+     "scale": "ransom",
+     "ref": {
+      "min": 0,
+      "ml": 0,
+      "max": 3000000
+     }
+    },
+    {
+     "name": "Legal, notification &amp; regulatory",
+     "scale": "size",
+     "ref": {
+      "min": 100000,
+      "ml": 500000,
+      "max": 2500000
+     }
+    }
+   ],
+   "anchor": "Per-event cost is anchored to the IBM 2025 average cost of a ransomware or extortion incident ($5.08M) and scaled to organization size."
   },
-  "ransom": {
-    "revenue_share": 0.02,
-    "floor": 250000,
-    "cap": 5000000
+  "bec": {
+   "name": "Business email compromise &amp; payment fraud",
+   "description": "A compromised or spoofed mailbox redirects a payment or invoice.",
+   "baseline_lef": 0.5,
+   "weight_cap": 1.0,
+   "factors": [
+    {
+     "id": "single",
+     "tiers": [
+      {
+       "when": [
+        {
+         "path": "n.signins.single_factor_share_pct",
+         "op": ">=",
+         "value": 25
+        }
+       ],
+       "weight": 0.25
+      },
+      {
+       "when": [
+        {
+         "path": "n.signins.single_factor_share_pct",
+         "op": ">=",
+         "value": 5
+        }
+       ],
+       "weight": 0.1
+      }
+     ],
+     "text": "{n.signins.single_factor_share_pct}% of successful sign-ins were single-factor ({n.signins.singleFactorOk} of {n.signins.successful}, {n.coverage.archived_days} days)",
+     "label": "single-factor sign-ins"
+    },
+    {
+     "id": "adminmfa",
+     "weight": 0.2,
+     "fired_any": [
+      "I3"
+     ],
+     "text": "No enforced policy requires MFA for Global Administrators; {n.admin_portal_signins.events} sign-ins reached admin portals",
+     "label": "administrators without enforced MFA"
+    },
+    {
+     "id": "allmfa",
+     "weight": 0.1,
+     "when": [
+      {
+       "path": "r.conditional_access.mfa_all_users",
+       "op": "==",
+       "value": 0
+      }
+     ],
+     "text": "No enforced conditional-access policy requires MFA for all users on all apps",
+     "label": "no all-users MFA"
+    },
+    {
+     "id": "legacy",
+     "tiers": [
+      {
+       "fired_any": [
+        "I5"
+       ],
+       "when": [
+        {
+         "path": "n.signins.legacyAuth",
+         "op": ">=",
+         "value": 1
+        }
+       ],
+       "weight": 0.15
+      },
+      {
+       "when": [
+        {
+         "path": "n.signins.legacyAuth",
+         "op": ">=",
+         "value": 1
+        }
+       ],
+       "weight": 0.1
+      }
+     ],
+     "text": "{n.signins.legacyAuth} legacy-authentication sign-ins, which cannot use MFA",
+     "label": "legacy authentication in use"
+    },
+    {
+     "id": "risky",
+     "weight": 0.1,
+     "when": [
+      {
+       "path": "n.signins.risky",
+       "op": ">=",
+       "value": 1
+      }
+     ],
+     "text": "{n.signins.risky} sign-ins flagged risky",
+     "label": "risky sign-ins"
+    },
+    {
+     "id": "spray",
+     "weight": 0.1,
+     "when": [
+      {
+       "path": "n.signins.failed",
+       "op": ">=",
+       "ratio_of": "n.signins.events",
+       "value": 0.25
+      }
+     ],
+     "text": "{n.signins.failed} of {n.signins.events} sign-in attempts failed, a pattern consistent with password attacks",
+     "label": "high failed sign-in share"
+    },
+    {
+     "id": "inboxrules",
+     "tiers": [
+      {
+       "when": [
+        {
+         "path": "n.o365.inboxRuleChanges",
+         "op": ">=",
+         "value": 0.001,
+         "ratio_of": "n.o365.events"
+        }
+       ],
+       "weight": 0.15
+      },
+      {
+       "when": [
+        {
+         "path": "n.o365.inboxRuleChanges",
+         "op": ">=",
+         "value": 0.0003,
+         "ratio_of": "n.o365.events"
+        }
+       ],
+       "weight": 0.08
+      }
+     ],
+     "text": "{n.o365.inboxRuleChanges} inbox-rule changes over {n.o365.days} archived days, up to {n.o365.max_day_inbox_rule_changes} in one day; mail-client syncs are included, so this raises frequency only modestly",
+     "label": "inbox-rule activity"
+    },
+    {
+     "id": "mailperm",
+     "weight": 0.05,
+     "when": [
+      {
+       "path": "n.o365.mailboxPermissionChanges",
+       "op": ">=",
+       "value": 1e-05,
+       "ratio_of": "n.o365.events"
+      }
+     ],
+     "text": "{n.o365.mailboxPermissionChanges} mailbox-permission changes over {n.o365.days} archived days",
+     "label": "mailbox-permission changes"
+    },
+    {
+     "id": "forwarding",
+     "tiers": [
+      {
+       "when": [
+        {
+         "path": "n.o365.forwardingChanges",
+         "op": ">=",
+         "value": 5
+        }
+       ],
+       "weight": 0.25
+      },
+      {
+       "when": [
+        {
+         "path": "n.o365.forwardingChanges",
+         "op": ">=",
+         "value": 1
+        }
+       ],
+       "weight": 0.15
+      }
+     ],
+     "text": "{n.o365.forwardingChanges} mailbox or rule changes that set a forwarding address or forward, redirect or blind-copy action over {n.o365.days} archived days",
+     "label": "mail forwarding set"
+    }
+   ],
+   "gaps": [
+    {
+     "id": "mailbox",
+     "always": true,
+     "text": "The destination of forwards, who made rule changes and payment-verification controls cannot be measured (the archive counts changes, not their content, and rules saved by an Outlook client carry no detail)"
+    },
+    {
+     "id": "signins",
+     "missing": "n.signins",
+     "text": "No sign-in archive, so credential-attack pressure is unmeasured"
+    },
+    {
+     "id": "o365",
+     "missing": "n.o365",
+     "text": "No Office 365 workload archive, so inbox-rule and mailbox-permission activity is unmeasured"
+    },
+    {
+     "id": "fwd",
+     "missing": "n.o365.forwardingChanges",
+     "text": "Forwarding changes are not in the archive (the archived script predates the counter)"
+    }
+   ],
+   "loss": [
+    {
+     "name": "Fraudulent transfer",
+     "scale": "none",
+     "ref": {
+      "min": 20000,
+      "ml": 130000,
+      "max": 1200000
+     }
+    },
+    {
+     "name": "Investigation &amp; remediation",
+     "scale": "size",
+     "ref": {
+      "min": 15000,
+      "ml": 40000,
+      "max": 150000
+     }
+    }
+   ],
+   "anchor": "Per-event loss uses the FBI IC3 average BEC loss (about $130K) with a long tail for large wires."
   },
-  "benchmarks": {
-    "as_of": "IBM Cost of a Data Breach 2025 and FBI IC3",
-    "text": "IBM Cost of a Data Breach 2025: global average breach $4.44M, US average $10.22M, ransomware or extortion incident $5.08M, shadow AI adds about $670K. FBI IC3: BEC loss per complaint roughly $130K. Verify with a web search when more than a year old."
+  "breach": {
+   "name": "Credential-driven data breach (cloud)",
+   "description": "Theft of email, SharePoint or OneDrive data through a compromised account or OAuth app.",
+   "baseline_lef": 0.1,
+   "weight_cap": 1.0,
+   "factors": [
+    {
+     "id": "single",
+     "tiers": [
+      {
+       "when": [
+        {
+         "path": "n.signins.single_factor_share_pct",
+         "op": ">=",
+         "value": 15
+        }
+       ],
+       "weight": 0.25
+      },
+      {
+       "when": [
+        {
+         "path": "n.signins.single_factor_share_pct",
+         "op": ">=",
+         "value": 5
+        }
+       ],
+       "weight": 0.1
+      }
+     ],
+     "text": "{n.signins.single_factor_share_pct}% of successful sign-ins were single-factor",
+     "label": "single-factor sign-ins"
+    },
+    {
+     "id": "allmfa",
+     "weight": 0.15,
+     "when": [
+      {
+       "path": "r.conditional_access.mfa_all_users",
+       "op": "==",
+       "value": 0
+      }
+     ],
+     "text": "No enforced conditional-access policy requires MFA for all users on all apps",
+     "label": "no all-users MFA"
+    },
+    {
+     "id": "rolesexcluded",
+     "weight": 0.15,
+     "fired_any": [
+      "I4"
+     ],
+     "text": "The all-users MFA policy excludes directory roles",
+     "label": "privileged roles exempt from MFA"
+    },
+    {
+     "id": "risky",
+     "weight": 0.1,
+     "when": [
+      {
+       "path": "n.signins.risky",
+       "op": ">=",
+       "value": 1
+      }
+     ],
+     "text": "{n.signins.risky} sign-ins flagged risky",
+     "label": "risky sign-ins"
+    },
+    {
+     "id": "admins",
+     "weight": 0.05,
+     "when": [
+      {
+       "path": "r.identity.global_admins",
+       "op": ">=",
+       "value": 5
+      }
+     ],
+     "text": "{r.identity.global_admins} Global Administrators",
+     "label": "many standing Global Administrators"
+    },
+    {
+     "id": "consents",
+     "weight": 0.05,
+     "when": [
+      {
+       "path": "n.directory_changes.consentGrants",
+       "op": ">=",
+       "value": 1
+      }
+     ],
+     "text": "{n.directory_changes.consentGrants} application consent or permission grants over {n.days_covered} archived days",
+     "label": "application consents"
+    },
+    {
+     "id": "downloads",
+     "tiers": [
+      {
+       "when": [
+        {
+         "path": "n.o365.fileDownloads",
+         "op": ">=",
+         "value": 0.1,
+         "ratio_of": "n.o365.events"
+        }
+       ],
+       "weight": 0.1
+      },
+      {
+       "when": [
+        {
+         "path": "n.o365.fileDownloads",
+         "op": ">=",
+         "value": 0.03,
+         "ratio_of": "n.o365.events"
+        }
+       ],
+       "weight": 0.05
+      }
+     ],
+     "text": "{n.o365.fileDownloads} file downloads over {n.o365.days} archived days; a high volume lets bulk copying by a stolen account pass unnoticed",
+     "label": "high file-download volume"
+    }
+   ],
+   "gaps": [
+    {
+     "id": "mfareg",
+     "always": true,
+     "text": "MFA registration cannot be measured, and consent and download counts are totals that do not show whether any were malicious"
+    },
+    {
+     "id": "signins",
+     "missing": "n.signins",
+     "text": "No sign-in archive"
+    },
+    {
+     "id": "dl",
+     "missing": "n.o365.fileDownloads",
+     "text": "File-download volume is not in the archive (the archived script predates the counter)"
+    }
+   ],
+   "loss": [
+    {
+     "name": "Response &amp; notification",
+     "scale": "size",
+     "ref": {
+      "min": 300000,
+      "ml": 1000000,
+      "max": 3000000
+     }
+    },
+    {
+     "name": "Legal &amp; regulatory",
+     "scale": "size",
+     "ref": {
+      "min": 50000,
+      "ml": 400000,
+      "max": 2500000
+     }
+    },
+    {
+     "name": "Lost business &amp; reputation",
+     "scale": "size",
+     "ref": {
+      "min": 200000,
+      "ml": 1000000,
+      "max": 5000000
+     }
+    }
+   ],
+   "anchor": "Per-event cost sits below the IBM 2025 global average breach ($4.44M) at mid-market scale, with a tail toward the US average ($10.22M)."
   },
-  "scenarios": {
+  "exposure": {
+   "name": "Accidental &amp; insider data exposure",
+   "description": "Sensitive data leaves through sharing, forwarding, bulk download or an AI service by mistake or by an insider, without an external attacker.",
+   "requires": "d.rating",
+   "baseline_lef": 0.3,
+   "weight_cap": 1.5,
+   "factors": [
+    {
+     "id": "coverage",
+     "label": "DLP policy covers few channels",
+     "tiers": [
+      {
+       "weight": 0.3,
+       "when": [
+        {
+         "path": "d.policy.channels_covered",
+         "op": "<=",
+         "value": 1
+        }
+       ],
+       "text": "DLP policies cover {d.policy.channels_covered} of {d.policy.channels_total} channels (mail, files, chat, endpoint, web)"
+      },
+      {
+       "weight": 0.1,
+       "when": [
+        {
+         "path": "d.policy.channels_covered",
+         "op": "<=",
+         "value": 3
+        }
+       ],
+       "text": "DLP policies cover {d.policy.channels_covered} of {d.policy.channels_total} channels (mail, files, chat, endpoint, web)"
+      }
+     ]
+    },
+    {
+     "id": "auditonly",
+     "weight": 0.15,
+     "when": [
+      {
+       "path": "d.policy.enforcing",
+       "op": "==",
+       "value": false
+      }
+     ],
+     "label": "DLP policies only audit",
+     "text": "DLP policies are audit-only: matches are logged but not blocked"
+    },
+    {
+     "id": "overrides",
+     "label": "DLP matches often overridden",
+     "tiers": [
+      {
+       "weight": 0.1,
+       "when": [
+        {
+         "path": "d.matches.overridden_share",
+         "op": ">",
+         "value": 0.3
+        }
+       ],
+       "text": "Over 30% of DLP matches were overridden by users"
+      },
+      {
+       "weight": 0.05,
+       "when": [
+        {
+         "path": "d.matches.overridden_share",
+         "op": ">=",
+         "value": 0.1
+        }
+       ],
+       "text": "At least 10% of DLP matches were overridden by users"
+      }
+     ]
+    },
+    {
+     "id": "anonlinks",
+     "label": "anonymous sharing links",
+     "tiers": [
+      {
+       "weight": 0.15,
+       "when": [
+        {
+         "path": "d.sharing.anonymous_share",
+         "op": ">",
+         "value": 0.2
+        }
+       ],
+       "text": "Over 20% of external shares use anonymous links"
+      },
+      {
+       "weight": 0.05,
+       "when": [
+        {
+         "path": "d.sharing.anonymous_share",
+         "op": ">=",
+         "value": 0.05
+        }
+       ],
+       "text": "At least 5% of external shares use anonymous links"
+      }
+     ]
+    },
+    {
+     "id": "bulk",
+     "weight": 0.1,
+     "when": [
+      {
+       "path": "d.bulk.days_over_10x",
+       "op": ">=",
+       "value": 1
+      }
+     ],
+     "label": "bulk-download spikes",
+     "text": "Days with file downloads above 10 times the tenant's own median: {d.bulk.days_over_10x}"
+    },
+    {
+     "id": "aiupload",
+     "weight": 0.15,
+     "when": [
+      {
+       "path": "d.ai.unblocked_uploads",
+       "op": ">=",
+       "value": 1
+      }
+     ],
+     "label": "unblocked uploads to AI services",
+     "text": "{d.ai.unblocked_uploads} uploads to generative-AI services were not blocked"
+    },
+    {
+     "id": "aidlp",
+     "weight": 0.15,
+     "when": [
+      {
+       "path": "d.ai.dlp_matches_with_ai",
+       "op": ">=",
+       "value": 1
+      }
+     ],
+     "label": "DLP matches coinciding with AI use",
+     "text": "{d.ai.dlp_matches_with_ai} DLP matches coincided with generative-AI use"
+    }
+   ],
+   "gaps": [
+    {
+     "id": "unmonitored",
+     "always": true,
+     "text": "DLP shows controls and signals; data that left through a path no source monitors cannot be seen"
+    },
+    {
+     "id": "mode",
+     "missing": "d.policy.enforcing",
+     "text": "Policy mode (enforce or audit-only) is unknown: no policy configuration source"
+    },
+    {
+     "id": "egress",
+     "missing": "d.ai",
+     "text": "No web or AI egress source, so uploads to generative-AI services are unmeasured"
+    }
+   ],
+   "loss": [
+    {
+     "name": "Investigation &amp; notification",
+     "scale": "size",
+     "ref": {
+      "min": 50000,
+      "ml": 200000,
+      "max": 1000000
+     }
+    },
+    {
+     "name": "Legal &amp; regulatory",
+     "scale": "size",
+     "ref": {
+      "min": 20000,
+      "ml": 150000,
+      "max": 1500000
+     }
+    }
+   ],
+   "anchor": "Per-event cost sits below the cloud breach scenario because no attacker persists in the environment; the tail reflects IBM 2025 reporting that shadow AI adds about $670K to a breach."
+  }
+ },
+ "not_modelled": [
+  {
+   "id": "exposure",
+   "text": "Accidental and insider data exposure, including shadow AI, is not modelled: the Office 365 archive counts sharing and external-access events but shows zero DLP matches, which cannot separate \"no DLP policy\" from \"no matches\", and there is no generative-AI egress source. This scenario is modelled only when the DLP report evidence is supplied.",
+   "unless": "d.rating"
+  },
+  {
+   "id": "thirdparty",
+   "text": "Third-party and remote-tool compromise is not modelled separately to avoid double counting; extra remote-access tools already raise the ransomware frequency."
+  }
+ ],
+ "treatments": [
+  {
+   "id": "backup",
+   "name": "Patch and isolate backup servers; immutable copies",
+   "detail": "Upgrade the backup software to a fixed build, move backup servers out of the production domain and keep an immutable or offline copy.",
+   "owner": "Infrastructure",
+   "timeframe": "7 days",
+   "fired_any": [
+    "B1",
+    "B2"
+   ],
+   "effects": {
     "ransomware": {
-      "name": "Ransomware &amp; operational extortion",
-      "description": "Encryption of servers and endpoints, with possible data theft, halting operations.",
-      "baseline_lef": 0.08,
-      "weight_cap": 1.5,
-      "factors": [
-        {
-          "id": "backup",
-          "weight": 0.25,
-          "fired_any": [
-            "B1"
-          ],
-          "text": "{r.backup_vulnerable.exploitable_now} backup servers on a build with a critical flaw ({r.backup_vulnerable.cves}) and joined to the production domain",
-          "label": "exposed backup servers"
-        },
-        {
-          "id": "unprotected",
-          "weight": 0.15,
-          "when": [
-            {
-              "path": "r.unprotected.not_in_edr_agent_list",
-              "op": ">=",
-              "ratio_of": "r.endpoint.agents",
-              "value": 0.05
-            }
-          ],
-          "text": "{r.unprotected.not_in_edr_agent_list} active devices have no EDR agent, including {r.unprotected.of_which_servers} servers and {r.unprotected.of_which_end_of_life} end-of-life systems",
-          "label": "devices without endpoint protection"
-        },
-        {
-          "id": "hardening",
-          "weight": 0.15,
-          "fired_any": [
-            "P1"
-          ],
-          "text": "{r.hardening_rules_failing_everywhere} anti-ransomware hardening rules reported as failing on every assessed device",
-          "label": "anti-ransomware hardening not confirmed"
-        },
-        {
-          "id": "prevention",
-          "weight": 0.1,
-          "fired_any": [
-            "D1"
-          ],
-          "text": "{r.endpoint.mitigation_issues} of {r.endpoint.agents} EDR agents are not fully in Protect mode",
-          "label": "EDR agents not in Protect mode"
-        },
-        {
-          "id": "falcon",
-          "weight": 0.1,
-          "fired_any": [
-            "E4",
-            "E5"
-          ],
-          "text": "{r.endpoint.reduced_functionality} agents in reduced functionality mode and {r.endpoint.no_prevention_policy} without a prevention policy applied",
-          "label": "CrowdStrike sensors with reduced protection"
-        },
-        {
-          "id": "vuln",
-          "weight": 0.05,
-          "fired_any": [
-            "V1"
-          ],
-          "text": "{r.vulnerabilities.exploitable_older_than_30d_devices} devices carry an exploitable vulnerability older than 30 days",
-          "label": "aging exploitable vulnerabilities"
-        },
-        {
-          "id": "logs",
-          "weight": 0.05,
-          "fired_any": [
-            "L1"
-          ],
-          "text": "{w.log_clearing.events} security-log-cleared events in the audit window",
-          "label": "log clearing"
-        },
-        {
-          "id": "persistence",
-          "weight": 0.05,
-          "fired_any": [
-            "L2"
-          ],
-          "text": "Services or scheduled tasks with attacker-tool names were created in the audit window",
-          "label": "suspicious persistence"
-        },
-        {
-          "id": "threat",
-          "weight": 0.25,
-          "fired_any": [
-            "T1",
-            "T3",
-            "T4"
-          ],
-          "text": "Active threats: {r.threats.unmitigated_malicious} malicious threats not mitigated, {r.endpoint.infected} infected agents",
-          "label": "active threats"
-        },
-        {
-          "id": "adminmfa",
-          "weight": 0.1,
-          "fired_any": [
-            "I3"
-          ],
-          "text": "No enforced policy requires MFA for Global Administrators",
-          "label": "administrators without enforced MFA"
-        },
-        {
-          "id": "remote",
-          "weight": 0.05,
-          "fired_any": [
-            "P2"
-          ],
-          "when": [
-            {
-              "path": "r.remote_other_endpoints",
-              "op": ">=",
-              "value": 1
-            }
-          ],
-          "text": "{r.remote_other_endpoints} endpoints run remote-access tools outside the sanctioned set",
-          "label": "extra remote-access tools"
-        }
-      ],
-      "gaps": [
-        {
-          "id": "recovery",
-          "always": true,
-          "text": "Backup success, age, immutability and restore tests cannot be measured, so recovery ability is unproven"
-        },
-        {
-          "id": "backupinv",
-          "missing": "r.backup",
-          "text": "No endpoint application inventory, so backup software exposure is unknown"
-        },
-        {
-          "id": "threats",
-          "missing": "r.threats",
-          "text": "No EDR threat inventory"
-        },
-        {
-          "id": "windows",
-          "missing": "w.log_clearing",
-          "text": "No Windows audit archive, so log clearing and persistence are unknown"
-        }
-      ],
-      "loss": [
-        {
-          "name": "Business interruption",
-          "scale": "downtime",
-          "ref": {
-            "min": 1000000,
-            "ml": 2500000,
-            "max": 8000000
-          }
-        },
-        {
-          "name": "Response, recovery &amp; rebuild",
-          "scale": "size",
-          "ref": {
-            "min": 500000,
-            "ml": 1500000,
-            "max": 4000000
-          }
-        },
-        {
-          "name": "Extortion payment",
-          "scale": "ransom",
-          "ref": {
-            "min": 0,
-            "ml": 0,
-            "max": 3000000
-          }
-        },
-        {
-          "name": "Legal, notification &amp; regulatory",
-          "scale": "size",
-          "ref": {
-            "min": 100000,
-            "ml": 500000,
-            "max": 2500000
-          }
-        }
-      ],
-      "anchor": "Per-event cost is anchored to the IBM 2025 average cost of a ransomware or extortion incident ($5.08M) and scaled to organization size."
-    },
-    "bec": {
-      "name": "Business email compromise &amp; payment fraud",
-      "description": "A compromised or spoofed mailbox redirects a payment or invoice.",
-      "baseline_lef": 0.5,
-      "weight_cap": 1.0,
-      "factors": [
-        {
-          "id": "single",
-          "tiers": [
-            {
-              "when": [
-                {
-                  "path": "n.signins.single_factor_share_pct",
-                  "op": ">=",
-                  "value": 25
-                }
-              ],
-              "weight": 0.25
-            },
-            {
-              "when": [
-                {
-                  "path": "n.signins.single_factor_share_pct",
-                  "op": ">=",
-                  "value": 5
-                }
-              ],
-              "weight": 0.1
-            }
-          ],
-          "text": "{n.signins.single_factor_share_pct}% of successful sign-ins were single-factor ({n.signins.singleFactorOk} of {n.signins.successful}, {n.coverage.archived_days} days)",
-          "label": "single-factor sign-ins"
-        },
-        {
-          "id": "adminmfa",
-          "weight": 0.2,
-          "fired_any": [
-            "I3"
-          ],
-          "text": "No enforced policy requires MFA for Global Administrators; {n.admin_portal_signins.events} sign-ins reached admin portals",
-          "label": "administrators without enforced MFA"
-        },
-        {
-          "id": "allmfa",
-          "weight": 0.1,
-          "when": [
-            {
-              "path": "r.conditional_access.mfa_all_users",
-              "op": "==",
-              "value": 0
-            }
-          ],
-          "text": "No enforced conditional-access policy requires MFA for all users on all apps",
-          "label": "no all-users MFA"
-        },
-        {
-          "id": "legacy",
-          "tiers": [
-            {
-              "fired_any": [
-                "I5"
-              ],
-              "when": [
-                {
-                  "path": "n.signins.legacyAuth",
-                  "op": ">=",
-                  "value": 1
-                }
-              ],
-              "weight": 0.15
-            },
-            {
-              "when": [
-                {
-                  "path": "n.signins.legacyAuth",
-                  "op": ">=",
-                  "value": 1
-                }
-              ],
-              "weight": 0.1
-            }
-          ],
-          "text": "{n.signins.legacyAuth} legacy-authentication sign-ins, which cannot use MFA",
-          "label": "legacy authentication in use"
-        },
-        {
-          "id": "risky",
-          "weight": 0.1,
-          "when": [
-            {
-              "path": "n.signins.risky",
-              "op": ">=",
-              "value": 1
-            }
-          ],
-          "text": "{n.signins.risky} sign-ins flagged risky",
-          "label": "risky sign-ins"
-        },
-        {
-          "id": "spray",
-          "weight": 0.1,
-          "when": [
-            {
-              "path": "n.signins.failed",
-              "op": ">=",
-              "ratio_of": "n.signins.events",
-              "value": 0.25
-            }
-          ],
-          "text": "{n.signins.failed} of {n.signins.events} sign-in attempts failed, a pattern consistent with password attacks",
-          "label": "high failed sign-in share"
-        },
-        {
-          "id": "inboxrules",
-          "tiers": [
-            {
-              "when": [
-                {
-                  "path": "n.o365.inboxRuleChanges",
-                  "op": ">=",
-                  "value": 0.001,
-                  "ratio_of": "n.o365.events"
-                }
-              ],
-              "weight": 0.15
-            },
-            {
-              "when": [
-                {
-                  "path": "n.o365.inboxRuleChanges",
-                  "op": ">=",
-                  "value": 0.0003,
-                  "ratio_of": "n.o365.events"
-                }
-              ],
-              "weight": 0.08
-            }
-          ],
-          "text": "{n.o365.inboxRuleChanges} inbox-rule changes over {n.o365.days} archived days, up to {n.o365.max_day_inbox_rule_changes} in one day; mail-client syncs are included, so this raises frequency only modestly",
-          "label": "inbox-rule activity"
-        },
-        {
-          "id": "mailperm",
-          "weight": 0.05,
-          "when": [
-            {
-              "path": "n.o365.mailboxPermissionChanges",
-              "op": ">=",
-              "value": 1e-05,
-              "ratio_of": "n.o365.events"
-            }
-          ],
-          "text": "{n.o365.mailboxPermissionChanges} mailbox-permission changes over {n.o365.days} archived days",
-          "label": "mailbox-permission changes"
-        },
-        {
-          "id": "forwarding",
-          "tiers": [
-            {
-              "when": [
-                {
-                  "path": "n.o365.forwardingChanges",
-                  "op": ">=",
-                  "value": 5
-                }
-              ],
-              "weight": 0.25
-            },
-            {
-              "when": [
-                {
-                  "path": "n.o365.forwardingChanges",
-                  "op": ">=",
-                  "value": 1
-                }
-              ],
-              "weight": 0.15
-            }
-          ],
-          "text": "{n.o365.forwardingChanges} mailbox or rule changes that set a forwarding address or forward, redirect or blind-copy action over {n.o365.days} archived days",
-          "label": "mail forwarding set"
-        }
-      ],
-      "gaps": [
-        {
-          "id": "mailbox",
-          "always": true,
-          "text": "The destination of forwards, who made rule changes and payment-verification controls cannot be measured (the archive counts changes, not their content, and rules saved by an Outlook client carry no detail)"
-        },
-        {
-          "id": "signins",
-          "missing": "n.signins",
-          "text": "No sign-in archive, so credential-attack pressure is unmeasured"
-        },
-        {
-          "id": "o365",
-          "missing": "n.o365",
-          "text": "No Office 365 workload archive, so inbox-rule and mailbox-permission activity is unmeasured"
-        },
-        {
-          "id": "fwd",
-          "missing": "n.o365.forwardingChanges",
-          "text": "Forwarding changes are not in the archive (the archived script predates the counter)"
-        }
-      ],
-      "loss": [
-        {
-          "name": "Fraudulent transfer",
-          "scale": "none",
-          "ref": {
-            "min": 20000,
-            "ml": 130000,
-            "max": 1200000
-          }
-        },
-        {
-          "name": "Investigation &amp; remediation",
-          "scale": "size",
-          "ref": {
-            "min": 15000,
-            "ml": 40000,
-            "max": 150000
-          }
-        }
-      ],
-      "anchor": "Per-event loss uses the FBI IC3 average BEC loss (about $130K) with a long tail for large wires."
+     "lm": 0.55
+    }
+   }
+  },
+  {
+   "id": "recovery",
+   "name": "Prove recovery: restore test and backup monitoring",
+   "detail": "Run and record a restore test of the critical systems and send backup job results to the SIEM so recovery ability can be measured.",
+   "owner": "Infrastructure",
+   "timeframe": "60 days",
+   "always": true,
+   "effects": {
+    "ransomware": {
+     "lm": 0.85
+    }
+   }
+  },
+  {
+   "id": "endpoint",
+   "name": "Close endpoint gaps and turn on anti-ransomware hardening",
+   "detail": "EDR on the {r.unprotected.not_in_edr_agent_list} unprotected devices, Protect mode on every agent, ASR rules, LAPS and Credential Guard.",
+   "owner": "Endpoint Engineering",
+   "timeframe": "60 days",
+   "fired_any": [
+    "E1",
+    "E2",
+    "E3",
+    "E4",
+    "E5",
+    "E6",
+    "D1",
+    "P1"
+   ],
+   "effects": {
+    "ransomware": {
+     "lef": 0.55
     },
     "breach": {
-      "name": "Credential-driven data breach (cloud)",
-      "description": "Theft of email, SharePoint or OneDrive data through a compromised account or OAuth app.",
-      "baseline_lef": 0.1,
-      "weight_cap": 1.0,
-      "factors": [
-        {
-          "id": "single",
-          "tiers": [
-            {
-              "when": [
-                {
-                  "path": "n.signins.single_factor_share_pct",
-                  "op": ">=",
-                  "value": 15
-                }
-              ],
-              "weight": 0.25
-            },
-            {
-              "when": [
-                {
-                  "path": "n.signins.single_factor_share_pct",
-                  "op": ">=",
-                  "value": 5
-                }
-              ],
-              "weight": 0.1
-            }
-          ],
-          "text": "{n.signins.single_factor_share_pct}% of successful sign-ins were single-factor",
-          "label": "single-factor sign-ins"
-        },
-        {
-          "id": "allmfa",
-          "weight": 0.15,
-          "when": [
-            {
-              "path": "r.conditional_access.mfa_all_users",
-              "op": "==",
-              "value": 0
-            }
-          ],
-          "text": "No enforced conditional-access policy requires MFA for all users on all apps",
-          "label": "no all-users MFA"
-        },
-        {
-          "id": "rolesexcluded",
-          "weight": 0.15,
-          "fired_any": [
-            "I4"
-          ],
-          "text": "The all-users MFA policy excludes directory roles",
-          "label": "privileged roles exempt from MFA"
-        },
-        {
-          "id": "risky",
-          "weight": 0.1,
-          "when": [
-            {
-              "path": "n.signins.risky",
-              "op": ">=",
-              "value": 1
-            }
-          ],
-          "text": "{n.signins.risky} sign-ins flagged risky",
-          "label": "risky sign-ins"
-        },
-        {
-          "id": "admins",
-          "weight": 0.05,
-          "when": [
-            {
-              "path": "r.identity.global_admins",
-              "op": ">=",
-              "value": 5
-            }
-          ],
-          "text": "{r.identity.global_admins} Global Administrators",
-          "label": "many standing Global Administrators"
-        },
-        {
-          "id": "consents",
-          "weight": 0.05,
-          "when": [
-            {
-              "path": "n.directory_changes.consentGrants",
-              "op": ">=",
-              "value": 1
-            }
-          ],
-          "text": "{n.directory_changes.consentGrants} application consent or permission grants over {n.days_covered} archived days",
-          "label": "application consents"
-        },
-        {
-          "id": "downloads",
-          "tiers": [
-            {
-              "when": [
-                {
-                  "path": "n.o365.fileDownloads",
-                  "op": ">=",
-                  "value": 0.1,
-                  "ratio_of": "n.o365.events"
-                }
-              ],
-              "weight": 0.1
-            },
-            {
-              "when": [
-                {
-                  "path": "n.o365.fileDownloads",
-                  "op": ">=",
-                  "value": 0.03,
-                  "ratio_of": "n.o365.events"
-                }
-              ],
-              "weight": 0.05
-            }
-          ],
-          "text": "{n.o365.fileDownloads} file downloads over {n.o365.days} archived days; a high volume lets bulk copying by a stolen account pass unnoticed",
-          "label": "high file-download volume"
-        }
-      ],
-      "gaps": [
-        {
-          "id": "mfareg",
-          "always": true,
-          "text": "MFA registration cannot be measured, and consent and download counts are totals that do not show whether any were malicious"
-        },
-        {
-          "id": "signins",
-          "missing": "n.signins",
-          "text": "No sign-in archive"
-        },
-        {
-          "id": "dl",
-          "missing": "n.o365.fileDownloads",
-          "text": "File-download volume is not in the archive (the archived script predates the counter)"
-        }
-      ],
-      "loss": [
-        {
-          "name": "Response &amp; notification",
-          "scale": "size",
-          "ref": {
-            "min": 300000,
-            "ml": 1000000,
-            "max": 3000000
-          }
-        },
-        {
-          "name": "Legal &amp; regulatory",
-          "scale": "size",
-          "ref": {
-            "min": 50000,
-            "ml": 400000,
-            "max": 2500000
-          }
-        },
-        {
-          "name": "Lost business &amp; reputation",
-          "scale": "size",
-          "ref": {
-            "min": 200000,
-            "ml": 1000000,
-            "max": 5000000
-          }
-        }
-      ],
-      "anchor": "Per-event cost sits below the IBM 2025 global average breach ($4.44M) at mid-market scale, with a tail toward the US average ($10.22M)."
+     "lef": 0.9
     }
+   }
   },
-  "not_modelled": [
-    {
-      "id": "exposure",
-      "text": "Accidental and insider data exposure, including shadow AI, is not modelled: the Office 365 archive counts sharing and external-access events but shows zero DLP matches, which cannot separate \"no DLP policy\" from \"no matches\", and there is no generative-AI egress source."
-    },
-    {
-      "id": "thirdparty",
-      "text": "Third-party and remote-tool compromise is not modelled separately to avoid double counting; extra remote-access tools already raise the ransomware frequency."
+  {
+   "id": "threats",
+   "name": "Contain active threats now",
+   "detail": "Isolate infected devices and triage unresolved or unmitigated threats, starting with credential access and lateral movement.",
+   "owner": "Security Operations",
+   "timeframe": "24 hours",
+   "fired_any": [
+    "T1",
+    "T3",
+    "T4"
+   ],
+   "effects": {
+    "ransomware": {
+     "lef": 0.7
     }
-  ],
-  "treatments": [
-    {
-      "id": "backup",
-      "name": "Patch and isolate backup servers; immutable copies",
-      "detail": "Upgrade the backup software to a fixed build, move backup servers out of the production domain and keep an immutable or offline copy.",
-      "owner": "Infrastructure",
-      "timeframe": "7 days",
-      "fired_any": [
-        "B1",
-        "B2"
-      ],
-      "effects": {
-        "ransomware": {
-          "lm": 0.55
-        }
-      }
-    },
-    {
-      "id": "recovery",
-      "name": "Prove recovery: restore test and backup monitoring",
-      "detail": "Run and record a restore test of the critical systems and send backup job results to the SIEM so recovery ability can be measured.",
-      "owner": "Infrastructure",
-      "timeframe": "60 days",
-      "always": true,
-      "effects": {
-        "ransomware": {
-          "lm": 0.85
-        }
-      }
-    },
-    {
-      "id": "endpoint",
-      "name": "Close endpoint gaps and turn on anti-ransomware hardening",
-      "detail": "EDR on the {r.unprotected.not_in_edr_agent_list} unprotected devices, Protect mode on every agent, ASR rules, LAPS and Credential Guard.",
-      "owner": "Endpoint Engineering",
-      "timeframe": "60 days",
-      "fired_any": [
-        "E1",
-        "E2",
-        "E3",
-        "E4",
-        "E5",
-        "E6",
-        "D1",
-        "P1"
-      ],
-      "effects": {
-        "ransomware": {
-          "lef": 0.55
-        },
-        "breach": {
-          "lef": 0.9
-        }
-      }
-    },
-    {
-      "id": "threats",
-      "name": "Contain active threats now",
-      "detail": "Isolate infected devices and triage unresolved or unmitigated threats, starting with credential access and lateral movement.",
-      "owner": "Security Operations",
-      "timeframe": "24 hours",
-      "fired_any": [
-        "T1",
-        "T3",
-        "T4"
-      ],
-      "effects": {
-        "ransomware": {
-          "lef": 0.7
-        }
-      }
-    },
-    {
-      "id": "vuln",
-      "name": "Patch exploitable vulnerabilities, oldest first",
-      "detail": "Close the {r.vulnerabilities.exploitable_older_than_30d_devices} devices with exploitable vulnerabilities older than 30 days.",
-      "owner": "IT Operations",
-      "timeframe": "30 days",
-      "fired_any": [
-        "V1",
-        "V2"
-      ],
-      "effects": {
-        "ransomware": {
-          "lef": 0.85
-        }
-      }
-    },
-    {
-      "id": "mfa",
-      "name": "Enforce MFA and Conditional Access",
-      "detail": "Enforce MFA for every administrator and every user, remove role exclusions and move toward phishing-resistant methods.",
-      "owner": "Identity",
-      "timeframe": "30 days",
-      "fired_any": [
-        "I1",
-        "I2",
-        "I3",
-        "I4"
-      ],
-      "effects": {
-        "bec": {
-          "lef": 0.6
-        },
-        "breach": {
-          "lef": 0.6
-        },
-        "ransomware": {
-          "lef": 0.85
-        }
-      }
-    },
-    {
-      "id": "legacy",
-      "name": "Block legacy authentication",
-      "detail": "Block legacy authentication for all users and apps with a short, reviewed exception list.",
-      "owner": "Identity",
-      "timeframe": "30 days",
-      "fired_any": [
-        "I5"
-      ],
-      "effects": {
-        "bec": {
-          "lef": 0.9
-        },
-        "breach": {
-          "lef": 0.95
-        }
-      }
-    },
-    {
-      "id": "payment",
-      "name": "Payment verification and inbox-rule alerting",
-      "detail": "Out-of-band verification for bank-detail changes; alert on new forwarding and inbox rules. Confirm whether this is already in place.",
-      "owner": "Finance / SOC",
-      "timeframe": "30 days",
-      "always": true,
-      "effects": {
-        "bec": {
-          "lef": 0.8,
-          "lm": 0.5
-        }
-      }
-    },
-    {
-      "id": "logs",
-      "name": "Stop log clearing; keep 90-day log retention",
-      "detail": "Archive instead of clear; forward all domain-controller events to the SIEM.",
-      "owner": "Security Operations",
-      "timeframe": "14 days",
-      "fired_any": [
-        "L1",
-        "L2"
-      ],
-      "effects": {
-        "ransomware": {
-          "lm": 0.9
-        },
-        "breach": {
-          "lm": 0.85
-        }
-      }
+   }
+  },
+  {
+   "id": "vuln",
+   "name": "Patch exploitable vulnerabilities, oldest first",
+   "detail": "Close the {r.vulnerabilities.exploitable_older_than_30d_devices} devices with exploitable vulnerabilities older than 30 days.",
+   "owner": "IT Operations",
+   "timeframe": "30 days",
+   "fired_any": [
+    "V1",
+    "V2"
+   ],
+   "effects": {
+    "ransomware": {
+     "lef": 0.85
     }
-  ],
-  "revenue_cap": {
-    "ml_share": 0.05,
-    "max_share": 0.15,
-    "source": "fluency-mcp4mssps public_footprint/financial_impact.py: loss per event limited to 5% of revenue (most likely) and 15% (maximum)"
+   }
+  },
+  {
+   "id": "mfa",
+   "name": "Enforce MFA and Conditional Access",
+   "detail": "Enforce MFA for every administrator and every user, remove role exclusions and move toward phishing-resistant methods.",
+   "owner": "Identity",
+   "timeframe": "30 days",
+   "fired_any": [
+    "I1",
+    "I2",
+    "I3",
+    "I4"
+   ],
+   "effects": {
+    "bec": {
+     "lef": 0.6
+    },
+    "breach": {
+     "lef": 0.6
+    },
+    "ransomware": {
+     "lef": 0.85
+    }
+   }
+  },
+  {
+   "id": "legacy",
+   "name": "Block legacy authentication",
+   "detail": "Block legacy authentication for all users and apps with a short, reviewed exception list.",
+   "owner": "Identity",
+   "timeframe": "30 days",
+   "fired_any": [
+    "I5"
+   ],
+   "effects": {
+    "bec": {
+     "lef": 0.9
+    },
+    "breach": {
+     "lef": 0.95
+    }
+   }
+  },
+  {
+   "id": "payment",
+   "name": "Payment verification and inbox-rule alerting",
+   "detail": "Out-of-band verification for bank-detail changes; alert on new forwarding and inbox rules. Confirm whether this is already in place.",
+   "owner": "Finance / SOC",
+   "timeframe": "30 days",
+   "always": true,
+   "effects": {
+    "bec": {
+     "lef": 0.8,
+     "lm": 0.5
+    }
+   }
+  },
+  {
+   "id": "logs",
+   "name": "Stop log clearing; keep 90-day log retention",
+   "detail": "Archive instead of clear; forward all domain-controller events to the SIEM.",
+   "owner": "Security Operations",
+   "timeframe": "14 days",
+   "fired_any": [
+    "L1",
+    "L2"
+   ],
+   "effects": {
+    "ransomware": {
+     "lm": 0.9
+    },
+    "breach": {
+     "lm": 0.85
+    }
+   }
+  },
+  {
+   "id": "dlp",
+   "name": "Enforce DLP on mail, files and web; block unsanctioned AI uploads",
+   "detail": "Move policies from audit to enforce on every channel, restrict anonymous links, and block or review uploads to generative-AI services that are not approved.",
+   "owner": "Data protection / Security Operations",
+   "timeframe": "60 days",
+   "when": [
+    {
+     "path": "d.rating",
+     "op": "!=",
+     "value": "Strong"
+    }
+   ],
+   "effects": {
+    "exposure": {
+     "lef": 0.5,
+     "lm": 0.8
+    }
+   }
   }
+ ],
+ "revenue_cap": {
+  "ml_share": 0.05,
+  "max_share": 0.15,
+  "source": "fluency-mcp4mssps public_footprint/financial_impact.py: loss per event limited to 5% of revenue (most likely) and 15% (maximum)"
+ }
 }

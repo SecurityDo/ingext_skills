@@ -1,0 +1,12 @@
+{
+ "_comment": "ILLUSTRATIVE SAMPLE ONLY - fictional numbers in the shape the DLP report evidence is assumed to have (see references/calibration_rules.md). Never ship these values in a real report.",
+ "rating": "Partial",
+ "measurable": true,
+ "days": 30,
+ "policy": {"channels_total": 5, "channels_covered": 2, "enforcing": false},
+ "matches": {"total": 214, "blocked": 12, "overridden": 41, "logged": 161, "overridden_share": 0.19},
+ "sharing": {"external_shares": 880, "anonymous_links": 96, "anonymous_share": 0.109},
+ "bulk": {"days_over_3x": 3, "days_over_10x": 1},
+ "ai": {"uploads_total": 340, "unblocked_uploads": 275, "dlp_matches_with_ai": 4},
+ "info_types": ["Financial account numbers", "Personal identifiers"]
+}

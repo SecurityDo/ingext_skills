@@ -1,12 +1,44 @@
 {
  "_comment": "Path risk rules. Levels and triggers follow the original Shadow AI skill (High / Medium / Low / None). The numeric cut-offs marked proposal are Fluency proposals: the original text says only 'many hosts' and 'broad use'.",
- "saas":      {"high": "any AI app with a content-read scope plus offline_access and no verified publisher (original rule)",
-               "medium": "user-consented AI apps that are not first-party, or an AI app from an unverified third-party publisher, or a Tier 1 service (original rule)",
-               "low": "only first-party, enterprise-tier or verified AI apps",
-               "none": "no AI apps found"},
- "endpoint":  {"local_runner_hosts_high": 5, "local_runner_hosts_medium": 1, "desktop_share_medium": 0.10,
-               "note": "high: local model runners on 5 or more hosts (proposal); medium: 1 to 4 hosts, or non-first-party AI desktop apps on 10% or more of inventoried hosts (proposal); low: smaller desktop footprint; none: nothing found. First-party Microsoft Copilot is not counted."},
- "detection": {"medium": "no enabled EventWatch rule that is specific to AI use (original: 'no AI detection coverage' is Medium)", "low": "at least one AI-specific rule"},
- "posture":   {"base": {"none": "Low", "low": "Low", "medium": "Moderate", "high": "Elevated"}, "raise_if_paths_medium_or_worse": 3,
-               "ladder": ["Low", "Moderate", "Elevated", "High"]}
+ "saas": {
+  "high": "any AI app with a content-read scope plus offline_access and no verified publisher (original rule)",
+  "medium": "user-consented AI apps that are not first-party, or an AI app from an unverified third-party publisher, or a Tier 1 service (original rule)",
+  "low": "only first-party, enterprise-tier or verified AI apps",
+  "none": "no AI apps found"
+ },
+ "endpoint": {
+  "local_runner_hosts_high": 5,
+  "local_runner_hosts_medium": 1,
+  "desktop_share_medium": 0.1,
+  "note": "high: local model runners on 5 or more hosts (proposal); medium: 1 to 4 hosts, or non-first-party AI desktop apps on 10% or more of inventoried hosts (proposal); low: smaller desktop footprint; none: nothing found. First-party Microsoft Copilot is not counted."
+ },
+ "detection": {
+  "medium": "no enabled EventWatch rule that is specific to AI use (original: 'no AI detection coverage' is Medium)",
+  "low": "at least one AI-specific rule"
+ },
+ "posture": {
+  "base": {
+   "none": "Low",
+   "low": "Low",
+   "medium": "Moderate",
+   "high": "Elevated"
+  },
+  "raise_if_paths_medium_or_worse": 3,
+  "ladder": [
+   "Low",
+   "Moderate",
+   "Elevated",
+   "High"
+  ]
+ },
+ "network": {
+  "unblocked_uploads_high": 1000,
+  "note": "proposal: 1 or more unblocked uploads to AI services is Medium (original: broad use of consumer AI); 1,000 or more in the evidence window is High (proposal; the original says 'large uploads')."
+ },
+ "data": {
+  "high": "DLP matches coincide with AI use (original rule)",
+  "medium": "DLP matches exist, one or no channel covered, or unblocked AI uploads",
+  "low": "assessed, rating below Strong, nothing above",
+  "none": "rating Strong and nothing found; not assessed when no DLP report evidence"
+ }
 }

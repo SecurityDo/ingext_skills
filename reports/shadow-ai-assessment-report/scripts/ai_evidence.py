@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Aggregate Shadow AI evidence for ONE tenant from resource dumps (aggregate counts only, board-safe).
 
-  ai_evidence.py <dump_dir> [-o evidence.json] [--rules rules.json] [--entra entra_evidence.json] [--sanctioned sanctioned.json]
+  ai_evidence.py <dump_dir> [-o evidence.json] [--rules rules.json] [--entra entra_evidence.json] [--dlp dlp_evidence.json] [--sanctioned sanctioned.json]
 
 Reads, when present in <dump_dir> (.jsonl.gz or .jsonl): office365Application, office365InstalledApp, office365User,
 sentinelOneApplication. Path 2 (network egress) and path 4 (data exposure) have no archived-report source and are
@@ -53,7 +53,7 @@ def verified(a):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dump_dir"); ap.add_argument("-o", "--out", default="evidence.json")
-    ap.add_argument("--rules"); ap.add_argument("--entra"); ap.add_argument("--sanctioned")
+    ap.add_argument("--rules"); ap.add_argument("--entra"); ap.add_argument("--sanctioned"); ap.add_argument("--dlp")
     a = ap.parse_args()
     sanctioned = {s.lower() for s in json.load(open(a.sanctioned))} if a.sanctioned else None
     gaps, sources = [], []
@@ -155,12 +155,25 @@ def main():
                           "local_runners": [{"service": k, "hosts": len(v)} for k, v in sorted(host_run.items(), key=lambda kv: -len(kv[1]))],
                           "hosts_with_ai": len(all_ai | all_run), "local_llm_hosts": len(all_run)}
 
-    # ---- Paths 2 and 4: no archived source
-    ev["network"] = {"status": "no_data"}
-    gaps.append("Network egress (proxy, DNS, firewall) to AI services is not assessed: no archived report carries it.")
-    ev["data"] = {"status": "no_data"}
-    gaps.append("Data exposure (DLP matches coinciding with AI use) is not assessed: no DLP source; bulk downloads are only context.")
-    if a.entra and os.path.exists(a.entra):
+    # ---- Paths 2 and 4: from the DLP report evidence (dlp_evidence.json), when supplied
+    dl = json.load(open(a.dlp)) if a.dlp and os.path.exists(a.dlp) else {}
+    ai = dl.get("ai")
+    if ai:
+        ev["network"] = {"status": "assessed", "uploads_total": ai.get("uploads_total", 0), "unblocked_uploads": ai.get("unblocked_uploads", 0)}
+        sources.append("DLP report: web and AI egress")
+    else:
+        ev["network"] = {"status": "no_data"}
+        gaps.append("Network egress (proxy, DNS, firewall) to AI services is not assessed: the DLP report evidence has no web or AI egress section for this tenant.")
+    if dl.get("rating") and dl.get("rating") != "Not measurable":
+        p, m = dl.get("policy") or {}, dl.get("matches") or {}
+        ev["data"] = {"status": "assessed", "rating": dl["rating"], "channels_covered": p.get("channels_covered"), "channels_total": p.get("channels_total"),
+                      "enforcing": p.get("enforcing"), "matches_total": m.get("total", 0), "overridden_share": m.get("overridden_share"),
+                      "dlp_matches_with_ai": (ai or {}).get("dlp_matches_with_ai", 0)}
+        sources.append("DLP report: policy and matches")
+    else:
+        ev["data"] = {"status": "no_data"}
+        gaps.append("Data exposure (DLP matches coinciding with AI use) is not assessed: the DLP report evidence is missing or not measurable for this tenant.")
+    if ev["data"]["status"] != "assessed" and a.entra and os.path.exists(a.entra):
         o = (json.load(open(a.entra)).get("o365") or {})
         if o.get("fileDownloads") is not None:
             ev["data"]["context"] = {"file_downloads": o.get("fileDownloads"), "days": o.get("days")}

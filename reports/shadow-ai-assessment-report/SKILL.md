@@ -26,10 +26,12 @@ style. Board-safe: counts and AI service names only, never users, hosts or addre
    the tenant host (links expire in 15 minutes).
 3. **Detection coverage.** Call `eventwatch_rule_list` once per term with `nameContains` (Consent, OAuth, Copilot, LLM, ChatGPT,
    OpenAI, Ollama, GenAI, Shadow), save each reply and merge them into one JSON list file (`rules.json`).
-4. **Context (optional).** If the tenant has the `Office365_Entra_Activity_Report` archive, run the ransomware skill's
-   `entra_evidence.py` and pass its JSON with `--entra`: bulk file downloads appear as context under path 4.
+4. **DLP evidence (paths 2 and 4).** Run the DLP report skill on the tenant (it reads the archived `DLP_Activity_Report`) and pass its
+   `dlp_evidence.json` with `--dlp`. Its web and AI egress section feeds path 2; its policy coverage, matches and
+   matches coinciding with AI use feed path 4. Without it both paths are "not assessed". Optionally pass the ransomware skill's
+   `entra_evidence.json` with `--entra`: bulk file downloads then appear as context under path 4 when there is no DLP evidence.
 5. **Evidence:** `python3 scripts/ai_evidence.py <dump_dir> -o evidence.json --rules rules.json [--entra entra_evidence.json]
-   [--sanctioned sanctioned.json]`. Matching uses `assets/ai_catalog.json` (the original catalog plus the repo's AI name patterns).
+   [--dlp dlp_evidence.json] [--sanctioned sanctioned.json]`. Matching uses `assets/ai_catalog.json` (the original catalog plus the repo's AI name patterns).
 6. **Rate and draft:** `python3 scripts/rate_evidence.py evidence.json --tenant "<Name>" --date YYYY-MM-DD --out draft_findings.json`.
    Risk and posture come only from `assets/rating_rules.json` (see `references/scoring.md`).
 7. **Review** the draft: plain language, no individual names; add what the rules cannot know. Keep every `coverage_gaps` entry.
@@ -38,9 +40,8 @@ style. Board-safe: counts and AI service names only, never users, hosts or addre
 
 ## What cannot be assessed (state in the report)
 
-- **Network egress (path 2)** and **data exposure (path 4):** no archived report carries proxy, DNS, firewall or DLP data, and
-  event data is read from archived reports only. These paths are "not assessed", never clean. Tenants that ingest Zscaler,
-  FortiGate or Meraki traffic need a scheduled archive report for GenAI domains before path 2 can be measured.
+- **Paths 2 and 4 depend on the DLP report evidence.** Without `dlp_evidence.json` (or when its rating is "Not measurable") they are "not assessed",
+  never clean. The egress section only exists for tenants that ingest Zscaler, FortiGate or Meraki traffic.
 - Granted permission names are mostly absent from the application dump; per-user grants are app names only.
 - Without a sanctioned list, approval is "unverified".
 

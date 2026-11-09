@@ -2,6 +2,7 @@
 """Turn the ransomware-readiness evidence into FAIR scenarios for the Cyber Risk in Dollars report.
 
   calibrate_scenarios.py --resource resource_evidence.json [--windows windows_evidence.json] [--entra entra_evidence.json]
+                         [--dlp dlp_evidence.json]
                          --rating draft_findings.json --tenant NAME [--business business_inputs.json] [--out scenarios.json]
 
 --resource/--windows/--entra are the outputs of the ransomware-readiness scripts; --rating is the draft that
@@ -64,7 +65,7 @@ def fill(text, ev):
         if isinstance(v, int) and not isinstance(v, bool) and v >= 1000:
             return f"{v:,}"
         return html.escape(str(v), quote=False)
-    out = re.sub(r"\{([rwn]\.[\w.]+)\}", sub, text)
+    out = re.sub(r"\{([rwnd]\.[\w.]+)\}", sub, text)
     return out, miss
 
 
@@ -81,6 +82,7 @@ def main():
     ap.add_argument("--resource", required=True)
     ap.add_argument("--windows")
     ap.add_argument("--entra")
+    ap.add_argument("--dlp", help="dlp_evidence.json from the DLP report (enables the accidental and insider exposure scenario)")
     ap.add_argument("--rating", required=True)
     ap.add_argument("--tenant", required=True)
     ap.add_argument("--business")
@@ -93,7 +95,7 @@ def main():
     r, w, n = load(a.resource) or {}, load(a.windows), load(a.entra)
     rating = load(a.rating) or {}
     biz = load(a.business) or {}
-    ev = {"r": r, "w": w or {}, "n": n or {}}
+    ev = {"r": r, "w": w or {}, "n": n or {}, "d": load(a.dlp) or {}}
     fired = set((rating.get("_review") or {}).get("rules_fired") or [])
     review = {"factors": {}, "gaps": {}, "defaults_used": [], "unresolved_placeholders": []}
 
@@ -114,6 +116,8 @@ def main():
     # ---- scenarios
     scenarios = []
     for sid, sc in R["scenarios"].items():
+        if sc.get("requires") and get(ev, sc["requires"]) is None:
+            continue
         applied, weight, bullets = [], 0.0, []
         for f in sc["factors"]:
             node = None
@@ -126,7 +130,7 @@ def main():
             wt = node["weight"]
             weight += wt
             applied.append({"id": f["id"], "label": f["label"], "weight": wt})
-            text, miss = fill(f["text"], ev)
+            text, miss = fill(node.get("text") or f["text"], ev)
             if miss:
                 text = f["label"][:1].upper() + f["label"][1:]
             bullets.append(text)
@@ -215,6 +219,8 @@ def main():
         assumptions.append("Annual control costs were not supplied, so return on investment is not calculated: cost to be supplied.")
     assumptions.append("Treatment effects are expert estimates of how much each control reduces frequency or cost, not measurements.")
     for nm in R["not_modelled"]:
+        if nm.get("unless") and get(ev, nm["unless"]) is not None:
+            continue
         assumptions.append(nm["text"])
     assumptions.append("Frequency and cost ranges come from fixed calibration rules (references/calibration_rules.md), applied to the ransomware-readiness evidence" + (f" ({html.escape(window, quote=False)})" if window else "") + ".")
     sources = ["IBM Cost of a Data Breach Report 2025: global average breach $4.44M; US average $10.22M; ransomware or extortion incident $5.08M; shadow AI adds about $670K",
