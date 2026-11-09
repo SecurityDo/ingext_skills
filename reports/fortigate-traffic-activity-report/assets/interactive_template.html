@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{title}}</title>
+<style>
+:root{--red:#111827;--blu:#4b5563;--amb:#374151;--grn:#6b7280;--gry:#9ca3af;--bg:#f5f5f5;--card:#fff;--ink:#1f2328;--m:#6b7280;--line:#e5e5e5;--acc:#374151;--navy:#1f2328}
+@media(prefers-color-scheme:dark){:root{--red:#f5f5f5;--blu:#bdbdbd;--amb:#d4d4d4;--grn:#9ca3af;--gry:#6b7280;--bg:#111111;--card:#1a1a1a;--ink:#eeeeee;--m:#9a9a9a;--line:#2b2b2b;--acc:#f5f5f5;--navy:#eeeeee}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
+header{background:linear-gradient(135deg,#111827,#374151);color:#fff;padding:26px 0 18px}
+.w{max-width:1180px;margin:0 auto;padding:0 20px}
+.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#d4d4d4;font-weight:600}
+h1{margin:4px 0 8px;font-size:26px}
+.chip{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:2px 11px;font-size:12px;margin:0 8px 4px 0}
+nav{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap}
+nav .w{display:flex;gap:2px}
+nav button{background:none;border:0;border-bottom:3px solid transparent;color:var(--m);font:600 13px inherit;padding:12px 14px;cursor:pointer}
+nav button.on{color:var(--acc);border-color:var(--acc)}
+main{padding:18px 20px 48px;max-width:1180px;margin:0 auto}
+.g{display:grid;gap:12px}.k4{grid-template-columns:repeat(4,1fr)}.k3{grid-template-columns:repeat(3,1fr)}.c2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:800px){.k4,.k3,.c2{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.k4,.k3,.c2{grid-template-columns:1fr}}
+.k{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--c);border-radius:10px;padding:12px 14px}
+.k[data-go]{cursor:pointer}.k[data-go]:hover{box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.k b{display:block;font-size:26px;color:var(--c);line-height:1.15}
+.k span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--m);font-weight:600}
+.k small{display:block;color:var(--m);font-size:11px}
+.p{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px}
+.p:first-child{margin-top:0}.g>.p{margin-top:0}
+.p h3{margin:0 0 8px;font-size:14px}
+.warn{border-left:4px solid #374151;background:rgba(180,83,9,.1)}.read{border-left:4px solid var(--acc)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--m);padding:8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);cursor:pointer;white-space:nowrap}
+td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
+td.w{white-space:normal;min-width:240px;overflow-wrap:anywhere;max-width:none;margin:0;padding:7px 8px}
+.r{text-align:right;font-variant-numeric:tabular-nums}
+.tw{max-height:600px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.m{color:var(--m)}.sm{font-size:12px}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+input[type=search],select,button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit}
+input[type=search]{min-width:220px;flex:1}
+button{cursor:pointer}button:disabled{opacity:.4;cursor:default}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:600;background:rgba(180,83,9,.15);color:var(--amb);white-space:nowrap}
+.pill.bad{background:rgba(17,24,39,.15);color:var(--red)}.pill.ok{background:rgba(107,114,128,.15);color:var(--grn)}.pill.mute{background:var(--line);color:var(--m)}
+.stack{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line);margin:10px 0 6px}
+.stack i{display:block}
+.lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+.row{display:grid;grid-template-columns:38% 1fr 56px;gap:8px;align-items:center;margin:4px 0;font-size:12px;border-radius:4px;padding:1px 4px}
+.row[data-f]{cursor:pointer}.row[data-f]:hover{background:var(--line)}
+.lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row b{text-align:right}
+.bar2{background:var(--line);height:8px;border-radius:4px;overflow:hidden}.bar2 i{display:block;height:100%;background:var(--acc)}
+.chart{width:100%;height:auto}.gl{stroke:var(--line)}.ax{fill:var(--m);font-size:11px}
+.hl{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+.sel{margin-left:8px}
+@media print{nav{display:none}.tw{max-height:none}}
+</style>
+</head>
+<body>
+<header><div class="w"><div class="eyebrow">FortiGate network traffic</div><h1 id="ttl"></h1><div id="chips"></div></div></header>
+<nav><div class="w"></div></nav>
+<main id="main"></main>
+<script id="data" type="application/json">{{data}}</script>
+<script>
+const D=JSON.parse(document.getElementById('data').textContent);
+const $=s=>document.querySelector(s);
+const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=v=>typeof v==='number'?v.toLocaleString():esc(v);
+const A=null;
+const CM={'#1f2328':'var(--navy)','#111827':'var(--red)','#4b5563':'var(--blu)','#374151':'var(--amb)','#6b7280':'var(--grn)','#9ca3af':'var(--gry)'};const cc=c=>CM[c]||c;
+const PRE={};            // filters to apply when a tab opens (set by clicks on the overview)
+let tableRoots={};
+function kpi(l,v,c,s,go,f){c=cc(c);return `<div class="k" style="--c:${c}" ${go?`data-go="${go}"`:''} ${f?`data-pre='${esc(JSON.stringify(f))}'`:''}><span>${esc(l)}</span><b>${esc(v)}</b><small>${esc(s||'')}</small></div>`}
+function na(t,why){return `<div class="p warn"><b>${esc(t)}</b> not available: ${esc(why||'no data for this resource in the snapshot')}</div>`}
+function kv(t,pairs){return `<div class="p"><h3>${esc(t)}</h3><table>${pairs.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="r">${fmt(v)}</td></tr>`).join('')}</table></div>`}
+function pct(a,b){return b?(Math.round(1000*a/b)/10)+'%':'n/a'}
+function stack(parts,total){if(!total)return'';return `<div class="stack">${parts.filter(p=>p[1]).map(p=>`<i title="${esc(p[0])}: ${p[1].toLocaleString()}" style="width:${100*p[1]/total}%;background:${p[2]}"></i>`).join('')}</div><div class="m sm">${parts.map(p=>`<span class="lg"><i style="background:${p[2]}"></i>${esc(p[0])} ${p[1].toLocaleString()}</span>`).join(' ')}</div>`}
+/* bar list; items are [label,count,filterKey,filterValue]; a click opens the table with that filter */
+function bars(title,items,go,sub){items=items.filter(i=>i[1]);const mx=Math.max(1,...items.map(i=>i[1]));
+ return `<div class="p"><h3>${esc(title)}${sub?` <span class="m">${esc(sub)}</span>`:''}</h3>${items.length?items.map(([k,v,fk,fv])=>`<div class="row" ${go&&fk?`data-go="${go}" data-pre='${esc(JSON.stringify({[fk]:fv==null?k:fv}))}'`:''} ${go&&fk?'data-f="1"':''}><span class="lb" title="${esc(k)}">${esc(k)}</span><span class="bar2"><i style="width:${100*v/mx}%"></i></span><b>${v.toLocaleString()}</b></div>`).join(''):'<div class="m sm">No data.</div>'}</div>`}
+const CLS={'Needs action':'bad','Watch':'','Healthy':'ok','Disabled':'mute','High':'bad','Medium':'','Low':'mute','yes':'','no':'','Yes':'ok'};
+/* generic searchable, sortable, paged table with filters and CSV export of the filtered view */
+function dt(cols,rows,opts){opts=opts||{};const S={q:'',sort:opts.sort||null,dir:opts.dir||1,page:0,size:25,f:Object.assign({},opts.pre||{})};if(S.f.q!==undefined){S.q=S.f.q;delete S.f.q}const root=document.createElement('div');root.className='p';
+ const filters=opts.filters||[];
+ function view(){let r=rows.filter(x=>{for(const f of filters){const v=S.f[f.key];if(v&&String(x[f.key])!==v)return false}
+  if(S.q){const q=S.q.toLowerCase();if(!cols.some(c=>String(x[c.k]==null?'':x[c.k]).toLowerCase().includes(q)))return false}return true});
+  if(S.sort){const k=S.sort;r=r.slice().sort((a,b)=>{const x=a[k],y=b[k];return (typeof x==='number'&&typeof y==='number'?x-y:String(x).localeCompare(String(y)))*S.dir})}return r}
+ function draw(){const r=view(),pages=Math.max(1,Math.ceil(r.length/S.size));if(S.page>=pages)S.page=pages-1;const sl=r.slice(S.page*S.size,(S.page+1)*S.size);
+  root.innerHTML=`<h3>${esc(opts.title||'')} <span class="m">(<span data-n>${r.length.toLocaleString()}</span> of ${rows.length.toLocaleString()})</span></h3><div class="bar">
+   <input type="search" placeholder="Search" value="${esc(S.q)}" data-a="q">
+   ${filters.map(f=>`<select data-f="${f.key}"><option value="">${esc(f.label)}: all</option>${f.opts.map(o=>`<option ${S.f[f.key]===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`).join('')}
+   <select data-a="size">${[25,50,100,250].map(n=>`<option ${n===S.size?'selected':''}>${n}</option>`).join('')}</select>
+   <button data-a="csv">Export CSV</button></div>
+   <div class="tw"><table><thead><tr>${cols.map(c=>`<th data-s="${c.k}" class="${c.num?'r':''}">${esc(c.h)}${S.sort===c.k?(S.dir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>${sl.map(x=>`<tr>${cols.map(c=>`<td class="${c.num?'r':''} ${c.host?'hl':''} ${c.w?'w':''}">${c.pill?`<span class="pill ${CLS[x[c.k]]||''}">${esc(x[c.k])}</span>`:(c.fmt?esc(c.fmt(x[c.k])):fmt(x[c.k]))}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${cols.length}" class="m">No rows match.</td></tr>`}</tbody></table></div>
+   <div class="bar"><button data-a="prev" ${S.page?'':'disabled'}>Prev</button><span class="m">Page ${S.page+1} of ${pages}</span><button data-a="next" ${S.page<pages-1?'':'disabled'}>Next</button></div>`;
+  const q=root.querySelector('[data-a=q]');q.oninput=e=>{S.q=e.target.value;S.page=0;const p=e.target.selectionStart;draw();const n=root.querySelector('[data-a=q]');n.focus();n.setSelectionRange(p,p)};
+  root.querySelectorAll('[data-f]').forEach(s=>s.onchange=e=>{S.f[s.dataset.f]=e.target.value;S.page=0;draw()});
+  root.querySelector('[data-a=size]').onchange=e=>{S.size=+e.target.value;S.page=0;draw()};
+  root.querySelector('[data-a=prev]').onclick=()=>{S.page--;draw()};root.querySelector('[data-a=next]').onclick=()=>{S.page++;draw()};
+  root.querySelectorAll('th[data-s]').forEach(h=>h.onclick=()=>{if(S.sort===h.dataset.s)S.dir*=-1;else{S.sort=h.dataset.s;S.dir=1}draw()});
+  root.querySelector('[data-a=csv]').onclick=()=>{const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';const t=[cols.map(c=>q(c.h)).join(',')].concat(view().map(x=>cols.map(c=>q(x[c.k])).join(','))).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download=(opts.file||'export')+'.csv';a.click()}}
+ draw();return root}
+const uniq=(rows,k)=>[...new Set(rows.map(r=>r[k]))].filter(v=>v!==''&&v!=null).sort();
+const V={};
+const D2=D, M=D.meta, T=D.totals, G=D.genai, DY=D.daily;
+const bytes=v=>{v=+v||0;for(const [u,s] of [['TB',1e12],['GB',1e9],['MB',1e6],['KB',1e3]])if(v>=s)return (v/s).toFixed(s>=1e9?2:1)+' '+u;return v+' B'};
+const TABS=[['ov','Overview'],['ap','Applications'],['sv','Services'],['ct','Destinations'],['po','Policies and devices'],['ho','Internal hosts'],['ga','GenAI traffic'],['da','Daily'],['cv','Coverage and limits']];
+const MET=[['events','Log events','#4b5563',0],['blocked','Blocked events','#374151',0],['bytesOut','Bytes sent (out)','#1f2328',1],['bytesIn','Bytes received (in)','#6b7280',1],['genaiEvents','GenAI events','#111827',0],['genaiBytesOut','GenAI bytes sent','#111827',1]];
+/* column chart of one daily metric; a gap day is a hatched column, never a zero bar */
+function chart(key,color,isB){const n=DY.length;if(!n)return '<div class="m">No days.</div>';const W=1000,H=210,L=56,B=26,T=10,R=8;const mx=Math.max(1,...DY.filter(d=>!d.gap).map(d=>d[key]));
+ const bw=(W-L-R)/n;let s=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily ${esc(key)}"><defs><pattern id="hh" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="none"/><line x1="0" y1="0" x2="0" y2="6" stroke="#b45309" stroke-width="2"/></pattern></defs>`;
+ const q=4;for(let i=0;i<=q;i++){const y=T+(H-T-B)*(1-i/q),v=mx*i/q;s+=`<line class="gl" x1="${L}" x2="${W-R}" y1="${y}" y2="${y}"/><text class="ax" x="${L-6}" y="${y+4}" text-anchor="end">${isB?bytes(v):Math.round(v).toLocaleString()}</text>`}
+ DY.forEach((d,i)=>{const x=L+i*bw;if(d.gap){s+=`<rect x="${x+1}" y="${T}" width="${Math.max(1,bw-2)}" height="${H-T-B}" fill="url(#hh)" opacity=".5"><title>${esc(d.day)}: not archived (gap)</title></rect>`}
+  else{const h=(H-T-B)*d[key]/mx;s+=`<rect x="${x+1}" y="${H-B-h}" width="${Math.max(1,bw-2)}" height="${h}" fill="${color}" rx="1"><title>${esc(d.day)}: ${isB?bytes(d[key]):d[key].toLocaleString()}</title></rect>`}
+  if(i%Math.ceil(n/8)===0)s+=`<text class="ax" x="${x+bw/2}" y="${H-8}" text-anchor="middle">${esc(d.day.slice(5))}</text>`});
+ return s+'</svg>'}
+/* top items of a table as a clickable bar list that opens the table filtered to that row */
+function topn(rows,k,m,n){return rows.slice().sort((a,b)=>b[m]-a[m]).slice(0,n||6).filter(r=>r[m]).map(r=>[typeof k==='function'?k(r):r[k],r[m]])}
+function bl(title,items,fmtv,go,fk,sub){const mx=Math.max(1,...items.map(i=>i[1]));
+ return `<div class="p"><h3>${esc(title)}${sub?` <span class="m">${esc(sub)}</span>`:''}</h3>${items.length?items.map(([k,v])=>`<div class="row" ${go?`data-go="${go}" data-pre='${esc(JSON.stringify({q:k}))}' data-f="1"`:''}><span class="lb" title="${esc(k)}">${esc(k)}</span><span class="bar2"><i style="width:${100*v/mx}%"></i></span><b>${fmtv(v)}</b></div>`).join(''):'<div class="m sm">No data.</div>'}</div>`}
+const NUMS=(o)=>[{k:'events',h:'Events',num:1},{k:'blocked',h:'Blocked',num:1},{k:'bytesOut',h:'Sent',num:1,fmt:bytes},{k:'bytesIn',h:'Received',num:1,fmt:bytes}];
+/* ---------------- Overview ---------------- */
+V.ov=()=>{const c=document.createElement('div');
+ const kp=[kpi('Log events',T.events.toLocaleString(),'#1f2328',pct(T.blocked,T.events)+' blocked'),
+  kpi('Blocked events',T.blocked.toLocaleString(),T.blocked?'#374151':'#6b7280','firewall action deny','po'),
+  kpi('Sent (out)',bytes(T.bytesOut),'#4b5563','client to server'),
+  kpi('Received (in)',bytes(T.bytesIn),'#4b5563','server to client'),
+  kpi('GenAI events',G.events.toLocaleString(),G.events?'#111827':'#6b7280',G.apps+' application(s), '+bytes(G.bytesOut)+' sent','ga'),
+  kpi('Application names',M.appCoverage==null?'n/a':Math.round(M.appCoverage)+'%',(M.appCoverage||0)>=70?'#6b7280':'#374151','of events carry an application name','ap')];
+ c.innerHTML=`<div class="g k3">${kp.join('')}</div>
+  ${M.noData?`<div class="p warn" style="margin-top:12px"><b>No FortiGate traffic data.</b> Every scan reports the table as not available; the zeros are not findings of no activity.</div>`:''}
+  ${M.appCoverage!=null&&M.appCoverage<70?`<div class="p warn" style="margin-top:12px"><b>Application names are missing on ${Math.round(100-M.appCoverage)}% of events.</b> GenAI figures are a lower bound.</div>`:''}
+  ${M.missing.length?`<div class="p warn" style="margin-top:12px"><b>Gap.</b> ${M.missing.length} day(s) are not archived and are not counted as zero: ${esc(M.missing.join(', '))}.</div>`:''}
+  ${M.truncated.length?`<div class="p warn" style="margin-top:12px"><b>Result truncated</b> on ${esc(M.truncated.join(', '))}: read the tables for those days as lower bounds.</div>`:''}
+  <div class="p"><h3>Outcome <span class="m">${T.events.toLocaleString()} events</span></h3>${stack([['Blocked',T.blocked,'#374151'],['Allowed',T.events-T.blocked,'#9ca3af']],T.events)}</div>
+  <div class="p"><h3>Trend explorer <select id="msel" class="sel">${MET.map(m=>`<option value="${m[0]}">${esc(m[1])}</option>`).join('')}</select></h3><div id="chartbox"></div></div>
+  <div class="g c2" id="g1" style="margin-top:12px"></div>
+  <div class="p read" style="margin-top:12px">Period <b>${esc(M.period)}</b>, ${M.days} of ${M.expected} days archived. Volumes are per-record deltas of the session byte counters; events are log records, not sessions. Click a tile or a bar to open the table behind it.</div>`;
+ const draw=()=>{const m=MET.find(x=>x[0]===c.querySelector('#msel').value);c.querySelector('#chartbox').innerHTML=chart(m[0],m[2],m[3])};
+ c.querySelector('#msel').onchange=draw;draw();
+ const g=c.querySelector('#g1');
+ g.insertAdjacentHTML('beforeend',bl('Top applications by bytes',topn(D.apps,'name','bytes',6),bytes,'ap'));
+ g.insertAdjacentHTML('beforeend',bl('Top destination countries by bytes sent',topn(D.countries.filter(r=>r.name!=='Reserved'&&r.name!=='(not recorded)'),'name','bytesOut',6),bytes,'ct'));
+ g.insertAdjacentHTML('beforeend',bl('Top services by events',topn(D.services,'name','events',6),v=>v.toLocaleString(),'sv'));
+ g.insertAdjacentHTML('beforeend',bl('GenAI applications by bytes sent',topn(D.genaiApps,'name','bytesOut',6),bytes,'ga'));
+ return c};
+function simple(title,rows,file,first,pre,extra){const c=document.createElement('div');
+ c.appendChild(dt([{k:'name',h:first,host:1,w:1}].concat(extra||[],NUMS()),rows.map(r=>Object.assign({},r)),{title,file,sort:'bytesOut',dir:-1,pre}));return c}
+const wrapfmt=()=>{};
+V.ap=()=>{const rows=D.apps;const c=document.createElement('div');
+ c.appendChild(dt([{k:'app',h:'Application',host:1,w:1},{k:'category',h:'Category'}].concat(NUMS()),rows,{title:'Applications',file:'fortigate_applications',sort:'bytes',dir:-1,pre:PRE.ap,filters:[{key:'category',label:'Category',opts:uniq(rows,'category')}]}));return c};
+V.sv=()=>simple('Services',D.services,'fortigate_services','Service',PRE.sv);
+V.ct=()=>simple('Destination countries',D.countries,'fortigate_countries','Country',PRE.ct);
+V.po=()=>{const c=document.createElement('div');
+ c.appendChild(dt([{k:'name',h:'Policy',host:1}].concat(NUMS()),D.policies,{title:'Firewall policies (policy 0 denies are the implicit deny)',file:'fortigate_policies',sort:'events',dir:-1}));
+ const d=dt([{k:'name',h:'Device',host:1}].concat(NUMS()),D.devices,{title:'Reporting devices',file:'fortigate_devices',sort:'events',dir:-1});d.style.marginTop='12px';c.appendChild(d);return c};
+V.ho=()=>{const c=document.createElement('div');
+ if(!M.actors){c.innerHTML='<div class="p warn">Host and address tables are omitted in this build.</div>';return c}
+ c.appendChild(dt([{k:'source',h:'Address',host:1},{k:'host',h:'Host name',w:1}].concat(NUMS()),D.talkers,{title:'Top internal senders (top 100 a day)',file:'fortigate_talkers',sort:'bytesOut',dir:-1,pre:PRE.ho}));
+ c.insertAdjacentHTML('beforeend','<div class="p warn" style="margin-top:12px">Host names and addresses are personal data. Share this file only with the customer who owns it.</div>');return c};
+V.ga=()=>{const c=document.createElement('div');
+ c.innerHTML=`<div class="g k4">${kpi('GenAI events',G.events.toLocaleString(),'#111827',pct(G.events,T.events)+' of all events')}${kpi('Blocked',G.blocked.toLocaleString(),'#374151','firewall action deny')}${kpi('Sent',bytes(G.bytesOut),'#4b5563',pct(G.bytesOut,T.bytesOut)+' of bytes out')}${kpi('Received',bytes(G.bytesIn),'#4b5563','server to client')}</div>
+  <div class="p read" style="margin-top:12px">Traffic the firewall labelled GenAI, or whose application name matches a known GenAI service. Bytes sent say how much was sent, not what it was. The separate GenAI Egress report reads this evidence.</div><div style="height:12px"></div>`;
+ c.appendChild(dt([{k:'name',h:'Application',host:1,w:1}].concat(NUMS()),D.genaiApps,{title:'GenAI applications',file:'fortigate_genai_apps',sort:'bytesOut',dir:-1}));
+ const p=dt([{k:'policy',h:'Policy',host:1},{k:'app',h:'Application',w:1}].concat(NUMS()),D.genaiPolicies,{title:'GenAI by firewall policy',file:'fortigate_genai_policies',sort:'events',dir:-1});p.style.marginTop='12px';c.appendChild(p);
+ if(M.actors){const s=dt([{k:'source',h:'Address',host:1},{k:'host',h:'Host name'},{k:'app',h:'Application'}].concat(NUMS()),D.genaiSources,{title:'GenAI internal sources',file:'fortigate_genai_sources',sort:'bytesOut',dir:-1,filters:[{key:'app',label:'Application',opts:uniq(D.genaiSources,'app')}]});s.style.marginTop='12px';c.appendChild(s);
+  const t=dt([{k:'destination',h:'Destination',host:1},{k:'country',h:'Country'},{k:'app',h:'Application'}].concat(NUMS()),D.genaiDests,{title:'GenAI destinations (address and country; the logs carry no host name)',file:'fortigate_genai_destinations',sort:'bytesOut',dir:-1,filters:[{key:'app',label:'Application',opts:uniq(D.genaiDests,'app')}]});t.style.marginTop='12px';c.appendChild(t)}
+ return c};
+V.da=()=>{const c=document.createElement('div');
+ c.appendChild(dt([{k:'day',h:'Day',host:1},{k:'state',h:'State'},{k:'events',h:'Events',num:1},{k:'blocked',h:'Blocked',num:1},{k:'bytesOut',h:'Sent',num:1,fmt:bytes},{k:'bytesIn',h:'Received',num:1,fmt:bytes},{k:'genaiEvents',h:'GenAI events',num:1},{k:'genaiBytesOut',h:'GenAI sent',num:1,fmt:bytes}],D.daily.map(d=>Object.assign({state:d.gap?'not archived (gap)':'archived'},d)),{title:'Daily counts',file:'fortigate_daily',sort:'day',dir:-1,filters:[{key:'state',label:'State',opts:['archived','not archived (gap)']}]}));return c};
+V.cv=()=>{const c=document.createElement('div');
+ c.innerHTML=`<div class="p"><h3>Archive: ${esc(M.period)}, ${M.days} of ${M.expected} days</h3><table><thead><tr><th>Scan</th><th>Status</th><th>Days ok / not available</th><th>Detail</th></tr></thead><tbody>${D.sources.map(s=>`<tr><td>${esc(s.source)}</td><td>${esc(s.status)}</td><td>${esc(s.days)}</td><td class="m">${esc(s.detail)}</td></tr>`).join('')}</tbody></table><div class="m sm" style="margin-top:8px">Script version(s): ${esc(M.hashes)}</div></div>
+  <div class="p"><h3>Limits</h3><ul>${D.limits.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`;return c};
+function show(t,pre){tab=t;if(pre!==undefined)PRE[t]=pre;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));const m=$('#main');m.innerHTML='';m.appendChild(V[t]());
+ m.querySelectorAll('[data-go]').forEach(k=>k.onclick=()=>{const f=k.dataset.pre?JSON.parse(k.dataset.pre):{};show(k.dataset.go,f)});PRE[t]=undefined;history.replaceState(null,'','#'+t);window.scrollTo(0,0)}
+let tab='ov';
+$('nav .w').innerHTML=TABS.map(t=>`<button data-t="${t[0]}">${t[1]}</button>`).join('');
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.t,{}));
+$('#chips').innerHTML=[M.tenant,M.site,'period '+M.period,M.days+' of '+M.expected+' days archived',T.events.toLocaleString()+' events'].filter(Boolean).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
+$('#ttl').textContent=(M.tenant||'Tenant')+' FortiGate Traffic Activity Report';document.title=$('#ttl').textContent;
+show(TABS.some(t=>t[0]===location.hash.slice(1))?location.hash.slice(1):'ov',{});
+</script>
+</body>
+</html>
