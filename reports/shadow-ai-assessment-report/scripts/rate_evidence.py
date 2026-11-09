@@ -63,44 +63,31 @@ def build(ev, tenant, date):
                              "evidence": "Entra application permissions.", "mitre": "T1528"})
             recs.insert(0, {"horizon": "Immediate", "title": "Revoke persistent AI access", "detail": "Remove the grants and block user consent for applications asking for mail, files or sites access.", "owner": "M365 / IAM admin"})
         dets.append({"name": "New OAuth consent to an AI-classified app", "logic": "Office365 'Consent to application' where the target app matches the AI catalog", "path": "saas"})
-    # ---- path 2: network egress, from the DLP report's web and AI egress section
+    # ---- path 2: network egress has no archived source
     nw = ev["network"]
-    if nw["status"] == "assessed":
-        ub = nw["unblocked_uploads"]; hi = R["network"]["unblocked_uploads_high"]
-        risk = "high" if ub >= hi else "medium" if ub >= 1 else "none"
-        paths.append({"id": "network", "status": "assessed", "risk": risk,
-                      "headline": "%s uploads to generative-AI services, %s not blocked." % (format(nw["uploads_total"], ","), format(ub, ",")),
-                      "sources": ["DLP report: web and AI egress"], "metrics": [{"label": "uploads", "value": format(nw["uploads_total"], ",")}, {"label": "not blocked", "value": format(ub, ",")}]})
-        if ub:
-            findings.append({"severity": "high" if risk == "high" else "medium", "path": "network", "title": "Uploads to AI services are not blocked",
-                             "detail": "%s uploads to generative-AI services passed without being blocked in the evidence window." % format(ub, ","),
-                             "evidence": "DLP report, web and AI egress.", "mitre": "T1567"})
-            recs.append({"horizon": "30 days", "title": "Control uploads to unapproved AI services", "detail": "Block or coach uploads to AI services that are not on the approved list; allow approved enterprise tenancies.", "owner": "Network / Security"})
-            dets.append({"name": "Large upload to an AI domain", "logic": "Bytes or uploads to AI catalog domains by one host within an hour exceeding the tenant baseline", "path": "network"})
-    else:
-        paths.append({"id": "network", "status": "no_data", "risk": "none", "headline": "Not assessed: no web or AI egress evidence for this tenant.", "sources": [], "metrics": []})
-    # ---- path 4: data exposure, from the DLP report
+    paths.append({"id": "network", "status": "no_data", "risk": "none", "headline": "Not assessed: no archived report carries proxy, DNS or firewall traffic to AI services.", "sources": [], "metrics": []})
+    # ---- path 4: data exposure, from the DLP report (Office 365 DLP matches)
     dt = ev["data"]
     if dt["status"] == "assessed":
-        co = dt["dlp_matches_with_ai"]; strong = dt["rating"] == "Strong"
-        if co >= 1: risk = "high"
-        elif dt["matches_total"] or (dt["channels_covered"] is not None and dt["channels_covered"] <= 1) or (nw.get("unblocked_uploads", 0) >= 1): risk = "medium"
-        elif strong: risk = "none"
+        ai = dt["ai_hits"]; unenf = dt["ai_unenforced_hits"]
+        if unenf: risk = "high"
+        elif ai or dt["enforced_share"] < 1: risk = "medium"
         else: risk = "low"
         d4 = {"id": "data", "status": "assessed", "risk": risk,
-              "headline": "DLP rated %s: %s of %s channels covered, %s matches, %s coinciding with AI use." % (dt["rating"], dt["channels_covered"], dt["channels_total"], format(dt["matches_total"], ","), co),
-              "sources": ["DLP report: policy and matches"], "metrics": [{"label": "DLP matches", "value": format(dt["matches_total"], ",")}, {"label": "with AI use", "value": str(co)}]}
-        if co:
-            findings.append({"severity": "high", "path": "data", "title": "Sensitive-data matches coincide with AI use",
-                             "detail": "%s DLP matches coincided with generative-AI use, which suggests sensitive data is reaching AI services." % co,
-                             "evidence": "DLP report, matches and AI egress.", "mitre": "T1567"})
-            recs.insert(0, {"horizon": "Immediate", "title": "Stop sensitive data reaching AI services", "detail": "Enforce DLP on the AI-bound channels and review the affected data types with the data owners.", "owner": "Data protection"})
-        if dt["enforcing"] is False:
-            findings.append({"severity": "medium", "path": "data", "title": "DLP policies only audit", "detail": "DLP matches are logged but not blocked, so sensitive data can still leave.",
-                             "evidence": "DLP report, policy configuration.", "mitre": ""})
-            recs.append({"horizon": "90 days", "title": "Move DLP from audit to enforce", "detail": "Enforce policies on mail, files and web after a tuning period.", "owner": "Data protection"})
+              "headline": "%s DLP matches (%d%% enforced) across %s workloads; %s hit the Microsoft 365 Copilot policy." % (format(dt["matches_total"], ","), round(dt["enforced_share"] * 100), dt["workloads"], format(ai, ",")),
+              "sources": ["DLP_Activity_Report"], "metrics": [{"label": "DLP matches", "value": format(dt["matches_total"], ",")}, {"label": "Copilot policy hits", "value": format(ai, ",")}]}
+        if unenf:
+            findings.append({"severity": "high", "path": "data", "title": "Sensitive data reaches an AI assistant and is only logged",
+                             "detail": "The Microsoft 365 Copilot DLP policy matched %s times without enforcing, so sensitive content is reaching the assistant while the policy only observes." % format(unenf, ","),
+                             "evidence": "DLP report, Copilot policy matches.", "mitre": "T1567"})
+            recs.insert(0, {"horizon": "Immediate", "title": "Enforce the Copilot DLP policy", "detail": "Move the Copilot DLP rules from test to enforce and review the information types involved with the data owners.", "owner": "Data protection"})
+        if dt["enforced_share"] < 1 and dt["matches_total"]:
+            findings.append({"severity": "medium", "path": "data", "title": "Most DLP matches are not enforced",
+                             "detail": "Only %d%% of DLP matches came from rules in enforce mode; the rest are test rules that log but do not block." % round(dt["enforced_share"] * 100),
+                             "evidence": "DLP report, rule modes.", "mitre": ""})
+            recs.append({"horizon": "90 days", "title": "Move DLP rules from test to enforce", "detail": "Tune the test rules, then enforce them on mail, files and chat.", "owner": "Data protection"})
     else:
-        d4 = {"id": "data", "status": "no_data", "risk": "none", "headline": "Not assessed: no DLP report evidence for this tenant.", "sources": [], "metrics": []}
+        d4 = {"id": "data", "status": "no_data", "risk": "none", "headline": "Not assessed: no DLP report evidence, or no DLP matches in the window.", "sources": [], "metrics": []}
         c = dt.get("context")
         if c:
             d4["headline"] += " %s file downloads over %s archived days are context only." % (format(c["file_downloads"], ","), c["days"])
@@ -171,7 +158,7 @@ def build(ev, tenant, date):
         else: svc_rows.append({"service": x["service"], "category": "Desktop client", "tier": "-", "seen_in": ["endpoint"], "users": 0, "hosts": x["hosts"], "volume": "n/a", "status": "unverified", "risk": "low"})
     hi = s.get("persistent_content_access_apps", 0) if s["status"] == "assessed" else 0
     kp = {"ai_services": len(svc_rows), "users": s.get("users_with_ai_grant", 0), "hosts": e.get("hosts_with_ai", 0),
-          "upload_volume": (format(nw["uploads_total"], ",") + " uploads") if nw["status"] == "assessed" else "n/a", "high_risk_apps": hi, "local_llm_hosts": e.get("local_llm_hosts", 0)}
+          "upload_volume": "n/a", "high_risk_apps": hi, "local_llm_hosts": e.get("local_llm_hosts", 0)}
     summary = ["%s uses generative AI. %s AI services are connected to Entra and %s have granted them access." % (tenant, kp["ai_services"], plural(kp["users"], "user"))]
     if kp["local_llm_hosts"] == 0 and e["status"] == "assessed":
         summary.append("No local model runners were found in the endpoint software inventory.")

@@ -26,10 +26,11 @@ style. Board-safe: counts and AI service names only, never users, hosts or addre
    the tenant host (links expire in 15 minutes).
 3. **Detection coverage.** Call `eventwatch_rule_list` once per term with `nameContains` (Consent, OAuth, Copilot, LLM, ChatGPT,
    OpenAI, Ollama, GenAI, Shadow), save each reply and merge them into one JSON list file (`rules.json`).
-4. **DLP evidence (paths 2 and 4).** Run the DLP report skill on the tenant (it reads the archived `DLP_Activity_Report`) and pass its
-   `dlp_evidence.json` with `--dlp`. Its web and AI egress section feeds path 2; its policy coverage, matches and
-   matches coinciding with AI use feed path 4. Without it both paths are "not assessed". Optionally pass the ransomware skill's
-   `entra_evidence.json` with `--entra`: bulk file downloads then appear as context under path 4 when there is no DLP evidence.
+4. **DLP evidence (path 4).** Call `list_report_archive` for `DLP_Activity_Report` (that exact name), then `download_report_archive` for the
+   last 30 days with `objects` set to `o365_trend`, `o365_rules`, `o365_infoTypes`, `o365_alerts` and `sources` (never `o365_actors`, which
+   holds user names), save the result to a file and run `python3 scripts/dlp_evidence.py <file> -o dlp_evidence.json`. Pass that file with
+   `--dlp`. Zero matches or no archive leaves path 4 "not assessed". Optionally pass the ransomware skill's `entra_evidence.json` with
+   `--entra`: bulk file downloads then appear as context under path 4. Never run the report or query Office365 live.
 5. **Evidence:** `python3 scripts/ai_evidence.py <dump_dir> -o evidence.json --rules rules.json [--entra entra_evidence.json]
    [--dlp dlp_evidence.json] [--sanctioned sanctioned.json]`. Matching uses `assets/ai_catalog.json` (the original catalog plus the repo's AI name patterns).
 6. **Rate and draft:** `python3 scripts/rate_evidence.py evidence.json --tenant "<Name>" --date YYYY-MM-DD --out draft_findings.json`.
@@ -40,8 +41,9 @@ style. Board-safe: counts and AI service names only, never users, hosts or addre
 
 ## What cannot be assessed (state in the report)
 
-- **Paths 2 and 4 depend on the DLP report evidence.** Without `dlp_evidence.json` (or when its rating is "Not measurable") they are "not assessed",
-  never clean. The egress section only exists for tenants that ingest Zscaler, FortiGate or Meraki traffic.
+- **Network egress (path 2):** no archived report carries proxy, DNS or firewall traffic to AI services, so it is "not assessed", never clean.
+- **Data exposure (path 4)** comes from the Office 365 DLP report. It sees only policies that matched, so zero matches is "not assessed", and
+  the only AI signal is the Microsoft 365 Copilot DLP policy; consumer AI uploads are not seen. Policy coverage and user overrides are not in it.
 - Granted permission names are mostly absent from the application dump; per-user grants are app names only.
 - Without a sanctioned list, approval is "unverified".
 

@@ -32,13 +32,12 @@
   ]
  },
  "network": {
-  "unblocked_uploads_high": 1000,
-  "note": "proposal: 1 or more unblocked uploads to AI services is Medium (original: broad use of consumer AI); 1,000 or more in the evidence window is High (proposal; the original says 'large uploads')."
+  "note": "not assessed: no archived report carries web, DNS or firewall traffic to AI services"
  },
  "data": {
-  "high": "DLP matches coincide with AI use (original rule)",
-  "medium": "DLP matches exist, one or no channel covered, or unblocked AI uploads",
-  "low": "assessed, rating below Strong, nothing above",
-  "none": "rating Strong and nothing found; not assessed when no DLP report evidence"
+  "high": "Microsoft 365 Copilot DLP policy matches that were not enforced (original rule: DLP hits coinciding with AI use, adapted to the one AI signal the DLP report carries)",
+  "medium": "Copilot policy matches that were enforced, or DLP matches where not all rules enforce",
+  "low": "matches, all enforced, none on the Copilot policy",
+  "no_data": "no DLP evidence, or zero matches (cannot separate no policy from no sensitive data moved)"
  }
 }

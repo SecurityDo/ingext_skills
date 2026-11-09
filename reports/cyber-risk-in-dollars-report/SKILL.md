@@ -41,7 +41,7 @@ loss, the largest scenario) is filled in from the simulation, so it always match
    `windows_evidence.json` (if the Windows archive exists), `entra_evidence.json` (if the sign-in archive exists) and the
    rating draft `draft_findings.json` (its `_review.rules_fired` is what drives the treatments). A missing source is a
    gap that widens the range, not a reason to stop. Also run the DLP report skill for the tenant and keep its
-   `dlp_evidence.json`; it switches on the accidental and insider exposure scenario (see `assets/sample_dlp_evidence.json` for the shape).
+   `dlp_evidence.json`; it switches on the accidental and insider exposure scenario (build it with `shadow-ai-assessment-report/scripts/dlp_evidence.py` from the archived `DLP_Activity_Report`; shape in `assets/sample_dlp_evidence.json`).
 3. **Business inputs.** Ask once, in a single short question, for: annual revenue or daily downtime cost, cyber insurance
    limit and deductible, the largest 1-in-10-year loss the board will tolerate, and the annual cost of each recommended
    action. Write the answers to `business_inputs.json` (shape: `assets/business_inputs.sample.json`). If the user wants to
@@ -67,8 +67,8 @@ loss, the largest scenario) is filled in from the simulation, so it always match
 ## Limits to state in the report
 
 - **Three or four scenarios.** Ransomware, business email compromise and credential-driven cloud breach, plus accidental and insider
-  data exposure (including shadow AI) when the DLP report evidence is supplied. Without it the exposure scenario is not modelled,
-  because a zero DLP count cannot separate "no DLP policy" from "no matches". Its factors and weights are Fluency proposals
+  data exposure (including shadow AI) when the DLP report shows matches. With no matches the scenario is not modelled,
+  because a zero DLP count cannot separate "no DLP policy" from "no sensitive data moved". Its factors and weights are Fluency proposals
   (`references/calibration_rules.md`). Third-party compromise is not modelled separately so as not to double count ransomware.
 - **Business email compromise** is calibrated from sign-in data and the Office 365 archive's counts of inbox-rule and
   mailbox-permission changes. Forwarding targets, who made the changes and payment controls are not in any archive, so

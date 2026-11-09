@@ -155,24 +155,20 @@ def main():
                           "local_runners": [{"service": k, "hosts": len(v)} for k, v in sorted(host_run.items(), key=lambda kv: -len(kv[1]))],
                           "hosts_with_ai": len(all_ai | all_run), "local_llm_hosts": len(all_run)}
 
-    # ---- Paths 2 and 4: from the DLP report evidence (dlp_evidence.json), when supplied
+    # ---- Path 4 from dlp_evidence.json (DLP_Activity_Report, Office 365); path 2 has no source
     dl = json.load(open(a.dlp)) if a.dlp and os.path.exists(a.dlp) else {}
-    ai = dl.get("ai")
-    if ai:
-        ev["network"] = {"status": "assessed", "uploads_total": ai.get("uploads_total", 0), "unblocked_uploads": ai.get("unblocked_uploads", 0)}
-        sources.append("DLP report: web and AI egress")
-    else:
-        ev["network"] = {"status": "no_data"}
-        gaps.append("Network egress (proxy, DNS, firewall) to AI services is not assessed: the DLP report evidence has no web or AI egress section for this tenant.")
-    if dl.get("rating") and dl.get("rating") != "Not measurable":
-        p, m = dl.get("policy") or {}, dl.get("matches") or {}
-        ev["data"] = {"status": "assessed", "rating": dl["rating"], "channels_covered": p.get("channels_covered"), "channels_total": p.get("channels_total"),
-                      "enforcing": p.get("enforcing"), "matches_total": m.get("total", 0), "overridden_share": m.get("overridden_share"),
-                      "dlp_matches_with_ai": (ai or {}).get("dlp_matches_with_ai", 0)}
-        sources.append("DLP report: policy and matches")
+    ev["network"] = {"status": "no_data"}
+    gaps.append("Network egress (proxy, DNS, firewall) to AI services is not assessed: no archived report carries it; the DLP report covers Office 365 only.")
+    if dl.get("measurable"):
+        m, ai = dl["matches"], dl.get("ai") or {}
+        ev["data"] = {"status": "assessed", "matches_total": m["total"], "enforced_share": m["enforced_share"], "undo_share": m["undo_share"],
+                      "workloads": len(m["workloads"]), "ai_hits": ai.get("dlp_rule_hits", 0), "ai_unenforced_hits": ai.get("unenforced_hits", 0),
+                      "info_types": [x["name"] for x in dl.get("info_types", [])[:5]]}
+        sources.append("DLP_Activity_Report archive")
+        gaps += dl.get("gaps", [])
     else:
         ev["data"] = {"status": "no_data"}
-        gaps.append("Data exposure (DLP matches coinciding with AI use) is not assessed: the DLP report evidence is missing or not measurable for this tenant.")
+        gaps.append("Data exposure is not assessed: no DLP report evidence, or no DLP matches (which cannot separate 'no policy' from 'no sensitive data moved').")
     if ev["data"]["status"] != "assessed" and a.entra and os.path.exists(a.entra):
         o = (json.load(open(a.entra)).get("o365") or {})
         if o.get("fileDownloads") is not None:

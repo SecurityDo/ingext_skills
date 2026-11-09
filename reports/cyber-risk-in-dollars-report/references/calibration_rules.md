@@ -92,22 +92,20 @@ Per-event cost sits below the IBM 2025 global average breach ($4.44M) at mid-mar
 
 ## Accidental & insider data exposure
 
-Modelled only when `--dlp dlp_evidence.json` (the DLP report evidence) is supplied. Baseline 0.3 events a year; weight cap 1.5.
+Modelled only when `--dlp dlp_evidence.json` (from `DLP_Activity_Report`) shows DLP matches. Baseline 0.3 events a year; weight cap 1.5.
 
 | Evidence factor | Adds | When |
 |---|---|---|
-| DLP policy covers few channels | +0.3 | channels with a DLP policy (of 5): at most 1 |
-| DLP policy covers few channels | +0.1 | channels with a DLP policy (of 5): at most 3 |
-| DLP policies only audit | +0.15 | DLP policies enforcing (false = audit-only): exactly False |
-| DLP matches often overridden | +0.1 | share of DLP matches overridden by users: more than 0.3 |
-| DLP matches often overridden | +0.05 | share of DLP matches overridden by users: at least 0.1 |
-| anonymous sharing links | +0.15 | share of external shares that are anonymous links: more than 0.2 |
-| anonymous sharing links | +0.05 | share of external shares that are anonymous links: at least 0.05 |
-| bulk-download spikes | +0.1 | days with downloads above 10 times the tenant median: at least 1 |
-| unblocked uploads to AI services | +0.15 | unblocked uploads to generative-AI services: at least 1 |
-| DLP matches coinciding with AI use | +0.15 | DLP matches coinciding with generative-AI use: at least 1 |
+| DLP rules not enforced | +0.15 | share of DLP matches from enforcing rules: exactly 0 |
+| DLP rules not enforced | +0.1 | share of DLP matches from enforcing rules: fewer than 0.5 |
+| DLP matches often released | +0.1 | DLP undo events as a share of matches: more than 0.3 |
+| DLP matches often released | +0.05 | DLP undo events as a share of matches: at least 0.1 |
+| sensitive data reaching the Copilot assistant | +0.15 | unenforced Microsoft 365 Copilot DLP rule hits: at least 1 |
+| sensitive data reaching the Copilot assistant | +0.05 | enforced Microsoft 365 Copilot DLP rule hits: at least 1 |
+| sensitive-data matches at volume | +0.1 | DLP matches in the window: at least 1% of enabled accounts |
+| sensitive-data matches at volume | +0.05 | DLP matches in the window: at least 0% of enabled accounts |
 
-Not measurable (each widens the maximum): DLP shows controls and signals; data that left through a path no source monitors cannot be seen; Policy mode (enforce or audit-only) is unknown: no policy configuration source; No web or AI egress source, so uploads to generative-AI services are unmeasured.
+Not measurable (each widens the maximum): DLP shows signals from policies that matched; data that left through a path with no policy or no monitoring cannot be seen; Policy coverage, user overrides, external sharing and web or AI egress are not in the DLP report, so a workload with no matches may have no policy.
 
 | Loss component (reference size) | Min | Likely | Max | Scaling |
 |---|---|---|---|---|
@@ -131,11 +129,11 @@ An effect multiplies the frequency (lef) or the cost per event (lm); 0.5 halves 
 | Block legacy authentication | readiness rule I5 fired | bec: lef x0.9; breach: lef x0.95 |
 | Payment verification and inbox-rule alerting | always | bec: lef x0.8, lm x0.5 |
 | Stop log clearing; keep 90-day log retention | readiness rule L1 or L2 fired | ransomware: lm x0.9; breach: lm x0.85 |
-| Enforce DLP on mail, files and web; block unsanctioned AI uploads | DLP report rating: not Strong | exposure: lef x0.5, lm x0.8 |
+| Move DLP rules from test to enforce; enforce the Copilot policy | share of DLP matches from enforcing rules: fewer than 1 | exposure: lef x0.5, lm x0.8 |
 
 ## Not modelled
 
-- Accidental and insider data exposure, including shadow AI, is not modelled: the Office 365 archive counts sharing and external-access events but shows zero DLP matches, which cannot separate "no DLP policy" from "no matches", and there is no generative-AI egress source. This scenario is modelled only when the DLP report evidence is supplied.
+- Accidental and insider data exposure, including shadow AI, is not modelled: the Office 365 archive counts sharing and external-access events but shows zero DLP matches, which cannot separate "no DLP policy" from "no matches", and there is no generative-AI egress source. This scenario is modelled only when the DLP report shows matches.
 - Third-party and remote-tool compromise is not modelled separately to avoid double counting; extra remote-access tools already raise the ransomware frequency.
 
 ## Benchmarks

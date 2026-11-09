@@ -1,0 +1,260 @@
+{
+ "name": "DLP_Activity_Report",
+ "days": [
+  {
+   "entry": {
+    "completedOn": "2026-11-01T04:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "o365_trend",
+      "value": {
+       "table": {
+        "columns": [
+         {
+          "name": "timestamp"
+         },
+         {
+          "name": "matchEvents"
+         },
+         {
+          "name": "undoEvents"
+         },
+         {
+          "name": "enforcedEvents"
+         }
+        ],
+        "rows": [
+         {
+          "timestamp": "x",
+          "matchEvents": 30,
+          "undoEvents": 3,
+          "enforcedEvents": 6
+         }
+        ]
+       }
+      }
+     },
+     {
+      "name": "o365_rules",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "workload": "Exchange",
+          "policy": "Financial data",
+          "ruleName": "Card numbers",
+          "mode": "TestWithNotifyUser",
+          "severity": "High",
+          "action": "(none)",
+          "events": 18
+         },
+         {
+          "workload": "SharePoint",
+          "policy": "Financial data",
+          "ruleName": "Card numbers",
+          "mode": "Enable",
+          "severity": "High",
+          "action": "[BlockAccess]",
+          "events": 6
+         },
+         {
+          "workload": "ExtendedApplications",
+          "policy": "Copilot protection",
+          "ruleName": "Sensitive prompts",
+          "mode": "TestWithoutNotifyUser",
+          "severity": "Medium",
+          "action": "(none)",
+          "events": 6
+         }
+        ]
+       }
+      }
+     },
+     {
+      "name": "o365_infoTypes",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "infoType": "Credit Card Number",
+          "events": 20,
+          "instances": 31
+         },
+         {
+          "infoType": "U.S. Social Security Number",
+          "events": 10,
+          "instances": 12
+         }
+        ]
+       }
+      }
+     },
+     {
+      "name": "o365_alerts",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "Operation": "AlertTriggered",
+          "alertName": "x",
+          "severity": "High",
+          "status": "Active",
+          "alertType": "x",
+          "events": 2
+         }
+        ]
+       }
+      }
+     },
+     {
+      "name": "sources",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "source": "Office365 DLP trend",
+          "status": "ok"
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "entry": {
+    "completedOn": "2026-11-02T04:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "o365_trend",
+      "value": {
+       "table": {
+        "columns": [
+         {
+          "name": "timestamp"
+         },
+         {
+          "name": "matchEvents"
+         },
+         {
+          "name": "undoEvents"
+         },
+         {
+          "name": "enforcedEvents"
+         }
+        ],
+        "rows": [
+         {
+          "timestamp": "x",
+          "matchEvents": 60,
+          "undoEvents": 6,
+          "enforcedEvents": 12
+         }
+        ]
+       }
+      }
+     },
+     {
+      "name": "o365_rules",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "workload": "Exchange",
+          "policy": "Financial data",
+          "ruleName": "Card numbers",
+          "mode": "TestWithNotifyUser",
+          "severity": "High",
+          "action": "(none)",
+          "events": 36
+         },
+         {
+          "workload": "SharePoint",
+          "policy": "Financial data",
+          "ruleName": "Card numbers",
+          "mode": "Enable",
+          "severity": "High",
+          "action": "[BlockAccess]",
+          "events": 12
+         },
+         {
+          "workload": "ExtendedApplications",
+          "policy": "Copilot protection",
+          "ruleName": "Sensitive prompts",
+          "mode": "TestWithoutNotifyUser",
+          "severity": "Medium",
+          "action": "(none)",
+          "events": 12
+         }
+        ]
+       }
+      }
+     },
+     {
+      "name": "o365_infoTypes",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "infoType": "Credit Card Number",
+          "events": 40,
+          "instances": 62
+         },
+         {
+          "infoType": "U.S. Social Security Number",
+          "events": 20,
+          "instances": 24
+         }
+        ]
+       }
+      }
+     },
+     {
+      "name": "o365_alerts",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "Operation": "AlertTriggered",
+          "alertName": "x",
+          "severity": "High",
+          "status": "Active",
+          "alertType": "x",
+          "events": 4
+         }
+        ]
+       }
+      }
+     },
+     {
+      "name": "sources",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "source": "Office365 DLP trend",
+          "status": "ok"
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "_comment": "ILLUSTRATIVE SAMPLE ONLY - fictional numbers in the shape of the DLP_Activity_Report archive."
+}

@@ -1,12 +1,50 @@
 {
- "_comment": "ILLUSTRATIVE SAMPLE ONLY - fictional numbers in the shape the DLP report evidence is assumed to have (see references/calibration_rules.md). Never ship these values in a real report.",
- "rating": "Partial",
+ "days": 2,
+ "gaps": [
+  "Policy coverage is not visible: a workload with no matches may have no DLP policy.",
+  "User overrides, external sharing, bulk downloads and web or AI egress are not in this report; AI evidence is limited to the Microsoft 365 Copilot DLP policy."
+ ],
  "measurable": true,
- "days": 30,
- "policy": {"channels_total": 5, "channels_covered": 2, "enforcing": false},
- "matches": {"total": 214, "blocked": 12, "overridden": 41, "logged": 161, "overridden_share": 0.19},
- "sharing": {"external_shares": 880, "anonymous_links": 96, "anonymous_share": 0.109},
- "bulk": {"days_over_3x": 3, "days_over_10x": 1},
- "ai": {"uploads_total": 340, "unblocked_uploads": 275, "dlp_matches_with_ai": 4},
- "info_types": ["Financial account numbers", "Personal identifiers"]
+ "matches": {
+  "total": 90,
+  "undo": 9,
+  "enforced": 18,
+  "test_mode": 72,
+  "enforced_share": 0.2,
+  "undo_share": 0.1,
+  "workloads": {
+   "Exchange": 54,
+   "SharePoint": 18,
+   "ExtendedApplications": 18
+  },
+  "policies": 2,
+  "rules": 2,
+  "severity": {
+   "High": 72,
+   "Medium": 18
+  }
+ },
+ "ai": {
+  "dlp_rule_hits": 18,
+  "enforced_hits": 0,
+  "unenforced_hits": 18
+ },
+ "info_types": [
+  {
+   "name": "Credit Card Number",
+   "events": 60,
+   "instances": 93
+  },
+  {
+   "name": "U.S. Social Security Number",
+   "events": 30,
+   "instances": 36
+  }
+ ],
+ "alerts": {
+  "total": 6,
+  "by_severity": {
+   "High": 6
+  }
+ }
 }

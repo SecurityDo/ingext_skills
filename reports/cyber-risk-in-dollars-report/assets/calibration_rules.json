@@ -618,162 +618,135 @@
   "exposure": {
    "name": "Accidental &amp; insider data exposure",
    "description": "Sensitive data leaves through sharing, forwarding, bulk download or an AI service by mistake or by an insider, without an external attacker.",
-   "requires": "d.rating",
+   "requires": "d.matches.total",
    "baseline_lef": 0.3,
    "weight_cap": 1.5,
    "factors": [
     {
-     "id": "coverage",
-     "label": "DLP policy covers few channels",
-     "tiers": [
-      {
-       "weight": 0.3,
-       "when": [
-        {
-         "path": "d.policy.channels_covered",
-         "op": "<=",
-         "value": 1
-        }
-       ],
-       "text": "DLP policies cover {d.policy.channels_covered} of {d.policy.channels_total} channels (mail, files, chat, endpoint, web)"
-      },
-      {
-       "weight": 0.1,
-       "when": [
-        {
-         "path": "d.policy.channels_covered",
-         "op": "<=",
-         "value": 3
-        }
-       ],
-       "text": "DLP policies cover {d.policy.channels_covered} of {d.policy.channels_total} channels (mail, files, chat, endpoint, web)"
-      }
-     ]
-    },
-    {
-     "id": "auditonly",
-     "weight": 0.15,
-     "when": [
-      {
-       "path": "d.policy.enforcing",
-       "op": "==",
-       "value": false
-      }
-     ],
-     "label": "DLP policies only audit",
-     "text": "DLP policies are audit-only: matches are logged but not blocked"
-    },
-    {
-     "id": "overrides",
-     "label": "DLP matches often overridden",
-     "tiers": [
-      {
-       "weight": 0.1,
-       "when": [
-        {
-         "path": "d.matches.overridden_share",
-         "op": ">",
-         "value": 0.3
-        }
-       ],
-       "text": "Over 30% of DLP matches were overridden by users"
-      },
-      {
-       "weight": 0.05,
-       "when": [
-        {
-         "path": "d.matches.overridden_share",
-         "op": ">=",
-         "value": 0.1
-        }
-       ],
-       "text": "At least 10% of DLP matches were overridden by users"
-      }
-     ]
-    },
-    {
-     "id": "anonlinks",
-     "label": "anonymous sharing links",
+     "id": "enforce",
+     "label": "DLP rules not enforced",
      "tiers": [
       {
        "weight": 0.15,
        "when": [
         {
-         "path": "d.sharing.anonymous_share",
-         "op": ">",
-         "value": 0.2
+         "path": "d.matches.enforced_share",
+         "op": "==",
+         "value": 0
         }
        ],
-       "text": "Over 20% of external shares use anonymous links"
+       "text": "All {d.matches.total} DLP matches came from rules in test mode: they are logged, not blocked"
+      },
+      {
+       "weight": 0.1,
+       "when": [
+        {
+         "path": "d.matches.enforced_share",
+         "op": "<",
+         "value": 0.5
+        }
+       ],
+       "text": "Fewer than half of DLP matches came from rules in enforce mode"
+      }
+     ]
+    },
+    {
+     "id": "released",
+     "label": "DLP matches often released",
+     "tiers": [
+      {
+       "weight": 0.1,
+       "when": [
+        {
+         "path": "d.matches.undo_share",
+         "op": ">",
+         "value": 0.3
+        }
+       ],
+       "text": "Over 30% as many DLP undo events as matches (matches released or marked false positive)"
       },
       {
        "weight": 0.05,
        "when": [
         {
-         "path": "d.sharing.anonymous_share",
+         "path": "d.matches.undo_share",
          "op": ">=",
-         "value": 0.05
+         "value": 0.1
         }
        ],
-       "text": "At least 5% of external shares use anonymous links"
+       "text": "At least 10% as many DLP undo events as matches (matches released or marked false positive)"
       }
      ]
     },
     {
-     "id": "bulk",
-     "weight": 0.1,
-     "when": [
-      {
-       "path": "d.bulk.days_over_10x",
-       "op": ">=",
-       "value": 1
-      }
-     ],
-     "label": "bulk-download spikes",
-     "text": "Days with file downloads above 10 times the tenant's own median: {d.bulk.days_over_10x}"
-    },
-    {
-     "id": "aiupload",
-     "weight": 0.15,
-     "when": [
-      {
-       "path": "d.ai.unblocked_uploads",
-       "op": ">=",
-       "value": 1
-      }
-     ],
-     "label": "unblocked uploads to AI services",
-     "text": "{d.ai.unblocked_uploads} uploads to generative-AI services were not blocked"
-    },
-    {
      "id": "aidlp",
-     "weight": 0.15,
-     "when": [
+     "label": "sensitive data reaching the Copilot assistant",
+     "tiers": [
       {
-       "path": "d.ai.dlp_matches_with_ai",
-       "op": ">=",
-       "value": 1
+       "weight": 0.15,
+       "when": [
+        {
+         "path": "d.ai.unenforced_hits",
+         "op": ">=",
+         "value": 1
+        }
+       ],
+       "text": "{d.ai.unenforced_hits} Microsoft 365 Copilot DLP rule hits were not enforced"
+      },
+      {
+       "weight": 0.05,
+       "when": [
+        {
+         "path": "d.ai.enforced_hits",
+         "op": ">=",
+         "value": 1
+        }
+       ],
+       "text": "{d.ai.enforced_hits} Microsoft 365 Copilot DLP rule hits (enforced)"
       }
-     ],
-     "label": "DLP matches coinciding with AI use",
-     "text": "{d.ai.dlp_matches_with_ai} DLP matches coincided with generative-AI use"
+     ]
+    },
+    {
+     "id": "volume",
+     "label": "sensitive-data matches at volume",
+     "tiers": [
+      {
+       "weight": 0.1,
+       "when": [
+        {
+         "path": "d.matches.total",
+         "op": ">=",
+         "ratio_of": "r.identity.enabled",
+         "value": 0.01
+        }
+       ],
+       "text": "{d.matches.total} DLP matches in the window, at least 1 per 100 accounts"
+      },
+      {
+       "weight": 0.05,
+       "when": [
+        {
+         "path": "d.matches.total",
+         "op": ">=",
+         "ratio_of": "r.identity.enabled",
+         "value": 0.002
+        }
+       ],
+       "text": "{d.matches.total} DLP matches in the window, at least 1 per 500 accounts"
+      }
+     ]
     }
    ],
    "gaps": [
     {
      "id": "unmonitored",
      "always": true,
-     "text": "DLP shows controls and signals; data that left through a path no source monitors cannot be seen"
+     "text": "DLP shows signals from policies that matched; data that left through a path with no policy or no monitoring cannot be seen"
     },
     {
-     "id": "mode",
-     "missing": "d.policy.enforcing",
-     "text": "Policy mode (enforce or audit-only) is unknown: no policy configuration source"
-    },
-    {
-     "id": "egress",
-     "missing": "d.ai",
-     "text": "No web or AI egress source, so uploads to generative-AI services are unmeasured"
+     "id": "coverage",
+     "always": true,
+     "text": "Policy coverage, user overrides, external sharing and web or AI egress are not in the DLP report, so a workload with no matches may have no policy"
     }
    ],
    "loss": [
@@ -802,8 +775,8 @@
  "not_modelled": [
   {
    "id": "exposure",
-   "text": "Accidental and insider data exposure, including shadow AI, is not modelled: the Office 365 archive counts sharing and external-access events but shows zero DLP matches, which cannot separate \"no DLP policy\" from \"no matches\", and there is no generative-AI egress source. This scenario is modelled only when the DLP report evidence is supplied.",
-   "unless": "d.rating"
+   "text": "Accidental and insider data exposure, including shadow AI, is not modelled: the Office 365 archive counts sharing and external-access events but shows zero DLP matches, which cannot separate \"no DLP policy\" from \"no matches\", and there is no generative-AI egress source. This scenario is modelled only when the DLP report shows matches.",
+   "unless": "d.matches.total"
   },
   {
    "id": "thirdparty",
@@ -975,15 +948,15 @@
   },
   {
    "id": "dlp",
-   "name": "Enforce DLP on mail, files and web; block unsanctioned AI uploads",
-   "detail": "Move policies from audit to enforce on every channel, restrict anonymous links, and block or review uploads to generative-AI services that are not approved.",
+   "name": "Move DLP rules from test to enforce; enforce the Copilot policy",
+   "detail": "Tune the test-mode DLP rules and enforce them on mail, files and chat; enforce the Microsoft 365 Copilot DLP policy and review the information types involved.",
    "owner": "Data protection / Security Operations",
    "timeframe": "60 days",
    "when": [
     {
-     "path": "d.rating",
-     "op": "!=",
-     "value": "Strong"
+     "path": "d.matches.enforced_share",
+     "op": "<",
+     "value": 1
     }
    ],
    "effects": {
