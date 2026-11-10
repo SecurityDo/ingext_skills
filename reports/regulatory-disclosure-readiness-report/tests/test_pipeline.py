@@ -13,7 +13,7 @@ def run(*args):
 def main():
     t = tempfile.mkdtemp()
     run(os.path.join(S, "case_evidence.py"), "--facets", A + "/facets.sample.json", "--open", A + "/open.sample.json", "--closed", A + "/closed.sample.json", "--asof", "2026-11-10", "-o", t + "/case.json")
-    run(os.path.join(S, "platform_evidence.py"), "--tables", A + "/tables.sample.json", "--retention", A + "/retention.sample.json", "--clearing", A + "/clearing.sample.json", "--asof", "2026-11-10", "-o", t + "/plat.json")
+    run(os.path.join(S, "platform_evidence.py"), "--tables", A + "/tables.sample.json", "--windows-archive", A + "/windows_archive.sample.json", "--asof", "2026-11-10", "-o", t + "/plat.json")
     run(os.path.join(S, "rate_evidence.py"), "--cases", t + "/case.json", "--platform", t + "/plat.json", "--tenant", "Sample Co", "--date", "2026-11-10", "--applicability", A + "/applicability.sample.json", "--out", t + "/draft.json")
     c = json.load(open(t + "/case.json")); d = json.load(open(t + "/draft.json"))
     assert c["open"]["escalated"] == 1 and c["open"]["escalated_no_human"] == 1, c["open"]
@@ -23,7 +23,7 @@ def main():
     reg = {r["id"]: r["readiness"] for r in d["regimes"]}
     assert reg["sec"] == "confirm" and reg["dora"] == "n/a" and reg["nis2"] == "not ready", reg
     cap = {x["id"]: x["status"] for x in d["capabilities"]}
-    assert cap["timeline"] == "partial" and cap["scope"] == "partial" and cap["integrity"] == "ready", cap
+    assert cap["timeline"] == "ready" and cap["scope"] == "partial" and cap["integrity"] == "not ready", cap   # sample archive has 3 log-clearing events
     try:
         run(os.path.join(S, "render_report.py"), t + "/draft.json", t, "--no-pdf")
         assert any(f.startswith("Regulatory_Disclosure_Readiness_SampleCo_") and f.endswith(".html") for f in os.listdir(t))

@@ -1,0 +1,100 @@
+{
+ "days": [
+  {
+   "entry": {
+    "rangeFrom": "2026-10-01T00:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "win_trend",
+      "table": {
+       "rows": [
+        {
+         "Date": "2026-10-01T00:00:00Z",
+         "events": 5000,
+         "logsCleared": 0
+        }
+       ]
+      }
+     },
+     {
+      "name": "sources",
+      "table": {
+       "rows": [
+        {
+         "source": "WindowsAudit",
+         "status": "ok"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "entry": {
+    "rangeFrom": "2026-10-02T00:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "win_trend",
+      "table": {
+       "rows": [
+        {
+         "Date": "2026-10-02T00:00:00Z",
+         "events": 4800,
+         "logsCleared": 3
+        }
+       ]
+      }
+     },
+     {
+      "name": "sources",
+      "table": {
+       "rows": [
+        {
+         "source": "WindowsAudit",
+         "status": "ok"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "entry": {
+    "rangeFrom": "2026-10-03T00:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "win_trend",
+      "table": {
+       "rows": [
+        {
+         "Date": "2026-10-03T00:00:00Z",
+         "events": 5100,
+         "logsCleared": 0
+        }
+       ]
+      }
+     },
+     {
+      "name": "sources",
+      "table": {
+       "rows": [
+        {
+         "source": "WindowsAudit",
+         "status": "ok"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

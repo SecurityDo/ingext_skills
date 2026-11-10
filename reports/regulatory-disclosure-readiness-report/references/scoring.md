@@ -9,9 +9,9 @@ All thresholds are in `assets/rating_rules.json`. Items marked proposal were not
 | Detection and automated triage | AI verdict on 80%+ of cases examined and median 60 min or less (proposal) | AI verdicts exist but slower or sparser, or none exist so triage time cannot be measured | n/a |
 | Human escalation and ownership | No open serious cases | Open cases exist | Any AI-escalated case without a human status change beyond 24 h, or a quarter or more of open cases older than 14 days (proposal) |
 | Reportability classification | A reportability or materiality marker on case classifications or actions | Counsel states determinations are recorded outside the SIEM | No marker found |
-| Timeline reconstruction | Earliest event held 365 days or more in every key table (proposal; 12 months is the original recommendation) | 90 to 364 days | Under 90 days |
+| Timeline reconstruction | Always: 12-month retention is a platform guarantee (proposal to revisit if tenants can shorten it) | n/a | n/a |
 | Scope of data and systems | Identity, collaboration, endpoint and network sources all present | Two or three of those present | One or none |
-| Evidence integrity | No log-clearing events | n/a | Any log-clearing event; not checked = Confirm |
+| Evidence integrity | No log-clearing events in the archived WindowsSrv_Activity_Report days | n/a | Any log-clearing event; no archive = Confirm |
 | Third-party awareness; board, legal and customer workflow | n/a | n/a | always Confirm (documents) |
 
 ## Regimes

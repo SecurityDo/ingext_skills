@@ -75,13 +75,7 @@ def main():
         cap["reportability"] = ("partial", "Counsel states determinations are recorded outside the SIEM; the case itself carries no marker. " + rev)
     else:
         cap["reportability"] = ("not ready", rev)
-    rt = P["retention"]; md = rt["min_days"]
-    if md is None:
-        cap["timeline"] = ("confirm", "History was not measured.")
-    else:
-        st = "ready" if md >= R["retention"]["ready_days"] else ("partial" if md >= R["retention"]["partial_days"] else "not ready")
-        names = ", ".join("%s %d days" % (t, v["days"]) for t, v in sorted(rt["tables"].items(), key=lambda kv: kv[1]["days"]))
-        cap["timeline"] = (st, "Earliest event held: %s. Attackers are often present longer than this." % names if st != "ready" else "Earliest event held: %s." % names)
+    cap["timeline"] = ("ready", "Every log source is retained for 12 months, a platform guarantee that is stated here, not measured per tenant.")
     sc = P["scope"]; present = [k for k, v in sc.items() if v["present"]]
     need = R["scope_ready_categories"]; missing = [k for k in need if not sc[k]["present"]]
     sst = "ready" if not missing else ("partial" if len([k for k in need if sc[k]["present"]]) >= 2 else "not ready")
@@ -89,11 +83,11 @@ def main():
                                               ("Not visible in this tenant's data: %s." % "; ".join(sc[k]["label"] for k in missing)) if missing else "All four scoping sources are present."))
     cr = P.get("clearing")
     if cr is None:
-        cap["integrity"] = ("confirm", "Log clearing and directory-change auditing were not checked in this run.")
+        cap["integrity"] = ("confirm", "Log clearing was not checked: no archived Windows server activity report for this tenant.")
     elif cr["count"] > 0:
-        cap["integrity"] = ("not ready", "Security logs were cleared %s times in %d days; cleared evidence weakens any report." % (n(cr["count"]), cr["days"]))
+        cap["integrity"] = ("not ready", "Windows security logs were cleared %s times in %d archived days; cleared evidence weakens any report." % (n(cr["count"]), cr["days"]))
     else:
-        cap["integrity"] = ("ready", "No log-clearing events in %d days." % cr["days"])
+        cap["integrity"] = ("ready", "No log-clearing events in %d archived days." % cr["days"])
     cap["vendors"] = ("confirm", "Vendor incident notices are not visible in the SIEM; documents and contacts to be provided.")
     cap["workflow"] = ("confirm", "Board, legal and customer-notification approvers and templates are not visible in the SIEM; documents to be provided.")
 
@@ -160,12 +154,7 @@ def main():
         clock.append({"step": "Human takes first action", "pct": 0, "label": "No open cases", "color": BLUE})
     clock.append({"step": "Decide significance", "pct": 100 if cap["reportability"][0] != "ready" else 15, "label": "Not evidenced" if cap["reportability"][0] != "ready" else "Recorded", "color": RED if cap["reportability"][0] != "ready" else BLUE})
     clock.append({"step": "Scope data and systems", "pct": {"ready": 15, "partial": 60, "not ready": 100}.get(cap["scope"][0], 60), "label": {"ready": "Visible", "partial": "Partial", "not ready": "Blind"}[cap["scope"][0]], "color": {"ready": BLUE, "partial": AMB, "not ready": RED}[cap["scope"][0]]})
-    if md is not None:
-        held = min(md, R["retention"]["ready_days"])
-        clock.append({"step": "Preserve evidence for reports", "pct": round(100.0 * (1 - held / R["retention"]["ready_days"])) or 5, "label": "%d days held" % md,
-                      "color": BLUE if cap["timeline"][0] == "ready" else (AMB if cap["timeline"][0] == "partial" else RED)})
-    else:
-        clock.append({"step": "Preserve evidence for reports", "pct": 0, "label": "Not measured", "color": GRY})
+    clock.append({"step": "Preserve evidence for reports", "pct": 5, "label": "12 months held", "color": BLUE if cr is None or cr["count"] == 0 else RED})
 
     # ---- rating --------------------------------------------------------------------------------------------------
     not_ready = esc_over > 0 or old_share >= R["ownership"]["not_ready_open_old_share_pct"] or cap["reportability"][0] == "not ready"
@@ -179,7 +168,7 @@ def main():
     else:
         kpis.append({"label": "Serious cases still open", "value": n(opn), "note": ("oldest %s days" % n(round(op["oldest_days"]))) if op["oldest_days"] is not None else "none open"})
     kpis.append({"label": "Cases with a reportability decision", "value": "Yes" if rf else ("n/a" if reg_asserted else "0"), "note": "marker found" if rf else ("recorded outside the SIEM (per counsel)" if reg_asserted else "no significance or materiality flag")})
-    kpis.append({"label": "Investigable log history", "value": ("%d days" % md) if md is not None and P["retention"]["max_days"] == md else (("%d-%d days" % (md, P["retention"]["max_days"])) if md is not None else "n/a"), "note": "earliest event held in the key tables"})
+    kpis.append({"label": "Investigable log history", "value": "12 months", "note": "platform retention guarantee"})
     sd = (asof - datetime.timedelta(days=R["window_days"]))
     period = "%s - %s" % (sd.strftime("%d %b").lstrip("0"), asof.strftime("%d %b %Y").lstrip("0"))
     head = {"Not ready": "%s could not yet show that it decided and reported on time", "Partially ready": "%s can detect and decide, but evidence or scope gaps remain", "Ready": "%s is positioned to disclose inside the deadlines"}[rating] % a.tenant
@@ -190,10 +179,10 @@ def main():
         summ.append("%s cases at risk %s+ were raised in %d days. None of those examined carries an AI-analyst verdict, so how fast anyone looked at them cannot be shown from the case record." % (n(total), n(R["case_risk_floor"]), R["window_days"]))
     summ.append("%s of them (%d%%) are still open%s. No case carries a determination of whether it is reportable to the SEC, an EU authority or a customer%s." % (
         n(opn), round(pct_open), ", %s older than %d days" % (ge + n(op["older_than_flag"]), op["flag_days"]) if op["older_than_flag"] else "",
-        "" if not md else "; logs reach back %s days at most, which is the horizon for any scoping or final report" % (md if P["retention"]["max_days"] == md else "%d-%d" % (md, P["retention"]["max_days"]))))
+        "; logs are held for 12 months, the horizon for scoping and any final report"))
     summ.append("Whether SEC and NIS2 rules apply has %s; contractual notice periods are assumed." % ("not been established" if app.get("sec", "unknown") == "unknown" or app.get("nis2", "unknown") == "unknown" else "been confirmed by counsel"))
     ask = ("confirm with counsel which regimes apply (SEC registrant status, EU establishment or services, customer notification clauses); approve a disclosure-decision procedure in which every escalated "
-           "case receives a recorded reportability determination within %d hours; and fund evidence preservation (12-month log retention, no log clearing) so that any report can be substantiated." % dl)
+           "case receives a recorded reportability determination within %d hours; and stop any security-log clearing and snapshot evidence when a case is escalated, so that any report can be substantiated." % dl)
 
     # ---- backlog -------------------------------------------------------------------------------------------------
     backlog = [{"bucket": "Serious cases (risk %s+) in %d days" % (n(R["case_risk_floor"]), R["window_days"]), "count": n(total), "note": "Volume the disclosure process must keep pace with"},
@@ -223,11 +212,11 @@ def main():
                   "risk": "Without a documented determination the business cannot evidence timely assessment, and reportable incidents can be closed as routine.",
                   "recommendation": "Add mandatory fields to every escalated case: reportable (yes, no, under assessment), regimes, determination time and approver; define significance and materiality criteria with counsel and finance.",
                   "owner": "CISO / Legal", "timeframe": "30 days", "mitre": "-"})
-    if cap["timeline"][0] != "ready" or cap["integrity"][0] == "not ready":
-        F.append({"severity": "high", "title": "Evidence needed for reports is short-lived" + (" or destroyed" if cap["integrity"][0] == "not ready" else ""),
-                  "finding": "%s%s" % (cap["timeline"][1], (" " + cap["integrity"][1]) if cap["integrity"][0] == "not ready" else ""),
+    if cap["integrity"][0] == "not ready":
+        F.append({"severity": "high", "title": "Evidence needed for reports is being destroyed",
+                  "finding": cap["integrity"][1],
                   "risk": "72-hour and final reports require a defensible timeline of what happened and since when; missing or cleared evidence weakens every regulatory, customer and insurance submission.",
-                  "recommendation": "Retain security logs for 12 months, stop any log clearing, enable directory-change auditing, and snapshot relevant logs to immutable storage when a case is escalated.",
+                  "recommendation": "Stop any log clearing, enable directory-change auditing, and snapshot relevant logs to immutable storage when a case is escalated.",
                   "owner": "Security Operations", "timeframe": "30 days", "mitre": "T1070.001"})
     if any(app.get(k, "unknown") == "unknown" for k in ("sec", "nis2")):
         F.append({"severity": "high", "title": "Which disclosure regimes apply has not been established",
@@ -265,8 +254,7 @@ def main():
     strengths = []
     if tr["with_ai_verdict"] and cap["triage"][0] == "ready":
         strengths.append("Every serious case examined receives an AI-analyst verdict within minutes, which starts the disclosure clock quickly.")
-    if md and md >= R["retention"]["partial_days"]:
-        strengths.append("Identity and collaboration logs are held for %d days or more, enough to reconstruct recent incidents." % md)
+    strengths.append("All log sources are retained for 12 months, enough to reconstruct an incident and substantiate a final report.")
     if present:
         strengths.append("Evidence sources present: %s." % "; ".join(sc[k]["label"] for k in present))
     if total:
@@ -281,8 +269,8 @@ def main():
     if missing:
         gaps.append("No %s in this tenant's data, so scope could not be measured there." % " or ".join(sc[k]["label"] for k in missing))
     if cr is None:
-        gaps.append("Log-clearing events were not checked in this run.")
-    gaps.append("Retention is the age of the oldest event held, so a longer retention policy is understated; it does not prove the data is complete.")
+        gaps.append("Log-clearing events were not checked: no archived Windows server activity report exists for this tenant.")
+    gaps.append("Retention of 12 months is a platform guarantee; it is not tested per tenant and does not prove a given source was ingested for the whole period.")
     dets = [{"name": "Start the disclosure clock", "logic": "When the AI escalates a case or risk exceeds 8,000, open a reportability task with a 24-hour timer and a named owner."},
             {"name": "Escalation not acknowledged", "logic": "Alert the on-call lead when an escalated case has no human status change within 1 hour, and again at 4 hours."},
             {"name": "Reportability not recorded", "logic": "Alert when an escalated case is closed, or still open after 24 hours, without a reportable yes/no/under-assessment value."},
@@ -290,7 +278,7 @@ def main():
             {"name": "Security-log clearing", "logic": "Alert on Windows Event 1102 / 104 or loss of a log source on any domain controller or critical server."},
             {"name": "Vendor application sign-in anomaly", "logic": "Alert when a backup or SaaS vendor application signs in from a new network or reads tenant-wide data."}]
     evidence = [{"source": "behavior_summary_search", "reference": "%d-day case register (risk %s+), open cases and a closed sample" % (R["window_days"], n(R["case_risk_floor"]))},
-                {"source": "kql_search", "reference": "earliest and latest event per key table (retention)"},
+                {"source": "download_report_archive", "reference": "WindowsSrv_Activity_Report win_trend (log-clearing events), when the tenant has Windows event logs"},
                 {"source": "list_data_tables", "reference": "scope: which log sources exist in this tenant"}]
     out = {"tenant": a.tenant, "assessment_date": a.date, "window_days": R["window_days"], "period_label": period, "readiness_rating": rating, "headline": head,
            "summary": summ, "ciso_ask": ask, "kpis": kpis, "regimes": regimes, "regimes_note": "Regulatory summaries are for readiness planning, not legal advice. Applicability must be confirmed by %s's counsel." % a.tenant,

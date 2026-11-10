@@ -6,7 +6,7 @@ description: >-
   Item 1.05, NIS2 Art. 23, DORA Art. 19 and customer or privacy-notice deadlines, and render a board report (HTML and PDF): overall
   readiness (Ready, Partially ready, Not ready), a clock test, eight disclosure capabilities, the open-case register, findings, a control
   map and proposed detections. Measured from the behavior-case register (triage time, escalations awaiting a human decision,
-  reportability, open backlog), log retention and the log sources present. USE THIS SKILL for "regulatory disclosure readiness",
+  reportability, open backlog), the log sources present and log clearing. USE THIS SKILL for "regulatory disclosure readiness",
   "SEC 8-K cyber disclosure", "NIS2 or DORA reporting readiness", "could we report in time", "breach notification readiness",
   "Board Rpt 3". Read-only via the tenant MCP connector. Not legal advice. DO NOT use it for one incident (incident-investigation).
 ---
@@ -31,14 +31,13 @@ durations only, never individuals, hosts or addresses. The regulatory content is
      `facets` `scoreLevel`, `keyType` on the first page. Large replies are saved to a file by the tool; keep every file.
    - Closed sample: `riskScore:[3000 TO *] AND status:closed`, `sortField` `to`, `limit` 20 (one or two pages).
    Small replies come back inline instead of in a file; write them to a file yourself before step 5.
-3. **Retention.** `list_data_tables` (save as `tables.json`). For each key table present (Office365, AzureSigninLogs, AzureAuditLogs,
-   the endpoint and network tables) run `kql_search` with `rangeFrom` 12 months back:
-   `<Table> | summarize first=min(timestamp), last=max(timestamp), n=count()` (use `TimeGenerated` for the Azure tables).
-   Write `{"<Table>": {"first": ..., "last": ..., "n": ...}}` to `retention.json`. Optionally, if a Windows security table exists,
-   count Event 1102 and 104 in 30 days and write `clearing.json` (`{"count": N, "days": 30}`).
+3. **Scope and log clearing (no event search).** `list_data_tables` (save as `tables.json`). If the tenant has Windows event logs, call
+   `list_report_archive` for `WindowsSrv_Activity_Report`, then `download_report_archive` for the last 30 days with `objects` `win_trend`
+   and `sources` (never the facet tables, which hold user names); save as `windows_archive.json`. Its `logsCleared` column counts Event 1102
+   and 104. No archived days leaves evidence integrity as "Confirm". Retention is not probed: every tenant keeps 12 months of logs.
 4. **Evidence:**
    `python3 scripts/case_evidence.py --facets facets.json --open open*.json --closed closed*.json --asof YYYY-MM-DD -o case_evidence.json`
-   `python3 scripts/platform_evidence.py --tables tables.json --retention retention.json [--clearing clearing.json] --asof YYYY-MM-DD -o platform_evidence.json`
+   `python3 scripts/platform_evidence.py --tables tables.json [--windows-archive windows_archive.json] --asof YYYY-MM-DD -o platform_evidence.json`
 5. **Rate and draft:** `python3 scripts/rate_evidence.py --cases case_evidence.json --platform platform_evidence.json --tenant "<Name>" --date YYYY-MM-DD [--applicability applicability.json] --out draft_findings.json`.
    Ratings come only from `assets/rating_rules.json` (see `references/scoring.md`).
 6. **Review** the draft: plain language, no individual names; add what the rules cannot know (counsel's notes, what the tenant already
@@ -51,7 +50,7 @@ durations only, never individuals, hosts or addresses. The regulatory content is
 - **Reportability decisions** are not a field on Ingext cases, so the report shows "Not evidenced" unless a marker is found in case
   classifications or actions, or counsel states determinations are recorded elsewhere (`reportability_register`).
 - **Triage and escalation** come from AI-analyst comments on the case. A tenant without them shows "Not evidenced" and the human-action clock uses case age.
-- **Retention** is the age of the oldest event held; a longer policy is understated and completeness is not proved.
+- **Retention** is stated, not measured: 12 months is a platform guarantee, so timeline reconstruction is always Ready.
 - **Scope** is which log sources exist (identity, collaboration, endpoint, network, cloud), not what an incident touched.
 - Board, legal and customer-notice workflow, vendor incident intake and applicability are documents: "Confirm".
 - If fewer open cases were read than exist, counts of old, escalated and personal-data cases are lower bounds (the report says so).
@@ -59,4 +58,4 @@ durations only, never individuals, hosts or addresses. The regulatory content is
 ## Rules
 
 - Only report what the data shows. Never change tenant configuration. Never name individuals.
-- Event tables are used only for the retention min/max and the optional log-clearing count.
+- No event table is searched. Cases come from `behavior_summary_search`; scope from `list_data_tables`; log clearing from the archived Windows report.

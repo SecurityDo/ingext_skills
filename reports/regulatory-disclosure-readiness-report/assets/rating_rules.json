@@ -6,7 +6,7 @@
   "ai_actor": "AI-Assistant",
   "triage": {"ready_median_minutes": 60, "ready_coverage_pct": 80, "_status": "proposal"},
   "ownership": {"open_age_days_flag": 14, "not_ready_open_old_share_pct": 25, "_status": "proposal"},
-  "retention": {"ready_days": 365, "partial_days": 90, "_status": "proposal; 12 months is the original recommendation"},
+  "retention": {"guaranteed_days": 365, "_status": "platform guarantee: every tenant keeps 12 months of logs, so retention is stated, not measured"},
   "scope_categories": {
     "identity":  {"label": "identity sign-in and directory audit", "tables": ["AzureSigninLogs", "AzureAuditLogs", "AADNonInteractiveUserSignInLogs", "MSEntra", "Duo", "Okta", "AzureAudit"]},
     "collaboration": {"label": "email, SharePoint and OneDrive activity", "tables": ["Office365", "GSuite"]},
