@@ -281,9 +281,14 @@ table.matrix th.dotc{text-transform:none;letter-spacing:0;font-size:12px}
 table.matrix td.num{text-align:right;font-family:var(--mono);font-weight:600;color:var(--navy)}
 table.matrix td.note{font-size:12px;color:var(--mut)}
 table.matrix td.note.gap{color:var(--ink);font-weight:600}
+table.matrix .dot{display:inline-block;width:10px;height:10px;border-radius:50%;border:1.5px solid #c9ced8;background:#fff;vertical-align:middle}
+table.matrix .dot.on{background:var(--ink);border-color:var(--ink)}
+table.matrix td.note{display:table-cell;position:static;background:none;border:0;border-bottom:1px solid var(--rule);margin:0;padding:8px 4px;font-size:11.5px;line-height:1.4;color:var(--t3)}
 .types-wide .type-rows{display:grid;grid-template-columns:repeat(3,1fr);gap:0 20px}
 table.devlist th{white-space:normal;overflow:visible;text-overflow:clip}
 table.devlist td{font-size:12px;padding:7px 8px}
+table.devlist td.stc{padding-left:2px;padding-right:2px}
+table.devlist .st{white-space:nowrap;font-size:10.5px;gap:5px;padding:1px 8px 1px 6px}
 table.devlist td.host{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--navy);border-left:4px solid var(--navy)}
 table.devlist tr.grp td{background:#f8fafc;font-weight:700;font-size:12px;color:var(--navy);border-left:0}
 table.devlist tr.grp td span{color:var(--mut);font-weight:500}
@@ -298,6 +303,7 @@ table.devlist tr.grp td span{color:var(--mut);font-weight:500}
 table.devlist thead{display:table-header-group}
 table.devlist{break-inside:auto}
 .panel.col-12:has(table.devlist){break-inside:auto}}
+@media print{.next-steps{break-inside:auto}}
 </style>
 </head>
 

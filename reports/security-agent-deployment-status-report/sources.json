@@ -8,6 +8,7 @@
       "resource": "sentinelOneAgent",
       "filter": {"isDecommissioned": false},
       "host": "computerName",
+      "ip": "lastIpToMgmt",
       "os": "osName",
       "lastSeen": "lastActiveDate",
       "required": true
@@ -20,6 +21,7 @@
       "filter": {"onboardingStatus": "Onboarded", "isExcluded": false},
       "host": "computerDnsName",
       "deviceId": "aadDeviceId",
+      "ip": "lastIpAddress",
       "os": "osPlatform",
       "lastSeen": "lastSeen",
       "required": true
@@ -41,6 +43,30 @@
       "lastSeen": "approximateLastSignInDateTime",
       "required": false,
       "missingLabel": "Not joined"
+    },
+    {
+      "name": "Horizon3",
+      "label": "Horizon3",
+      "scope": "hosts that Horizon3.ai NodeZero internal pentests found on the network in the last 90 days",
+      "resource": "horizon3Host",
+      "filter": {
+        "InScope": true,
+        "pentest.opType": {"not": ["ExternalAttack", "AWSPentest", "AzurePentest", "K8sPentest", "Phishing", "WebApp"]}
+      },
+      "key": "IP",
+      "host": ["DNSHostnames", "Hostname"],
+      "ip": "IP",
+      "matchIp": true,
+      "os": "OS",
+      "deviceType": "Device",
+      "lastSeen": "pentest.completedAt",
+      "staleDays": 90,
+      "weaknesses": "NumWeaknesses",
+      "confirmedWeaknesses": "NumConfirmedWeaknesses",
+      "required": false,
+      "discovery": true,
+      "activeLabel": "Seen",
+      "missingLabel": "Not seen"
     }
   ]
 }
