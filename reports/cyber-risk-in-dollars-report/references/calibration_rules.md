@@ -98,8 +98,8 @@ Modelled only when `--dlp dlp_evidence.json` (from `DLP_Activity_Report`) shows 
 |---|---|---|
 | DLP rules not enforced | +0.15 | share of DLP matches from enforcing rules: exactly 0 |
 | DLP rules not enforced | +0.1 | share of DLP matches from enforcing rules: fewer than 0.5 |
-| DLP matches often released | +0.1 | DLP undo events as a share of matches: more than 0.3 |
-| DLP matches often released | +0.05 | DLP undo events as a share of matches: at least 0.1 |
+| DLP matches often released | +0.1 | DLP undo events (edited documents excluded) as a share of matches: more than 0.3 |
+| DLP matches often released | +0.05 | DLP undo events (edited documents excluded) as a share of matches: at least 0.1 |
 | sensitive data reaching the Copilot assistant | +0.15 | unenforced Microsoft 365 Copilot DLP rule hits: at least 1 |
 | sensitive data reaching the Copilot assistant | +0.05 | enforced Microsoft 365 Copilot DLP rule hits: at least 1 |
 | sensitive-data matches at volume | +0.1 | DLP matches in the window: at least 1% of enabled accounts |

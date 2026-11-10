@@ -11,6 +11,9 @@ text says only "many hosts" and "broad use". All values live in `assets/rating_r
 | 4 Data exposure (DLP_Activity_Report) | Microsoft 365 Copilot DLP policy hits that were not enforced (adapted from the original: DLP hits coinciding with AI use) | Copilot hits that were enforced, or not all DLP rules enforce | matches, all enforced, none on the Copilot policy | not assessed when no matches |
 | 5 Detection | | no enabled AI-specific EventWatch rule (original: no AI coverage is Medium) | at least one | |
 
+Path 4 also shows, without changing its risk: the share of matches released or reported as false positive (undo events whose reason is
+not DocumentModified), rules that allow user override, the locations covered by new policies and anonymous-link volume.
+
 Posture = highest assessed path risk (None or Low: Low; Medium: Moderate; High: Elevated), raised one level when three or
 more paths are Medium or worse. The original sample file shows Elevated with five Medium-or-worse paths, which the literal
 rule would raise to High; this skill applies the literal rule. A path with no data is "not assessed", never clean.

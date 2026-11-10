@@ -76,6 +76,22 @@ def build(ev, tenant, date):
         d4 = {"id": "data", "status": "assessed", "risk": risk,
               "headline": "%s DLP matches (%d%% enforced) across %s workloads; %s hit the Microsoft 365 Copilot policy." % (format(dt["matches_total"], ","), round(dt["enforced_share"] * 100), dt["workloads"], format(ai, ",")),
               "sources": ["DLP_Activity_Report"], "metrics": [{"label": "DLP matches", "value": format(dt["matches_total"], ",")}, {"label": "Copilot policy hits", "value": format(ai, ",")}]}
+        ov, pc, sh = dt.get("overrides") or {}, dt.get("policy_config") or {}, dt.get("sharing") or {}
+        if ov.get("reason_split"):
+            d4["metrics"].append({"label": "Released or reported false positive", "value": "%d%%" % round(dt["undo_share"] * 100)})
+            d4["metrics"].append({"label": "False-positive reports", "value": format(ov.get("false_positive_reports") or 0, ",")})
+        if pc.get("available") and pc.get("policies_created"):
+            d4["metrics"].append({"label": "Locations in new policies", "value": ", ".join(pc["locations_covered"]) or "none"})
+        if sh.get("available"):
+            d4["metrics"].append({"label": "Anonymous links created", "value": format(sh["anonymous_links_created"], ",")})
+        if pc.get("rules_allow_override"):
+            findings.append({"severity": "low", "path": "data", "title": "DLP rules let users override a policy tip",
+                             "detail": "%s DLP rule changes in the window allow users to override the policy tip, so a block can be lifted by the person it applies to." % format(pc["rules_allow_override"], ","),
+                             "evidence": "DLP report, policy configuration.", "mitre": ""})
+        if sh.get("available") and sh.get("anonymous_links_created"):
+            findings.append({"severity": "low", "path": "data", "title": "Anonymous sharing links are being created",
+                             "detail": "%s anonymous links were created in the window. This is sharing volume, not proof that sensitive data was shared; review it next to the DLP matches." % format(sh["anonymous_links_created"], ","),
+                             "evidence": "DLP report, sharing.", "mitre": "T1567"})
         if unenf:
             findings.append({"severity": "high", "path": "data", "title": "Sensitive data reaches an AI assistant and is only logged",
                              "detail": "The Microsoft 365 Copilot DLP policy matched %s times without enforcing, so sensitive content is reaching the assistant while the policy only observes." % format(unenf, ","),
@@ -137,6 +153,7 @@ def build(ev, tenant, date):
     paths.append(p5)
     order = ["saas", "network", "endpoint", "data", "detection"]
     paths.sort(key=lambda p: order.index(p["id"]))
+    findings.sort(key=lambda f: -ORDER[f["severity"]])      # stable: high first, then medium, then low
     # ---- posture
     lv = [p["risk"] for p in paths if p["status"] == "assessed"]
     top = max(lv or ["none"], key=lambda k: ORDER[k])

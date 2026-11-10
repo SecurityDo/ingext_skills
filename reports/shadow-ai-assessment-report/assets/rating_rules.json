@@ -38,6 +38,7 @@
   "high": "Microsoft 365 Copilot DLP policy matches that were not enforced (original rule: DLP hits coinciding with AI use, adapted to the one AI signal the DLP report carries)",
   "medium": "Copilot policy matches that were enforced, or DLP matches where not all rules enforce",
   "low": "matches, all enforced, none on the Copilot policy",
-  "no_data": "no DLP evidence, or zero matches (cannot separate no policy from no sensitive data moved)"
+  "no_data": "no DLP evidence, or zero matches (cannot separate no policy from no sensitive data moved)",
+  "informational": "override settings, false-positive reports, policy locations and sharing volume are shown as metrics and low findings; they do not change the path risk"
  }
 }

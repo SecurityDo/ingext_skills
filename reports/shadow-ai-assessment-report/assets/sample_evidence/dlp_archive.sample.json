@@ -30,7 +30,9 @@
           "timestamp": "x",
           "matchEvents": 30,
           "undoEvents": 3,
-          "enforcedEvents": 6
+          "enforcedEvents": 6,
+          "undoDocModified": 2,
+          "falsePositiveReports": 1
          }
         ]
        }
@@ -112,6 +114,111 @@
       }
      },
      {
+      "name": "o365_undos",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "workload": "SharePoint",
+          "policy": "Financial data",
+          "ruleName": "Card numbers",
+          "reason": "DocumentModified",
+          "overriddenActions": "[\"GenerateAlert\"]",
+          "events": 2
+         },
+         {
+          "workload": "Exchange",
+          "policy": "Financial data",
+          "ruleName": "Card numbers",
+          "reason": "ReportFalsePositive",
+          "overriddenActions": "[\"NotifyUser\"]",
+          "events": 1
+         }
+        ]
+       }
+      }
+     },
+     {
+      "name": "o365_policyConfig",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "Operation": "New-DlpCompliancePolicy",
+          "mode": "TestWithNotifications",
+          "events": 1,
+          "exchange": 1,
+          "sharepoint": 1,
+          "onedrive": 1,
+          "teams": 1,
+          "endpoint": 1,
+          "allowOverride": 0,
+          "blockAccess": 0,
+          "generateAlert": 0
+         },
+         {
+          "Operation": "New-DlpComplianceRule",
+          "mode": "(not set)",
+          "events": 3,
+          "exchange": 0,
+          "sharepoint": 0,
+          "onedrive": 0,
+          "teams": 0,
+          "endpoint": 0,
+          "allowOverride": 1,
+          "blockAccess": 1,
+          "generateAlert": 3
+         }
+        ]
+       }
+      }
+     },
+     {
+      "name": "o365_policyChanges",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "Operation": "New-DlpCompliancePolicy",
+          "events": 1
+         },
+         {
+          "Operation": "New-DlpComplianceRule",
+          "events": 3
+         }
+        ]
+       }
+      }
+     },
+     {
+      "name": "o365_sharing",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "workload": "OneDrive",
+          "Operation": "SharingLinkCreated",
+          "events": 40
+         },
+         {
+          "workload": "SharePoint",
+          "Operation": "AnonymousLinkCreated",
+          "events": 5
+         },
+         {
+          "workload": "SharePoint",
+          "Operation": "CompanyLinkCreated",
+          "events": 30
+         }
+        ]
+       }
+      }
+     },
+     {
       "name": "sources",
       "value": {
        "table": {
@@ -157,7 +264,9 @@
           "timestamp": "x",
           "matchEvents": 60,
           "undoEvents": 6,
-          "enforcedEvents": 12
+          "enforcedEvents": 12,
+          "undoDocModified": 2,
+          "falsePositiveReports": 1
          }
         ]
        }
@@ -233,6 +342,75 @@
           "status": "Active",
           "alertType": "x",
           "events": 4
+         }
+        ]
+       }
+      }
+     },
+     {
+      "name": "o365_undos",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "workload": "SharePoint",
+          "policy": "Financial data",
+          "ruleName": "Card numbers",
+          "reason": "DocumentModified",
+          "overriddenActions": "[\"GenerateAlert\"]",
+          "events": 2
+         },
+         {
+          "workload": "Exchange",
+          "policy": "Financial data",
+          "ruleName": "Card numbers",
+          "reason": "ReportFalsePositive",
+          "overriddenActions": "[\"NotifyUser\"]",
+          "events": 1
+         }
+        ]
+       }
+      }
+     },
+     {
+      "name": "o365_policyConfig",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": []
+       }
+      }
+     },
+     {
+      "name": "o365_policyChanges",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": []
+       }
+      }
+     },
+     {
+      "name": "o365_sharing",
+      "value": {
+       "table": {
+        "columns": [],
+        "rows": [
+         {
+          "workload": "OneDrive",
+          "Operation": "SharingLinkCreated",
+          "events": 40
+         },
+         {
+          "workload": "SharePoint",
+          "Operation": "AnonymousLinkCreated",
+          "events": 5
+         },
+         {
+          "workload": "SharePoint",
+          "Operation": "CompanyLinkCreated",
+          "events": 30
          }
         ]
        }

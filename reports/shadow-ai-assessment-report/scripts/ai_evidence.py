@@ -163,7 +163,9 @@ def main():
         m, ai = dl["matches"], dl.get("ai") or {}
         ev["data"] = {"status": "assessed", "matches_total": m["total"], "enforced_share": m["enforced_share"], "undo_share": m["undo_share"],
                       "workloads": len(m["workloads"]), "ai_hits": ai.get("dlp_rule_hits", 0), "ai_unenforced_hits": ai.get("unenforced_hits", 0),
-                      "info_types": [x["name"] for x in dl.get("info_types", [])[:5]]}
+                      "info_types": [x["name"] for x in dl.get("info_types", [])[:5]],
+                      "undo_total_share": m.get("undo_total_share"), "undo_doc_modified": m.get("undo_doc_modified"),
+                      "overrides": dl.get("overrides") or {}, "policy_config": dl.get("policy_config") or {}, "sharing": dl.get("sharing") or {}}
         sources.append("DLP_Activity_Report archive")
         gaps += dl.get("gaps", [])
     else:

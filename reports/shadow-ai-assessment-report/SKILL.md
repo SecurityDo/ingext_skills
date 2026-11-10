@@ -1,6 +1,6 @@
 ---
 name: shadow-ai-assessment-report
-version: 1.0.0
+version: 1.1.0
 description: >-
   Assess ONE Fluency / Ingext tenant's shadow generative-AI exposure for a CISO and render a report (HTML and PDF): posture
   (Low, Moderate, Elevated, High), five evidence paths, AI services found, key findings, actions by horizon, proposed detections
@@ -27,7 +27,7 @@ style. Board-safe: counts and AI service names only, never users, hosts or addre
 3. **Detection coverage.** Call `eventwatch_rule_list` once per term with `nameContains` (Consent, OAuth, Copilot, LLM, ChatGPT,
    OpenAI, Ollama, GenAI, Shadow), save each reply and merge them into one JSON list file (`rules.json`).
 4. **DLP evidence (path 4).** Call `list_report_archive` for `DLP_Activity_Report` (that exact name), then `download_report_archive` for the
-   last 30 days with `objects` set to `o365_trend`, `o365_rules`, `o365_infoTypes`, `o365_alerts` and `sources` (never `o365_actors`, which
+   last 30 days with `objects` set to `o365_trend`, `o365_rules`, `o365_infoTypes`, `o365_alerts`, `o365_undos`, `o365_policyConfig`, `o365_policyChanges`, `o365_sharing` and `sources` (never `o365_actors`, which
    holds user names), save the result to a file and run `python3 scripts/dlp_evidence.py <file> -o dlp_evidence.json`. Pass that file with
    `--dlp`. Zero matches or no archive leaves path 4 "not assessed". Optionally pass the ransomware skill's `entra_evidence.json` with
    `--entra`: bulk file downloads then appear as context under path 4. Never run the report or query Office365 live.
@@ -43,7 +43,9 @@ style. Board-safe: counts and AI service names only, never users, hosts or addre
 
 - **Network egress (path 2):** no archived report carries proxy, DNS or firewall traffic to AI services, so it is "not assessed", never clean.
 - **Data exposure (path 4)** comes from the Office 365 DLP report. It sees only policies that matched, so zero matches is "not assessed", and
-  the only AI signal is the Microsoft 365 Copilot DLP policy; consumer AI uploads are not seen. Policy coverage and user overrides are not in it.
+  the only AI signal is the Microsoft 365 Copilot DLP policy; consumer AI uploads are not seen. Undo events are split by reason (an edited
+  document is not a release). Policy configuration covers only policies created or changed in the log window; overrides with a justification
+  are not in the audit log; sharing counts are volume, not proof of exposure. These extra signals are shown but do not change the risk.
 - Granted permission names are mostly absent from the application dump; per-user grants are app names only.
 - Without a sanctioned list, approval is "unverified".
 

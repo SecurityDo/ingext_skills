@@ -11,7 +11,7 @@ LABEL = {
     "n.signins.single_factor_share_pct": "single-factor share of successful sign-ins (%)", "n.signins.legacyAuth": "legacy-authentication sign-ins",
     "n.signins.risky": "risky sign-ins", "n.signins.failed": "failed sign-ins", "n.signins.events": "sign-in attempts",
     "r.conditional_access.mfa_all_users": "enforced policies requiring MFA for all users on all apps", "r.identity.global_admins": "Global Administrators",
-    "d.matches.enforced_share": "share of DLP matches from enforcing rules", "d.matches.undo_share": "DLP undo events as a share of matches",
+    "d.matches.enforced_share": "share of DLP matches from enforcing rules", "d.matches.undo_share": "DLP undo events (edited documents excluded) as a share of matches",
     "d.matches.total": "DLP matches in the window", "r.identity.enabled": "enabled accounts", "d.ai.unenforced_hits": "unenforced Microsoft 365 Copilot DLP rule hits", "d.ai.enforced_hits": "enforced Microsoft 365 Copilot DLP rule hits",
 }
 OPW = {">=": "at least", ">": "more than", "<=": "at most", "<": "fewer than", "==": "exactly", "!=": "not"}

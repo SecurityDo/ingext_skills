@@ -663,7 +663,7 @@
          "value": 0.3
         }
        ],
-       "text": "Over 30% as many DLP undo events as matches (matches released or marked false positive)"
+       "text": "Over 30% as many DLP undo events as matches, not counting edited documents (matches released or marked false positive)"
       },
       {
        "weight": 0.05,
@@ -674,7 +674,7 @@
          "value": 0.1
         }
        ],
-       "text": "At least 10% as many DLP undo events as matches (matches released or marked false positive)"
+       "text": "At least 10% as many DLP undo events as matches, not counting edited documents (matches released or marked false positive)"
       }
      ]
     },

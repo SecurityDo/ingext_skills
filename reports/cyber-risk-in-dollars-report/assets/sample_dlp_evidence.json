@@ -1,17 +1,22 @@
 {
  "days": 2,
  "gaps": [
-  "Policy coverage is not visible: a workload with no matches may have no DLP policy.",
-  "User overrides, external sharing, bulk downloads and web or AI egress are not in this report; AI evidence is limited to the Microsoft 365 Copilot DLP policy."
+  "Policy coverage is only partly visible: new or changed policies show the locations they cover, but a workload with no matches may still have no DLP policy.",
+  "User overrides with a justification have no audit event; only false-positive reports, undo reasons and rules that allow override are counted.",
+  "Bulk downloads and web or AI egress are not in this report; AI evidence is limited to the Microsoft 365 Copilot DLP policy.",
+  "Sharing counts are link and invitation volume, not proof that sensitive data was shared."
  ],
  "measurable": true,
  "matches": {
   "total": 90,
   "undo": 9,
+  "undo_doc_modified": 4,
+  "undo_other": 5,
   "enforced": 18,
   "test_mode": 72,
   "enforced_share": 0.2,
-  "undo_share": 0.1,
+  "undo_share": 0.056,
+  "undo_total_share": 0.1,
   "workloads": {
    "Exchange": 54,
    "SharePoint": 18,
@@ -46,5 +51,45 @@
   "by_severity": {
    "High": 6
   }
+ },
+ "overrides": {
+  "reason_split": true,
+  "false_positive_reports": 2,
+  "undo_reasons": {
+   "DocumentModified": 4,
+   "ReportFalsePositive": 2
+  },
+  "overridden_actions": {
+   "NotifyUser": 2
+  }
+ },
+ "policy_config": {
+  "available": true,
+  "policies_created": 1,
+  "policies_changed": 0,
+  "locations_covered": [
+   "exchange",
+   "sharepoint",
+   "onedrive",
+   "teams",
+   "endpoint"
+  ],
+  "rules_changed": 3,
+  "rules_allow_override": 1,
+  "rules_block_access": 1,
+  "modes": {
+   "TestWithNotifications": 1
+  },
+  "changes_total": 4
+ },
+ "sharing": {
+  "available": true,
+  "anonymous_links_created": 10,
+  "anonymous_link_uses": 0,
+  "company_links_created": 60,
+  "sharing_links_created": 80,
+  "invitations": 0,
+  "inheritance_broken": 0,
+  "total": 150
  }
 }
