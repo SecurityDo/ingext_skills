@@ -1,0 +1,31 @@
+{
+  "_note": "Thresholds marked proposal were not stated in the original Board Rpt 3 skill; they are Fluency proposals and can be tuned here. Everything the report rates comes from this file.",
+  "tightest_deadline_hours": 24,
+  "window_days": 90,
+  "case_risk_floor": 3000,
+  "ai_actor": "AI-Assistant",
+  "triage": {"ready_median_minutes": 60, "ready_coverage_pct": 80, "_status": "proposal"},
+  "ownership": {"open_age_days_flag": 14, "not_ready_open_old_share_pct": 25, "_status": "proposal"},
+  "retention": {"ready_days": 365, "partial_days": 90, "_status": "proposal; 12 months is the original recommendation"},
+  "scope_categories": {
+    "identity":  {"label": "identity sign-in and directory audit", "tables": ["AzureSigninLogs", "AzureAuditLogs", "AADNonInteractiveUserSignInLogs", "MSEntra", "Duo", "Okta", "AzureAudit"]},
+    "collaboration": {"label": "email, SharePoint and OneDrive activity", "tables": ["Office365", "GSuite"]},
+    "endpoint":  {"label": "endpoint and server security logs", "tables": ["SentinelOne", "CrowdStrike", "Defender", "WindowsSecurity", "WindowsAudit", "Windows", "Sysmon", "Falcon"]},
+    "network":   {"label": "network and firewall traffic", "tables": ["Fortigate", "PaloAlto", "Zscaler", "Meraki", "Netskope", "Cisco", "Sophos", "Checkpoint", "Network"]},
+    "cloud":     {"label": "cloud control-plane audit", "tables": ["CloudTrail", "GuardDuty", "AzureActivity", "GCPAudit"]}
+  },
+  "scope_ready_categories": ["identity", "collaboration", "endpoint", "network"],
+  "personal_data_rule_pattern": "DLP|DATA_LOSS|LOSS_PREVENTION|SSN|SOCIAL|PII|HIPAA|GDPR|PCI|HEALTH|CREDIT|PASSPORT|PERSONAL",
+  "reportability_pattern": "reportab|material|significan|notifiab|disclos",
+  "regimes": {
+    "sec": {"name": "SEC Form 8-K Item 1.05", "depends": ["reportability", "ownership", "timeline", "integrity"], "default_applicability": "unknown"},
+    "nis2": {"name": "EU NIS2 Directive (Art. 23)", "depends": ["triage", "ownership", "reportability", "scope", "timeline", "integrity"], "default_applicability": "unknown"},
+    "dora": {"name": "EU DORA (Art. 19)", "depends": ["triage", "ownership", "reportability", "scope", "timeline", "integrity"], "default_applicability": "no"},
+    "customer": {"name": "Customer contracts & privacy law", "depends": ["ownership", "reportability", "scope"], "default_applicability": "yes"}
+  },
+  "rating": {
+    "not_ready_if": ["escalated case without a human decision beyond the tightest deadline", "open serious cases older than the flag with no recorded decision on a quarter or more", "no reportability determination exists"],
+    "partial_if": "decisions exist but evidence or scope gaps remain",
+    "ready_if": "none of the above"
+  }
+}

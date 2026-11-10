@@ -1,0 +1,21 @@
+{
+ "streamTables": [
+  {
+   "name": "AzureSigninLogs"
+  },
+  {
+   "name": "AzureAuditLogs"
+  },
+  {
+   "name": "Office365"
+  },
+  {
+   "name": "CloudTrail"
+  }
+ ],
+ "resourceTables": [
+  {
+   "name": "office365User"
+  }
+ ]
+}

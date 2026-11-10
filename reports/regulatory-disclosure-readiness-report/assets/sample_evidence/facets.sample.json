@@ -1,0 +1,33 @@
+{
+ "total": 4,
+ "returned": 0,
+ "documents": [],
+ "facets": {
+  "status": [
+   {
+    "value": "new",
+    "count": 3
+   },
+   {
+    "value": "closed",
+    "count": 1
+   }
+  ],
+  "classification": [
+   {
+    "value": "False Positive",
+    "count": 1
+   }
+  ],
+  "scoreLevel": [
+   {
+    "value": ">8000",
+    "count": 1
+   },
+   {
+    "value": "4000 - 8000",
+    "count": 3
+   }
+  ]
+ }
+}

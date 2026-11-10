@@ -1,0 +1,80 @@
+{
+ "total": 3,
+ "returned": 3,
+ "documents": [
+  {
+   "id": "c1",
+   "source": {
+    "id": "c1",
+    "key": "user-a",
+    "keyType": "username",
+    "from": 1788000000000,
+    "riskScore": 9200,
+    "behaviorRules": [
+     "O365_AzureAD_UserLoggedIn"
+    ],
+    "incidentDetectionTime": "2026-08-29T10:40:00.000000000Z",
+    "comments": [
+     {
+      "username": "AI-Assistant",
+      "createdOn": 1788000420000,
+      "actions": [],
+      "content": "{\"actionable\": true, \"decision\": \"Escalate: verify\"}"
+     }
+    ],
+    "status": "new"
+   }
+  },
+  {
+   "id": "c2",
+   "source": {
+    "id": "c2",
+    "key": "user-b",
+    "keyType": "username",
+    "from": 1789728000000,
+    "riskScore": 5200,
+    "behaviorRules": [
+     "O365_AzureAD_UserLoggedIn"
+    ],
+    "incidentDetectionTime": "2026-09-18T10:40:00.000000000Z",
+    "comments": [
+     {
+      "username": "AI-Assistant",
+      "createdOn": 1789728600000,
+      "actions": [],
+      "content": "{\"actionable\": false}"
+     }
+    ],
+    "status": "new"
+   }
+  },
+  {
+   "id": "c3",
+   "source": {
+    "id": "c3",
+    "key": "user-c",
+    "keyType": "username",
+    "from": 1793184000000,
+    "riskScore": 4300,
+    "behaviorRules": [
+     "SCC_Data_Loss_Prevention_SharePoint"
+    ],
+    "incidentDetectionTime": "2026-10-28T10:40:00.000000000Z",
+    "comments": [],
+    "status": "new"
+   }
+  }
+ ],
+ "facets": {
+  "scoreLevel": [
+   {
+    "value": ">8000",
+    "count": 1
+   },
+   {
+    "value": "4000 - 8000",
+    "count": 2
+   }
+  ]
+ }
+}

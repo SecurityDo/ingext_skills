@@ -1,0 +1,39 @@
+{
+ "total": 1,
+ "returned": 1,
+ "documents": [
+  {
+   "id": "c4",
+   "source": {
+    "id": "c4",
+    "key": "user-d",
+    "keyType": "username",
+    "from": 1788432000000,
+    "riskScore": 4100,
+    "behaviorRules": [
+     "O365_AzureAD_UserLoggedIn"
+    ],
+    "incidentDetectionTime": "2026-09-03T10:40:00.000000000Z",
+    "comments": [
+     {
+      "username": "AI-Assistant",
+      "createdOn": 1788432300000,
+      "actions": [],
+      "content": "{}"
+     },
+     {
+      "username": "analyst-1",
+      "createdOn": 1788439200000,
+      "actions": [
+       "Change Status from 'new' to 'closed'",
+       "Set classification to 'False Positive'"
+      ],
+      "content": "closed"
+     }
+    ],
+    "status": "closed",
+    "classification": "False Positive"
+   }
+  }
+ ]
+}
