@@ -126,6 +126,13 @@ These are data problems, not missing agents, so the script never counts them aga
 The last line says what the report covers. If no required source is usable, the report still
 renders but only lists the inventories; it does not assess agent coverage. Tell the user.
 
+**Look for throwaway machines.** Check whether one name pattern dominates an agent source's active
+hosts: many records named `<prefix>-<random id>`, or far more active records than real machines. These
+are usually short-lived worker VMs (backup or build jobs) that the agent onboards automatically, and
+they would show up as hundreds of devices missing the other agent. Exclude them with a `match`
+filter in the work-directory copy of the sources file. Say so in that source's `scope` text and in
+your reply, with the count you excluded. `references/adding_sources.md` has the syntax.
+
 ### 4. Render
 
 ```bash

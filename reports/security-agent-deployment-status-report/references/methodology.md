@@ -71,7 +71,7 @@ the first of these that applies:
 |---|---|
 | 1 | the authority hostname for a known device ID |
 | 2 | its **consistent name**, if another source knows that name |
-| 3 | the one hostname that another source lists at the same IP (the source's `ip` field; loopback and link-local addresses are ignored; an IP held by several devices matches nothing) |
+| 3 | the one hostname that another source lists at the same IP (every address the sources' `ip` paths give, e.g. all of a Defender machine's interfaces; loopback and link-local addresses are ignored; an IP held by several devices matches nothing) |
 | 4 | its consistent name, unknown elsewhere |
 | 5 | its IP address |
 
@@ -170,6 +170,18 @@ The script exits 0 in all these cases. Only an invalid sources file stops it.
   `onboardingStatus: "Onboarded"` and `isExcluded: false`. An account can have a Defender
   integration that collects alerts but no machine inventory; then there is no dump and Defender is
   left out.
+  - **Short-lived VMs.** Defender keeps a record for every VM it ever onboarded. A tenant that runs
+    throwaway VMs (backup or build workers created per job) can have hundreds of them in the 30-day
+    window, often outnumbering the real machines, each named `<prefix>-<random id>`. After `check`,
+    look at the active Defender hosts for one name pattern that dominates. Exclude it with a `match`
+    filter in the run's copy of the sources file, and say so in the scope text (see
+    adding_sources.md).
+  - **Several records per name.** Pooled or re-imaged session hosts get a new record each time they
+    are rebuilt. They collapse into one device by hostname.
+  - **Interfaces.** `ipAddresses` lists every interface. The default `ip` uses it, so a hypervisor's
+    second network card, which NodeZero sees as a separate host, lines up with the hypervisor.
+    `lastIpAddress` alone would leave it as a false gap. Container bridge addresses such as
+    `172.17.0.1` repeat across hosts and so never match.
 - **Entra ID** (`office365Device`) includes phones, tablets, printers and personally registered
   devices. The filter keeps enabled devices that:
   - run Windows or macOS;

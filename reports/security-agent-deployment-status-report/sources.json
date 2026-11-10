@@ -21,7 +21,7 @@
       "filter": {"onboardingStatus": "Onboarded", "isExcluded": false},
       "host": "computerDnsName",
       "deviceId": "aadDeviceId",
-      "ip": "lastIpAddress",
+      "ip": ["lastIpAddress", "ipAddresses.ipAddress"],
       "os": "osPlatform",
       "lastSeen": "lastSeen",
       "required": true

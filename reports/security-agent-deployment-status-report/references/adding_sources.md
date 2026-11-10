@@ -21,7 +21,7 @@ that account's run, so one sources file serves accounts with different inventori
 | `deviceType` | no | Field path holding a device type such as `Firewall` or `UPS`. Any value that is not a computer type makes the device a network device. |
 | `lastSeen` | yes | Field path holding the last-seen timestamp: ISO 8601, or epoch milliseconds. |
 | `staleDays` | no | Activity window for this source; defaults to the top-level `staleDays`. Use it for a source that sees devices periodically, like a pentest. |
-| `ip` | no | Field path holding the device's internal IP address. On an agent source it builds the IP index that discovery hosts match against. |
+| `ip` | no | Field path holding the device's internal IP address, or a list of paths. A path through a list takes every element: `ipAddresses.ipAddress` is each interface's address. On an agent source it builds the IP index that discovery hosts match against. Loopback, link-local and multicast addresses are ignored. |
 | `key` | no | Field path that identifies one device within this source, when the hostname can't. Records with the same key are one device, e.g. one IP across several pentests. |
 | `matchIp` | no | `true` for a source whose hosts may lack a usable name, typically a network scanner. Its devices are matched by name first, then by IP against the other sources' `ip`. |
 | `discovery` | no | `true` for a source that finds devices by scanning the network. It gets its own panel, and devices found only by it are counted as "in no other inventory". |
@@ -46,13 +46,20 @@ come from `office365Device`.
 | `"field": value` | equal | `"onboardingStatus": "Onboarded"`, `"isExcluded": false` |
 | `"field": [v1, v2]` | any of | `"trustType": ["AzureAd", "ServerAd"]` |
 | `"field": {"not": value or [...]}` | not equal to / none of | `"status": {"not": ["retired", "deleted"]}` |
+| `"field": {"match": "<regex>"}` | regex search, case-insensitive | `"computerDnsName": {"not": {"match": "^worker-[0-9a-f]{8}-"}}` |
 
-- Comparisons are exact and case-sensitive. The one exception is a JSON boolean, which also matches
-  the strings `"true"` / `"false"`.
-- A field missing from the record counts as `null`.
+- Comparisons are exact and case-sensitive. A JSON boolean also matches the strings `"true"` /
+  `"false"`, and `match` ignores case.
+- A field missing from the record counts as `null`; `match` never matches it.
+- A bad regex, or any other operator object, makes the sources file invalid.
 
-Anything more complex, such as date ranges or partial string matches, needs a small change in
-`in_scope()` in the script.
+Anything more complex, such as date ranges, needs a small change in `in_scope()` in the script.
+
+**Excluding a tenant's throwaway machines.** Some tenants auto-onboard short-lived VMs, such as
+backup or build workers created and deleted every day. Left in, they appear as hundreds of devices
+missing an agent. Exclude them with a `match` filter in the work-directory copy of the sources file,
+not the bundled one. Say so in that source's `scope` text, which the report prints under "How this
+report is built".
 
 ## Exploring a new dump
 
@@ -82,6 +89,7 @@ Typical vendor field names to look for (always confirm with `fields`):
 | Intune managed devices (Graph `managedDevice`) | `deviceName` | `lastSyncDateTime` | `operatingSystem` | `azureADDeviceId` (usable as `deviceId`) |
 | CrowdStrike Falcon hosts | `hostname` | `last_seen` | `os_version` / `platform_name` | none: Falcon's `device_id` is its own ID, so leave `deviceId` out |
 | Active Directory computers | `name` / `dNSHostName` | `lastLogonTimestamp` | `operatingSystem` | none |
+| Defender machines, every interface IP | `computerDnsName` | `lastSeen` | `osPlatform` | `aadDeviceId`; `ip`: `["lastIpAddress", "ipAddresses.ipAddress"]` |
 | Horizon3 NodeZero hosts (`horizon3Host`) | `["DNSHostnames", "Hostname"]`, `key: "IP"` | `pentest.completedAt` | `OS` | none |
 
 Hostnames in `DOMAIN\name` form, or anything else plain normalization doesn't handle, need an
@@ -114,8 +122,10 @@ also brings three problems, and each one has a setting:
   `host` to the name fields in order of trust, DNS first. A name is used only when it is the same in
   every record for that IP.
 - **Matching to agents.** Set `matchIp: true` here, and `ip` on the agent sources. A host whose name
-  no other source knows is then matched to the one agent that last reported the same IP. If several
-  agents report that IP, there is no match. A host that matches nothing is listed by its IP address.
+  no other source knows is then matched to the one device that an agent source lists at the same
+  IP. If several devices hold that IP, there is no match. A host that matches nothing is listed by
+  its IP address. Give an agent source every interface address where it has them: a scanner often
+  sees a server's second network card.
 - **Things that can't run an agent.** Firewalls, switches, power units, printers and server
   management cards are classed as network devices (from `deviceType` or the OS string) and counted
   as "no agent expected". Hosts with no detectable OS are "unidentified": they are listed for the

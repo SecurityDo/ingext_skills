@@ -103,12 +103,17 @@ def load_config(path):
         names.add(name)
         if not isinstance(s.get("filter", {}), dict):
             errors.append(f"source '{name}': filter must be an object of field: value")
+        else:
+            errors += filter_errors(name, s.get("filter"))
         s["hostPaths"] = as_paths(s.get("host"))
         if s.get("host") and not s["hostPaths"]:
             errors.append(f"source '{name}': host must be a field path or a list of field paths")
-        for f in ("key", "ip", "deviceId", "deviceType", "weaknesses", "confirmedWeaknesses"):
+        for f in ("key", "deviceId", "deviceType", "weaknesses", "confirmedWeaknesses"):
             if f in s and not (isinstance(s[f], str) and s[f]):
                 errors.append(f"source '{name}': {f} must be a field path")
+        s["ipPaths"] = as_paths(s.get("ip"))
+        if s.get("ip") and not s["ipPaths"]:
+            errors.append(f"source '{name}': ip must be a field path or a list of field paths")
         try:
             s["staleDays"] = int(s.get("staleDays", cfg["staleDays"]))
         except (TypeError, ValueError):
@@ -140,12 +145,55 @@ def get_path(rec, path):
     return cur
 
 
+def filter_errors(name, flt):
+    """Problems in a filter: an operator object other than {"not": ...} / {"match": regex}, or a bad regex."""
+    errors = []
+
+    def walk(field, expected):
+        if isinstance(expected, list):
+            for e in expected:
+                walk(field, e)
+        elif isinstance(expected, dict):
+            if set(expected) == {"not"}:
+                walk(field, expected["not"])
+            elif set(expected) == {"match"} and isinstance(expected["match"], str):
+                try:
+                    re.compile(expected["match"])
+                except re.error as e:
+                    errors.append(f"source '{name}': filter '{field}': bad regex {expected['match']!r} ({e})")
+            else:
+                errors.append(f"source '{name}': filter '{field}': an object must be {{\"not\": ...}} or "
+                              f"{{\"match\": \"<regex>\"}}")
+
+    for field, expected in (flt or {}).items():
+        walk(field, expected)
+    return errors
+
+
+def get_values(rec, path):
+    """Every value at a dotted path, stepping into lists on the way: "ipAddresses.ipAddress" gives the
+    address of each interface. A list at the end of the path is flattened."""
+    cur = [rec]
+    for part in path.split("."):
+        nxt = []
+        for c in cur:
+            for x in (c if isinstance(c, list) else [c]):
+                if isinstance(x, dict) and x.get(part) is not None:
+                    nxt.append(x[part])
+        cur = nxt
+    return [v for c in cur for v in (c if isinstance(c, list) else [c])]
+
+
 def matches(value, expected):
-    """Filter semantics: a scalar must be equal, a list means any of, {"not": x} negates."""
+    """Filter semantics: a scalar must be equal, a list means any of, {"not": x} negates, and
+    {"match": regex} is a case-insensitive regex search on the value as text."""
     if isinstance(expected, list):
         return any(matches(value, e) for e in expected)
     if isinstance(expected, dict) and set(expected) == {"not"}:
         return not matches(value, expected["not"])
+    if isinstance(expected, dict) and set(expected) == {"match"}:
+        text = value if isinstance(value, str) else first_value(value)
+        return bool(text) and re.search(expected["match"], text, re.I) is not None
     if isinstance(expected, bool) and isinstance(value, str):
         return value.lower() == str(expected).lower()
     return value == expected
@@ -485,7 +533,8 @@ def build_units(s, records, name_by_id, now):
         names = [norm_host(get_path(r, p)) for p in s["hostPaths"]]
         name = next((n for n in names if n), "")
         did = norm_id(get_path(r, s["deviceId"])) if s.get("deviceId") else ""
-        ip = norm_ip(get_path(r, s["ip"])) if s.get("ip") else ""
+        ips = {norm_ip(v) for p in s["ipPaths"] for v in get_values(r, p)} - {""}
+        ip = min(ips) if ips else ""
         if s.get("key"):
             k = first_value(get_path(r, s["key"])).lower()
         else:
@@ -501,8 +550,7 @@ def build_units(s, records, name_by_id, now):
                 u["names"][i].append(n)
         if did:
             u["ids"].add(did)
-        if ip:
-            u["ips"].add(ip)
+        u["ips"] |= ips
         seen = to_dt(get_path(r, s["lastSeen"]))
         u["code"] = max(u["code"], 2 if seen and seen > cutoff else 1)
         if seen and (u["seen"] is None or seen > u["seen"]):
@@ -1136,8 +1184,9 @@ def render_html(cfg, f, narrative, title, customer):
       <td><div class="pbar"><div class="pbar-fill" style="width:{100.0 * p['devices'] / max_pat:.1f}%"></div></div></td>
       <td class="num">{p['devices']}</td>
       <td class="note{'' if not absent else ' gap'}">{esc(note)}</td></tr>""")
-    dot_cols = "".join(f'<col style="width:{max(48, round(6.0 * len(s["label"])) + 8)}px">' for s in sources)
     wide = len(sources) > 3
+    per_char = 7.6 if wide else 6.0  # the wide layout has room for headers on one line
+    dot_cols = "".join(f'<col style="width:{max(48, round(per_char * len(s["label"])) + 12)}px">' for s in sources)
     panel_patterns = "" if not prow else f"""
 <div class="panel {'col-12' if wide else 'col-8'}">
   <div class="panel-header"><h2 class="panel-title">Where each active device is seen</h2><span class="panel-subtitle">active within {days} days</span></div>
@@ -1186,10 +1235,10 @@ def render_html(cfg, f, narrative, title, customer):
     else:
         matching = f"Devices are matched on {esc(host_rule)}."
     ip_sources = [s for s in sources if s["matchIp"]]
-    ip_providers = [s["label"] for s in sources if s.get("ip") and not s["matchIp"]]
+    ip_providers = [s["label"] for s in sources if s["ipPaths"] and not s["matchIp"]]
     for s in ip_sources:
         matching += (f" {esc(s['label'])} hosts are matched on their network name when it is consistent across scans"
-                     + (f", otherwise on the IP address {esc(join_and(ip_providers))} last reported" if ip_providers else "")
+                     + (f", otherwise on an IP address that {esc(' or '.join(ip_providers))} reports for the device" if ip_providers else "")
                      + "; a host that matches neither is listed by its IP address.")
     windows = [f"{esc(s['label'])} counts a device as seen if it found it within the last {s['staleDays']} days"
                for s in sources if s["staleDays"] != days]
@@ -1233,7 +1282,10 @@ def render_html(cfg, f, narrative, title, customer):
             continue
         body.append(f'<tr class="grp"><td colspan="{n_cols}">{esc(i["label"])} <span>({len(group)})</span></td></tr>')
         for d in group:
-            badge = f'<span class="cls">{d["deviceClass"]}</span>' if d["deviceClass"] not in (DEFAULT_CLASS, UNKNOWN_CLASS) else ""
+            shown_os = pretty_os(d["os"])
+            redundant = {"Server": "server", "Linux": "linux"}.get(d["deviceClass"], "\0") in shown_os.lower()
+            badge = (f'<span class="cls">{d["deviceClass"]}</span>'
+                     if d["deviceClass"] not in (DEFAULT_CLASS, UNKNOWN_CLASS) and not redundant else "")
             cells = []
             for s in sources:
                 state, seen = d["states"][s["name"]], d["lastSeen"][s["name"]]
@@ -1254,18 +1306,18 @@ def render_html(cfg, f, narrative, title, customer):
             if d["ips"] and d["ips"] != [host]:
                 extra.append(", ".join(d["ips"][:2]))
             sub = f'<div class="when" style="font-weight:400;font-family:var(--sans)">{esc(" · ".join(extra))}</div>' if extra else ""
-            os_text = esc(pretty_os(d["os"])) if d["os"] else '<span class="when">Not detected</span>'
+            os_text = esc(shown_os) if d["os"] else '<span class="when">Not detected</span>'
             body.append(f'<tr><td class="host">{esc(host)}{sub}</td><td>{os_text}{badge}</td>{"".join(cells)}</tr>')
     dl = f["deviceList"]
     listed_note = f"{dl['listed']} of {dl['total']} devices listed" if dl["listed"] < dl["total"] else f"{dl['total']} devices"
-    weak_w = 76 if weak_sources else 0
-    src_w = min(100, (716 - 140 - 130 - weak_w) // max(1, len(sources)))
+    weak_w = 64 if weak_sources else 0
+    src_w = min(100, (688 - 130 - 140 - weak_w) // max(1, len(sources)))  # 688px: the printed text width
     weak_head = f'<th style="text-align:right">{esc(weak_sources[0]["label"])} weak&shy;nesses</th>' if weak_sources else ""
     device_list = "" if not body else f"""
 <div class="panel col-12">
   <div class="panel-header"><h2 class="panel-title">Devices requiring attention</h2><span class="panel-subtitle">{listed_note} · dates show when a stale agent last reported{f" · (n) = weaknesses {esc(weak_sources[0]['label'])} confirmed" if weak_sources else ""}</span></div>
   <table class="data devlist">
-    <colgroup><col style="width:140px"><col>{''.join(f'<col style="width:{src_w}px">' for _ in sources)}{f'<col style="width:{weak_w}px">' if weak_sources else ''}</colgroup>
+    <colgroup><col style="width:130px"><col>{''.join(f'<col style="width:{src_w}px">' for _ in sources)}{f'<col style="width:{weak_w}px">' if weak_sources else ''}</colgroup>
     <thead><tr><th>Device</th><th>Operating system</th>{''.join(f'<th>{esc(s["label"])}</th>' for s in sources)}{weak_head}</tr></thead>
     <tbody>{''.join(body)}</tbody>
   </table>
