@@ -735,6 +735,53 @@
        "text": "{d.matches.total} DLP matches in the window, at least 1 per 500 accounts"
       }
      ]
+    },
+    {
+     "id": "override",
+     "label": "DLP rules that users can override",
+     "tiers": [
+      {
+       "weight": 0.05,
+       "when": [
+        {
+         "path": "d.policy_config.rules_allow_override",
+         "op": ">=",
+         "value": 1
+        }
+       ],
+       "text": "DLP rule changes in the window that allow users to override the policy tip: {d.policy_config.rules_allow_override}"
+      }
+     ]
+    },
+    {
+     "id": "anonlinks",
+     "label": "anonymous sharing links",
+     "tiers": [
+      {
+       "weight": 0.1,
+       "when": [
+        {
+         "path": "d.sharing.anonymous_links_created",
+         "op": ">=",
+         "ratio_of": "r.identity.enabled",
+         "value": 0.05
+        }
+       ],
+       "text": "{d.sharing.anonymous_links_created} anonymous sharing links created in the window, at least 1 per 20 accounts"
+      },
+      {
+       "weight": 0.05,
+       "when": [
+        {
+         "path": "d.sharing.anonymous_links_created",
+         "op": ">=",
+         "ratio_of": "r.identity.enabled",
+         "value": 0.01
+        }
+       ],
+       "text": "{d.sharing.anonymous_links_created} anonymous sharing links created in the window, at least 1 per 100 accounts"
+      }
+     ]
     }
    ],
    "gaps": [
@@ -746,7 +793,7 @@
     {
      "id": "coverage",
      "always": true,
-     "text": "Policy coverage, user overrides, external sharing and web or AI egress are not in the DLP report, so a workload with no matches may have no policy"
+     "text": "Policy inventory, overrides with a justification, bulk downloads and web or AI egress are not in the DLP report; policy configuration covers only policies created or changed in the window, so a workload with no matches may have no policy"
     }
    ],
    "loss": [

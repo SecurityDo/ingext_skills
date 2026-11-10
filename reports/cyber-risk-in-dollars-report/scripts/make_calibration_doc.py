@@ -13,6 +13,7 @@ LABEL = {
     "r.conditional_access.mfa_all_users": "enforced policies requiring MFA for all users on all apps", "r.identity.global_admins": "Global Administrators",
     "d.matches.enforced_share": "share of DLP matches from enforcing rules", "d.matches.undo_share": "DLP undo events (edited documents excluded) as a share of matches",
     "d.matches.total": "DLP matches in the window", "r.identity.enabled": "enabled accounts", "d.ai.unenforced_hits": "unenforced Microsoft 365 Copilot DLP rule hits", "d.ai.enforced_hits": "enforced Microsoft 365 Copilot DLP rule hits",
+    "d.policy_config.rules_allow_override": "DLP rule changes that allow user override", "d.sharing.anonymous_links_created": "anonymous sharing links created",
 }
 OPW = {">=": "at least", ">": "more than", "<=": "at most", "<": "fewer than", "==": "exactly", "!=": "not"}
 plain = lambda s: html.unescape(re.sub(r"<[^>]+>", "", re.sub(r"\{[^}]+\}", "N", s)))

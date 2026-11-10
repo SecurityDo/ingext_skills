@@ -68,8 +68,9 @@ loss, the largest scenario) is filled in from the simulation, so it always match
 
 - **Three or four scenarios.** Ransomware, business email compromise and credential-driven cloud breach, plus accidental and insider
   data exposure (including shadow AI) when the DLP report shows matches. With no matches the scenario is not modelled,
-  because a zero DLP count cannot separate "no DLP policy" from "no sensitive data moved". Its factors and weights are Fluency proposals
-  (`references/calibration_rules.md`). Third-party compromise is not modelled separately so as not to double count ransomware.
+  because a zero DLP count cannot separate "no DLP policy" from "no sensitive data moved". Its factors (enforcement, undo share without edited documents, Copilot policy hits, match volume, rules that allow user override,
+  anonymous sharing links) and weights are Fluency proposals (`references/calibration_rules.md`). Policy inventory, overrides with a justification
+  and bulk downloads are not in any archive. Third-party compromise is not modelled separately so as not to double count ransomware.
 - **Business email compromise** is calibrated from sign-in data and the Office 365 archive's counts of inbox-rule and
   mailbox-permission changes. Forwarding targets, who made the changes and payment controls are not in any archive, so
   they widen the range. The weights for rule and permission volume are proposals; the sources do not define them.

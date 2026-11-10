@@ -104,8 +104,11 @@ Modelled only when `--dlp dlp_evidence.json` (from `DLP_Activity_Report`) shows 
 | sensitive data reaching the Copilot assistant | +0.05 | enforced Microsoft 365 Copilot DLP rule hits: at least 1 |
 | sensitive-data matches at volume | +0.1 | DLP matches in the window: at least 1% of enabled accounts |
 | sensitive-data matches at volume | +0.05 | DLP matches in the window: at least 0% of enabled accounts |
+| DLP rules that users can override | +0.05 | DLP rule changes that allow user override: at least 1 |
+| anonymous sharing links | +0.1 | anonymous sharing links created: at least 5% of enabled accounts |
+| anonymous sharing links | +0.05 | anonymous sharing links created: at least 1% of enabled accounts |
 
-Not measurable (each widens the maximum): DLP shows signals from policies that matched; data that left through a path with no policy or no monitoring cannot be seen; Policy coverage, user overrides, external sharing and web or AI egress are not in the DLP report, so a workload with no matches may have no policy.
+Not measurable (each widens the maximum): DLP shows signals from policies that matched; data that left through a path with no policy or no monitoring cannot be seen; Policy inventory, overrides with a justification, bulk downloads and web or AI egress are not in the DLP report; policy configuration covers only policies created or changed in the window, so a workload with no matches may have no policy.
 
 | Loss component (reference size) | Min | Likely | Max | Scaling |
 |---|---|---|---|---|
