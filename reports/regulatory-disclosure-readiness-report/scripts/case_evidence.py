@@ -54,7 +54,9 @@ def iso_ms(v):
 
 def case_times(s, ai_actor):
     """Per-case timing facts from the comment thread."""
-    detect = iso_ms(s.get("incidentDetectionTime")) or float(s.get("from") or 0) or None
+    detect = iso_ms(s.get("incidentDetectionTime"))
+    if not detect or detect < 946684800000:          # missing, or a zero-value time (year 1): use the bucket start
+        detect = float(s.get("from") or 0) or None
     cs = sorted((s.get("comments") or []), key=lambda c: c.get("createdOn") or 0)
     ai = [c for c in cs if (c.get("username") or "") == ai_actor]
     hu = [c for c in cs if (c.get("username") or "") not in ("", ai_actor)]
