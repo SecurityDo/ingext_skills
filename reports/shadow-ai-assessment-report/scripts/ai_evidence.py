@@ -133,7 +133,7 @@ def main():
         gaps.append("Per-user grants are matched by application name; grant scopes and consent time are not in the user dump.")
 
     # ---- Path 3: endpoint AI software
-    if s1 is None:
+    if not s1:                                    # missing dump or an empty one: nothing was inventoried
         ev["endpoint"] = {"status": "no_data"}
         gaps.append("No endpoint software inventory dump (sentinelOneApplication): endpoint AI software and local model runners not assessed.")
     else:

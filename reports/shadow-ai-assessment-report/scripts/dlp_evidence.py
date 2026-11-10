@@ -92,9 +92,13 @@ def build(paths):
     if not days:
         ev.update(measurable=False); ev["gaps"].append("No completed DLP_Activity_Report day was found in the archive: DLP is not measurable.")
         return ev
-    if not ok or total == 0:
+    if not ok:
         ev.update(measurable=False)
-        ev["gaps"].append("No DLP rule matches in the window (or the Office 365 table is missing): this cannot separate 'no DLP policy' from 'no sensitive data moved', so DLP is not measurable.")
+        ev["gaps"].append("The report's Office 365 DLP trend scan was not available on the archived days (a script error or a missing table), so match counts are unavailable and DLP is not measurable.")
+        return ev
+    if total == 0:
+        ev.update(measurable=False)
+        ev["gaps"].append("No DLP rule matches in the window: this cannot separate 'no DLP policy' from 'no sensitive data moved', so DLP is not measurable.")
         return ev
     wl, sev, pol, rl = Counter(), Counter(), set(), set()
     ai_hits = ai_enf = 0
