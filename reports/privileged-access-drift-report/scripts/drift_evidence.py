@@ -3,7 +3,7 @@
 
   drift_evidence.py --roles roles.json --accounts accounts.json --signins signins.json [signins_2.json ...] --asof YYYY-MM-DD
                     [--role-drift role_drift.json] [--role-activity role_activity.json] [--app-grants app_grants.json]
-                    [--app-events app_events.json] [--ca ca_changes.json] [--onprem onprem.json] [--apps apps.json]
+                    [--app-events app_events.json] [--ca ca_changes.json] [--windows-archive windows_archive.json] [--apps apps.json]
                     [--tables tables.json] [--rules ../assets/rating_rules.json] -o drift_evidence.json
 
 Each input is the saved reply of one playbook query (references/playbook.md): a JSON object with data.Tables[0] (Columns, Rows), or
@@ -40,6 +40,30 @@ def day(s):
     return str(s or "")[:10]
 
 
+def windows_trend(path):
+    """Sum win_trend over the archived days of WindowsSrv_Activity_Report (download_report_archive, objects win_trend). None when no day carries it."""
+    d = json.load(open(path, encoding="utf-8"))
+    days = d.get("days") if isinstance(d, dict) else d
+    t = dict(days=0, events=0, logons_ok=0, priv_logons=0, group_adds=0, accounts_created=0)
+    for day_ in days or []:
+        objs = ((day_.get("result") or {}).get("objects")) or day_.get("objects") or []
+        tr = [o for o in objs if o.get("name") == "win_trend"]
+        if not tr:
+            continue
+        tb = tr[0].get("table") or (tr[0].get("value") or {}).get("table") or {}
+        cols = [c if isinstance(c, str) else c.get("name") for c in (tb.get("columns") or [])]
+        rr = [r if isinstance(r, dict) else dict(zip(cols, r)) for r in (tb.get("rows") or [])]
+        t["days"] += 1
+        for r in rr:
+            t["events"] += num(r.get("events")); t["logons_ok"] += num(r.get("logonsOk")); t["priv_logons"] += num(r.get("privLogons"))
+            t["group_adds"] += num(r.get("groupAdds")); t["accounts_created"] += num(r.get("accountCreated"))
+    if not t["days"]:
+        return None
+    t["group_change_events"] = t["group_adds"] + t["accounts_created"]
+    t["dc_activity"] = t["events"] > 0
+    return t
+
+
 def tier_of(perm, R):
     if perm in R["tier0"]:
         return 0
@@ -53,7 +77,7 @@ def main():
     for k in ("roles", "accounts"):
         ap.add_argument("--" + k, required=True)
     ap.add_argument("--signins", required=True, nargs="+", help="one reply, or the replies of every sign-in query batch (summed)")
-    for k in ("role-drift", "role-activity", "app-grants", "app-events", "ca", "onprem", "apps", "tables"):
+    for k in ("role-drift", "role-activity", "app-grants", "app-events", "ca", "windows-archive", "apps", "tables"):
         ap.add_argument("--" + k)
     ap.add_argument("--asof", required=True); ap.add_argument("--rules", default=os.path.join(HERE, "..", "assets", "rating_rules.json"))
     ap.add_argument("-o", "--out", required=True)
@@ -139,12 +163,8 @@ def main():
         cond = {"added": sum(num(r["n"]) for r in ca if r["ActivityDisplayName"].lower().startswith("add")), "updated": sum(num(r["n"]) for r in ca if r["ActivityDisplayName"].lower().startswith("update")),
                 "deleted": sum(num(r["n"]) for r in ca if r["ActivityDisplayName"].lower().startswith(("delete", "remove"))), "days": sorted({day(r["day"]) for r in ca})}
 
-    # ---- on premises --------------------------------------------------------------------------------------------------------
-    op = rows(a.onprem)
-    onprem = None
-    if op is not None:
-        e = {str(num(r["EventID"])): num(r["n"]) for r in op}
-        onprem = {"events": e, "group_change_events": sum(e.get(x, 0) for x in R["onprem_group_events"]), "dc_activity": any(v > 0 for k, v in e.items() if k in ("4624", "4672"))}
+    # ---- on premises (archived WindowsSrv_Activity_Report, win_trend) -------------------------------------------------------
+    onprem = windows_trend(a.windows_archive) if a.windows_archive else None
 
     tb = json.load(open(a.tables)) if a.tables else {}
     names = {t["name"].lower() for t in (tb.get("streamTables") or []) + (tb.get("resourceTables") or [])}

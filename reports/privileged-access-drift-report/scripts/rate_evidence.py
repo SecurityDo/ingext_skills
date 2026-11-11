@@ -141,7 +141,8 @@ def main():
             "Cut the device local-admin role to a small eligible group, deploy Windows LAPS, and use Endpoint Privilege Management for elevation needs.", O["endpoint"], "60 days", M["local"])
     if op is not None and op["group_change_events"] == 0:
         add("medium", "On-premises privilege changes are not visible",
-            "No privileged-group membership changes (4728, 4732, 4756) or account creations (4720) appeared in the 30 days checked%s." % ("; other domain-controller events are arriving" if op["dc_activity"] else ""),
+            "No privileged-group membership additions (4728, 4732, 4756) or account creations (4720) appear in the %s archived Windows report%s%s." % (
+                plural(op["days"], "day"), " of %d" % R["windows_days"] if op["days"] < R["windows_days"] else "", "; other Windows events are arriving (%s)" % n(op["events"]) if op["dc_activity"] else ""),
             "A new Domain Admin or a backdoor account on-premises would go unseen, and investigations would lack the history insurers and forensics teams expect.",
             "Enable Audit Security Group Management and User Account Management on all domain controllers and forward those events.", O["secops"], "14 days", M["groups"])
     F.sort(key=lambda f: SEVRANK[f["severity"]])
@@ -196,7 +197,8 @@ def main():
     if pt.get("AzureSigninLogs") is False: G.append("Entra sign-in logs are not collected, so administrator single-factor sign-ins could not be measured.")
     if pt.get("office365InstalledApp") is False: G.append("The enterprise application inventory is not collected, so application publishers could not be verified.")
     if nh is not None and any(x["publisher"] == "not checked" for x in nh): G.append("Publisher verification of the applications granted permissions was not checked; confirm in the enterprise application inventory.")
-    if op is None: G.append("Windows security audit events were not checked, so on-premises privileged group changes are not covered.")
+    if op is None: G.append("The archived Windows report (WindowsSrv_Activity_Report) was not available, so on-premises privileged group changes are not covered.")
+    elif op["days"] < R["windows_days"]: G.append("Only %d of %d days of the archived Windows report were available, so on-premises changes are shown for those days only; backfill the archive to cover the window." % (op["days"], R["windows_days"]))
     G.append("LAPS deployment is not measured; confirm unique local-administrator passwords on joined devices.")
     G.append("PIM-eligible (inactive) assignments are not in the user snapshot; only active role holders are counted.")
     G.append("Entra logs are retained 12 months by the platform; drift older than the %d-day window is not shown." % W)
@@ -249,7 +251,7 @@ def main():
     ev = [{"source": "office365User", "reference": "privileged role holders, licences, MFA registration (snapshot)"},
           {"source": "AzureSigninLogs", "reference": "administrator sign-ins and authentication requirement, %d days" % W},
           {"source": "AzureAuditLogs", "reference": "RoleManagement, application consent and Conditional Access activity, %d days" % W}]
-    if op is not None: ev.append({"source": "WindowsAudit", "reference": "privileged group and account events, 30 days"})
+    if op is not None: ev.append({"source": "WindowsSrv_Activity_Report (archive)", "reference": "group additions and account creations, %d archived days" % op["days"]})
     out = {"tenant": a.tenant, "assessment_date": a.date, "window_days": W, "period_label": "%s – %s" % (datetime.datetime.strptime(start, "%Y-%m-%d").strftime("%d %b").lstrip("0"), asof.strftime("%d %b %Y").lstrip("0")),
            "drift_rating": rating, "kpis": kp, "headline": headline, "summary": summ, "ciso_ask": ask, "counts": cnt, "timeline": T, "findings": F,
            "non_human": nh or [], "role_inventory": [], "strengths": S, "coverage_gaps": G, "detections_to_add": det, "evidence": ev}

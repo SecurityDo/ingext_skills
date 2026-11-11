@@ -2,10 +2,23 @@
   "_note": "Rating rules for the Privileged Access Drift report. Cut-offs marked proposal were not stated in the original CISO Rpt 2 and are Fluency proposals.",
   "window_days": 60,
   "drift_rating": {
-    "high": ["any tier-0 application permission granted in the window", "a role assigned outside PIM by a person, or by an application that does not reverse its grants (not time-boxed), or a PIM alert with no resolution", "administrator single-factor sign-ins above 50% of successful administrator sign-ins"],
-    "elevated": ["permanent role grants added in PIM or outside PIM (time-boxed automation counts)", "more than 4 Global Administrators", "enabled administrators with no registered MFA method (proposal)", "administrator single-factor share above 10% (proposal)"],
-    "moderate": ["minor hygiene only"],
-    "low": ["no drift"]
+    "high": [
+      "any tier-0 application permission granted in the window",
+      "a role assigned outside PIM by a person, or by an application that does not reverse its grants (not time-boxed), or a PIM alert with no resolution",
+      "administrator single-factor sign-ins above 50% of successful administrator sign-ins"
+    ],
+    "elevated": [
+      "permanent role grants added in PIM or outside PIM (time-boxed automation counts)",
+      "more than 4 Global Administrators",
+      "enabled administrators with no registered MFA method (proposal)",
+      "administrator single-factor share above 10% (proposal)"
+    ],
+    "moderate": [
+      "minor hygiene only"
+    ],
+    "low": [
+      "no drift"
+    ]
   },
   "ga_max": 4,
   "sfa_high_pct": 50,
@@ -13,8 +26,47 @@
   "stacked_roles": 6,
   "timeboxed_ratio": 0.8,
   "_timeboxed_note": "An application that removes at least this share of the roles it adds is treated as time-boxing them (privileged-access tooling); the finding stays but is not rated high (proposal).",
-  "tier0": ["RoleManagement.ReadWrite.Directory", "Application.ReadWrite.All", "AppRoleAssignment.ReadWrite.All", "Directory.ReadWrite.All", "Policy.ReadWrite.ConditionalAccess", "Policy.ReadWrite.AuthenticationMethod", "Policy.ReadWrite.PermissionGrant", "DeviceLocalCredential.Read.All", "BitlockerKey.Read.All", "BitlockerKey.ReadBasic.All", "PrivilegedAccess.ReadWrite.AzureADGroup", "PrivilegedAssignmentSchedule.ReadWrite.AzureADGroup", "RoleAssignmentSchedule.ReadWrite.Directory", "EntitlementManagement.ReadWrite.All", "UserAuthenticationMethod.ReadWrite.All"],
-  "tier1": ["Sites.FullControl.All", "Sites.ReadWrite.All", "Sites.Read.All", "Files.Read.All", "Files.ReadWrite.All", "Mail.Read", "Mail.ReadWrite", "Mail.Send", "MailboxItem.Read.All", "MailboxItem.ImportExport.All", "Exchange.ManageAsApp", "Chat.Read.All", "Chat.ReadWrite.All", "ChannelMessage.Read.All", "User.ReadWrite.All", "Group.ReadWrite.All", "GroupMember.ReadWrite.All", "AdministrativeUnit.ReadWrite.All", "DeviceManagementConfiguration.ReadWrite.All", "DeviceManagementManagedDevices.ReadWrite.All", "Calendars.ReadWrite", "Contacts.ReadWrite"],
+  "tier0": [
+    "RoleManagement.ReadWrite.Directory",
+    "Application.ReadWrite.All",
+    "AppRoleAssignment.ReadWrite.All",
+    "Directory.ReadWrite.All",
+    "Policy.ReadWrite.ConditionalAccess",
+    "Policy.ReadWrite.AuthenticationMethod",
+    "Policy.ReadWrite.PermissionGrant",
+    "DeviceLocalCredential.Read.All",
+    "BitlockerKey.Read.All",
+    "BitlockerKey.ReadBasic.All",
+    "PrivilegedAccess.ReadWrite.AzureADGroup",
+    "PrivilegedAssignmentSchedule.ReadWrite.AzureADGroup",
+    "RoleAssignmentSchedule.ReadWrite.Directory",
+    "EntitlementManagement.ReadWrite.All",
+    "UserAuthenticationMethod.ReadWrite.All"
+  ],
+  "tier1": [
+    "Sites.FullControl.All",
+    "Sites.ReadWrite.All",
+    "Sites.Read.All",
+    "Files.Read.All",
+    "Files.ReadWrite.All",
+    "Mail.Read",
+    "Mail.ReadWrite",
+    "Mail.Send",
+    "MailboxItem.Read.All",
+    "MailboxItem.ImportExport.All",
+    "Exchange.ManageAsApp",
+    "Chat.Read.All",
+    "Chat.ReadWrite.All",
+    "ChannelMessage.Read.All",
+    "User.ReadWrite.All",
+    "Group.ReadWrite.All",
+    "GroupMember.ReadWrite.All",
+    "AdministrativeUnit.ReadWrite.All",
+    "DeviceManagementConfiguration.ReadWrite.All",
+    "DeviceManagementManagedDevices.ReadWrite.All",
+    "Calendars.ReadWrite",
+    "Contacts.ReadWrite"
+  ],
   "ai_app_pattern": "chatgpt|openai|copilot|claude|anthropic|gemini|perplexity|mistral|llm|gpt",
   "key_activities": {
     "outside_pim": "Add member to role outside of PIM (permanent)",
@@ -27,10 +79,38 @@
     "direct_add": "Add member to role",
     "direct_remove": "Remove member from role"
   },
-  "sensitive_roles": ["Global Administrator", "Privileged Role Administrator", "Privileged Authentication Administrator", "Application Administrator", "Cloud Application Administrator", "Conditional Access Administrator", "Hybrid Identity Administrator", "Exchange Administrator", "SharePoint Administrator", "User Administrator", "Authentication Administrator", "Intune Administrator", "Security Administrator", "Azure AD Joined Device Local Administrator", "Cloud Device Administrator"],
+  "sensitive_roles": [
+    "Global Administrator",
+    "Privileged Role Administrator",
+    "Privileged Authentication Administrator",
+    "Application Administrator",
+    "Cloud Application Administrator",
+    "Conditional Access Administrator",
+    "Hybrid Identity Administrator",
+    "Exchange Administrator",
+    "SharePoint Administrator",
+    "User Administrator",
+    "Authentication Administrator",
+    "Intune Administrator",
+    "Security Administrator",
+    "Azure AD Joined Device Local Administrator",
+    "Cloud Device Administrator"
+  ],
   "device_local_admin_role": "Azure AD Joined Device Local Administrator",
-  "onprem_events": {"4720": "account created", "4728": "added to a global security group", "4732": "added to a local security group", "4756": "added to a universal security group", "4738": "account changed"},
-  "onprem_group_events": ["4728", "4732", "4756", "4720"],
-  "owners": {"identity": "Identity", "vendor": "Identity / Vendor management", "m365": "CISO / M365 admin", "endpoint": "Endpoint Engineering", "secops": "Security Operations"},
-  "mitre": {"roles": "T1098.003 Additional Cloud Roles", "accounts": "T1078.004 Cloud Accounts", "data": "T1530 Data from Cloud Storage", "manip": "T1098 Account Manipulation", "local": "T1078.003 Local Accounts", "groups": "T1098.007 Additional Local or Domain Groups"}
+  "owners": {
+    "identity": "Identity",
+    "vendor": "Identity / Vendor management",
+    "m365": "CISO / M365 admin",
+    "endpoint": "Endpoint Engineering",
+    "secops": "Security Operations"
+  },
+  "mitre": {
+    "roles": "T1098.003 Additional Cloud Roles",
+    "accounts": "T1078.004 Cloud Accounts",
+    "data": "T1530 Data from Cloud Storage",
+    "manip": "T1098 Account Manipulation",
+    "local": "T1078.003 Local Accounts",
+    "groups": "T1098.007 Additional Local or Domain Groups"
+  },
+  "windows_days": 30
 }

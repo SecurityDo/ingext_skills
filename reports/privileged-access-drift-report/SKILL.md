@@ -30,10 +30,12 @@ Follow the `ingext-kql` skill for every query.
    `python3 scripts/dump_evidence.py --users office365User.jsonl.gz --apps office365InstalledApp.jsonl.gz --asof YYYY-MM-DD -o dump_out`
    writes `roles.json`, `accounts.json`, `apps.json` and the sign-in query files `signins_query_<n>.kql`. `dump_out/privileged_upns.txt` names individuals: keep it out of
    every deliverable and commit.
-3. **Log queries** (`references/playbook.md` sections 2 to 6) with `rangeFrom`/`rangeTo` in epoch milliseconds (now minus 60 days to now; 30 days for Windows). Run each
-   `signins_query_<n>.kql` and save the replies as `signins_<n>.json`; run the audit queries and save `role_drift`, `role_activity`, `app_grants`, `app_events`, `ca_changes`
-   and `onprem`. Small replies come back inline: write them to a file yourself. Skip a query whose table is absent.
-   Evidence: `python3 scripts/drift_evidence.py --roles dump_out/roles.json --accounts dump_out/accounts.json --signins signins_1.json [signins_2.json ...] [--role-drift ...] [--role-activity ...] [--app-grants ...] [--app-events ...] [--ca ...] [--onprem ...] [--apps dump_out/apps.json] --tables tables.json --asof YYYY-MM-DD -o drift_evidence.json`
+3. **Log queries** (`references/playbook.md` sections 2 to 6) with `rangeFrom`/`rangeTo` in epoch milliseconds (now minus 60 days to now). Run each
+   `signins_query_<n>.kql` and save the replies as `signins_<n>.json`; run the audit queries and save `role_drift`, `role_activity`, `app_grants`, `app_events` and `ca_changes`. Small replies come back inline: write them to a file yourself. Skip a query whose table is absent.
+   **On-premises changes come from the archive, not a search:** `list_report_archive` for `WindowsSrv_Activity_Report` (stop here if the tenant has no Windows logs), then
+   `download_report_archive` for the last 30 days with `objects` `win_trend` only (never the facet objects, which hold account names); save as `windows_archive.json`. Report the days
+   missing from the coverage and offer `backfill_report_archive` for them; never fill a gap with a search.
+   Evidence: `python3 scripts/drift_evidence.py --roles dump_out/roles.json --accounts dump_out/accounts.json --signins signins_1.json [signins_2.json ...] [--role-drift ...] [--role-activity ...] [--app-grants ...] [--app-events ...] [--ca ...] [--windows-archive windows_archive.json] [--apps dump_out/apps.json] --tables tables.json --asof YYYY-MM-DD -o drift_evidence.json`
 4. **Rate and draft:** `python3 scripts/rate_evidence.py --evidence drift_evidence.json --tenant "<Name>" --date YYYY-MM-DD --out draft_findings.json`.
    The rating and the tiers come only from `assets/rating_rules.json` (see `references/scoring.md`).
 5. **Review** the draft: plain language, no individual names; add what the rules cannot know (a vendor's stated need for a permission, a break-glass
@@ -43,6 +45,7 @@ Follow the `ingext-kql` skill for every query.
 
 ## What cannot be measured (state in the report)
 
+- **On-premises changes** are the archived Windows report's `groupAdds` (4728, 4732, 4756) and `accountCreated` (4720) over the days the archive holds; a short archive is stated as a coverage gap.
 - **PIM-eligible (inactive) assignments** are not in the user snapshot; only active role holders are counted.
 - **LAPS deployment** is not measured; the device local-administrator role holders are counted only.
 - **Dormant** means no interactive sign-in in the window (non-interactive sign-ins are a separate table), so service accounts can appear dormant.

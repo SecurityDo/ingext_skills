@@ -78,9 +78,8 @@ Mail.*, MailboxItem.*, Chat.Read.All, Exchange.ManageAsApp, User/Group.ReadWrite
 AzureAuditLogs | where Category in ("Policy","PolicyManagement") | where ActivityDisplayName has "conditional access"
 | summarize n=count() by day=bin(TimeGenerated, 1d), ActivityDisplayName, policy=tostring(TargetResources[0].displayName)
 ```
-## 6. On premises (30 days, skip if no WindowsAudit) -> `onprem`
+## 6. On premises (30 days) -> `windows_archive`: an archive download, not a search
 
-```
-WindowsAudit | where EventID in (4720, 4728, 4732, 4756, 4672, 4738, 4624) | summarize n=count() by EventID
-```
-No 4720/4728/4732/4756 events while 4624 or 4672 arrive from domain controllers is a coverage gap (group auditing is off), not an absence of change.
+`list_report_archive` for `WindowsSrv_Activity_Report`, then `download_report_archive` (last 30 days, `objects` `win_trend`). `drift_evidence.py` sums `groupAdds` (4728, 4732, 4756),
+`accountCreated` (4720), `events` and `logonsOk` over the archived days. No group additions or account creations while events arrive means group auditing is off on the domain
+controllers (a coverage gap), not an absence of change. Missing days are reported, and `backfill_report_archive` can fill them; a gap is never filled with a search.

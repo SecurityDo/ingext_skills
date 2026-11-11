@@ -1,0 +1,63 @@
+{
+ "days": [
+  {
+   "entry": {
+    "rangeFrom": "2026-11-09T00:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "win_trend",
+      "table": {
+       "rows": [
+        {
+         "Date": "2026-11-09T00:00:00Z",
+         "events": 260000,
+         "logonsOk": 172000,
+         "privLogons": 27000,
+         "groupAdds": 11,
+         "accountCreated": 1
+        }
+       ]
+      }
+     },
+     {
+      "name": "sources",
+      "table": {
+       "rows": [
+        {
+         "source": "WindowsAudit",
+         "status": "ok"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "entry": {
+    "rangeFrom": "2026-11-10T00:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "win_trend",
+      "table": {
+       "rows": [
+        {
+         "Date": "2026-11-10T00:00:00Z",
+         "events": 250000,
+         "logonsOk": 169000,
+         "privLogons": 26000,
+         "groupAdds": 11,
+         "accountCreated": 1
+        }
+       ]
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

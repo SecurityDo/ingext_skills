@@ -13,7 +13,7 @@ def run(*args):
 def main():
     t = tempfile.mkdtemp(); f = lambda n: "%s/%s.sample.json" % (A, n)
     run(os.path.join(S, "drift_evidence.py"), "--roles", f("roles"), "--accounts", f("accounts"), "--signins", f("signins"), "--role-drift", f("role_drift"), "--role-activity", f("role_activity"),
-        "--app-grants", f("app_grants"), "--app-events", f("app_events"), "--ca", f("ca_changes"), "--onprem", f("onprem"), "--apps", f("apps"), "--tables", f("tables"), "--asof", "2026-11-10", "-o", t + "/ev.json")
+        "--app-grants", f("app_grants"), "--app-events", f("app_events"), "--ca", f("ca_changes"), "--windows-archive", "%s/windows_archive.sample.json" % A, "--apps", f("apps"), "--tables", f("tables"), "--asof", "2026-11-10", "-o", t + "/ev.json")
     run(os.path.join(S, "rate_evidence.py"), "--evidence", t + "/ev.json", "--tenant", "Sample Co", "--date", "2026-11-10", "--out", t + "/draft.json")
     ev = json.load(open(t + "/ev.json")); d = json.load(open(t + "/draft.json"))
     dr = ev["drift"]
@@ -24,12 +24,13 @@ def main():
     assert tiers["Backup Connector"] == 0 and tiers["Policy Portal App"] == 1 and tiers["Upload App"] == 2, tiers
     pubs = {x["identity"]: x["publisher"] for x in ev["non_human"]}
     assert pubs["Backup Connector"].startswith("verified") and pubs["Upload App"] == "not verified" and pubs["Policy Portal App"] == "not checked", pubs
-    assert ev["onprem"]["group_change_events"] == 24
+    assert ev["onprem"]["group_change_events"] == 24 and ev["onprem"]["days"] == 2 and ev["onprem"]["dc_activity"], ev["onprem"]
     assert d["drift_rating"] == "High"                                           # tier-0 grant and an unresolved PIM alert
     sev = [x["severity"] for x in d["findings"]]
     assert sev[0] == "critical" and "high" in sev, sev
     assert any(x["title"] == "A PIM alert has no recorded resolution" for x in d["findings"])
     assert not any(x["title"].startswith("On-premises privilege") for x in d["findings"])   # group events are present
+    assert any("2 of 30 days" in g for g in d["coverage_gaps"]), d["coverage_gaps"]            # a short archive is stated, not hidden
     # a tenant with no role-management events at all
     z = json.load(open(t + "/ev.json")); z["drift"].update({"role_events_total": 0, "outside_pim_events": 0, "outside_pim_by_initiator": [], "pim_permanent_added": 0, "pim_alerts": 0, "pim_activations": 0, "pim_seen": False})
     z["non_human"] = []; json.dump(z, open(t + "/ev0.json", "w"))
