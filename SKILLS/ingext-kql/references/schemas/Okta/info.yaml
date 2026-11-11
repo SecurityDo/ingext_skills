@@ -1,0 +1,268 @@
+schema: Okta
+description: >-
+  Okta System Log events, imported by Ingext from the Okta System Log API
+  (/api/v1/logs). Each record is one System Log event: who acted (actor), what
+  happened (eventType, displayMessage), the outcome (outcome.result /
+  outcome.reason), where the request came from (client, request.ipChain,
+  securityContext), what it acted on (target[]), and Okta's own context about the
+  request (debugContext.debugData: request URI, risk, user behaviors, proxies).
+
+  eventType is the discriminator. The bulk of a tenant's volume is a handful of
+  types:
+
+    - user.session.start — an Okta sign-in (primary authentication). SUCCESS or
+      FAILURE; failures carry outcome.reason (INVALID_CREDENTIALS = wrong password
+      for an existing user, VERIFICATION_ERROR / UNKNOWN_USER = the username does
+      not exist in the org, LOCKED_OUT, GENERAL_NONSUCCESS).
+    - user.authentication.verify, user.authentication.auth_via_mfa — the factor
+      checks inside a sign-in (factor in debugContext.debugData.factor).
+    - policy.evaluate_sign_on — sign-on policy result (outcome.result ALLOW /
+      CHALLENGE / DENY), target[] names the policy and rule.
+    - user.authentication.sso — the signed-in user opened an app (target[] holds
+      the AppInstance and AppUser).
+    - app.oauth2.* / app.oauth2.as.* — OIDC/OAuth authorize, code and token
+      grants (org and custom authorization servers).
+    - system.ldapi.* — LDAP interface binds; system.push.send_factor_verify_push
+      — Okta Verify pushes; user.account.* / user.mfa.* / user.lifecycle.* —
+      account changes; group.* / application.* — admin and provisioning changes;
+      policy.* / zone.* / system.api_token.* — security configuration changes.
+
+  The event is stored as a dynamic JSON document (root @okta), so nested fields use
+  dot notation (actor.alternateId, client.geographicalContext.country) and the
+  arrays target[], request.ipChain[] and securityContext.userBehaviors[] need
+  mv-expand. Almost everything in debugContext.debugData is a STRING, including
+  values that look like booleans, numbers, JSON or maps. timestamp equals
+  published (verified to the millisecond).
+
+  Traps worth knowing before writing a query:
+    1. A sign-in is several records. One interactive login is typically
+       policy.evaluate_sign_on + user.session.start + user.authentication.verify
+       (+ auth_via_mfa), all sharing authenticationContext.externalSessionId and
+       usually transaction.id. Count logins with eventType == "user.session.start",
+       never all records.
+    2. client.ipAddress is not always the user. Server-side back ends that sign
+       users in through /api/v1/authn on their behalf (portals, LDAP agents) put
+       their own address there, so one IP can carry thousands of users. Check
+       client.userAgent.rawUserAgent (e.g. "Java/…", "LdapAsAService") before
+       treating an IP as the user's location.
+    3. VERIFICATION_ERROR is not a wrong password: the username does not exist and
+       actor.id is the literal "unknown" (actor.alternateId is what was typed).
+       Password spraying with a username list shows as many VERIFICATION_ERROR
+       actors from one IP; a real account with a wrong password is
+       INVALID_CREDENTIALS.
+    4. Missing values are often literal strings: client.zone "null",
+       client.device "Unknown", browser "UNKNOWN", actor.id "unknown" — not null.
+       Test with == "null" / == "unknown" as well as isempty().
+    5. Okta's own risk verdict is in two forms: securityContext.risk.level and the
+       securityContext.userBehaviors[] array ({name, result}), and again as a JSON
+       string in debugContext.debugData.logOnlySecurityData (parse_json) and as a
+       NON-JSON map string in debugData.behaviors / debugData.risk
+       ("{New Geo-Location=NEGATIVE, ...}") — use the structured forms, not the
+       map strings. They are present only on events Okta risk-scores (mostly
+       user.session.start and policy.evaluate_sign_on), and not on all of those.
+    6. Self-joins: a join whose right side reads this same table inline returns
+       nothing when it follows a summarize, and undercounts when it comes before
+       one (an engine bug affecting every table, fix pending as of 2026-11-11).
+       Bind both sides to lets — let L = Okta | ...; let R = Okta | ...;
+       L | join kind=inner (R) on key — or use two summarize passes with no join.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Primary time column for range filters (where timestamp > ago(1d)). Equal to published (when Okta recorded the event)."
+    sampleValues: ["2026-11-10T23:59:52.518Z"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: published
+    type: String
+    description: "ISO-8601 UTC time Okta recorded the event. Same instant as timestamp; use timestamp for filtering."
+    sampleValues: ["2026-11-10T23:59:52.518Z"]
+
+  - name: uuid
+    type: String
+    description: "Unique id of this System Log event. Use dcount(uuid) to count events if duplicates are suspected."
+    sampleValues: ["00000000-1111-11f1-8fcc-000000000001"]
+
+  - name: version
+    type: String
+    description: "System Log event schema version."
+    sampleValues: ["0"]
+
+  # ==========================================
+  # WHAT HAPPENED
+  # ==========================================
+  - name: eventType
+    type: String
+    description: >-
+      The event type, the primary discriminator (see the description above for the
+      main families). Pin it first in almost every query. Okta's catalogue:
+      https://developer.okta.com/docs/reference/api/event-types/
+    sampleValues: ["user.session.start", "user.authentication.sso", "policy.evaluate_sign_on", "user.authentication.verify", "app.oauth2.token.grant.access_token", "system.ldapi.bind", "user.mfa.factor.deactivate", "user.account.privilege.grant", "app.generic.unauth_app_access_attempt", "security.threat.detected"]
+
+  - name: legacyEventType
+    type: String
+    description: "The pre-2017 event name, when one exists (core.user_auth.login_success / login_failed for sign-ins). Absent on newer types."
+    sampleValues: ["core.user_auth.login_success", "core.user_auth.login_failed", "app.auth.sso"]
+
+  - name: displayMessage
+    type: String
+    description: "Human-readable summary of the event type (one fixed text per eventType)."
+    sampleValues: ["User login to Okta", "User single sign on to app", "Evaluation of sign-on policy", "User attempted unauthorized access to app", "Max sign in attempts exceeded"]
+
+  - name: severity
+    type: String
+    description: "Okta's severity of the event type: DEBUG, INFO, WARN, ERROR. Describes the event type, not a threat verdict."
+    sampleValues: ["INFO", "WARN", "ERROR", "DEBUG"]
+
+  - name: outcome
+    type: Dynamic
+    description: >-
+      outcome.result — SUCCESS, FAILURE, ALLOW, DENY, CHALLENGE (policy
+      evaluations), SKIPPED, UNKNOWN; outcome.reason — why (absent on most
+      successes). Sign-in failure reasons: INVALID_CREDENTIALS (existing user,
+      wrong password), VERIFICATION_ERROR and UNKNOWN_USER (no such user —
+      actor.id "unknown"), LOCKED_OUT, GENERAL_NONSUCCESS. Policy evaluations give a
+      sentence ("Sign-on policy evaluation resulted in CHALLENGE").
+    sampleValues: ["SUCCESS", "FAILURE", "ALLOW", "CHALLENGE", "INVALID_CREDENTIALS", "VERIFICATION_ERROR", "LOCKED_OUT"]
+
+  # ==========================================
+  # WHO
+  # ==========================================
+  - name: actor
+    type: Dynamic
+    description: >-
+      Who performed the action. actor.alternateId — the login (usually an email)
+      and the main user key; lower-case it before grouping. actor.displayName,
+      actor.id (Okta user id "00u…", or the literal "unknown" when the typed
+      username does not exist), actor.type — User, PublicClientApp (an OAuth
+      client acting for itself), SystemPrincipal (Okta itself), AD_AGENT.
+      actor.detailEntry is set on LDAP events (detailEntry.binddn).
+    sampleValues: ["user1@contoso.example", "User One", "00u1abcd2EFGH3ijk4l5", "User", "PublicClientApp", "SystemPrincipal", "unknown"]
+
+  - name: target
+    type: Dynamic
+    description: >-
+      Array of the objects the event acted on; mv-expand target and branch on
+      tostring(target.type): User (the affected user for admin/account events —
+      alternateId, displayName, id), AppInstance (the application — displayName is
+      the app name), AppUser (the user's assignment to the app), PolicyEntity /
+      PolicyRule (the sign-on policy and rule for policy.evaluate_sign_on;
+      detailEntry.policyType, policyRuleFactorMode), access_token / id_token
+      (detailEntry.expires, hash, subject). For admin changes, target[].changeDetails
+      carries from/to values.
+    sampleValues: ["AppInstance", "AppUser", "User", "PolicyEntity", "PolicyRule", "access_token"]
+
+  # ==========================================
+  # SESSION
+  # ==========================================
+  - name: authenticationContext
+    type: Dynamic
+    description: >-
+      authenticationContext.externalSessionId — the Okta session id; every record
+      of one sign-in and all later SSO/OAuth activity in that session share it, so
+      it is the key to follow a session from login to the apps it opened
+      ("unknown" on records outside a session, e.g. failed logins).
+      rootSessionId — the originating session. authenticationStep (0 for most),
+      authenticationProvider / credentialProvider / credentialType (FACTOR_PROVIDER,
+      OKTA_CREDENTIAL_PROVIDER, OTP, SMS) on factor events.
+    sampleValues: ["102AbCdEfGhIjKlMnOpQrStU", "unknown", "OKTA_CREDENTIAL_PROVIDER", "OTP"]
+
+  - name: transaction
+    type: Dynamic
+    description: >-
+      transaction.id — the HTTP request id (shared by the records one request
+      produced); transaction.type — WEB (a user/API request) or JOB (a background
+      job such as directory import); transaction.detail.requestApiTokenId /
+      rootApiTokenId — the API token behind an API call.
+    sampleValues: ["WEB", "JOB"]
+
+  # ==========================================
+  # WHERE FROM
+  # ==========================================
+  - name: client
+    type: Dynamic
+    description: >-
+      The client that made the request. client.ipAddress (see trap 2: may be a
+      back-end server, not the user); client.userAgent.rawUserAgent (full UA
+      string — scripting tools show as "Go-http-client/1.1", "python-requests/…",
+      "curl/…"; back ends as "Java/…"), client.userAgent.browser (CHROME, FIREFOX,
+      SAFARI, CHROMIUM_EDGE, or "UNKNOWN" for non-browsers), client.userAgent.os;
+      client.device (Computer, Mobile, Tablet, "Unknown");
+      client.geographicalContext.{country, state, city, postalCode,
+      geolocation.lat/lon} — Okta's geolocation of the IP (country is the full
+      English name, e.g. "United States"); client.zone — the matched Okta network
+      zone name or the literal "null"; client.id — the OAuth client id on OAuth
+      events.
+    sampleValues: ["203.0.113.10", "Go-http-client/1.1", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...", "CHROME", "UNKNOWN", "Windows 10", "Computer", "Unknown", "United States", "null"]
+
+  - name: request
+    type: Dynamic
+    description: >-
+      request.ipChain — array of the addresses the request passed through (client
+      first, then proxies), each with ip, version (V4/V6), geographicalContext and
+      ipDetails {asNumber, asOrg, isp, domain, ipServiceCategories[] {type VPN /
+      Proxy, isAnonymous, operator}}. Usually one element equal to client.ipAddress.
+    sampleValues: ["203.0.113.10", "V4"]
+
+  - name: securityContext
+    type: Dynamic
+    description: >-
+      Okta's intelligence about the client IP and the request.
+      securityContext.asNumber (integer ASN — tolong()), asOrg, isp, domain,
+      isProxy (bool), ipDetails {same, plus ipServiceCategories[] VPN/Proxy
+      with operator, e.g. MULLVAD_VPN, NORD_VPN, ZSCALER_PROXY};
+      securityContext.risk {level LOW / MEDIUM / HIGH, reasons[] e.g. "Anomalous
+      Location", "Anomalous Device"}; securityContext.userBehaviors[] — Okta's
+      per-user behavior detection, one {id, name, result} per behavior: name "New
+      Country", "New IP", "New ASN", "New Geo-Location", "New Device", "New State",
+      "New City", "Velocity"; result POSITIVE (new for this user), NEGATIVE,
+      UNKNOWN, BAD_REQUEST. mv-expand securityContext.userBehaviors to filter.
+      tlsFingerprint.ja4 — the client's JA4 TLS fingerprint. Present on
+      user-initiated requests; absent on JOB and most system events.
+    sampleValues: ["16509", "amazon technologies inc.", "amazon.com  inc.", "amazonaws.com", "false", "HIGH", "Anomalous Location", "New Country", "POSITIVE", "t13d311200_1d947a95fc68_7e1102d2036b"]
+
+  # ==========================================
+  # OKTA DEBUG DATA (all string-valued)
+  # ==========================================
+  - name: debugContext
+    type: Dynamic
+    description: >-
+      debugContext.debugData — a free-form bag whose keys depend on eventType;
+      every value is a string. Most useful keys:
+      requestUri / url (the endpoint: "/api/v1/authn" for API/password sign-ins,
+      "/oauth2/v1/authorize", "/oauth2/v1/token", "/app/<app>/<id>/sso/saml");
+      requestId; threatSuspected ("true"/"false" — Okta ThreatInsight);
+      logOnlySecurityData (JSON string: parse_json(...).risk.level and
+      .behaviors["New Country"]); behaviors and risk (map strings
+      "{New Geo-Location=NEGATIVE, ...}", "{reasons=Anomalous Device, level=HIGH}"
+      — not JSON, prefer securityContext); tunnels (JSON array string of
+      {anonymous, operator, type} — anonymizing VPNs/proxies on the connection);
+      associatedProxies (JSON array string of residential-proxy networks the IP
+      has been seen in, e.g. ["IPROYAL_PROXY"] — reputation only, real users
+      appear here too); factor (OKTA_VERIFY_PUSH, SOFT_TOKEN, FIDO_WEBAUTHN,
+      SMS_FACTOR); grantType, requestedScopes / grantedScopes, clientAuthType,
+      redirectUri, authorizationServer (OAuth events); privilegeGranted
+      (user.account.privilege.grant); deviceFingerprint, dtHash, traceId;
+      oktaUserAgentExtended.
+    sampleValues: ["/api/v1/authn", "/oauth2/v1/token", "false", "{\"risk\":{\"level\":\"LOW\"},\"behaviors\":{\"New Country\":\"NEGATIVE\"}}", "[{\"anonymous\":true,\"operator\":\"NORD_VPN\",\"type\":\"VPN\"}]", "[\"IPROYAL_PROXY\"]", "OKTA_VERIFY_PUSH", "authorization_code", "Application administrator"]
+
+  - name: device
+    type: Dynamic
+    description: "Device details from Okta device assurance when present; null in most tenants' data."
+
+  - name: gatewayContext
+    type: Dynamic
+    description: "Okta Access Gateway context; null unless the tenant uses Access Gateway."
+
+  # ==========================================
+  # FLUENCY / INGEST LABELS
+  # ==========================================
+  - name: labels
+    type: Dynamic
+    description: "Ingest labels (key/value map) added by the pipeline."

@@ -1,6 +1,6 @@
 ---
 name: ingext-kql
-version: 1.1.5
+version: 1.1.6
 description: >
   Generate a validated KQL query for the Ingext datalake from a natural-language description.
   Use this skill whenever the user asks to query, search, count, aggregate, or report on data
@@ -174,7 +174,7 @@ Emit a single JSON object — no prose wrapper, no markdown fence:
 - **Aggregating:** `summarize count() by col`, `summarize sum(bytes) by col`, `summarize dcount(user) by col`.
 - **Top-N:** `top 10 by count_ desc` (more efficient than `order by ... | take N`).
 - **Correlating two different tables: union the `let` summaries.** Summarize each table by the shared key in its own `let`, then `union T1, T2 | summarize ... by Key` (sum the counters; collect strings with `make_set_if(col, isnotempty(col))`). The engine refuses a pipeline that reads a second table directly (as a union arm or the leading table of a union), and its error names this rewrite. Time filters inside each `let` set the search window. Worked example: `references/schemas/DuoTelephony/queries/duo-telephony-by-user.yaml`.
-- **Joins.** The default join kind is `inner`, not Kusto's `innerunique`, so duplicate left keys are not collapsed. All kinds work between `let`s or after a `summarize`. `rightouter`, `fullouter`, `rightanti` and `rightsemi` on raw table rows are refused, so summarize first or bind each side to a `let`. A raw large stream table on the right of a join fails at the row cap, so summarize it first. `on Key` keeps a single `Key` column; there is no `Key1` as in Kusto.
+- **Joins.** The default join kind is `inner`, not Kusto's `innerunique`, so duplicate left keys are not collapsed. All kinds work between `let`s. **Self-joins must use a `let` on each side** (`let L = T | ...; let R = T | ...; L | join (R) on Key`): when the right side reads the same table inline, the join returns no rows after a `summarize` and undercounts before one, with no error (engine bug, fix pending as of 2026-11-11). Two `summarize` passes with no join also work. `rightouter`, `fullouter`, `rightanti` and `rightsemi` on raw table rows are refused, so summarize first or bind each side to a `let`. A raw large stream table on the right of a join fails at the row cap, so summarize it first. `on Key` keeps a single `Key` column; there is no `Key1` as in Kusto.
 - **Unknown columns read as null.** On a dynamic-schema table, a misspelled column does not error: `where Misspelled == "x"` returns no rows. Check column names against the embedded schema when a filter returns nothing.
 - **`summarize by X` needs an aggregate.** `summarize by X` with no aggregate does not parse; use `distinct X`, or add `count()`.
 - **Time bucketing:** `bin(TimeGenerated, 1h)` for time-series.

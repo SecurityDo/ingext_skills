@@ -1,0 +1,22 @@
+description: >-
+  Successful Okta sign-ins (user.session.start SUCCESS) made by scripting tools or
+  HTTP libraries instead of a browser or a known agent, over the last 7 days,
+  grouped by IP and user agent. Valid-password account takeover with automation
+  shows here (several users from one IP within seconds). Back ends that sign users
+  in on their behalf use their own agents (Java/…, LdapAsAService) and are not in
+  the list; add any tool your tenant uses legitimately to the exclusions.
+datatype: Okta
+kql: |
+  Okta
+  | where timestamp > ago(7d)
+  | where tostring(eventType) == "user.session.start" and tostring(outcome.result) == "SUCCESS"
+  | extend UA = tostring(client.userAgent.rawUserAgent)
+  | where UA startswith "Go-http-client" or UA startswith "python-" or UA startswith "Python-" or UA startswith "curl/" or UA startswith "Wget" or UA startswith "okhttp" or UA startswith "axios" or UA startswith "node-fetch" or UA startswith "PostmanRuntime" or UA startswith "aiohttp" or UA startswith "libwww-perl"
+  | summarize Logins = count(), Users = make_set(tolower(tostring(actor.alternateId)), 10), First = min(timestamp), Last = max(timestamp), ASN = take_any(tolong(securityContext.asNumber)), ISP = take_any(tostring(securityContext.isp)), Country = take_any(tostring(client.geographicalContext.country)) by IP = tostring(client.ipAddress), UA
+  | order by Logins desc
+tags: [okta, sign-in, user-agent, automation, account-takeover, security]
+expected_output: |
+  One row per IP and scripting user agent with the users it signed in.
+
+  IP            UA                  Logins  Users                                        ASN     ISP              Country
+  203.0.113.10  Go-http-client/1.1  8       ["user1@contoso.example","user2@...", ...]   200019  alexhost s.r.l.  Moldova

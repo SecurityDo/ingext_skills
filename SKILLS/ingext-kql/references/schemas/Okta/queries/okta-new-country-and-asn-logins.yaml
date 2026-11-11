@@ -1,0 +1,24 @@
+description: >-
+  Successful sign-ins where Okta's own behavior detection marked both "New Country"
+  and "New ASN" as POSITIVE for the user (securityContext.userBehaviors), last 7
+  days. Okta forgets quickly — a repeat login from the same attacker network days
+  later reads NEGATIVE — so this finds the first login from a new place, not every
+  one. Okta only scores some sign-ins; events without userBehaviors are not
+  covered.
+datatype: Okta
+kql: |
+  Okta
+  | where timestamp > ago(7d)
+  | where tostring(eventType) == "user.session.start" and tostring(outcome.result) == "SUCCESS"
+  | mv-expand b = securityContext.userBehaviors
+  | where tostring(b.result) == "POSITIVE"
+  | summarize Behaviors = make_set(tostring(b.name)) by uuid, timestamp, User = tolower(tostring(actor.alternateId)), IP = tostring(client.ipAddress), Country = tostring(client.geographicalContext.country), ISP = tostring(securityContext.isp), Risk = tostring(securityContext.risk.level), UA = tostring(client.userAgent.rawUserAgent)
+  | where set_has_element(Behaviors, "New Country") and set_has_element(Behaviors, "New ASN")
+  | order by timestamp desc
+  | take 50
+tags: [okta, sign-in, new-country, geo, risk, security]
+expected_output: |
+  One row per sign-in with the behaviors Okta flagged.
+
+  timestamp                 User                    IP            Country  ISP              Risk  Behaviors
+  2026-10-30T23:05:12.210Z  user1@contoso.example   203.0.113.10  Moldova  alexhost s.r.l.  HIGH  ["New Country","New IP","New ASN","New Geo-Location"]

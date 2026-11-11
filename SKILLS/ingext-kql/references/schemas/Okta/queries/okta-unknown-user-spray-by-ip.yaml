@@ -1,0 +1,26 @@
+description: >-
+  Credential stuffing / username spraying from a single source over the last 24 hours:
+  client IPs that tried to sign in as usernames that do not exist in the org
+  (VERIFICATION_ERROR / UNKNOWN_USER, actor.id "unknown"), across several email
+  domains. A list-driven attacker shows many unknown users and domains from one IP,
+  often with a scripting user agent. A corporate egress with users mistyping their
+  own domain also appears (few domains, typo variants), so read SampleDomains.
+  Lower the thresholds for low-and-slow attempts over longer windows.
+datatype: Okta
+kql: |
+  Okta
+  | where timestamp > ago(24h)
+  | where tostring(eventType) == "user.session.start" and tostring(outcome.result) == "FAILURE"
+  | where tostring(outcome.reason) in ("VERIFICATION_ERROR", "UNKNOWN_USER") or tostring(actor.id) == "unknown"
+  | extend User = tolower(tostring(actor.alternateId)), IP = tostring(client.ipAddress)
+  | extend Domain = tostring(split(User, "@")[1])
+  | summarize Attempts = count(), UnknownUsers = dcount(User), Domains = dcount(Domain), SampleDomains = make_set(Domain, 8), UserAgents = make_set(tostring(client.userAgent.rawUserAgent), 4), ASN = take_any(tolong(securityContext.asNumber)), ISP = take_any(tostring(securityContext.isp)), First = min(timestamp), Last = max(timestamp) by IP
+  | where UnknownUsers >= 3 or Domains >= 3
+  | order by UnknownUsers desc
+  | take 25
+tags: [okta, sign-in, credential-stuffing, password-spray, unknown-user, security]
+expected_output: |
+  IPs ranked by distinct unknown usernames tried.
+
+  IP              Attempts  UnknownUsers  Domains  SampleDomains                                  UserAgents               ASN    ISP
+  203.0.113.21    41        20            5        ["contoso.example","fabrikam.example",...]     ["Go-http-client/1.1"]  51852  private layer inc

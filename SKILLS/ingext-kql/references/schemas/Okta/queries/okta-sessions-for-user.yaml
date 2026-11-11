@@ -1,0 +1,23 @@
+description: >-
+  Follow one user's Okta sessions from sign-in to the applications they opened,
+  last 7 days: every record of a session shares
+  authenticationContext.externalSessionId, so grouping by it shows the login IP,
+  user agent and the apps (target AppInstance) used in that session. Replace the
+  user. Records without a session ("unknown"/empty — failed logins, blocked app
+  attempts) are left out; query them separately.
+datatype: Okta
+kql: |
+  Okta
+  | where timestamp > ago(7d)
+  | where tolower(tostring(actor.alternateId)) == "user1@contoso.example"
+  | where isnotempty(tostring(authenticationContext.externalSessionId)) and tostring(authenticationContext.externalSessionId) != "unknown"
+  | mv-expand t = target
+  | where tostring(t.type) in ("AppInstance", "") or isnull(t)
+  | summarize Start = min(timestamp), End = max(timestamp), Events = count(), EventTypes = make_set(tostring(eventType), 12), Apps = make_set(tostring(t.displayName), 12), IPs = make_set(tostring(client.ipAddress), 6), UAs = make_set(tostring(client.userAgent.rawUserAgent), 4) by Session = tostring(authenticationContext.externalSessionId)
+  | order by Start desc
+tags: [okta, session, sso, investigation, timeline]
+expected_output: |
+  One row per session.
+
+  Session                    Start                     Events  EventTypes                                                 Apps                        IPs
+  102AbCdEfGhIjKlMnOpQrStU   2026-11-08T10:39:39.596Z  6       ["user.session.start","user.authentication.sso", ...]     ["Docebo","Ticket Portal"]  ["203.0.113.10"]

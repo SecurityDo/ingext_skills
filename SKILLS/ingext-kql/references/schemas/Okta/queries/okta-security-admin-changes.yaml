@@ -1,0 +1,21 @@
+description: >-
+  Security-relevant administrative changes in the last 30 days: admin role grants,
+  MFA factor resets/deactivations, API token creation, and sign-on policy and
+  network zone changes — who made the change, on what, from where. target[] is
+  expanded so each affected object is a row.
+datatype: Okta
+kql: |
+  Okta
+  | where timestamp > ago(30d)
+  | where tostring(eventType) in ("user.account.privilege.grant", "group.privilege.grant", "user.mfa.factor.deactivate", "user.mfa.factor.reset_all", "system.api_token.create", "policy.lifecycle.update", "policy.rule.update", "zone.update", "zone.deactivate")
+  | mv-expand t = target
+  | where tostring(t.type) in ("User", "UserGroup", "PolicyEntity", "PolicyRule", "Token", "NetworkZone") or isnull(t)
+  | project timestamp, eventType = tostring(eventType), Actor = tostring(actor.alternateId), Target = tostring(t.alternateId), TargetName = tostring(t.displayName), Privilege = tostring(debugContext.debugData.privilegeGranted), IP = tostring(client.ipAddress), Result = tostring(outcome.result)
+  | order by timestamp desc
+  | take 50
+tags: [okta, admin, privilege, mfa, policy, audit, security]
+expected_output: |
+  Most recent changes first.
+
+  timestamp                 eventType                     Actor                   Target                  Privilege
+  2026-11-11T11:57:36.273Z  user.account.privilege.grant  admin1@contoso.example  user7@contoso.example   Application administrator

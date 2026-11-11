@@ -1,0 +1,24 @@
+description: >-
+  Three or more different users successfully signing in from one IP within the
+  same minute, last 7 days — one client working through several accounts.
+  Server-side back ends that sign users in on their behalf are excluded by user
+  agent (Java/…, LdapAsAService); shared corporate egress (VPN, Zscaler, an office
+  NAT) can also show small bursts, so compare the users' domains and the user
+  agents.
+datatype: Okta
+kql: |
+  Okta
+  | where timestamp > ago(7d)
+  | where tostring(eventType) == "user.session.start" and tostring(outcome.result) == "SUCCESS"
+  | extend UA = tostring(client.userAgent.rawUserAgent)
+  | where not(UA startswith "Java/") and UA != "LdapAsAService"
+  | summarize Users = dcount(tolower(tostring(actor.alternateId))), UserList = make_set(tolower(tostring(actor.alternateId)), 10), Logins = count(), UAs = make_set(UA, 5) by IP = tostring(client.ipAddress), Minute = bin(timestamp, 1m)
+  | where Users >= 3
+  | order by Users desc
+  | take 25
+tags: [okta, sign-in, burst, account-takeover, shared-account, security]
+expected_output: |
+  One row per IP and minute with 3+ users.
+
+  IP            Minute                Users  UserList                                     Logins  UAs
+  203.0.113.10  2026-11-08T10:39:00Z  4      ["user1@contoso.example","user2@...", ...]   8       ["Go-http-client/1.1"]
