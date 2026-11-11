@@ -60,11 +60,21 @@ description: >-
        ("{New Geo-Location=NEGATIVE, ...}") — use the structured forms, not the
        map strings. They are present only on events Okta risk-scores (mostly
        user.session.start and policy.evaluate_sign_on), and not on all of those.
-    6. Self-joins: a join whose right side reads this same table inline returns
-       nothing when it follows a summarize, and undercounts when it comes before
-       one (an engine bug affecting every table, fix pending as of 2026-11-11).
-       Bind both sides to lets — let L = Okta | ...; let R = Okta | ...;
-       L | join kind=inner (R) on key — or use two summarize passes with no join.
+    6. Self-joins and unions (lake 2.10.24+): a join or union leg that reads Okta
+       inline is correct before the query's first summarize / top / take /
+       distinct / count, and refused with a rewrite hint after it. Bind that
+       leg to a let instead: let R = Okta | ... | summarize ... by u;
+       Okta | ... | summarize ... by u | join kind=inner (R) on u, or
+       let A = ...; let B = ...; union A, B. (Older engines returned nothing or
+       undercounted silently.) Keep lets summarized: it is faster.
+    7. Never name a computed column after a dynamic root (client, actor,
+       outcome, target, request, securityContext, debugContext): from that point
+       client.ipAddress reads the new column, not the event, and comes back
+       empty. Use clientType, actorName, and so on.
+    8. A fine-grained summarize over a busy table (per minute over a back end,
+       or weeks of browser sign-ins) hits the engine's group limit and drops
+       groups; the response says truncated. Bin coarser, or filter to the
+       addresses or users of interest before the fine-grained summarize.
 fields:
 
   # ==========================================

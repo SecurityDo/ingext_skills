@@ -1,6 +1,6 @@
 ---
 name: ingext-kql
-version: 1.1.6
+version: 1.1.7
 description: >
   Generate a validated KQL query for the Ingext datalake from a natural-language description.
   Use this skill whenever the user asks to query, search, count, aggregate, or report on data
@@ -174,8 +174,10 @@ Emit a single JSON object — no prose wrapper, no markdown fence:
 - **Aggregating:** `summarize count() by col`, `summarize sum(bytes) by col`, `summarize dcount(user) by col`.
 - **Top-N:** `top 10 by count_ desc` (more efficient than `order by ... | take N`).
 - **Correlating two different tables: union the `let` summaries.** Summarize each table by the shared key in its own `let`, then `union T1, T2 | summarize ... by Key` (sum the counters; collect strings with `make_set_if(col, isnotempty(col))`). The engine refuses a pipeline that reads a second table directly (as a union arm or the leading table of a union), and its error names this rewrite. Time filters inside each `let` set the search window. Worked example: `references/schemas/DuoTelephony/queries/duo-telephony-by-user.yaml`.
-- **Joins.** The default join kind is `inner`, not Kusto's `innerunique`, so duplicate left keys are not collapsed. All kinds work between `let`s. **Self-joins must use a `let` on each side** (`let L = T | ...; let R = T | ...; L | join (R) on Key`): when the right side reads the same table inline, the join returns no rows after a `summarize` and undercounts before one, with no error (engine bug, fix pending as of 2026-11-11). Two `summarize` passes with no join also work. `rightouter`, `fullouter`, `rightanti` and `rightsemi` on raw table rows are refused, so summarize first or bind each side to a `let`. A raw large stream table on the right of a join fails at the row cap, so summarize it first. `on Key` keeps a single `Key` column; there is no `Key1` as in Kusto.
+- **Joins.** The default join kind is `inner`, not Kusto's `innerunique`, so duplicate left keys are not collapsed. All kinds work between `let`s. **Self-joins and same-table unions: bind the second leg to a `let`** (`let R = T | ... | summarize ... by Key; T | ... | summarize ... by Key | join (R) on Key`, or `let A = ...; let B = ...; union A, B`). A leg that reads the query's own table inline is fine before the first `summarize`/`top`/`take`/`distinct`/`count`, and is refused with a rewrite hint after it. Keep `let`s summarized to the columns you need; it is faster. `rightouter`, `fullouter`, `rightanti` and `rightsemi` on raw table rows are refused, so summarize first or bind each side to a `let`. A raw large stream table on the right of a join fails at the row cap, so summarize it first. `on Key` keeps a single `Key` column; there is no `Key1` as in Kusto.
 - **Unknown columns read as null.** On a dynamic-schema table, a misspelled column does not error: `where Misspelled == "x"` returns no rows. Check column names against the embedded schema when a filter returns nothing.
+- **Never name a computed column after a dynamic root.** On a dynamic table, `extend client = ...` (or `actor`, `outcome`, `target`) shadows the event's field: every later `client.ipAddress` reads the new column and comes back empty. Use `clientType`, `actorName`, and so on.
+- **Fine-grained summaries can be truncated.** A per-minute `summarize` over a busy table hits the group limit and drops groups; check `truncated` in the response, and bin coarser or filter to the keys of interest first.
 - **`summarize by X` needs an aggregate.** `summarize by X` with no aggregate does not parse; use `distinct X`, or add `count()`.
 - **Time bucketing:** `bin(TimeGenerated, 1h)` for time-series.
 - **Dynamic JSON fields:** use `.` navigation and cast with `tostring()` / `tolong()` before aggregating.
