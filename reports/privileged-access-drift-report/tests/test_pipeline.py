@@ -43,6 +43,24 @@ def main():
         if "brand kit was not found" not in (e.stderr or "") + (e.stdout or ""):
             raise
         print("render skipped: fluency-report brand kit not found")
+    # snapshot dump -> evidence (synthetic dump; the real one is a gzipped JSONL of the office365User and office365InstalledApp records)
+    import gzip
+    users = [{"userPrincipalName": "a_adm@x.test", "roles": ["Global Administrator", "SharePoint Administrator"], "accountEnabled": True, "assignedLicenses": [{"skuId": "1"}], "createdDateTime": "2026-10-01T00:00:00Z", "userRegistration": {"isMfaRegistered": True, "isPasswordlessCapable": True}},
+             {"userPrincipalName": "helpdesk@x.test", "roles": ["User Administrator", "Exchange Administrator", "SharePoint Administrator", "Teams Administrator", "Helpdesk Administrator", "Global Administrator"], "accountEnabled": False, "assignedLicenses": [], "createdDateTime": "2020-01-01T00:00:00Z", "userRegistration": {"isMfaRegistered": False}},
+             {"value": {"userPrincipalName": "b@x.test", "roles": [], "accountEnabled": True}},
+             {"userPrincipalName": "g@x.test", "roles": ["Global Reader"], "userType": "Guest", "accountEnabled": True, "userRegistration.isMfaRegistered": True}]
+    with gzip.open(t + "/u.jsonl.gz", "wt") as fh:
+        fh.write("\n".join(json.dumps(x) for x in users) + "\n")
+    with gzip.open(t + "/a.jsonl.gz", "wt") as fh:
+        fh.write(json.dumps({"displayName": "Backup Connector", "verifiedPublisher": {"displayName": "Backup Vendor Inc."}}) + "\n" + json.dumps({"displayName": "Upload App", "verifiedPublisher": None}) + "\n")
+    run(os.path.join(S, "dump_evidence.py"), "--users", t + "/u.jsonl.gz", "--apps", t + "/a.jsonl.gz", "--asof", "2026-11-10", "--batch", "2", "-o", t + "/dump")
+    acc = json.load(open(t + "/dump/accounts.json"))["data"]["Tables"][0]; ac = dict(zip([x["ColumnName"] for x in acc["Columns"]], acc["Rows"][0]))
+    assert ac["accounts"] == 3 and ac["enabled"] == 2 and ac["disabled"] == 1 and ac["licensed"] == 1 and ac["multi6"] == 1 and ac["shared"] == 1 and ac["noMfa"] == 1 and ac["passwordless"] == 1 and ac["guests"] == 1 and ac["new90"] == 1, ac
+    rl = {r[0]: r for r in json.load(open(t + "/dump/roles.json"))["data"]["Tables"][0]["Rows"]}
+    assert rl["Global Administrator"][1:] == [2, 1, 1, 0] and rl["Global Reader"][4] == 1
+    assert len([x for x in os.listdir(t + "/dump") if x.startswith("signins_query_")]) == 2 and "x.test" in open(t + "/dump/signins_query_1.kql").read()
+    run(os.path.join(S, "drift_evidence.py"), "--roles", t + "/dump/roles.json", "--accounts", t + "/dump/accounts.json", "--signins", f("signins"), f("signins"), "--apps", t + "/dump/apps.json", "--asof", "2026-11-10", "-o", t + "/ev_dump.json")
+    dv = json.load(open(t + "/ev_dump.json")); assert dv["signins"]["successful"] == 2 * 27844 and dv["accounts"]["accounts"] == 3, dv["signins"]   # two batches are summed
     print("ok")
 
 

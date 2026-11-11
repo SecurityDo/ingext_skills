@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn the saved kql_search replies of the playbook into measured evidence (counts, roles, applications; no administrator is named).
 
-  drift_evidence.py --roles roles.json --accounts accounts.json --signins signins.json --asof YYYY-MM-DD
+  drift_evidence.py --roles roles.json --accounts accounts.json --signins signins.json [signins_2.json ...] --asof YYYY-MM-DD
                     [--role-drift role_drift.json] [--role-activity role_activity.json] [--app-grants app_grants.json]
                     [--app-events app_events.json] [--ca ca_changes.json] [--onprem onprem.json] [--apps apps.json]
                     [--tables tables.json] [--rules ../assets/rating_rules.json] -o drift_evidence.json
@@ -50,8 +50,9 @@ def tier_of(perm, R):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for k in ("roles", "accounts", "signins"):
+    for k in ("roles", "accounts"):
         ap.add_argument("--" + k, required=True)
+    ap.add_argument("--signins", required=True, nargs="+", help="one reply, or the replies of every sign-in query batch (summed)")
     for k in ("role-drift", "role-activity", "app-grants", "app-events", "ca", "onprem", "apps", "tables"):
         ap.add_argument("--" + k)
     ap.add_argument("--asof", required=True); ap.add_argument("--rules", default=os.path.join(HERE, "..", "assets", "rating_rules.json"))
@@ -64,7 +65,10 @@ def main():
     acc = (rows(a.accounts) or [{}])[0]
     accounts = {k: num(acc.get(k)) for k in ("accounts", "enabled", "disabled", "licensed", "multi6", "shared", "noMfa", "passwordless", "guests", "new90")}
     ga = next((r for r in roles if r["role"] == "Global Administrator"), {"holders": 0, "enabled": 0})
-    sg = (rows(a.signins) or [{}])[0]
+    sg = {}
+    for p in a.signins:
+        for k, v in ((rows(p) or [{}])[0]).items():
+            sg[k] = sg.get(k, 0) + num(v)
     ok, sfa = num(sg.get("ok")), num(sg.get("sfa"))
     signins = {"admins_signed_in": num(sg.get("admins")), "signins": num(sg.get("signins")), "successful": ok, "single_factor": sfa,
                "single_factor_pct": round(100.0 * sfa / ok, 1) if ok else None, "admins_with_single_factor": num(sg.get("sfaAdmins")),
