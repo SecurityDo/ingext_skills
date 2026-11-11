@@ -1,0 +1,47 @@
+// K2 -- what did a successful sign-in lead to? The subject's Okta sessions, from sign-in to the apps they opened: every record of one
+// sign-in and the SSO/OAuth activity after it share authenticationContext.externalSessionId.
+// One row per session:
+// - ip0 / ua0 / widget0 / uri0 / asn0 / isp0: how the session started (its user.session.start).
+// - mfa: factor checks passed in the session (auth_via_mfa, or user.authentication.verify on
+//   Identity Engine, with a factor that is not the password). 0 = the password alone opened it.
+//   On a Classic org user.authentication.verify with no factor is the password check.
+// - apps: the applications the session opened (SSO, OIDC). types lists what else happened.
+// - positive: the behaviors Okta itself marked POSITIVE (new for this user) on the session:
+//   New Country, New IP, New ASN, New Device, New Geo-Location, Velocity... Okta forgets
+//   quickly: a repeat sign-in from the same new network days later reads NEGATIVE, so a
+//   NEGATIVE (or an empty list) clears nothing; read the first session from that network.
+// - ips: every address in the session; a back end (Java/..., LdapAsAService) can appear
+//   next to the user's own address when an app completes the sign-in server-side.
+// Records outside a session (failed sign-ins, blocked app attempts) are in okta_auth_events.
+// Both sides of the join are lets: after a summarize, a join's right side that reads Okta
+// inline is refused. R holds one user's rows and only the columns used, which keeps it fast.
+// Placeholders: {USER} = lower-cased login; {WFROM}, {WTO}.
+let R = Okta
+    | where timestamp between (datetime("{WFROM}") .. datetime("{WTO}"))
+    | where tolower(tostring(actor.alternateId)) == "{USER}"
+    | extend sid = tostring(authenticationContext.externalSessionId), et = tostring(eventType), res = tostring(outcome.result),
+        factor = tostring(debugContext.debugData.factor), ip = tostring(client.ipAddress), ua = tostring(client.userAgent.rawUserAgent),
+        widget = tostring(debugContext.debugData.oktaUserAgentExtended), uri = tostring(debugContext.debugData.requestUri),
+        asn = tolong(securityContext.asNumber), isp = tostring(securityContext.isp), id = tostring(uuid), ub = securityContext.userBehaviors,
+        app = case(tostring(target[0].type) == "AppInstance", tostring(target[0].displayName),
+            tostring(target[1].type) == "AppInstance", tostring(target[1].displayName), "")
+    | where sid != "" and sid != "unknown"
+    | project timestamp, sid, et, res, factor, ip, ua, widget, uri, asn, isp, id, ub, app;
+let S = R
+    | summarize start = min(timestamp), until = max(timestamp), events = dcount(id), types = make_set(et, 10),
+        ip0 = take_anyif(ip, et == "user.session.start"), ua0 = take_anyif(ua, et == "user.session.start"),
+        widget0 = take_anyif(widget, et == "user.session.start"), uri0 = take_anyif(uri, et == "user.session.start"),
+        asn0 = take_anyif(asn, et == "user.session.start"), isp0 = take_anyif(isp, et == "user.session.start"),
+        mfa = dcountif(id, et in ("user.authentication.verify", "user.authentication.auth_via_mfa") and res == "SUCCESS"
+            and factor != "" and not(factor contains "PASSWORD")),
+        factors = make_set_if(factor, factor != ""), apps = make_set_if(app, app != "", 10), ips = make_set(ip, 4)
+        by sid;
+let B = R
+    | mv-expand b = ub
+    | where tostring(b.result) == "POSITIVE"
+    | summarize positive = make_set(tostring(b.name), 8) by sid;
+S
+| join kind=leftouter (B) on sid
+| project start, until, ip0, ua0, widget0, uri0, asn0, isp0, mfa, factors, apps, positive, types, ips, events, sid
+| order by start asc
+| take 100

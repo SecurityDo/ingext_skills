@@ -3,7 +3,7 @@
 // zero with no control is not a negative).
 // Counts only.
 Okta
-| where timestamp > ago(30d)
+| where timestamp between (datetime("{WTO}") - 30d .. datetime("{WTO}"))
 | where eventType startswith "user.account." or eventType startswith "user.mfa."
     or eventType startswith "user.lifecycle." or eventType startswith "user.credential."
     or eventType startswith "system.email.password_reset" or eventType == "user.session.clear"

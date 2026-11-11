@@ -1,0 +1,41 @@
+// K2 / K3 -- tenant-wide: who else signed in the way the suspect session did? Successful Okta sign-ins
+// (user.session.start SUCCESS) per address and client, kept when the client is a scripting
+// tool (the 14 days up to {WTO}, counted per day) or when three or more users signed in from
+// the address within one minute (the 2 days up to {WTO}). Valid-password takeover with automation shows here as several accounts
+// from one hosting network within seconds, often shared or service accounts.
+// Back ends that sign users in on their behalf (Java/..., LdapAsAService) are left out: one
+// such address carries thousands of users every day and is not anyone's location. A shared
+// office egress, VPN or proxy can show a small burst of browser sign-ins: read the users'
+// domains, the ASN and the client before calling a burst a takeover.
+// peak = the most users in one minute (in one day, for a scripted client); sample = the users of a minute with three or more (any
+// minute, for a scripted client); minutes = minutes with any sign-in. A list that names the subject's own account, or the accounts it shares a
+// pattern with, is the scope of the finding.
+// Placeholders: {WTO}.
+Okta
+| where timestamp between (datetime("{WTO}") - 14d .. datetime("{WTO}"))
+| where tostring(eventType) == "user.session.start" and tostring(outcome.result) == "SUCCESS"
+| extend ua = tostring(client.userAgent.rawUserAgent)
+| where not(ua startswith "Java/" or ua == "LdapAsAService")
+| extend ip = tostring(client.ipAddress), user = tolower(tostring(actor.alternateId)),
+    widget = tostring(debugContext.debugData.oktaUserAgentExtended)
+| extend clientType = case(
+    ua startswith "Go-http-client" or ua startswith "python-" or ua startswith "Python-" or ua startswith "curl/"
+        or ua startswith "Wget" or ua startswith "okhttp" or ua startswith "axios" or ua startswith "node-fetch"
+        or ua startswith "PostmanRuntime" or ua startswith "aiohttp" or ua startswith "libwww-perl", "scripted",
+    ua startswith "Mozilla/" and widget startswith "okta-signin-widget", "browser, widget",
+    ua startswith "Mozilla/", "browser, no widget",
+    ua in ("", "unknown"), "none", "other")
+// Minute groups for every browser sign-in of two weeks fill the engine's group cap (the
+// result comes back truncated, with addresses missing): bursts are read over 2 days.
+| where clientType == "scripted" or timestamp > datetime("{WTO}") - 2d
+| summarize per_min = dcount(user), users = make_set(user, 10), logins = dcount(tostring(uuid)),
+    asn = take_any(tolong(securityContext.asNumber)), isp = take_any(tostring(securityContext.isp)),
+    country = take_any(tostring(client.geographicalContext.country)), uas = make_set(substring(ua, 0, 60), 2)
+    by ip, clientType, minute = iff(clientType == "scripted", bin(timestamp, 1d), bin(timestamp, 1m))
+| summarize peak = max(per_min), sample = take_anyif(users, per_min >= 3 or clientType == "scripted"),
+    logins = sum(logins), minutes = count(), first = min(minute), last = max(minute),
+    asn = take_any(asn), isp = take_any(isp), country = take_any(country), uas = take_any(uas)
+    by ip, clientType
+| where clientType == "scripted" or peak >= 3
+| order by peak desc, logins desc
+| take 40

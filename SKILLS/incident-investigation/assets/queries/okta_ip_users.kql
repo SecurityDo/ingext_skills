@@ -1,17 +1,45 @@
 // K5 -- whose addresses are these? For the addresses the subject signs in from
 // (okta_success_profile), how many OTHER people in the tenant signed in
-// successfully from each one. An address dozens of colleagues use every day is
-// the organisation's office or VPN egress, even in a country the ticket flags
-// as new; an address nobody else uses is a question for the user.
-// Counts only. Placeholders: {IPS} = quoted, comma-separated list.
+// successfully from each one, with what client, and how fast. A shared address has
+// two readings, and the client and the pace decide between them:
+// - many users through the day over weeks, browser clients with the Okta sign-in page
+//   (widget), the organisation's own ASN: office or VPN egress, even in a country the
+//   ticket flags as new;
+// - a back-end client (Java/..., LdapAsAService) carrying hundreds of users: a server
+//   signing users in on their behalf, not anyone's location (it can make a single
+//   address look like the whole company);
+// - several users within the same minute (peakPerMin >= 3) from a hosting or VPN ASN with a
+//   scripting client (Go-http-client, python-requests, curl...): one tool working through
+//   accounts, the valid-password takeover pattern -- the opposite of an office.
+// An address nobody else uses is a question for the user.
+// One pass with no let or join. users counts distinct users across the minutes from
+// up to 50 per bucket, so it is a lower bound on a busy back end; peakPerMin is exact. A
+// back end's rows are counted per day, not per minute (its peakPerMin is per day): its
+// thousands of minutes otherwise fill the engine's group cap and drop the other addresses.
+// A result marked truncated has lost groups: run it again with fewer addresses.
+// Counts only. Placeholders: {IPS} = quoted, comma-separated list; {WTO}.
 Okta
-| where timestamp > ago(30d)
-| where ["client.ipAddress"] in ({IPS})
-| where eventType == "user.session.start" and tostring(["outcome.result"]) == "SUCCESS"
-| summarize users = dcount(tolower(tostring(["actor.alternateId"]))), sessions = dcount(uuid),
-    sampleUsers = make_set(tolower(tostring(["actor.alternateId"])), 10),
-    isp = min(tostring(["securityContext.isp"])),
-    first = min(timestamp), last = max(timestamp)
-    by ip = tostring(["client.ipAddress"])
+| where timestamp between (datetime("{WTO}") - 30d .. datetime("{WTO}"))
+| where tostring(client.ipAddress) in ({IPS})
+| where tostring(eventType) == "user.session.start" and tostring(outcome.result) == "SUCCESS"
+| extend ip = tostring(client.ipAddress), user = tolower(tostring(actor.alternateId)),
+    ua = tostring(client.userAgent.rawUserAgent), widget = tostring(debugContext.debugData.oktaUserAgentExtended)
+| extend clientType = case(ua startswith "Java/" or ua == "LdapAsAService", "back end",
+    ua startswith "Go-http-client" or ua startswith "python-" or ua startswith "Python-" or ua startswith "curl/"
+        or ua startswith "Wget" or ua startswith "okhttp" or ua startswith "axios" or ua startswith "node-fetch"
+        or ua startswith "PostmanRuntime" or ua startswith "aiohttp" or ua startswith "libwww-perl", "scripted",
+    ua startswith "Mozilla/" and widget startswith "okta-signin-widget", "browser, widget",
+    ua startswith "Mozilla/", "browser, no widget",
+    ua in ("", "unknown"), "none", "other")
+| summarize perMin = dcount(user), minuteUsers = make_set(user, 50), clients = make_set(clientType, 4),
+    uas = make_set(substring(ua, 0, 60), 3), asn = take_any(tolong(securityContext.asNumber)),
+    isp = take_any(tostring(securityContext.isp))
+    by ip, minute = iff(clientType == "back end", bin(timestamp, 1d), bin(timestamp, 1m))
+| mv-expand u = minuteUsers
+| summarize users = dcount(tostring(u)), peakPerMin = max(perMin), minutes = dcount(minute),
+    days = dcount(bin(minute, 1d)), sampleUsers = make_set(tostring(u), 10),
+    clients = make_set(clients), uas = make_set(uas), asn = take_any(asn), isp = take_any(isp),
+    first = min(minute), last = max(minute)
+    by ip
 | order by users desc
 | take 1000

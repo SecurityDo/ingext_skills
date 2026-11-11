@@ -5,19 +5,35 @@
 // ("/app/office365/.../sso/wsfed/active", relayed by Microsoft, no user agent)
 // never touches the Okta sign-in page, so the fix is to block legacy
 // authentication, not to block IPs -- and nothing else in the event says so.
-// noUA = events with no user agent ("unknown"): scripts and legacy clients.
+// noUA = events with no user agent ("unknown"): legacy clients. clients = what made the
+// requests on each path, from the user agent: "scripted" (Go-http-client, python-requests,
+// curl...: a tool, not a person), "back end" (Java/..., LdapAsAService: a server signing
+// users in on their behalf), "browser, widget" (the Okta sign-in page), "browser, no
+// widget" (a browser user agent on the API without the page; common, weak alone), "none".
+// "primary: authn API" says only that a password went to /api/v1/authn: the client says who
+// sent it. scripted = events from a scripting client; a SUCCESS row with scripted > 0 is the
+// valid-password takeover pattern (K2).
 // relays = the org of the second hop in request.ipChain; "microsoft corporation"
 // means Microsoft forwarded the attempt on the client's behalf.
 // Counts only. Placeholders: {USER} = lower-cased login (Okta actor.alternateId).
 Okta
-| where timestamp > ago(30d)
+| where timestamp between (datetime("{WTO}") - 30d .. datetime("{WTO}"))
 | where tolower(["actor.alternateId"]) == "{USER}"
 | where eventType startswith "user.session." or eventType startswith "user.authentication."
-    or eventType in ("user.account.lock", "policy.evaluate_sign_on")
+    or eventType in ("user.account.lock", "policy.evaluate_sign_on", "app.generic.unauth_app_access_attempt")
 | extend uri = tostring(["debugContext.debugData.requestUri"]),
-    ua = tostring(["client.userAgent.rawUserAgent"])
+    ua = tostring(["client.userAgent.rawUserAgent"]),
+    widget = tostring(["debugContext.debugData.oktaUserAgentExtended"])
+| extend clientType = case(ua startswith "Java/" or ua == "LdapAsAService", "back end",
+    ua startswith "Go-http-client" or ua startswith "python-" or ua startswith "Python-" or ua startswith "curl/"
+        or ua startswith "Wget" or ua startswith "okhttp" or ua startswith "axios" or ua startswith "node-fetch"
+        or ua startswith "PostmanRuntime" or ua startswith "aiohttp" or ua startswith "libwww-perl", "scripted",
+    ua startswith "Mozilla/" and widget startswith "okta-signin-widget", "browser, widget",
+    ua startswith "Mozilla/", "browser, no widget",
+    ua in ("", "unknown"), "none", "other")
 | extend Path = case(
     eventType == "user.authentication.auth_via_richclient", "legacy: rich client",
+    eventType == "app.generic.unauth_app_access_attempt", "blocked app access",
     uri contains "/sso/wsfed/active", "legacy: WS-Trust active",
     uri startswith "/api/v1/authn", "primary: authn API",
     uri startswith "/idp/idx", "primary: Identity Engine",
@@ -30,7 +46,8 @@ Okta
 // Okta events are counted by uuid: the datalake can hold the same event more
 // than once.
 | summarize events = dcount(uuid), noUA = dcountif(uuid, ua == "unknown" or ua == ""),
-    ips = dcount(["client.ipAddress"]),
+    scripted = dcountif(uuid, clientType == "scripted"), clients = make_set(clientType, 5),
+    ips = dcount(tostring(["client.ipAddress"])),
     countries = make_set(tostring(["client.geographicalContext.country"]), 10),
     relays = make_set(relay, 5), first = min(timestamp), last = max(timestamp)
     by Path, eventType, result = tostring(["outcome.result"]),

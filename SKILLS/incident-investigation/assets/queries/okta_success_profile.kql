@@ -1,29 +1,46 @@
 // K5 -- what do the subject's REAL sign-ins look like? Each successful Okta
-// session over 30 days, grouped by address: how many sessions, how many went
-// through MFA (an auth_via_mfa success in the same session), the browser, and
-// the network. This is the baseline an attacker's attempt is judged against,
-// and the list of addresses okta_ip_users resolves. A shared admin mailbox shows
-// several people in several countries here; that is a fact about the account,
-// not an intrusion.
-// Counts only. Placeholders: {USER} = lower-cased login.
+// session over 30 days, grouped by address and client: how many sessions, how many
+// passed MFA, the client, and the network. This is the baseline an attacker's
+// attempt is judged against, and the list of addresses okta_ip_users resolves.
+// MFA: a session has it when it holds a successful factor check that is not the
+// password -- user.authentication.auth_via_mfa, or user.authentication.verify with a
+// factor (Identity Engine logs factors there; on a Classic org a verify with no
+// factor is the password check). withMFA = 0 on an address means the password alone
+// opened every session from it.
+// client: read it before the address. A "back end" address (Java/..., LdapAsAService)
+// is a server signing the subject in, not where the subject is; a "scripted" client
+// (Go-http-client, python-requests, curl...) is a tool, not the subject's browser.
+// A shared admin mailbox shows several people in several countries here; that is a
+// fact about the account, not an intrusion.
+// Counts only. Placeholders: {USER} = lower-cased login; {WTO}.
 Okta
-| where timestamp > ago(30d)
-| where tolower(["actor.alternateId"]) == "{USER}"
-| where tostring(["outcome.result"]) == "SUCCESS"
-| where eventType in ("user.session.start", "user.authentication.auth_via_mfa")
-| extend session = tostring(["authenticationContext.externalSessionId"])
+| where timestamp between (datetime("{WTO}") - 30d .. datetime("{WTO}"))
+| where tolower(tostring(actor.alternateId)) == "{USER}"
+| where tostring(outcome.result) == "SUCCESS"
+| where tostring(eventType) in ("user.session.start", "user.authentication.auth_via_mfa", "user.authentication.verify")
+| extend session = tostring(authenticationContext.externalSessionId), et = tostring(eventType), id = tostring(uuid),
+    factor = tostring(debugContext.debugData.factor), ip = tostring(client.ipAddress),
+    ua = tostring(client.userAgent.rawUserAgent), widget = tostring(debugContext.debugData.oktaUserAgentExtended),
+    isp = tostring(securityContext.isp), asn = tolong(securityContext.asNumber),
+    place = strcat(tostring(client.geographicalContext.city), ", ", tostring(client.geographicalContext.country))
 | where session != "" and session != "unknown"
-| summarize started = dcountif(uuid, eventType == "user.session.start"),
-    mfa = dcountif(uuid, eventType == "user.authentication.auth_via_mfa"),
-    ip = min(tostring(["client.ipAddress"])), when = min(timestamp),
-    ua = min(tostring(["client.userAgent.rawUserAgent"])),
-    isp = min(tostring(["securityContext.isp"])),
-    place = min(strcat(tostring(["client.geographicalContext.city"]), ", ",
-        tostring(["client.geographicalContext.country"])))
+| summarize started = dcountif(id, et == "user.session.start"),
+    mfa = dcountif(id, et != "user.session.start" and factor != "" and not(factor contains "PASSWORD")),
+    ip = take_anyif(ip, et == "user.session.start"), when = min(timestamp),
+    ua = take_anyif(ua, et == "user.session.start"), widget = take_anyif(widget, et == "user.session.start"),
+    isp = take_anyif(isp, et == "user.session.start"), asn = take_anyif(asn, et == "user.session.start"),
+    place = take_anyif(place, et == "user.session.start")
     by session
 | where started > 0
+| extend clientType = case(ua startswith "Java/" or ua == "LdapAsAService", "back end",
+    ua startswith "Go-http-client" or ua startswith "python-" or ua startswith "Python-" or ua startswith "curl/"
+        or ua startswith "Wget" or ua startswith "okhttp" or ua startswith "axios" or ua startswith "node-fetch"
+        or ua startswith "PostmanRuntime" or ua startswith "aiohttp" or ua startswith "libwww-perl", "scripted",
+    ua startswith "Mozilla/" and widget startswith "okta-signin-widget", "browser, widget",
+    ua startswith "Mozilla/", "browser, no widget",
+    ua in ("", "unknown"), "none", "other")
 | summarize sessions = count(), withMFA = countif(mfa > 0), first = min(when), last = max(when),
-    browsers = make_set(substring(ua, 0, 60), 5)
-    by ip, isp, place
+    uas = make_set(substring(ua, 0, 60), 3)
+    by ip, clientType, asn, isp, place
 | order by sessions desc
 | take 1000

@@ -6,7 +6,7 @@
 // okta_change_types as the control.
 // Raw rows for the subject, slim columns. Placeholders: {USER} = lower-cased login.
 Okta
-| where timestamp > ago(30d)
+| where timestamp between (datetime("{WTO}") - 30d .. datetime("{WTO}"))
 | where tolower(["actor.alternateId"]) == "{USER}" or tolower(tostring(["target"])) contains "{USER}"
 | where eventType startswith "user.account." or eventType startswith "user.mfa."
     or eventType startswith "user.lifecycle." or eventType startswith "user.credential."

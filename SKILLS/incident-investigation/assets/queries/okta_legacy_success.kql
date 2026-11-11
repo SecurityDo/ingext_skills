@@ -12,7 +12,7 @@
 // password being used, never the guessing or the lockouts.
 // Counts only.
 Okta
-| where timestamp > ago(30d)
+| where timestamp between (datetime("{WTO}") - 30d .. datetime("{WTO}"))
 | extend uri = tostring(["debugContext.debugData.requestUri"])
 | where eventType == "user.authentication.auth_via_richclient"
     or (uri contains "/sso/wsfed/active"

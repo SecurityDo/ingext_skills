@@ -4,10 +4,12 @@
 // zero in the SUCCESS rows here -- and the FAILURE rows are its control: the
 // same filter returns the attempts themselves.
 // Counts only. Placeholders: {IPS} = quoted, comma-separated list of the failing
-// IPs from K1 detail, e.g. "203.0.113.7", "198.51.100.9".
+// IPs from K1 detail, e.g. "203.0.113.7", "198.51.100.9". uas = the clients each address
+// used: a scripting client with SUCCESS rows for several actors is one tool working through
+// accounts (okta_tenant_signins shows the same tenant-wide).
 Okta
-| where timestamp > ago(30d)
-| where ["client.ipAddress"] in ({IPS})
+| where timestamp between (datetime("{WTO}") - 30d .. datetime("{WTO}"))
+| where tostring(["client.ipAddress"]) in ({IPS})
 | summarize events = dcount(uuid), first = min(timestamp), last = max(timestamp)
     by ip = tostring(["client.ipAddress"]), actor = tolower(tostring(["actor.alternateId"])),
     eventType, result = tostring(["outcome.result"])

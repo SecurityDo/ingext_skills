@@ -1,0 +1,28 @@
+// K3 -- a list-driven spray, by address: failed sign-ins for usernames that do not exist
+// in the org (VERIFICATION_ERROR / UNKNOWN_USER, actor.id "unknown"; actor.alternateId is
+// what was typed), over the 30 days up to {WTO}. Many unknown names and several email
+// domains from one address is an attacker working a username list; the existing accounts
+// the same address tried (realAccounts, INVALID_CREDENTIALS or a success) are its targets.
+// A corporate egress where people mistype their own domain also shows here (few domains,
+// typo variants of the same names, browser clients, the organisation's own network): read
+// sampleDomains and the clients. tool = attempts from a client that is not a browser
+// (Go-http-client, python-requests, curl...); those addresses sort first, then the widest
+// spread of domains.
+// Counts only. Placeholders: {WTO}.
+Okta
+| where timestamp between (datetime("{WTO}") - 30d .. datetime("{WTO}"))
+| where tostring(eventType) == "user.session.start" and tostring(outcome.result) == "FAILURE"
+| extend who = tolower(tostring(actor.alternateId)), ip = tostring(client.ipAddress), reason = tostring(outcome.reason)
+| extend unknownUser = reason in ("VERIFICATION_ERROR", "UNKNOWN_USER") or tostring(actor.id) == "unknown"
+| extend domain = tostring(split(who, "@")[1]), ua = tostring(client.userAgent.rawUserAgent)
+| summarize attempts = dcount(tostring(uuid)), unknownNames = dcountif(who, unknownUser),
+    realAccounts = dcountif(who, not(unknownUser)), domains = dcountif(domain, unknownUser),
+    sampleDomains = make_set_if(domain, unknownUser, 8), realSample = make_set_if(who, not(unknownUser), 8),
+    tool = dcountif(tostring(uuid), not(ua startswith "Mozilla/") and ua != "" and ua != "unknown"),
+    uas = make_set(substring(ua, 0, 60), 4),
+    asn = take_any(tolong(securityContext.asNumber)), isp = take_any(tostring(securityContext.isp)),
+    first = min(timestamp), last = max(timestamp)
+    by ip
+| where unknownNames >= 3 or domains >= 3
+| order by tool desc, domains desc, unknownNames desc
+| take 100
