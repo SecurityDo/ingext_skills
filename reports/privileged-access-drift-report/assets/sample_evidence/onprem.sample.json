@@ -1,0 +1,1 @@
+{"total": 1, "data": {"Tables": [{"TableName": "PrimaryResult", "Columns": [{"ColumnName": "EventID", "DataType": "string"}, {"ColumnName": "n", "DataType": "string"}], "Rows": [[4624, 5172507], [4672, 817773], [4756, 22], [4738, 23], [4720, 2]]}]}}
