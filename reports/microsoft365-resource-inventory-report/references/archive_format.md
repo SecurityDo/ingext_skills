@@ -11,7 +11,7 @@
 
 | Object | One row per | Columns |
 |---|---|---|
-| `o365res_users` | tenant | users, enabled, disabled, guests, admins, registrationKnown, enabledMfaRegistered, enabledNoMfa, adminsNoMfa, asOf |
+| `o365res_users` | tenant | users, enabled, disabled, guests, admins, registrationKnown, enabledMfaRegistered, enabledNoMfa, adminsNoMfa, globalAdmins, adminsEnabled, adminsLicensed, adminsStacked, adminsSharedStyle, adminsPasswordless, adminsNew90d, asOf |
 | `o365res_devices` | tenant | devices, managedKnown, managed, complianceKnown, nonCompliant, stale90d, asOf |
 | `o365res_ca` | Conditional Access state | state, policies, asOf |
 | `o365res_apps` | tenant | apps, secrets, certificates, appsNoCredentials, multiTenant, asOf |
@@ -21,6 +21,7 @@
 | `o365res_groups` | tenant | groups, securityEnabled, microsoft365, publicGroups, roleAssignable, dynamicGroups, emptyGroups, membersTotal, asOf |
 | `o365res_noncompliant_users` | enabled user with no MFA | userPrincipalName, displayName, userType, finding, isAdmin, roles, asOf |
 | `o365res_licensed_users` | user with a license | userPrincipalName, displayName, userType, accountEnabled, licenseCount, licenses, skuids, asOf |
+| `o365res_role_holders` | directory role | role, holders, enabled, disabled, noMfa, licensed, asOf (counts only; added later, so older archived days do not have it) |
 | `sources` | scan | source, status (`ok` or `not available`), detail |
 
 ## Merge rules (these are snapshots, not events)

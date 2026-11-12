@@ -14,9 +14,11 @@
 // day nearest the end of a period, and compare days to see change. Only the 90-day and 730-day tests use the window.
 // from and to only fix the run window (and asOf); a daily archived run uses -1d@d to @d, like the other archived reports.
 //
-// Ten scans (one table each, plus "sources"):
+// Eleven scans (one table each, plus "sources"):
 //   o365res_users          one row: users, enabled, disabled, guests, admins, registrationKnown, enabledMfaRegistered,
-//                          enabledNoMfa, adminsNoMfa.
+//                          enabledNoMfa, adminsNoMfa, then the administrator counts globalAdmins, adminsEnabled,
+//                          adminsLicensed, adminsStacked, adminsSharedStyle, adminsPasswordless, adminsNew90d.
+//   o365res_role_holders   one row per directory role: role, holders, enabled, disabled, noMfa, licensed, asOf. Counts only.
 //   o365res_devices        one row: devices, managedKnown, managed, complianceKnown, nonCompliant, stale90d.
 //   o365res_ca             one row per Conditional Access policy state: state, policies.
 //   o365res_apps           one row of app-registration counts: apps, secrets, certificates, appsNoCredentials, multiTenant.
@@ -36,6 +38,17 @@
 //                       are not known and must not be read as "no MFA". MFA registration is not MFA enforcement.
 //   enabledMfaRegistered / enabledNoMfa / adminsNoMfa   isMfaRegistered true / false on enabled users / on enabled admins.
 //   guests              userType is "Guest".
+//   globalAdmins        users whose roles include Global Administrator (enabled or not).
+//   adminsEnabled / adminsLicensed   administrators (broad definition above) with accountEnabled true / holding at least one license.
+//   adminsStacked       administrators holding six or more directory roles.
+//   adminsSharedStyle   administrators whose user principal name starts with helpdesk, admin, it, support, service, info or
+//                       noreply followed by @ or a dot (a shared or generic account name). A name pattern, not proof.
+//   adminsPasswordless  administrators with userRegistration.isPasswordlessCapable true.
+//   adminsNew90d        administrators whose createdDateTime is within 90 days before asOf.
+//   role holders        o365res_role_holders counts the users holding each directory role (a user with several roles is counted
+//                       once in each); noMfa is the enabled holders whose isMfaRegistered is false. Counts only: no names. Like
+//                       the other tables it is a state, so read the latest day and compare days to see change. Role history
+//                       begins the day this table was first archived; a snapshot cannot be backfilled.
 //   licensed user       a user whose assignedLicenses holds at least one skuId, enabled or not. licenses are the product names
 //                       from the Microsoft365_License_Table lookup (SKUID to Product name, as in Microsoft365_Status_Resource_Report);
 //                       a skuId the lookup does not know is shown as the skuId so no license is dropped. The users per license
@@ -83,6 +96,7 @@ function main({from="-1d@d", to="@d"}) {
     let o365res_groups = GetGroups(status, rangeTo)
     let o365res_noncompliant_users = GetNonCompliantUsers(status, rangeTo)
     let o365res_licensed_users = GetLicensedUsers(status, rangeTo)
+    let o365res_role_holders = GetRoleHolders(status, rangeTo)
     let sources = jsonTable(status.rows)
     return {
         o365res_users,
@@ -95,6 +109,7 @@ function main({from="-1d@d", to="@d"}) {
         o365res_groups,
         o365res_noncompliant_users,
         o365res_licensed_users,
+        o365res_role_holders,
         sources
     }
 }
@@ -125,7 +140,14 @@ function GetUsers(status, rangeTo) {
         registrationKnown = countif(isnotempty(['userRegistration.id'])),
         enabledMfaRegistered = countif(isEnabled and mfa == true),
         enabledNoMfa = countif(isEnabled and mfa == false),
-        adminsNoMfa = countif(isAdmin and isEnabled and mfa == false)
+        adminsNoMfa = countif(isAdmin and isEnabled and mfa == false),
+        globalAdmins = countif(tostring(roles) has "Global Administrator"),
+        adminsEnabled = countif(isAdmin and isEnabled),
+        adminsLicensed = countif(isAdmin and array_length(assignedLicenses) > 0),
+        adminsStacked = countif(array_length(roles) >= 6),
+        adminsSharedStyle = countif(isAdmin and tolower(userPrincipalName) matches regex "^(helpdesk|admin|it|support|service|info|noreply)[@.]"),
+        adminsPasswordless = countif(isAdmin and ['userRegistration.isPasswordlessCapable'] == true),
+        adminsNew90d = countif(isAdmin and isnotnull(createdDateTime) and createdDateTime >= datetime("${rangeTo}") - 90d)
     | extend asOf = datetime("${rangeTo}")
     `
     return Run(status, "office365User", query)
@@ -207,21 +229,28 @@ function GetAppPermissions(status, rangeTo) {
 
 // ---- Enterprise applications (office365InstalledApp holds service principals, not software on devices) -----
 function GetEnterpriseApps(status, rangeTo) {
-    // The engine cannot read a second resource table inside this query, so the tenant's own app registration ids are
-    // read first and passed in as a list. A tenant with no app registrations (or no table) gets an empty list: its
-    // registeredHere is 0 and thirdParty counts every non-Microsoft application; the failure is recorded in sources.
-    let box = {ids: "\"\""}
+    // The tenant's own app registrations are found by a left join of the service principals to office365Application on appId
+    // (one row per appId on the right, so no service principal is counted twice). A tenant with no app registration table makes the
+    // joined query fail: the scan then runs without the join, registeredHere is 0 and thirdParty counts every non-Microsoft
+    // application, and the failure is recorded in sources.
+    let joined = EnterpriseAppsQuery(rangeTo, `| join kind=leftouter (office365Application | summarize ownCount = count() by ownAppId = appId) on $left.appId == $right.ownAppId`, "isnotempty(ownAppId)")
     try {
-        kql(`office365Application | project appId`).Each((row) => {
-            box.ids = box.ids + ", \"" + toString(row.appId) + "\""
-        })
+        let r = kql(joined)
+        status.rows = append(status.rows, {source: "office365InstalledApp", status: "ok"})
+        return r
     } catch (e) {
-        status.rows = append(status.rows, {source: "enterprise apps: own app registration ids", status: "not available", detail: toString(e)})
+        status.rows = append(status.rows, {source: "enterprise apps: join to app registrations", status: "not available", detail: toString(e)})
     }
-    let query = `
+    return Run(status, "office365InstalledApp", EnterpriseAppsQuery(rangeTo, "", "false"))
+}
+
+// The enterprise-application scan. joinPart is the optional join to the app registrations; ownExpr says when a row is one of the tenant's own.
+function EnterpriseAppsQuery(rangeTo, joinPart, ownExpr) {
+    return `
     office365InstalledApp
+    ${joinPart}
     | extend isMs = appOwnerOrganizationId in ("f8cdef31-a31e-4b4a-93e4-5f571e91255a", "72f988bf-86f1-41af-91ab-2d7cd011db47")
-    | extend isOwn = appId in (${box.ids})
+    | extend isOwn = ${ownExpr}
     | summarize
         total = count(),
         enabled = countif(accountEnabled == true),
@@ -233,7 +262,6 @@ function GetEnterpriseApps(status, rangeTo) {
         withCredentials = countif(array_length(passwordCredentials) > 0 or array_length(keyCredentials) > 0)
     | extend asOf = datetime("${rangeTo}")
     `
-    return Run(status, "office365InstalledApp", query)
 }
 
 // ---- Groups (office365Group) -----------------------------------------------------------------------------
@@ -303,6 +331,28 @@ function GetLicensedUsers(status, rangeTo) {
         status.rows = append(status.rows, {source: "license names (Microsoft365_License_Table lookup)", status: "not available", detail: toString(e)})
     }
     return t
+}
+
+// ---- Role holders (office365User) -------------------------------------------------------------------------
+// One row per directory role with the number of users holding it. Counts only, no names; the users behind a count are
+// in the resource dump. roles is an array of role display names.
+function GetRoleHolders(status, rangeTo) {
+    let query = `
+    office365User
+    | mv-expand role = roles
+    | extend role = tostring(role)
+    | where isnotempty(role)
+    | summarize
+        holders = count(),
+        enabled = countif(accountEnabled == true),
+        disabled = countif(accountEnabled == false),
+        noMfa = countif(accountEnabled == true and ['userRegistration.isMfaRegistered'] == false),
+        licensed = countif(array_length(assignedLicenses) > 0)
+      by role
+    | extend asOf = datetime("${rangeTo}")
+    | sort by holders desc, role asc
+    `
+    return Run(status, "role holders (office365User roles)", query)
 }
 
 // Runs one scan. A missing table or a failed query returns an empty table and is recorded in status.
