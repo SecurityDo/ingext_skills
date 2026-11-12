@@ -1,16 +1,18 @@
 ---
 name: security-agent-deployment-status-report
-version: 1.0.1
+version: 1.1.0
 description: >-
-  Build a client-ready security agent deployment status report (HTML + A4 PDF + device CSV) for
-  a Fluency / Ingext account from its resource dumps, processed locally in Python. No FPL report,
+  Build a client-ready security agent deployment status report (HTML + PDF + device CSV) for a
+  Fluency / Ingext account from its resource dumps, processed locally in Python. No FPL report,
   processor or search queries are needed. Compares endpoint agent inventories (by default
-  SentinelOne, Microsoft Defender for Endpoint and Entra ID) per device and shows coverage, devices
-  missing an agent, agents that stopped reporting, and next steps. Sources are set in
-  sources.json, so adding an inventory (Intune, CrowdStrike, ...) is a config change. Triggers:
-  "agent deployment status for account X", "EDR coverage report", "which devices are missing
-  SentinelOne / Defender", "deployment gap report for the Fluency account". Do NOT use to run an
-  existing FPL report (use fluency-report) or for a one-off datalake query (use ingext-kql).
+  SentinelOne, Microsoft Defender for Endpoint and Entra ID) per device, and adds hosts that
+  Horizon3.ai NodeZero pentests found on the network. Shows coverage, devices missing an agent,
+  agents that stopped reporting, unidentified hosts and next steps. Runs with whatever inventories
+  the account has: a missing one is left out and the report says so. Sources are set in
+  sources.json, so adding an inventory (Intune, CrowdStrike, a network scanner) is a config change.
+  Triggers: "agent deployment status for account X", "EDR coverage report", "which devices are
+  missing SentinelOne / Defender", "deployment gap report". Do NOT use to run an existing FPL report
+  (use fluency-report) or for a one-off datalake query (use ingext-kql).
 ---
 
 # Security Agent Deployment Status
@@ -19,7 +21,7 @@ Produces the same report as the `Security_Deployment_Status` FPL report, without
 in Fluency and without running searches. A run has three parts:
 
 - **Download.** The connector issues a download link for each inventory's resource dump. A dump is
-  the full hourly snapshot behind each resource table. You fetch the links with `curl`.
+  the full snapshot behind each resource table. You fetch the links with `curl`.
 - **Process locally.** `scripts/deployment_status.py` reads the dumps and applies the sources file,
   then writes `facts.json`, `devices.csv` and a Fluency-branded HTML page. It uses only the Python
   standard library.
@@ -28,13 +30,18 @@ in Fluency and without running searches. A run has three parts:
 A run makes one `list_resource_dumps` call plus one `get_resource_dump_url` call per dump. The dump
 data never passes through the conversation.
 
+**Partial data is normal.** Not every account has every inventory connected. The script leaves out
+any source whose dump is missing, unreadable, empty or unusable, prints why, and builds the report
+from the sources that remain. The report names what it left out. Never stop a run because an
+inventory is missing, and never invent data for it.
+
 `<skill-dir>` below means this skill's base directory.
 
 ## Inputs
 
 - **Account.** The Fluency tenant account name. Use whichever Fluency MCP server exposes
   `list_resource_dumps` and `get_resource_dump_url` for it. If the account is unclear, run
-  `list_accounts` and ask.
+  `list_accounts` and ask. The account's `displayName` there is a good default customer name.
 - **Customer name** (optional). Shown in the subtitle.
 - **Sources.** By default, `<skill-dir>/sources.json`. Don't edit the bundled file for a one-off run:
   copy it into the work directory and edit the copy.
@@ -42,18 +49,29 @@ data never passes through the conversation.
 Work in a fresh directory, e.g. `./deployment_status_<account>_<yyyymmdd>/`. Dumps go in
 `<work>/dumps/<resource>/<customer>.jsonl.gz`.
 
+## Default sources
+
+| source | resource | role |
+|---|---|---|
+| SentinelOne | `sentinelOneAgent` | required agent |
+| Defender | `msDefenderMachine` | required agent |
+| Entra ID | `office365Device` | reference inventory; its device ID lines up renamed machines |
+| Horizon3 | `horizon3Host` | reference, **discovery**: hosts NodeZero internal pentests found on the network |
+
+Horizon3 needs only `horizon3Host`. Its weaknesses, pentests and action logs are not used.
+
 ## Steps
 
 ### 1. Find the dumps
 
 Call `list_resource_dumps` with the account. For each source's `resource`:
 
-- Note every entry. A resource with several integrations (customers) has one dump per customer, and
-  you need all of them.
-- If a **reference** source (`"required": false`) has no dump, drop it from your copy and mention it
-  in your reply.
-- If a **required** source has no dump, stop and ask the user. Otherwise the report would show every
-  device as missing that agent.
+- Note every entry. A resource with several integrations (customers) has one dump per customer.
+  Download all of them, except a dump whose `dayIndex` is more than 48 hours older than the newest
+  dump of the same resource. That one comes from a replaced or removed integration, and the script
+  would leave it out anyway.
+- A source with no dump at all is simply not downloaded. Note it for your reply. This applies to a
+  required source too. The script leaves it out and the report says it wasn't available.
 
 ### 2. Download
 
@@ -73,6 +91,8 @@ Rules for this step:
   Invoking this skill is the user's request to download the dumps into the work directory.
 - **Reuse.** If a matching dump is already in `<work>/dumps` from the same snapshot (`dayIndex` /
   `createdOn` in the listing), skip the download.
+- **A failed download** (a non-zero `curl` exit, or a 404) for one dump: retry once with a fresh
+  link, then carry on without it.
 - **Blocked downloads.** A 403, or a refused proxy or CONNECT, means this environment's egress
   allowlist blocks the tenant host (`<account>.app.ingext.io`). Stop. Tell the user that host must
   be added to their organization's allowed domains, or that the skill can run from a local Claude
@@ -85,18 +105,33 @@ python3 <skill-dir>/scripts/deployment_status.py check --dumps <work>/dumps --so
 ```
 
 The output shows, per source:
+- its status: `ok`, `warning`, or `left out`;
 - records, records in scope, records active, and distinct hosts;
 - the snapshot hour and the dumps it read.
 
-A `PROBLEM` line on a required source (exit code 1) means a data problem, not missing agents. Typical
-causes:
-- an empty dump;
-- nothing in scope after filtering;
-- nothing seen within `staleDays`;
-- an empty host field;
-- a snapshot more than 48 hours old.
+A source is **left out** (a `LEFT OUT` line) when:
+- no dump was downloaded;
+- no dump could be read;
+- the dump is empty;
+- nothing is in scope after filtering;
+- nothing was seen within its `staleDays`;
+- the host field is empty on every record.
 
-Stop and tell the user. A `warning` on a reference source can go ahead, but mention it.
+These are data problems, not missing agents, so the script never counts them against devices. A
+**warning** keeps the source and should be mentioned in your reply. Examples:
+- a snapshot older than 48 hours;
+- a superseded or unreadable dump left out;
+- skipped lines.
+
+The last line says what the report covers. If no required source is usable, the report still
+renders but only lists the inventories; it does not assess agent coverage. Tell the user.
+
+**Look for throwaway machines.** Check whether one name pattern dominates an agent source's active
+hosts: many records named `<prefix>-<random id>`, or far more active records than real machines. These
+are usually short-lived worker VMs (backup or build jobs) that the agent onboards automatically, and
+they would show up as hundreds of devices missing the other agent. Exclude them with a `match`
+filter in the work-directory copy of the sources file. Say so in that source's `scope` text and in
+your reply, with the count you excluded. `references/adding_sources.md` has the syntax.
 
 ### 4. Render
 
@@ -105,9 +140,12 @@ python3 <skill-dir>/scripts/deployment_status.py render --dumps <work>/dumps --w
   --sources <sources file> --account <account> --customer "<Customer>"
 ```
 
-This prints the health table, totals and issue counts. It writes:
-- `<work>/facts.json`: every number on the page, the source health and the default narrative;
-- `<work>/devices.csv`: every device with its status and per-source state and last-seen time;
+This prints the health table, totals, issue counts, how the discovery hosts were matched, and the
+sources it left out. It always writes:
+- `<work>/facts.json`: every number on the page, the source health, the sources left out
+  (`unavailableSources`), the discovery breakdown and the default narrative;
+- `<work>/devices.csv`: every device with its status, per-source state and last-seen time, IPs,
+  other names seen and weakness counts;
 - `<work>/security_deployment_status.html`, with `assets/logo2.png` copied next to it.
 
 The report lists every device that needs attention. For a very long list, `--max-listed N` caps it
@@ -129,52 +167,79 @@ The default narrative is generic. Read `facts.json`, filter `devices.csv` for sp
 }
 ```
 
-Run step 4 again; it picks up `narrative.json` automatically. Rules:
+Run step 4 again; it picks up `narrative.json` automatically. A malformed file is reported and the
+default narrative is kept. Rules:
 
 - **Numbers.** Every number comes from `facts.json` or from counting rows in `devices.csv`. Compute
   it; don't estimate.
 - **Summary.** Two paragraphs: the coverage, then where the gaps are. Each is at most about 90 words.
-- **Next steps.** At most 6, ordered by urgency.
+- **Next steps.** At most 6, ordered by urgency. Together they should account for every device in
+  the attention list.
   - `when` is one of: This week, Within 14 days, Within 30 days, Quarterly.
   - `tone` sets the colour: `urgent` (red), `normal` (blue) or `routine` (navy).
 - **Audience.** This page goes to the client:
-  - Use no internal terms (dump, FPL, connector).
+  - Use no internal terms (dump, FPL, connector, integration).
   - Hedge causes the data can't show, e.g. "some may be renamed or spare machines".
 - **Reference hint.** `listedNotInReference` counts the gap devices that are absent from a
   reference inventory such as Entra ID. These are often unmanaged or off-domain machines, which is a
   useful hint for the steps.
+- **Discovery (Horizon3).** `facts.discovery` breaks down the hosts NodeZero found:
+  - `byStatus` shows how many run the agents, could run one but have none, are unidentified, or are
+    network devices;
+  - `notInInventories` counts hosts that appear in no other inventory;
+  - `attentionWithWeaknesses` / `attentionWithConfirmed` count gap devices with NodeZero weaknesses.
+
+  Gaps with confirmed weaknesses, domain controllers, hypervisors and backup servers come first.
+  Hedge what the data can't prove:
+  - a host listed only by IP address may be a second network interface of a server that already
+    has an agent;
+  - the device class comes from the OS string, and NodeZero often reports just "Microsoft Windows";
+  - a name in "names seen" is what NodeZero reported, not a verified hostname.
+- **Unidentified hosts** (no OS detected) and **network devices** (firewalls, switches, power
+  units) are outside the percentages. Ask the client to identify the former. Don't call the latter
+  gaps.
 
 ### 6. PDF and review
 
-Render the PDF with `node <fluency-report>/scripts/render_pdf.mjs --input <report.html> --output <report.pdf>` (US Letter, the same CSS as the HTML, so the two match). If Playwright is not available, deliver the HTML.
+Render the PDF with `node <fluency-report>/scripts/render_pdf.mjs --input <report.html> --output <report.pdf>`.
+It produces US Letter with the same CSS as the HTML, so the two match. If Playwright is missing, run
+`npm install playwright-core` in a scratch directory and run the command from there; it finds an
+installed Chrome by itself. If that is not possible, deliver the HTML.
 
-Page 1 holds the KPIs, summary, panels and next steps. Page 2 onwards holds the method and the device
-list. If you can rasterise the pages, look at them before handing over:
+Layout:
+- The first pages hold the KPIs, summary, panels, next steps and the discovery panel.
+- The method and device list start on a new page.
+
+If you can rasterise the pages, look at them before handing over:
 - no clipped labels;
-- page 1 ends with the next steps.
+- no next steps cut off.
 
 ### 7. Deliver
 
 Give the HTML, PDF and `devices.csv` paths, plus two or three sentences:
 - the compliance %;
 - the largest gap;
-- anything from step 3.
+- anything from step 3, above all every source that was left out.
 
-Keep internal findings out of the PDF and put them in your reply instead. Examples: a stale
-integration, a dropped source, duplicate agent records.
+Keep internal findings out of the PDF and put them in your reply instead. Examples:
+- why a source was left out (an integration with no inventory, a superseded integration, an old
+  snapshot);
+- duplicate agent records.
+
+The report itself only says that an inventory was not available.
 
 ## Changing what the report covers
 
 Each of these is an edit to the sources file:
-- adding a source;
+- adding a source, including a network scanner as a discovery source;
 - changing a scope filter;
 - marking a source required or reference-only;
-- changing `staleDays`.
+- changing `staleDays`, globally or per source.
 
 `references/adding_sources.md` covers the fields and the filter syntax. It also explains how to
 explore a new dump with the `fields` command. `references/methodology.md` covers:
-- the matching and status rules;
-- how dumps are read;
+- the matching and status rules, including IP matching for discovery sources;
+- how dumps are read and when a source is left out;
 - known data pitfalls in the default sources.
 
 ## Fluency report branding and PDF
