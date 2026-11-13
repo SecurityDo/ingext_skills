@@ -213,7 +213,7 @@ in both source and archives; it does not check that their full file contents mat
 | [fedramp-compliance-analysis](#fedramp-compliance-analysis) | 1.3.1 | [Source](./reports/fedramp-compliance-analysis) | [Download](./cowork/fedramp-compliance-analysis.skill) | FedRAMP Rev. 5 baseline view of the 800-53 evidence → HTML + CSV |
 | [gdpr-compliance-analysis](#gdpr-compliance-analysis) | 1.3.1 | [Source](./reports/gdpr-compliance-analysis) | [Download](./cowork/gdpr-compliance-analysis.skill) | GDPR security-of-processing companion view of the 800-53 evidence → HTML + CSV |
 | [endpoint-os-currency](#endpoint-os-currency) | 1.0.1 | [Source](./reports/endpoint-os-currency) | [Download](./cowork/endpoint-os-currency.skill) | Endpoint OS inventory, end-of-support and build-currency report from an EDR or Entra device dump → HTML + PDF + CSV |
-| [security-agent-deployment-status-report](#security-agent-deployment-status-report) | 1.0.2 | [Source](./reports/security-agent-deployment-status-report) | [Download](./cowork/security-agent-deployment-status-report.skill) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID) → HTML + PDF + CSV |
+| [security-agent-deployment-status-report](#security-agent-deployment-status-report) | 1.1.0 | [Source](./reports/security-agent-deployment-status-report) | [Download](./cowork/security-agent-deployment-status-report.skill) | Per-device EDR / agent coverage report (SentinelOne, Defender, Entra ID, Horizon3 network scans); runs with whatever inventories the tenant has → HTML + PDF + CSV |
 | [azure-user-signin-investigation](#azure-user-signin-investigation) | 1.0.4 | [Source](./SKILLS/azure-user-signin-investigation) | [Download](./cowork/azure-user-signin-investigation.skill) | Investigate Azure AD sign-ins & directory changes |
 | [proofpoint-investigation](#proofpoint-investigation) | 1.0.0 | [Source](./SKILLS/proofpoint-investigation) | [Download](./cowork/proofpoint-investigation.skill) | Investigate one Proofpoint email: sender, direction, delivery, threat, clicks and blast radius from the event rows |
 | [office-user-investigation](#office-user-investigation) | 1.0.4 | [Source](./SKILLS/office-user-investigation) | [Download](./cowork/office-user-investigation.skill) | Investigate an M365 mailbox user (KQL + GeoIP) |
@@ -536,19 +536,23 @@ panel cookbook, a deploy helper and a worked example (Windows host health).
 Builds a client-ready security agent deployment status report for an account: which active
 devices have every required agent installed and reporting, which are missing one, and which have
 an agent that went silent. It downloads the account's inventory resource dumps (by default
-SentinelOne, Microsoft Defender for Endpoint, and Entra ID as a reference), matches devices across
-them by Entra device ID and then by hostname, and processes everything locally with a
-standard-library Python script — no FPL report, processor, or search queries. A health check
-stops the run when an inventory is empty or stale, so a broken integration is never reported as
-missing agents. Output is a Fluency-branded HTML page (A4 PDF via browser print) plus a
+SentinelOne, Microsoft Defender for Endpoint, Entra ID as a reference, and the hosts Horizon3.ai
+NodeZero pentests found on the network), matches devices across them by Entra device ID, then by
+hostname, then (for network-scan hosts) by IP address, and processes everything locally with a
+standard-library Python script — no FPL report, processor, or search queries. An inventory that is
+missing, empty or broken is left out of the run and named in the report, so a broken integration is
+never reported as missing agents and a tenant without every integration still gets a report.
+Network devices found by the scan are counted as "no agent expected" and hosts with no detectable
+OS as "unidentified", outside the percentages. Output is a Fluency-branded HTML page and PDF plus a
 `devices.csv` of every device. The inventories are set in `sources.json`, so adding Intune,
-CrowdStrike, or another agent is a config change.
+CrowdStrike, another agent or another network scanner is a config change.
 
 **Try:**
 - "run the agent deployment status report for account X"
 - "which devices are missing SentinelOne or Defender?"
 - "give me an EDR coverage report for customer Y"
 - "deployment gap report for the Fluency account, as a PDF"
+- "which hosts did Horizon3 find that have no EDR agent?"
 
 ---
 
