@@ -30,6 +30,29 @@ VERDICTS = {
     "confirmed": ("Confirmed", "var(--bad)"),
 }
 
+# A run that decides with a disposition (the agent portal's fixed set) labels the card
+# with it, so a low-severity confirmation closed on an escalate outcome reads
+# "Closed: verify · Low", as the portal's opening line does. Without one, the outcome.
+DISPOSITIONS = {
+    "closed":                  ("Closed",                   "var(--ok)"),
+    "closed_suggested_action": ("Closed, suggested action", "var(--ok)"),
+    "closed_per_note":         ("Closed per account note",  "var(--ok)"),
+    "closed_verify":           ("Closed: verify",           "var(--ok)"),
+    "escalate_confirm":        ("Escalate: verify",         "var(--warn)"),
+    "escalate_contain":        ("Escalate: contain",        "var(--bad)"),
+    "confirmed":               ("Confirmed",                "var(--bad)"),
+}
+SEVERITIES = ("info", "low", "medium", "high", "critical")
+
+def verdict_label(v):
+    """The card's label and colour: the disposition and severity when given, else the outcome."""
+    d = str(v.get("disposition") or "").lower()
+    if d in DISPOSITIONS:
+        label, color = DISPOSITIONS[d]
+        sev = str(v.get("severity") or "").lower()
+        return (f"{label} · {sev.capitalize()}" if sev in SEVERITIES else label), color
+    return VERDICTS[v["outcome"].lower()]
+
 def md(s):
     """Escape, then apply the three inline marks."""
     s = html.escape(str(s if s is not None else ""))
@@ -129,7 +152,7 @@ main{max-width:960px;margin:0 auto;padding:2.5rem 1.25rem 3rem}
 h1{font:700 clamp(2rem,5vw,2.9rem)/1.12 var(--serif);margin:0 0 1rem;max-width:21ch;background:var(--panel);padding:.25rem .5rem;margin-left:-.5rem}
 .lede{font:400 1.15rem/1.6 var(--serif);color:var(--ink2);max-width:40rem;margin:0 0 2rem}
 .verdict{display:flex;gap:2rem;align-items:flex-start;border:1px solid var(--rule);border-left:5px solid var(--vc);border-radius:4px;padding:1.4rem 1.5rem;margin:0 0 2rem;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-.verdict b{font:700 1.7rem/1 var(--serif);color:var(--vc);min-width:7.5rem}.verdict p{margin:0;color:var(--ink2);max-width:28rem;font-size:.95rem}
+.verdict b{font:700 1.7rem/1.15 var(--serif);color:var(--vc);min-width:7.5rem;max-width:12rem}.verdict p{margin:0;color:var(--ink2);max-width:28rem;font-size:.95rem}
 .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1.1rem 1.5rem;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);background:var(--panel);padding:1.1rem 0;margin:0 0 2.5rem}
 .meta div{padding:0}.meta dt{font:500 .66rem/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin:0 0 .45rem}
 .meta dd{margin:0;font-size:.88rem;overflow-wrap:anywhere}
@@ -227,7 +250,7 @@ def brand_footer(c, logo):
             f'target="_blank" rel="noopener">Powered by Fluency{mark}</a></div></div>')
 
 def render(c, logo_path=None):
-    label, color = VERDICTS[c["verdict"]["outcome"].lower()]
+    label, color = verdict_label(c["verdict"])
     meta = "".join(f'<div><dt>{md(m["label"])}</dt><dd>{md(m["value"])}</dd></div>' for m in c["meta"])
     # Actionable is separate from the outcome: a benign closure can still need the customer to act.
     action = ""
@@ -282,6 +305,12 @@ def main():
         sys.exit(f"closure JSON missing required field(s): {', '.join(missing)}")
     if c["verdict"]["outcome"].lower() not in VERDICTS:
         sys.exit("verdict.outcome must be benign, escalate or confirmed")
+    d = c["verdict"].get("disposition")
+    if d and str(d).lower() not in DISPOSITIONS:
+        sys.exit(f"verdict.disposition must be one of {', '.join(DISPOSITIONS)}")
+    sev = c["verdict"].get("severity")
+    if sev and str(sev).lower() not in SEVERITIES:
+        sys.exit(f"verdict.severity must be one of {', '.join(SEVERITIES)}")
     out = render(c, logo_path)
     (sys.stdout.write(out) if a.out == "-" else open(a.out, "w").write(out))
 

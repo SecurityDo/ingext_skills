@@ -16,7 +16,9 @@ is escaped.
 | `logo` | – | string | Path to a replacement logo (PNG, JPEG, SVG, WebP or GIF), relative to the JSON file. Defaults to `assets/fluency_logo.png`; `--logo` on the command line overrides it. |
 | `title` | ✓ | string | **What actually happened**, in plain words. It is not the rule name and not "Incident 1234". Examples: "SendAs grants by a tenant identity administrator", "A passkey campaign switched on by Microsoft". |
 | `lede` | ✓ | string | One paragraph with three parts: what escalated it, how many grounds were cited, and how many survived testing. |
-| `verdict.outcome` | ✓ | `benign` \| `escalate` \| `confirmed` | Sets the card colour. |
+| `verdict.outcome` | ✓ | `benign` \| `escalate` \| `confirmed` | Sets the card label and colour when there is no `disposition`. |
+| `verdict.disposition` | – | `closed` \| `closed_suggested_action` \| `closed_per_note` \| `closed_verify` \| `escalate_confirm` \| `escalate_contain` \| `confirmed` | The decision, when the run reports one (the agent portal's fixed set): it labels and colours the card instead of the outcome, so `closed_verify` on an `escalate` outcome reads "Closed: verify". The same value goes to `report_incident_verdict`'s `disposition`. |
+| `verdict.severity` | – | `info` \| `low` \| `medium` \| `high` \| `critical` | With `disposition`: shown after it ("Closed: verify · Low"). The same value as `report_incident_verdict`'s `severity`. |
 | `verdict.text` | ✓ | string | Two sentences at most. Give the verdict, then the action. |
 | `verdict.actionable` | – | bool | Whether the customer has to do something now, whatever the outcome (Step 5). Shown on the verdict card. Set it on every closure; leaving it out is "not said". |
 | `verdict.customer_action` | – | string | When `actionable`: the one thing the customer should do, in a sentence. The same text goes to `report_incident_verdict`'s `customer_action`. |
