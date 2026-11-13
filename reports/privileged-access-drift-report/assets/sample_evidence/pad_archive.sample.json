@@ -1,0 +1,365 @@
+{
+ "days": [
+  {
+   "entry": {
+    "rangeFrom": "2026-10-08T00:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "pad_role_events",
+      "table": {
+       "rows": [
+        {
+         "Date": "2026-10-08",
+         "activity": "Add member to role outside of PIM (permanent)",
+         "role": "Global Administrator",
+         "initiator": "Sample Provisioner",
+         "initiatorType": "app",
+         "outsidePim": true,
+         "n": 6
+        },
+        {
+         "Date": "2026-10-08",
+         "activity": "Add member to role outside of PIM (permanent)",
+         "role": "Exchange Administrator",
+         "initiator": "Sample Provisioner",
+         "initiatorType": "app",
+         "outsidePim": true,
+         "n": 4
+        },
+        {
+         "Date": "2026-10-08",
+         "activity": "Remove member from role",
+         "role": "Global Administrator",
+         "initiator": "Sample Provisioner",
+         "initiatorType": "app",
+         "outsidePim": false,
+         "n": 6
+        },
+        {
+         "Date": "2026-10-08",
+         "activity": "Add member to role in PIM completed (permanent)",
+         "role": "Security Administrator",
+         "initiator": "(user)",
+         "initiatorType": "user",
+         "outsidePim": false,
+         "n": 8
+        },
+        {
+         "Date": "2026-10-08",
+         "activity": "Remove member from role in PIM completed (permanent)",
+         "role": "Security Administrator",
+         "initiator": "(user)",
+         "initiatorType": "user",
+         "outsidePim": false,
+         "n": 11
+        },
+        {
+         "Date": "2026-10-08",
+         "activity": "Add member to role completed (PIM activation)",
+         "role": "Security Administrator",
+         "initiator": "(user)",
+         "initiatorType": "user",
+         "outsidePim": false,
+         "n": 40
+        },
+        {
+         "Date": "2026-10-08",
+         "activity": "Triggered PIM alert",
+         "role": "",
+         "initiator": "(system)",
+         "initiatorType": "system",
+         "outsidePim": false,
+         "n": 1
+        }
+       ]
+      }
+     },
+     {
+      "name": "pad_app_grants",
+      "table": {
+       "rows": [
+        {
+         "Date": "2026-10-08",
+         "client": "Backup Connector",
+         "appId": "app-1",
+         "permission": "RoleManagement.ReadWrite.Directory",
+         "n": 1
+        },
+        {
+         "Date": "2026-10-08",
+         "client": "Policy Portal App",
+         "appId": "app-2",
+         "permission": "Sites.ReadWrite.All",
+         "n": 1
+        }
+       ]
+      }
+     },
+     {
+      "name": "pad_ca_changes",
+      "table": {
+       "rows": [
+        {
+         "Date": "2026-10-08",
+         "activity": "Add conditional access policy",
+         "policy": "Admins MFA",
+         "n": 1
+        },
+        {
+         "Date": "2026-10-08",
+         "activity": "Update conditional access policy",
+         "policy": "Admins MFA",
+         "n": 3
+        }
+       ]
+      }
+     },
+     {
+      "name": "pad_admin_signins",
+      "table": {
+       "rows": [
+        {
+         "Date": "2026-10-08",
+         "privileged": 66,
+         "adminsSeen": 50,
+         "signins": 600,
+         "ok": 540,
+         "failed": 60,
+         "singleFactorOk": 270,
+         "legacyAuth": 2,
+         "adminsSingleFactor": 30,
+         "adminsAllSingleFactor": 8,
+         "batches": 1,
+         "failedBatches": 0
+        }
+       ]
+      }
+     },
+     {
+      "name": "sources",
+      "table": {
+       "rows": [
+        {
+         "source": "AzureAuditLogs role events",
+         "status": "ok"
+        },
+        {
+         "source": "AzureAuditLogs app grants",
+         "status": "ok"
+        },
+        {
+         "source": "AzureAuditLogs conditional access changes",
+         "status": "ok"
+        },
+        {
+         "source": "AzureSigninLogs admin sign-ins",
+         "status": "ok"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "entry": {
+    "rangeFrom": "2026-10-21T00:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "pad_role_events",
+      "table": {
+       "rows": [
+        {
+         "Date": "2026-10-21",
+         "activity": "Add member to role outside of PIM (permanent)",
+         "role": "Global Administrator",
+         "initiator": "Sample Provisioner",
+         "initiatorType": "app",
+         "outsidePim": true,
+         "n": 5
+        },
+        {
+         "Date": "2026-10-21",
+         "activity": "Add member to role outside of PIM (permanent)",
+         "role": "Exchange Administrator",
+         "initiator": "Sample Provisioner",
+         "initiatorType": "app",
+         "outsidePim": true,
+         "n": 3
+        },
+        {
+         "Date": "2026-10-21",
+         "activity": "Remove member from role",
+         "role": "Global Administrator",
+         "initiator": "Sample Provisioner",
+         "initiatorType": "app",
+         "outsidePim": false,
+         "n": 5
+        }
+       ]
+      }
+     },
+     {
+      "name": "pad_app_grants",
+      "table": {
+       "rows": []
+      }
+     },
+     {
+      "name": "pad_ca_changes",
+      "table": {
+       "rows": []
+      }
+     },
+     {
+      "name": "pad_admin_signins",
+      "table": {
+       "rows": [
+        {
+         "Date": "2026-10-21",
+         "privileged": 66,
+         "adminsSeen": 52,
+         "signins": 580,
+         "ok": 520,
+         "failed": 60,
+         "singleFactorOk": 280,
+         "legacyAuth": 0,
+         "adminsSingleFactor": 33,
+         "adminsAllSingleFactor": 9,
+         "batches": 1,
+         "failedBatches": 0
+        }
+       ]
+      }
+     },
+     {
+      "name": "sources",
+      "table": {
+       "rows": [
+        {
+         "source": "AzureAuditLogs role events",
+         "status": "ok"
+        },
+        {
+         "source": "AzureAuditLogs app grants",
+         "status": "ok"
+        },
+        {
+         "source": "AzureAuditLogs conditional access changes",
+         "status": "ok"
+        },
+        {
+         "source": "AzureSigninLogs admin sign-ins",
+         "status": "ok"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "entry": {
+    "rangeFrom": "2026-11-11T00:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "pad_role_events",
+      "table": {
+       "rows": [
+        {
+         "Date": "2026-11-11",
+         "activity": "Add member to role outside of PIM (permanent)",
+         "role": "Global Administrator",
+         "initiator": "Sample Provisioner",
+         "initiatorType": "app",
+         "outsidePim": true,
+         "n": 3
+        },
+        {
+         "Date": "2026-11-11",
+         "activity": "Add member to role outside of PIM (permanent)",
+         "role": "Exchange Administrator",
+         "initiator": "Sample Provisioner",
+         "initiatorType": "app",
+         "outsidePim": true,
+         "n": 3
+        },
+        {
+         "Date": "2026-11-11",
+         "activity": "Remove member from role",
+         "role": "Global Administrator",
+         "initiator": "Sample Provisioner",
+         "initiatorType": "app",
+         "outsidePim": false,
+         "n": 4
+        }
+       ]
+      }
+     },
+     {
+      "name": "pad_app_grants",
+      "table": {
+       "rows": []
+      }
+     },
+     {
+      "name": "pad_ca_changes",
+      "table": {
+       "rows": []
+      }
+     },
+     {
+      "name": "pad_admin_signins",
+      "table": {
+       "rows": [
+        {
+         "Date": "2026-11-11",
+         "privileged": 66,
+         "adminsSeen": 51,
+         "signins": 640,
+         "ok": 539,
+         "failed": 101,
+         "singleFactorOk": 274,
+         "legacyAuth": 1,
+         "adminsSingleFactor": 31,
+         "adminsAllSingleFactor": 7,
+         "batches": 1,
+         "failedBatches": 0
+        }
+       ]
+      }
+     },
+     {
+      "name": "sources",
+      "table": {
+       "rows": [
+        {
+         "source": "AzureAuditLogs role events",
+         "status": "ok"
+        },
+        {
+         "source": "AzureAuditLogs app grants",
+         "status": "ok"
+        },
+        {
+         "source": "AzureAuditLogs conditional access changes",
+         "status": "ok"
+        },
+        {
+         "source": "AzureSigninLogs admin sign-ins",
+         "status": "ok"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

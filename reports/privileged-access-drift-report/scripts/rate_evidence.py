@@ -62,8 +62,8 @@ def main():
     if p is not None and p > R["sfa_medium_pct"]:
         sev = "high" if p > R["sfa_high_pct"] else "medium"
         add(sev, "Administrator sign-ins are %s single-factor" % ("overwhelmingly" if p > R["sfa_high_pct"] else "often"),
-            "%s%% of %s successful sign-ins by privileged accounts in %d days completed with a single factor at sign-in time, across %d of %d privileged accounts that signed in (%d did so every time). Some of this is session reuse after an earlier MFA prompt, but it shows Conditional Access is not demanding fresh strong authentication for administrative access." % (
-                "%g" % round(p), n(sg["successful"]), W, sg["admins_with_single_factor"], sg["admins_signed_in"], sg["admins_all_single_factor"]),
+            "%s%% of %s successful sign-ins by privileged accounts in the %d archived days completed with a single factor at sign-in time. On the busiest day %d of %d privileged accounts that signed in had at least one single-factor sign-in (%d did so every time; per-day figures, so the account counts are a lower bound for the whole period). Some of this is session reuse after an earlier MFA prompt, but it shows Conditional Access is not demanding fresh strong authentication for administrative access." % (
+                "%g" % round(p), n(sg["successful"]), E["archive"]["pad"]["days"] or W, sg["admins_with_single_factor"], sg["admins_signed_in"], sg["admins_all_single_factor"]),
             "Stolen session tokens and passwords are the main route to cloud admin takeover. Without per-sign-in MFA and short sessions for admins, a phished token keeps working.",
             "Conditional Access for all directory roles: require phishing-resistant MFA (FIDO2 or Windows Hello) on every sign-in, a short sign-in frequency, and compliant devices for admin portals.",
             O["identity"], "14 days", M["accounts"])
@@ -126,12 +126,11 @@ def main():
     if acc["shared"]: hyg.append("%s with shared-style names (helpdesk, admin, service)" % plural(acc["shared"], "account"))
     if acc["multi6"]: hyg.append("%s holding six or more roles" % plural(acc["multi6"], "account"))
     if acc["disabled"]: hyg.append("%s still holding administrator roles while disabled" % plural(acc["disabled"], "account"))
-    if sg["no_signin"] > 0 and sg["admins_signed_in"]: hyg.append("%s enabled with no interactive sign-in in %d days" % (plural(sg["no_signin"], "privileged account"), W))
     if acc["new90"]: hyg.append("%s created in the last 90 days" % plural(acc["new90"], "privileged account"))
     if hyg:
-        add("medium", "Shared, stacked, dormant and orphaned privileged accounts", "Privileged accounts need clean-up: " + "; ".join(hyg) + ".",
+        add("medium", "Shared, stacked and orphaned privileged accounts", "Privileged accounts need clean-up: " + "; ".join(hyg) + ".",
             "Shared accounts break accountability and are rarely protected well. Dormant, disabled and stacked accounts are easy to revive or abuse unnoticed.",
-            "Replace shared accounts with named, eligible-only assignments, remove roles from dormant and disabled accounts, split stacked roles into task-based groups, and add a monthly check for privileged accounts without a recent sign-in.",
+            "Replace shared accounts with named, eligible-only assignments, remove roles from disabled accounts, split stacked roles into task-based groups, and add a monthly check for privileged accounts without a recent sign-in.",
             O["identity"], "14 days", "T1078 Valid Accounts")
     dl = next((r for r in E["roles"] if r["role"] == R["device_local_admin_role"]), None)
     if dl and dl["holders"] >= 3:
@@ -169,6 +168,13 @@ def main():
     if ca and ca["days"]:
         T.append({"start": ca["days"][0], "date": span(ca["days"][0], ca["days"][-1]), "kind": "change" if not ca["added"] else "good",
                   "event": "Conditional Access: %d policy additions, %d updates, %d deletions across %d days." % (ca["added"], ca["updated"], ca["deleted"], len(ca["days"]))})
+    tr = E.get("admin_trend") or []
+    for x, y in zip(tr, tr[1:]):
+        if y["global_admins"] is not None and x["global_admins"] is not None and y["global_admins"] != x["global_admins"]:
+            T.append({"start": y["date"], "date": dm(y["date"]), "kind": "drift" if y["global_admins"] > x["global_admins"] else "good",
+                      "event": "Global Administrators %s from %d to %d between the %s and %s snapshots." % ("rose" if y["global_admins"] > x["global_admins"] else "fell", x["global_admins"], y["global_admins"], dm(x["date"]), dm(y["date"]))})
+        elif y["admins"] != x["admins"]:
+            T.append({"start": y["date"], "date": dm(y["date"]), "kind": "change", "event": "Privileged accounts %s from %d to %d between the %s and %s snapshots." % ("rose" if y["admins"] > x["admins"] else "fell", x["admins"], y["admins"], dm(x["date"]), dm(y["date"]))})
     ae = E.get("app_events") or {}
     if any(ae.values()):
         bits = [("%s consent(s)" % n(ae.get("Consent to application", 0))), ("%s delegated grant(s)" % n(ae.get("Add delegated permission grant", 0))), ("%s credential addition(s)" % n(ae.get("Add service principal credentials", 0))), ("%s new service principal(s)" % n(ae.get("Add service principal", 0)))]
@@ -192,16 +198,23 @@ def main():
         S.append("Assignments made outside PIM are reversed by the same tooling (removals are at least %d%% of additions), so little of it becomes standing privilege." % round(R["timeboxed_ratio"] * 100))
     if not t0 and nh is not None:
         S.append("No application was granted a tier-0 Microsoft Graph permission in the window.")
-    pt = E["tables_present"]
+    pt = E["tables_present"]; ar = E["archive"]
+    if not ar["inventory"]["days"]: G.append("The Office365_Resource_Inventory_Report archive holds no day, so privileged accounts and role holders are not measured; schedule the report and let it accumulate.")
+    elif not ar["inventory"]["detail"]: G.append("The newest inventory day predates the privileged-account columns (licences, stacked roles, shared-style names, passwordless, new accounts); redeploy the inventory report to measure them.")
+    if not ar["pad"]["days"]: G.append("The Privileged_Access_Drift_Report archive holds no day, so role, application, Conditional Access and administrator sign-in drift are not measured; schedule the report and backfill it.")
+    elif ar["pad"]["days"] < W: G.append("The Privileged_Access_Drift_Report archive holds %d of %d days (%s to %s); drift is shown for those days only. Backfill the archive to cover the window." % (ar["pad"]["days"], W, dm(ar["pad"]["first"]), dm(ar["pad"]["last"])))
+    if ar["inventory"]["days"] and ar["inventory"]["role_history_days"] < 2: G.append("Role-holder history starts on %s, so changes in administrator numbers between snapshots cannot yet be shown." % (dm(ar["inventory"]["role_history_first"]) if ar["inventory"]["role_history_first"] else "the first archived day"))
+    if ar["entra"] is None: G.append("The Entra activity archive was not supplied, so the application activity counts (consents, delegated grants, new credentials) are not shown.")
+    G.append("Dormant administrators are not measured: the archives hold the number of administrators that signed in on a day, not which ones, so an account with no sign-in for %d days cannot be listed." % W)
+    G.append("Delegated (user-consented) permission grants are counted in the Entra activity archive but not listed by application; only application permissions are listed.")
     if pt.get("AzureAuditLogs") is False: G.append("Entra directory audit logs (AzureAuditLogs) are not collected, so role, application and Conditional Access drift could not be measured.")
     if pt.get("AzureSigninLogs") is False: G.append("Entra sign-in logs are not collected, so administrator single-factor sign-ins could not be measured.")
-    if pt.get("office365InstalledApp") is False: G.append("The enterprise application inventory is not collected, so application publishers could not be verified.")
-    if nh is not None and any(x["publisher"] == "not checked" for x in nh): G.append("Publisher verification of the applications granted permissions was not checked; confirm in the enterprise application inventory.")
+    if nh is not None and any(x["publisher"] == "not checked" for x in nh): G.append("Publisher verification was not run (no application dump supplied); confirm each publisher in the enterprise application inventory.")
     if op is None: G.append("The archived Windows report (WindowsSrv_Activity_Report) was not available, so on-premises privileged group changes are not covered.")
     elif op["days"] < R["windows_days"]: G.append("Only %d of %d days of the archived Windows report were available, so on-premises changes are shown for those days only; backfill the archive to cover the window." % (op["days"], R["windows_days"]))
     G.append("LAPS deployment is not measured; confirm unique local-administrator passwords on joined devices.")
     G.append("PIM-eligible (inactive) assignments are not in the user snapshot; only active role holders are counted.")
-    G.append("Entra logs are retained 12 months by the platform; drift older than the %d-day window is not shown." % W)
+    G.append("Drift older than the days the archive holds is not shown; the archive grows daily.")
     det = [{"name": "Role assigned outside PIM", "logic": "AzureAuditLogs ActivityDisplayName == \"Add member to role outside of PIM (permanent)\" → high-severity case, unless the initiator is an approved tool"},
            {"name": "Permanent role grant in PIM", "logic": "ActivityDisplayName contains \"in PIM completed (permanent)\" and the role is not in the approved list"},
            {"name": "Tier-0 Graph permission granted to an app", "logic": "\"Add app role assignment to service principal\" where AppRole.Value in (RoleManagement.ReadWrite.Directory, Application.ReadWrite.All, Policy.ReadWrite.*, AppRoleAssignment.ReadWrite.All, DeviceLocalCredential.Read.All, BitlockerKey.Read.All)"},
@@ -248,9 +261,10 @@ def main():
     if p is not None and p > R["sfa_medium_pct"]: asks.append("require phishing-resistant MFA on every administrator sign-in")
     if acc["noMfa"]: asks.append("register MFA for every privileged account")
     ask = (", ".join(asks[:-1]) + (", and " if len(asks) > 1 else "") + asks[-1] + ". Re-run this report monthly to track drift.") if asks else "keep the monthly run of this report and review any new finding."
-    ev = [{"source": "office365User", "reference": "privileged role holders, licences, MFA registration (snapshot)"},
-          {"source": "AzureSigninLogs", "reference": "administrator sign-ins and authentication requirement, %d days" % W},
-          {"source": "AzureAuditLogs", "reference": "RoleManagement, application consent and Conditional Access activity, %d days" % W}]
+    ar = E["archive"]
+    ev = [{"source": "Office365_Resource_Inventory_Report (archive)", "reference": "privileged accounts and role holders, %d archived day(s), latest %s" % (ar["inventory"]["days"], ar["inventory"]["last"] or "n/a")},
+          {"source": "Privileged_Access_Drift_Report (archive)", "reference": "role, application, Conditional Access and administrator sign-in activity, %d archived day(s)" % ar["pad"]["days"]}]
+    if ar["entra"]: ev.append({"source": "Office365_Entra_Activity_Report (archive)", "reference": "application activity counts, %d archived day(s)" % ar["entra"]["days"]})
     if op is not None: ev.append({"source": "WindowsSrv_Activity_Report (archive)", "reference": "group additions and account creations, %d archived days" % op["days"]})
     out = {"tenant": a.tenant, "assessment_date": a.date, "window_days": W, "period_label": "%s – %s" % (datetime.datetime.strptime(start, "%Y-%m-%d").strftime("%d %b").lstrip("0"), asof.strftime("%d %b %Y").lstrip("0")),
            "drift_rating": rating, "kpis": kp, "headline": headline, "summary": summ, "ciso_ask": ask, "counts": cnt, "timeline": T, "findings": F,

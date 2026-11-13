@@ -1,1 +1,0 @@
-{"streamTables": [{"name": "AzureAuditLogs"}, {"name": "AzureSigninLogs"}, {"name": "AADServicePrincipalSignInLogs"}, {"name": "WindowsAudit"}, {"name": "MSDefender"}, {"name": "Falcon"}, {"name": "office365"}], "resourceTables": [{"name": "office365User"}, {"name": "office365InstalledApp"}, {"name": "office365ConditionalAccessPolicy"}, {"name": "msDefenderSecureConfig"}]}

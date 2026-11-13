@@ -1,1 +1,12 @@
-[{"displayName": "Backup Connector", "verified": "Backup Vendor Inc."}, {"displayName": "Upload App", "verified": ""}]
+[
+ {
+  "appId": "app-1",
+  "displayName": "Backup Connector",
+  "verified": "Backup Vendor Inc."
+ },
+ {
+  "appId": "app-2",
+  "displayName": "Policy Portal App",
+  "verified": ""
+ }
+]

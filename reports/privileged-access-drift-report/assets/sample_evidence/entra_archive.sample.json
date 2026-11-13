@@ -1,0 +1,40 @@
+{
+ "days": [
+  {
+   "entry": {
+    "rangeFrom": "2026-11-11T00:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "audit_facets",
+      "value": {
+       "orderedMap": {
+        "valueMap": {
+         "activity": {
+          "sx": {
+           "rows": [
+            {
+             "activity": "Consent to application",
+             "count_": 3
+            },
+            {
+             "activity": "Add service principal credentials",
+             "count_": 5
+            },
+            {
+             "activity": "Add user",
+             "count_": 90
+            }
+           ]
+          }
+         }
+        }
+       }
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Smoke test: sample evidence -> evidence -> rating -> HTML. Run: python3 tests/test_pipeline.py"""
-import json, os, subprocess, sys, tempfile
+"""Smoke test: archive-shaped sample inputs -> evidence -> rating -> HTML. Run: python3 tests/test_pipeline.py"""
+import gzip, json, os, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 S = os.path.join(ROOT, "scripts"); A = os.path.join(ROOT, "assets", "sample_evidence")
@@ -10,58 +10,92 @@ def run(*args):
     return subprocess.run([sys.executable, "-I"] + list(args), check=True, capture_output=True, text=True).stdout
 
 
+def evidence(t, name, **over):
+    a = {"inventory": "inventory_archive", "pad": "pad_archive", "entra": "entra_archive", "windows-archive": "windows_archive", "apps": "apps"}
+    a.update(over)
+    cmd = [os.path.join(S, "drift_evidence.py")]
+    for k, v in a.items():
+        if v:
+            cmd += ["--" + k, "%s/%s.sample.json" % (A, v) if not v.startswith("/") else v]
+    run(*cmd, "--asof", "2026-11-12", "-o", "%s/%s.json" % (t, name))
+    return json.load(open("%s/%s.json" % (t, name)))
+
+
+def rate(t, name, tenant="Sample Co"):
+    run(os.path.join(S, "rate_evidence.py"), "--evidence", "%s/%s.json" % (t, name), "--tenant", tenant, "--date", "2026-11-12", "--out", "%s/%s_draft.json" % (t, name))
+    return json.load(open("%s/%s_draft.json" % (t, name)))
+
+
 def main():
-    t = tempfile.mkdtemp(); f = lambda n: "%s/%s.sample.json" % (A, n)
-    run(os.path.join(S, "drift_evidence.py"), "--roles", f("roles"), "--accounts", f("accounts"), "--signins", f("signins"), "--role-drift", f("role_drift"), "--role-activity", f("role_activity"),
-        "--app-grants", f("app_grants"), "--app-events", f("app_events"), "--ca", f("ca_changes"), "--windows-archive", "%s/windows_archive.sample.json" % A, "--apps", f("apps"), "--tables", f("tables"), "--asof", "2026-11-10", "-o", t + "/ev.json")
-    run(os.path.join(S, "rate_evidence.py"), "--evidence", t + "/ev.json", "--tenant", "Sample Co", "--date", "2026-11-10", "--out", t + "/draft.json")
-    ev = json.load(open(t + "/ev.json")); d = json.load(open(t + "/draft.json"))
-    dr = ev["drift"]
-    assert dr["outside_pim_events"] == 258 and dr["outside_pim_by_initiator"][0]["timeboxed"] is True, dr["outside_pim_by_initiator"]   # 313 removals / 361 additions
-    assert dr["pim_permanent_added"] == 8 and dr["pim_permanent_removed"] == 11 and dr["pim_alerts"] == 1 and dr["pim_alerts_resolved"] == 0, dr
-    assert ev["signins"]["single_factor_pct"] == 48.4 and ev["global_admins"]["holders"] == 6, ev["signins"]
-    tiers = {x["identity"]: x["tier"] for x in ev["non_human"]}
-    assert tiers["Backup Connector"] == 0 and tiers["Policy Portal App"] == 1 and tiers["Upload App"] == 2, tiers
-    pubs = {x["identity"]: x["publisher"] for x in ev["non_human"]}
-    assert pubs["Backup Connector"].startswith("verified") and pubs["Upload App"] == "not verified" and pubs["Policy Portal App"] == "not checked", pubs
+    t = tempfile.mkdtemp()
+    ev = evidence(t, "ev"); d = rate(t, "ev"); dr = ev["drift"]
+    # events are added across the three PAD days; per-day distinct counts use the busiest day
+    x = dr["outside_pim_by_initiator"][0]
+    assert dr["outside_pim_events"] == 24 and x["removals"] == 15 and x["removal_ratio"] == 0.625 and x["timeboxed"] is False, dr["outside_pim_by_initiator"]
+    assert dr["pim_permanent_added"] == 8 and dr["pim_permanent_removed"] == 11 and dr["pim_alerts"] == 1 and dr["pim_alerts_resolved"] == 0 and dr["pim_activations"] == 40, dr
+    sg = ev["signins"]
+    assert sg["successful"] == 1599 and sg["single_factor"] == 824 and sg["single_factor_pct"] == 51.5, sg
+    assert sg["admins_signed_in"] == 52 and sg["admins_with_single_factor"] == 33 and sg["admins_all_single_factor"] == 9, sg
+    # directory state: latest inventory day; the GA count changed between snapshots
+    assert ev["global_admins"]["holders"] == 5 and ev["accounts"]["accounts"] == 66 and ev["accounts"]["licensed"] == 20 and ev["accounts"]["noMfa"] == 4 and ev["accounts_detail"], ev["accounts"]
+    assert [x["global_admins"] for x in ev["admin_trend"]] == [None, 4, 5] or [x["global_admins"] for x in ev["admin_trend"]] == [0, 4, 5], ev["admin_trend"]
+    assert ev["archive"]["pad"]["days"] == 3 and ev["archive"]["inventory"]["role_history_days"] == 2 and ev["archive"]["entra"]["days"] == 1, ev["archive"]
+    # applications: the publisher is mapped from the apps map by application id
+    nh = {x["identity"]: x for x in ev["non_human"]}
+    assert nh["Backup Connector"]["tier"] == 0 and nh["Backup Connector"]["publisher"] == "verified: Backup Vendor Inc.", nh
+    assert nh["Policy Portal App"]["tier"] == 1 and nh["Policy Portal App"]["publisher"] == "not verified", nh
+    assert ev["app_events"] == {"Consent to application": 3, "Add service principal credentials": 5}, ev["app_events"]
+    assert ev["conditional_access"]["added"] == 1 and ev["conditional_access"]["updated"] == 3, ev["conditional_access"]
     assert ev["onprem"]["group_change_events"] == 24 and ev["onprem"]["days"] == 2 and ev["onprem"]["dc_activity"], ev["onprem"]
-    assert d["drift_rating"] == "High"                                           # tier-0 grant and an unresolved PIM alert
-    sev = [x["severity"] for x in d["findings"]]
-    assert sev[0] == "critical" and "high" in sev, sev
-    assert any(x["title"] == "A PIM alert has no recorded resolution" for x in d["findings"])
-    assert not any(x["title"].startswith("On-premises privilege") for x in d["findings"])   # group events are present
-    assert any("2 of 30 days" in g for g in d["coverage_gaps"]), d["coverage_gaps"]            # a short archive is stated, not hidden
-    # a tenant with no role-management events at all
+    # rating
+    assert d["drift_rating"] == "High"
+    sev = [f["severity"] for f in d["findings"]]; titles = [f["title"] for f in d["findings"]]
+    assert sev[0] == "critical" and "A PIM alert has no recorded resolution" in titles and "Roles are assigned outside PIM" in titles, titles
+    sf = next(f for f in d["findings"] if f["title"].startswith("Administrator sign-ins")); assert "busiest day 33 of 52" in sf["finding"], sf["finding"]
+    assert any("Global Administrators rose from 4 to 5" in x["event"] for x in d["timeline"]), d["timeline"]
+    gaps = " | ".join(d["coverage_gaps"])
+    assert "holds 3 of 60 days" in gaps and "Dormant administrators are not measured" in gaps, gaps
+    assert not any(x.startswith("The Office365_Resource_Inventory_Report archive holds no day") for x in d["coverage_gaps"])
+    assert any(e["source"].startswith("Privileged_Access_Drift_Report") for e in d["evidence"])
+    # time-boxed tooling: removals at least 80% of additions is reported, not rated high
+    tbx = json.load(open(t + "/ev.json")); tbx["drift"]["outside_pim_by_initiator"][0].update({"removals": 22, "removal_ratio": 0.92, "timeboxed": True})
+    tbx["non_human"] = [x for x in tbx["non_human"] if x["tier"] > 0]; tbx["drift"]["pim_alerts"] = 0; tbx["signins"]["single_factor_pct"] = 5.0
+    json.dump(tbx, open(t + "/tb.json", "w")); q = rate(t, "tb")
+    assert next(f for f in q["findings"] if f["title"] == "Roles are assigned outside PIM")["severity"] == "medium", q["findings"]
+    # a tenant with no archived PAD day: nothing is invented, the gap is stated
+    json.dump({"days": []}, open(t + "/pad_empty.json", "w")); emp = evidence(t, "nopad", pad=t + "/pad_empty.json"); e = rate(t, "nopad")
+    assert emp["drift"] is None and emp["non_human"] is None and emp["signins"]["single_factor_pct"] is None
+    assert any("Privileged_Access_Drift_Report archive holds no day" in g for g in e["coverage_gaps"]), e["coverage_gaps"]
+    # a PAD scan that was not available on every day (no Entra audit table)
+    na = json.load(open(A + "/pad_archive.sample.json"))
+    for dy in na["days"]:
+        for o in dy["result"]["objects"]:
+            if o["name"] == "sources":
+                for r in o["table"]["rows"]:
+                    if r["source"].startswith("AzureAuditLogs"):
+                        r["status"] = "not available"
+    json.dump(na, open(t + "/pad_na.json", "w"))
+    nv = evidence(t, "na", pad=t + "/pad_na.json"); nd = rate(t, "na")
+    assert nv["drift"] is None and nv["tables_present"]["AzureAuditLogs"] is False and any("directory audit logs" in g for g in nd["coverage_gaps"]), nd["coverage_gaps"]
+    # a tenant with a quiet role log
     z = json.load(open(t + "/ev.json")); z["drift"].update({"role_events_total": 0, "outside_pim_events": 0, "outside_pim_by_initiator": [], "pim_permanent_added": 0, "pim_alerts": 0, "pim_activations": 0, "pim_seen": False})
-    z["non_human"] = []; json.dump(z, open(t + "/ev0.json", "w"))
-    run(os.path.join(S, "rate_evidence.py"), "--evidence", t + "/ev0.json", "--tenant", "Quiet Co", "--date", "2026-11-10", "--out", t + "/draft0.json")
-    q = json.load(open(t + "/draft0.json"))
-    assert any(x["title"] == "Role assignment changes cannot be observed" for x in q["findings"]) and q["drift_rating"] == "Elevated", q["drift_rating"]   # 6 Global Administrators
+    z["non_human"] = []; z["signins"]["single_factor_pct"] = None; z["global_admins"]["holders"] = 6; json.dump(z, open(t + "/ev0.json", "w"))
+    qd = rate(t, "ev0", "Quiet Co")
+    assert any(f["title"] == "Role assignment changes cannot be observed" for f in qd["findings"]) and qd["drift_rating"] == "Elevated", qd["drift_rating"]
     try:
-        run(os.path.join(S, "render_report.py"), t + "/draft.json", t, "--no-pdf")
-        assert any(x.startswith("Privileged_Access_Drift_SampleCo_") and x.endswith(".html") for x in os.listdir(t))
-    except subprocess.CalledProcessError as e:
-        if "brand kit was not found" not in (e.stderr or "") + (e.stdout or ""):
+        run(os.path.join(S, "render_report.py"), t + "/ev_draft.json", t, "--no-pdf")
+        assert any(f.startswith("Privileged_Access_Drift_SampleCo_") and f.endswith(".html") for f in os.listdir(t))
+    except subprocess.CalledProcessError as ex:
+        if "brand kit was not found" not in (ex.stderr or "") + (ex.stdout or ""):
             raise
         print("render skipped: fluency-report brand kit not found")
-    # snapshot dump -> evidence (synthetic dump; the real one is a gzipped JSONL of the office365User and office365InstalledApp records)
-    import gzip
-    users = [{"userPrincipalName": "a_adm@x.test", "roles": ["Global Administrator", "SharePoint Administrator"], "accountEnabled": True, "assignedLicenses": [{"skuId": "1"}], "createdDateTime": "2026-10-01T00:00:00Z", "userRegistration": {"isMfaRegistered": True, "isPasswordlessCapable": True}},
-             {"userPrincipalName": "helpdesk@x.test", "roles": ["User Administrator", "Exchange Administrator", "SharePoint Administrator", "Teams Administrator", "Helpdesk Administrator", "Global Administrator"], "accountEnabled": False, "assignedLicenses": [], "createdDateTime": "2020-01-01T00:00:00Z", "userRegistration": {"isMfaRegistered": False}},
-             {"value": {"userPrincipalName": "b@x.test", "roles": [], "accountEnabled": True}},
-             {"userPrincipalName": "g@x.test", "roles": ["Global Reader"], "userType": "Guest", "accountEnabled": True, "userRegistration.isMfaRegistered": True}]
-    with gzip.open(t + "/u.jsonl.gz", "wt") as fh:
-        fh.write("\n".join(json.dumps(x) for x in users) + "\n")
+    # application dump -> apps map (synthetic dump; the real one is a gzipped JSONL of office365InstalledApp records)
     with gzip.open(t + "/a.jsonl.gz", "wt") as fh:
-        fh.write(json.dumps({"displayName": "Backup Connector", "verifiedPublisher": {"displayName": "Backup Vendor Inc."}}) + "\n" + json.dumps({"displayName": "Upload App", "verifiedPublisher": None}) + "\n")
-    run(os.path.join(S, "dump_evidence.py"), "--users", t + "/u.jsonl.gz", "--apps", t + "/a.jsonl.gz", "--asof", "2026-11-10", "--batch", "2", "-o", t + "/dump")
-    acc = json.load(open(t + "/dump/accounts.json"))["data"]["Tables"][0]; ac = dict(zip([x["ColumnName"] for x in acc["Columns"]], acc["Rows"][0]))
-    assert ac["accounts"] == 3 and ac["enabled"] == 2 and ac["disabled"] == 1 and ac["licensed"] == 1 and ac["multi6"] == 1 and ac["shared"] == 1 and ac["noMfa"] == 1 and ac["passwordless"] == 1 and ac["guests"] == 1 and ac["new90"] == 1, ac
-    rl = {r[0]: r for r in json.load(open(t + "/dump/roles.json"))["data"]["Tables"][0]["Rows"]}
-    assert rl["Global Administrator"][1:] == [2, 1, 1, 0] and rl["Global Reader"][4] == 1
-    assert len([x for x in os.listdir(t + "/dump") if x.startswith("signins_query_")]) == 2 and "x.test" in open(t + "/dump/signins_query_1.kql").read()
-    run(os.path.join(S, "drift_evidence.py"), "--roles", t + "/dump/roles.json", "--accounts", t + "/dump/accounts.json", "--signins", f("signins"), f("signins"), "--apps", t + "/dump/apps.json", "--asof", "2026-11-10", "-o", t + "/ev_dump.json")
-    dv = json.load(open(t + "/ev_dump.json")); assert dv["signins"]["successful"] == 2 * 27844 and dv["accounts"]["accounts"] == 3, dv["signins"]   # two batches are summed
+        fh.write(json.dumps({"appId": "x1", "displayName": "Backup Connector", "verifiedPublisher": {"displayName": "Backup Vendor Inc."}}) + "\n"
+                 + json.dumps({"value": {"appId": "x2", "displayName": "Upload App", "verifiedPublisher": None}}) + "\n" + json.dumps({"appId": "x1", "displayName": "dup"}) + "\n")
+    run(os.path.join(S, "dump_evidence.py"), "--apps", t + "/a.jsonl.gz", "-o", t + "/apps.json")
+    m = {r["appId"]: r for r in json.load(open(t + "/apps.json"))}
+    assert m["x1"]["verified"] == "Backup Vendor Inc." and m["x2"]["verified"] == "" and len(m) == 2, m
     print("ok")
 
 

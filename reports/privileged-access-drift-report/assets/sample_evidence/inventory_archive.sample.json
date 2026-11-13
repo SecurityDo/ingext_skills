@@ -1,0 +1,146 @@
+{
+ "days": [
+  {
+   "entry": {
+    "rangeFrom": "2026-10-08T00:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "o365res_users",
+      "table": {
+       "rows": [
+        {
+         "admins": 66,
+         "adminsNoMfa": 4
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "entry": {
+    "rangeFrom": "2026-10-21T00:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "o365res_users",
+      "table": {
+       "rows": [
+        {
+         "admins": 66,
+         "adminsNoMfa": 4,
+         "globalAdmins": 4,
+         "adminsEnabled": 64,
+         "adminsLicensed": 20,
+         "adminsStacked": 2,
+         "adminsSharedStyle": 3,
+         "adminsPasswordless": 10,
+         "adminsNew90d": 5
+        }
+       ]
+      }
+     },
+     {
+      "name": "o365res_role_holders",
+      "table": {
+       "rows": [
+        {
+         "role": "Global Administrator",
+         "holders": 4,
+         "enabled": 4,
+         "disabled": 0,
+         "noMfa": 0,
+         "licensed": 1,
+         "asOf": "2026-10-21"
+        },
+        {
+         "role": "Azure AD Joined Device Local Administrator",
+         "holders": 4,
+         "enabled": 4,
+         "disabled": 0,
+         "noMfa": 1,
+         "licensed": 2,
+         "asOf": "2026-10-21"
+        },
+        {
+         "role": "User Administrator",
+         "holders": 6,
+         "enabled": 5,
+         "disabled": 1,
+         "noMfa": 0,
+         "licensed": 3,
+         "asOf": "2026-10-21"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "entry": {
+    "rangeFrom": "2026-11-11T00:00:00Z"
+   },
+   "result": {
+    "objects": [
+     {
+      "name": "o365res_users",
+      "table": {
+       "rows": [
+        {
+         "admins": 66,
+         "adminsNoMfa": 4,
+         "globalAdmins": 5,
+         "adminsEnabled": 64,
+         "adminsLicensed": 20,
+         "adminsStacked": 2,
+         "adminsSharedStyle": 3,
+         "adminsPasswordless": 10,
+         "adminsNew90d": 5
+        }
+       ]
+      }
+     },
+     {
+      "name": "o365res_role_holders",
+      "table": {
+       "rows": [
+        {
+         "role": "Global Administrator",
+         "holders": 5,
+         "enabled": 5,
+         "disabled": 0,
+         "noMfa": 0,
+         "licensed": 1,
+         "asOf": "2026-11-11"
+        },
+        {
+         "role": "Azure AD Joined Device Local Administrator",
+         "holders": 4,
+         "enabled": 4,
+         "disabled": 0,
+         "noMfa": 1,
+         "licensed": 2,
+         "asOf": "2026-11-11"
+        },
+        {
+         "role": "User Administrator",
+         "holders": 6,
+         "enabled": 5,
+         "disabled": 1,
+         "noMfa": 0,
+         "licensed": 3,
+         "asOf": "2026-11-11"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  }
+ ]
+}
