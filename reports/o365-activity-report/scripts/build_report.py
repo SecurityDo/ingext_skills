@@ -227,7 +227,9 @@ def render_timechart(rows, bin_label=""):
     if not all_t or not all_v:
         return None
     ordered = sorted(series.items(), key=lambda kv: -sum(v for _, v in kv[1]))[:6]
-    labels = [d.strftime("%m-%d %H:%M") for d in all_t]
+    # whole-day bins carry no time of day: label them by date only so the axis stays legible
+    daily = all(d.hour == 0 and d.minute == 0 for d in all_t)
+    labels = [d.strftime("%m-%d" if daily else "%m-%d %H:%M") for d in all_t]
     data = []
     for name, pts in ordered:
         m = dict(pts)

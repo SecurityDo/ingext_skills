@@ -42,7 +42,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system
 .hero p{margin:0;color:#c7d4ee;font-size:14px}
 .chips{margin-top:18px}.chip{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#e6edfb;border-radius:999px;padding:3px 12px;font-size:12px;margin:0 8px 6px 0}
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:-46px}
-.kpis.two{margin-top:14px;grid-template-columns:repeat(4,1fr)}
+.kpis.row2{margin-top:14px;grid-template-columns:repeat(4,1fr)}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:0 2px 8px rgba(15,26,51,.06);border-top:4px solid var(--c)}
 .kpi b{display:block;font-size:30px;line-height:1.1;color:var(--c)}.kpi span{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}.kpi small{display:block;color:var(--mut);font-size:11px;margin-top:2px}
 h2{font-size:18px;margin:34px 0 4px;color:var(--navy);display:flex;align-items:center;gap:10px}
@@ -67,7 +67,7 @@ tr:last-child td{border-bottom:0}tbody tr:hover td{background:#f8fafc}
 .pill{display:inline-block;color:#fff;border-radius:999px;padding:2px 11px;font-size:11px;font-weight:600;white-space:nowrap;background:var(--c)}
 td.bar{width:24%}.bar i{display:block;height:8px;border-radius:4px;background:var(--c);min-width:2px}
 .foot{margin-top:34px;color:var(--mut);font-size:12px;border-top:1px solid var(--line);padding-top:14px}.foot li{margin:3px 0}
-@media screen and (max-width:760px){.kpis,.kpis.two,.cards{grid-template-columns:1fr 1fr}.hero h1{font-size:24px}}
+@media screen and (max-width:760px){.kpis,.kpis.row2,.cards{grid-template-columns:1fr 1fr}.hero h1{font-size:24px}}
 @media print{body{background:#fff}.hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}tr,.card,.kpi{break-inside:avoid}.kpi,.pill,.bar i,.card,.read,.gap,svg{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 """
 
@@ -362,7 +362,7 @@ def main():
         kpi("Blocked events", T["blocked"], AMB if T["blocked"] else GRN, "firewall action deny"),
         kpi("Sent (out)", T["bytesOut"], BLU, "client to server", human),
         kpi("Received (in)", T["bytesIn"], BLU, "server to client", human)))
-    o.append("<div class='kpis two'>%s%s%s%s</div>" % (
+    o.append("<div class='kpis row2'>%s%s%s%s</div>" % (
         kpi("GenAI events", ga_events, RED if ga_events else GRN, "%d application(s)" % len(ga_apps)),
         kpi("GenAI sent", ga_out, RED if ga_out else GRN, "%s of %s total out" % (pct(ga_out, T["bytesOut"]), human(T["bytesOut"])), human),
         kpi("Application names", app_cov if app_cov is not None else 0, GRN if (app_cov or 0) >= 70 else AMB,

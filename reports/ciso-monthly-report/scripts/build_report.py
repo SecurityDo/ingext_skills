@@ -64,7 +64,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system
 .hero{background:linear-gradient(135deg,#0f1a33 0%,#1d3461 100%);color:#fff;padding:34px 0 76px}
 .hero-row{display:flex;align-items:center;justify-content:space-between;gap:24px}
 .hero-id{display:flex;align-items:center;gap:18px}
-.logo{background:#fff;border-radius:12px;padding:8px;display:flex;flex:none}.logo svg{display:block;width:52px;height:52px}
+.logo{background:#fff;border-radius:12px;padding:8px;display:flex;flex:none}.logo svg,.logo img{display:block;width:52px;height:52px}
 .eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:#9db4e0;font-weight:600}
 .hero h1{margin:6px 0 4px;font-size:30px;font-weight:700;letter-spacing:-.01em;color:#fff}
 .hero p{margin:0;color:#c7d4ee;font-size:14px}
