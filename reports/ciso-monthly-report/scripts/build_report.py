@@ -114,6 +114,13 @@ h3{font-size:15px;color:var(--navy);margin:18px 0 8px}
 .foot{margin-top:36px;padding:16px 0 40px;border-top:1px solid var(--line);color:var(--mut);font-size:12px}
 @media (max-width:900px){.kpis{grid-template-columns:repeat(3,1fr)}.hero-row{flex-wrap:wrap}}
 @media (max-width:620px){.kpis{grid-template-columns:1fr 1fr}.hero h1{font-size:24px}.wrap{padding:0 16px}.dec .cards{grid-template-columns:1fr!important}}
+.toc{break-before:page;page-break-before:always;break-after:page;page-break-after:always;margin:30px 0 0;border-top:2px solid var(--ink,#111);padding-top:12px}
+.toc-h{font:600 10px/1 var(--mono,monospace);letter-spacing:.16em;text-transform:uppercase;color:var(--ink,#111);margin:0 0 10px}
+.toc ol{list-style:none;margin:0;padding:0}.toc li a{display:flex;align-items:baseline;gap:12px;color:var(--text,#242424);text-decoration:none;padding:3px 0;border-bottom:1px solid var(--rule2,#e8e8e8)}
+.toc li a:hover .t-t{text-decoration:underline}.toc .t-n{font:500 10px/1.4 var(--mono,monospace);color:var(--t3,#777);min-width:74px;letter-spacing:.06em;text-transform:uppercase}
+.toc .t-t{flex:1}.toc .t-p{font:400 10.5px/1.4 var(--mono,monospace);color:var(--t3,#777);min-width:24px;text-align:right}
+.toc .t-ch a{margin-top:9px;border-bottom:1px solid var(--ink,#111)}.toc .t-ch .t-t{font-weight:600;color:var(--ink,#111)}.toc .t-s .t-n{padding-left:16px}.toc .t-ch:first-child a{margin-top:0}
+.chap,.sec,h3[id]{scroll-margin-top:16px}
 @media print{.kpis{margin-top:16px}body{background:#fff;font-size:12.5px}.hero,.chap,.kpi,.pill,.pill-rag,.posture,.dec .dh,.finding,.caveat,.sec .n,.flag,.gap span,.fig,tr.hl td,th,td:first-child,.logo{-webkit-print-color-adjust:exact;print-color-adjust:exact}tr,.kpi,.fig,.card,.finding,.caveat,.dec,.posture{break-inside:avoid}.chap,.sec,h3{break-after:avoid}th{position:static}.kpi,.fig,.posture,.tw{box-shadow:none}.hero{padding-bottom:70px}}
 """
 
@@ -158,12 +165,35 @@ def pill(t, col):
 
 # ---------- html helpers ----------
 def chapter(n, title):
-    return '<div class="chap"><span class="cn">CHAPTER %d</span><span class="ct">%s</span></div><section>' % (n, E(title))
+    return '<div class="chap" id="ch-%d"><span class="cn">CHAPTER %d</span><span class="ct">%s</span></div><section>' % (n, n, E(title))
 
 
 def sec(num, title, flag=""):
     f = ('<span class="flag">%s</span>' % E(flag)) if flag else ""
-    return '<div class="sec"><span class="n">%02d</span><h2>%s</h2>%s</div>' % (num, E(title), f)
+    return '<div class="sec" id="s-%02d"><span class="n">%02d</span><h2>%s</h2>%s</div>' % (num, num, E(title), f)
+
+
+def toc(doc, pages=None):
+    """Insert the linked table of contents before chapter 1. Entries come from the anchors in document order:
+    chapters (ch-N), numbered sections (s-NN) and appendix parts (ap-X). `pages` maps an anchor to its PDF page
+    number (written by scripts/render_pdf_with_toc.py); without it the page column is left empty."""
+    pages = pages or {}
+    pat = re.compile(r'<div class="chap" id="(ch-\d+)"><span class="cn">CHAPTER (\d+)</span><span class="ct">(.*?)</span>'
+                     r'|<div class="sec" id="(s-\d+)"><span class="n">(\d+)</span><h2>(.*?)</h2>'
+                     r'|<h3 id="(ap-[A-Z])">([A-Z])\. (.*?)</h3>')
+    rows = []
+    for m in pat.finditer(doc):
+        if m.group(1):
+            aid, num, title, cls = m.group(1), "Chapter %s" % m.group(2), m.group(3), "t-ch"
+        elif m.group(4):
+            aid, num, title, cls = m.group(4), m.group(5), m.group(6), "t-s"
+        else:
+            aid, num, title, cls = m.group(7), m.group(8), m.group(9), "t-s"
+        rows.append('<li class="%s"><a href="#%s"><span class="t-n">%s</span><span class="t-t">%s</span><span class="t-p">%s</span></a></li>'
+                    % (cls, aid, num, title, E(str(pages.get(aid, "")))))
+    nav = '<nav class="toc" aria-label="Contents"><div class="toc-h">Contents</div><ol>%s</ol></nav>' % "".join(rows)
+    i = doc.find('<div class="chap" id="ch-1"')
+    return doc[:i] + nav + doc[i:] if i >= 0 else doc
 
 
 def para(t):
@@ -666,7 +696,7 @@ def render(ev, nar, v, args, logo):
     A.append(paras(nar.get("improvements", [])))
     A.append(gap("The SOC change log (tuning, new detections, log sources onboarded, playbook updates) is not available through the connector. No changes are listed and none are inferred.", "GAP"))
     A.append(sec(16, "Appendix"))
-    h3 = '<h3>%s%s</h3>'
+    h3 = '<h3 id="ap-%s">%s</h3>'  # anchor letter, heading text
     inv = []
     if hl:
         inv.append(["Installed applications", "%d (%s mode)" % (len(apps_h), "state-only" if hl["mode"] == "state_only" else "full")])
@@ -676,11 +706,11 @@ def render(ev, nar, v, args, logo):
         inv.append([E("%s / %s (resource feed)" % (f["resource"], f["customer"])), E("%s%s" % ("stale, " if f["stale"] else "current, ", ("%.1f days old" % f["ageDays"]) if f["ageDays"] is not None else "age unknown"))])
     if not inv:
         inv.append(["Inventory", "[GAP] not collected"])
-    A.append(h3 % ("", "A. Log source inventory") + table(["Item", "Status"], inv, ["40%", "60%"]))
-    A.append(h3 % ("", "B. Case shapes cited") + table(["Shape id", "Rules", "Cases"], [[E(h), E(sh["rules"]), str(sh["n"])] for h, sh in v["shapes"]], ["14%", "74%", "12%"]))
-    A.append(h3 % ("", "C. ATT&CK") + '<p class="note">[GAP] No approved ATT&amp;CK mapping source is available through the connector, so no technique table is shown and no coverage is claimed.</p>')
+    A.append(h3 % ("A", E("A. Log source inventory")) + table(["Item", "Status"], inv, ["40%", "60%"]))
+    A.append(h3 % ("B", E("B. Case shapes cited")) + table(["Shape id", "Rules", "Cases"], [[E(h), E(sh["rules"]), str(sh["n"])] for h, sh in v["shapes"]], ["14%", "74%", "12%"]))
+    A.append(h3 % ("C", E("C. ATT&CK")) + '<p class="note">[GAP] No approved ATT&amp;CK mapping source is available through the connector, so no technique table is shown and no coverage is claimed.</p>')
     tools = "behavior_summary_search" + (", the health-status-report evaluation" if hl else "") + (", get_azure_user_record" if adm else "") + (", and the compliance-assessment evidence" if comp else "")
-    A.append(h3 % ("", "D. Methodology") + '<p class="note" style="line-height:1.65">Scope: tenant %s. Window: 1–%d %s %d UTC%s. Read-only calls: %s. Sections marked GAP or PARTIAL could not be computed from these tools. A case is a cluster of events for one user, host or application on one day; a case shape is the combination of rules that fired; a benign positive is activity that looked suspicious but was expected.</p>'
+    A.append(h3 % ("D", E("D. Methodology")) + '<p class="note" style="line-height:1.65">Scope: tenant %s. Window: 1–%d %s %d UTC%s. Read-only calls: %s. Sections marked GAP or PARTIAL could not be computed from these tools. A case is a cluster of events for one user, host or application on one day; a case shape is the combination of rules that fired; a benign positive is activity that looked suspicious but was expected.</p>'
              % (E(tenant), v["last_day"], v["month_name"], v["year"], "; prior month compared" if pv else "", tools))
     A.append('</section><footer class="foot">Fluency Managed SOC · %s · %s · Generated from read-only telemetry. Not a certification or attestation.</footer></main></body></html>' % (E(tname), E(mname)))
     return "".join(A)
@@ -717,6 +747,7 @@ def main():
     ap.add_argument("--month", required=True, help="YYYY-MM")
     ap.add_argument("--out", required=True)
     ap.add_argument("--prepared")
+    ap.add_argument("--toc-pages", help="JSON {anchor: page} written by render_pdf_with_toc.py; fills the contents page numbers")
     ap.add_argument("--logo", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "fluency_logo.svg"))
     a = ap.parse_args()
     d = a.evidence_dir
@@ -739,6 +770,14 @@ def main():
             sys.exit("narrative.json chapters lacks '%d'" % ch)
     v, known = compute(ev, a.month)
     html_doc = render(ev, nar, v, a, logo)
+    toc_pages = None
+    if a.toc_pages:
+        try:
+            with open(a.toc_pages) as f:
+                toc_pages = json.load(f)
+        except (OSError, ValueError) as e:
+            sys.exit("cannot read --toc-pages: %s" % e)
+    html_doc = toc(html_doc, toc_pages)
     check_numbers(nar, known)
     with open(a.out, "w") as f:
         f.write(fb.apply_brand(html_doc))

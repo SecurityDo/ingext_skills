@@ -1,6 +1,6 @@
 ---
 name: ciso-monthly-report
-version: 1.0.1
+version: 1.0.2
 metadata:
   aliases: "CISO_monthly_report"
 description: >-
@@ -146,14 +146,38 @@ python3 scripts/build_report.py --evidence-dir WORKDIR --narrative WORKDIR/narra
 Fix every `WARNING` before delivering: a short analysis, a missing callout, a placeholder that does
 not exist, a number not backed by the evidence, a non-calendar due date.
 
+**Table of contents (always).** The build always puts a linked contents page between the cover and
+chapter 1: every chapter, its numbered sections and appendix parts A to D, each a link to its heading
+(anchors `ch-N`, `s-NN`, `ap-X`). It is built from the headings, so it cannot drift from the report. Do
+not remove it or build a report without it. In the HTML the page-number column is empty until the PDF
+step below fills it.
+
+**PDF (always with this command).** Render the PDF with the contents step, never with `render_pdf.mjs`
+alone:
+
+```bash
+python3 scripts/render_pdf_with_toc.py --html WORKDIR/report.html --pdf WORKDIR/report.pdf
+```
+
+It renders through `<fluency-report>/scripts/render_pdf.mjs`, writes each entry's PDF page number into the
+contents page (of the HTML too), renders again until the numbers are stable, turns the contents links into
+explicit page links and adds a bookmark outline. Chromium writes internal links as named destinations,
+which macOS Preview and several other viewers do not follow, so a PDF from `render_pdf.mjs` alone has a
+contents page whose links do nothing. Needs PyMuPDF (`pip install pymupdf`); the script stops with that
+instruction if it is missing. A `WARNING: no page found` line names an entry whose link was left as
+rendered: check that heading.
+
 ## Step 4 — Check before delivering
 
 - Chapter 1 has no raw metrics. All 8 chapters and 16 sections are present, empty sections are kept
   and marked.
 - Every GAP and PARTIAL is visible and honest; the risk register exists even when PARTIAL.
+- The contents page is page 2, lists all 8 chapters, 16 sections and appendix parts A to D with page
+  numbers, and fits on one page. In the PDF, click at least one chapter and one appendix entry and confirm
+  each lands on its heading; the bookmarks sidebar shows the same outline.
 - Look at the page. If you cannot, say so in the hand-off.
 - The output is one self-contained HTML file with no external script, font link or image, so it can
-  be posted as it stands. Fonts fall back to system fonts. PDF: run the render command in the branding section below.
+  be posted as it stands. Fonts fall back to system fonts. PDF: `scripts/render_pdf_with_toc.py` (Step 3).
 
 ## Delivering
 
@@ -169,7 +193,8 @@ import `fluency_brand` from it, and stop with a clear message if it is not insta
 that skill's folder.
 
 - The HTML report is one self-contained file (mark, fonts and CSS inlined). The PDF is rendered from that same HTML with the same
-  CSS, so the two match: `node <fluency-report>/scripts/render_pdf.mjs --input report.html --output report.pdf`.
+  CSS, so the two match. For this report always use `scripts/render_pdf_with_toc.py` (Step 3), which calls
+  `<fluency-report>/scripts/render_pdf.mjs` and then fixes the contents page numbers and links.
   US Letter, same editorial styling as the HTML (brandline, closing footer line; no paged footer). It needs Playwright
   (`npm install playwright`) and a Chromium or Chrome binary; it finds a Chrome install automatically.
 - Do not convert these reports with WeasyPrint, wkhtmltopdf or a generic HTML-to-PDF step: they ignore
