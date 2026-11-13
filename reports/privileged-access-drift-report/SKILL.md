@@ -3,13 +3,12 @@ name: privileged-access-drift-report
 version: 2.0.0
 description: >-
   Measure how ONE Fluency / Ingext tenant's administrator, directory-role and application privileges changed over the archived days and
-  render a CISO report (HTML and PDF): drift rating (High, Elevated, Moderate, Low), a dated timeline, findings, applications granted tier-0
-  to tier-2 Microsoft Graph permissions, the directory role inventory, strengths, coverage gaps and proposed detections. Built ONLY from the
-  archives of the scheduled reports Office365_Resource_Inventory_Report (privileged accounts, role holders) and Privileged_Access_Drift_Report
-  (role, application, Conditional Access and administrator sign-in activity), plus the Entra and Windows activity archives; it never runs
-  kql_search or run_report. USE THIS SKILL for "privileged access drift", "privilege creep", "who got admin rights", "PIM review", "standing
-  privilege", "service principal or app permission review", "CISO Rpt 2". DO NOT use it for one user (office-user-investigation), a
-  current-state posture review (office365-posture-review) or a tenant with no archive (deploy and schedule the reports first).
+  render a CISO report (HTML and PDF): drift rating, dated timeline, findings, applications granted tier-0 to tier-2 Graph permissions,
+  role inventory, strengths, coverage gaps and proposed detections. Built ONLY from the archives of Office365_Resource_Inventory_Report
+  and Privileged_Access_Drift_Report (plus the Entra and Windows activity archives); never runs kql_search or run_report. USE THIS SKILL
+  for "privileged access drift", "privilege creep", "who got admin rights", "PIM review", "standing privilege", "app permission review",
+  "CISO Rpt 2". DO NOT use it for one user (office-user-investigation), a current-state review (office365-posture-review) or a tenant
+  with no archive (schedule the reports first).
 ---
 
 # Privileged Access Drift (CISO report)
