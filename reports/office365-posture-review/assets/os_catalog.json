@@ -1,0 +1,76 @@
+{
+ "as_of": "2026-11-13",
+ "source": "Ported from the office365-hygiene-report 1.0.0 build catalogue (office365DeviceOsCurrency.fpl, dated 2026). Status: current, aging, out_of_support (update to a current release), eol (replace or upgrade), verify (shared with a supported Server or LTSC edition: confirm the SKU).",
+ "windows": {
+  "10.0.26200": [
+   "Windows 11 25H2 line",
+   "current"
+  ],
+  "10.0.26100": [
+   "Windows 11 24H2 / Server 2025",
+   "current"
+  ],
+  "10.0.22631": [
+   "Windows 11 23H2",
+   "aging"
+  ],
+  "10.0.22621": [
+   "Windows 11 22H2",
+   "out_of_support"
+  ],
+  "10.0.22000": [
+   "Windows 11 21H2",
+   "out_of_support"
+  ],
+  "10.0.20348": [
+   "Windows Server 2022",
+   "current"
+  ],
+  "10.0.19045": [
+   "Windows 10 22H2 (client end of support Oct 2025; ESU or LTSC may apply)",
+   "verify"
+  ],
+  "10.0.19044": [
+   "Windows 10 21H2 (LTSC 2021 supported to 2027)",
+   "verify"
+  ],
+  "10.0.19043": [
+   "Windows 10 21H1",
+   "out_of_support"
+  ],
+  "10.0.19042": [
+   "Windows 10 20H2",
+   "out_of_support"
+  ],
+  "10.0.19041": [
+   "Windows 10 2004",
+   "out_of_support"
+  ],
+  "10.0.17763": [
+   "Windows 10 1809 / Server 2019",
+   "verify"
+  ],
+  "10.0.14393": [
+   "Windows 10 1607 / Server 2016",
+   "verify"
+  ],
+  "6.3": [
+   "Windows 8.1 / Server 2012 R2",
+   "eol"
+  ],
+  "6.2": [
+   "Windows 8 / Server 2012",
+   "eol"
+  ],
+  "6.1": [
+   "Windows 7 / Server 2008 R2",
+   "eol"
+  ],
+  "6.0": [
+   "Windows Vista / Server 2008",
+   "eol"
+  ]
+ },
+ "windows10_pre2004_below": 19041,
+ "macos_oldest_supported_major": 14
+}

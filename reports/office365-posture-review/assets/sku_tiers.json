@@ -1,0 +1,185 @@
+{
+ "as_of": "2026-11-13",
+ "source": "Ported from the office365-hygiene-report 1.0.0 skill (office365UserTypes.fpl, itself a snapshot of _M365_SKUS in resources_api.py). Tier names are that file's; verify an entry against Microsoft's published licence ID list before relying on it.",
+ "tiers": {
+  "core": "a paid seat: counts toward the headcount",
+  "service_only": "free or auto-assigned, not a seat",
+  "security": "add-on security licence",
+  "project": "Project add-on",
+  "addon": "other add-on"
+ },
+ "skus": {
+  "6fd2c87f-b296-42f0-b197-1e91e994b900": {
+   "tier": "core",
+   "name": "Office 365 E3"
+  },
+  "c7df2760-2c81-4ef7-b578-5b5392b571df": {
+   "tier": "core",
+   "name": "Office 365 E5"
+  },
+  "18181a46-0d4e-45cd-891e-60aabd171b4e": {
+   "tier": "core",
+   "name": "Office 365 E1"
+  },
+  "18250162-5d87-4436-a834-d795c15c80f3": {
+   "tier": "core",
+   "name": "Office 365 A1 for faculty"
+  },
+  "94763226-9b3c-4e75-a931-5c89701abe66": {
+   "tier": "core",
+   "name": "Office 365 A1 Plus for faculty"
+  },
+  "44575a6e-3a8b-4c9c-9c20-4e0f53f5c4c2": {
+   "tier": "core",
+   "name": "Office 365 E3 GCC High"
+  },
+  "f30db892-07e9-47e9-837c-80727f46fd3d": {
+   "tier": "service_only",
+   "name": "Power Automate Free"
+  },
+  "cbdc14ab-d96c-4c30-b9f4-6ada7cdc1d46": {
+   "tier": "core",
+   "name": "Microsoft 365 Business Premium"
+  },
+  "f245ecc8-75af-4f8e-b61f-27d8114de5f3": {
+   "tier": "core",
+   "name": "Microsoft 365 Apps for Business"
+  },
+  "3b555118-da6a-4418-894f-7df1e2096870": {
+   "tier": "core",
+   "name": "Microsoft 365 Business Basic"
+  },
+  "f245ecc8-75af-4f8e-b61f-27d8114de5e5": {
+   "tier": "core",
+   "name": "Microsoft 365 Business Basic"
+  },
+  "ed01faf2-1d3e-4f3a-8c41-25c8eea6ab36": {
+   "tier": "core",
+   "name": "Microsoft 365 Business Standard"
+  },
+  "05e9a617-0261-4cee-bb44-138d3ef5d965": {
+   "tier": "core",
+   "name": "Microsoft 365 E3"
+  },
+  "06ebc4ee-1bb5-47dd-8120-11324bc54e06": {
+   "tier": "core",
+   "name": "Microsoft 365 E5"
+  },
+  "4b585984-651b-448a-9e53-3b10f069cf7f": {
+   "tier": "core",
+   "name": "Office 365 F1"
+  },
+  "66b55226-6b4f-492c-910c-a3b7a3c9d993": {
+   "tier": "core",
+   "name": "Microsoft 365 F1"
+  },
+  "44575a6e-3a8b-4c9c-9c20-4e0f53f5c4ca": {
+   "tier": "core",
+   "name": "Microsoft 365 F3"
+  },
+  "4b9405b0-7788-4568-add1-99614e613b69": {
+   "tier": "core",
+   "name": "Exchange Online (Plan 1)"
+  },
+  "19ec0d23-8335-4cbd-94ac-6050e30712fa": {
+   "tier": "core",
+   "name": "Exchange Online (Plan 2)"
+  },
+  "ee02fd1b-340e-4a4b-b355-4a514e4c8943": {
+   "tier": "addon",
+   "name": "Exchange Online Archiving"
+  },
+  "90d8b3f8-712c-4f19-8b8a-2c3e9b14a2a6": {
+   "tier": "core",
+   "name": "Exchange Online Kiosk"
+  },
+  "efccb6f7-5641-4e0e-bd10-b4976e1bf68e": {
+   "tier": "security",
+   "name": "Enterprise Mobility + Security E3"
+  },
+  "b05e124f-c7cc-45a0-a6aa-8cf78c946968": {
+   "tier": "security",
+   "name": "Enterprise Mobility + Security E5"
+  },
+  "16ddbbfc-09ea-4de2-b1d7-312db6112d70": {
+   "tier": "security",
+   "name": "Azure AD Premium P1"
+  },
+  "84a661c4-e949-4bd2-a560-ed7766fcaf2b": {
+   "tier": "security",
+   "name": "Azure AD Premium P2"
+  },
+  "111046dd-295b-4d6d-9724-d52ac90bd1f2": {
+   "tier": "security",
+   "name": "Microsoft Defender for Endpoint"
+  },
+  "8a180c2b-f4cf-4d44-897c-3d32acc4a60b": {
+   "tier": "security",
+   "name": "Defender for Office 365 (Plan 1)"
+  },
+  "26124093-3d78-432b-b5dc-48bf992543d5": {
+   "tier": "security",
+   "name": "Defender for Office 365 (Plan 2)"
+  },
+  "53818b1b-4a27-454b-8896-0dba576410e6": {
+   "tier": "project",
+   "name": "Project Plan 3"
+  },
+  "09015f9f-377f-4538-bbb5-f75ceb09358a": {
+   "tier": "project",
+   "name": "Project Plan 5"
+  },
+  "776df282-9fc0-4862-99e2-70e561b9909e": {
+   "tier": "project",
+   "name": "Project Online Essentials"
+  },
+  "beb6439c-caad-48d3-bf46-0c82871e12be": {
+   "tier": "project",
+   "name": "Project Plan 1"
+  },
+  "c5928f49-12ba-48f7-ada3-0d743a3601d5": {
+   "tier": "addon",
+   "name": "Visio Plan 2"
+  },
+  "4b244418-9658-4451-a2b8-b5e2b364e9bd": {
+   "tier": "addon",
+   "name": "Visio Plan 1"
+  },
+  "f8a1db68-be16-40ed-86d5-cb42ce701560": {
+   "tier": "addon",
+   "name": "Power BI Pro"
+  },
+  "a403ebcc-fae0-4ca2-8c8c-7a907fd6c235": {
+   "tier": "service_only",
+   "name": "Power BI (free)"
+  },
+  "710779e8-3d4a-4c88-adb9-386c958d1fdf": {
+   "tier": "service_only",
+   "name": "Teams Exploratory"
+  },
+  "dcb1a3ae-b33f-4487-846a-a640262fadf4": {
+   "tier": "service_only",
+   "name": "Microsoft Power Apps for Office 365"
+  },
+  "639dec6b-bb19-468b-871c-c5c441c4b0cb": {
+   "tier": "addon",
+   "name": "Microsoft 365 Copilot"
+  },
+  "606b54a9-78d8-4298-ad8b-df6ef4481c80": {
+   "tier": "service_only",
+   "name": "Power Virtual Agents Viral Trial"
+  },
+  "fcecd1f9-a91e-488d-a918-a96cdb6ce2b0": {
+   "tier": "addon",
+   "name": "Microsoft Teams Premium"
+  },
+  "7e31c0d9-9551-471d-836f-32ee72be4a01": {
+   "tier": "security",
+   "name": "Intune (Volume Licensing)"
+  },
+  "dcf0408c-aaec-446c-afd4-43e3683943ea": {
+   "tier": "addon",
+   "name": "Windows Store for Business"
+  }
+ }
+}
