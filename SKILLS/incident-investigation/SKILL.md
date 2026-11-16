@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.6.10
+version: 1.6.11
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -1044,14 +1044,17 @@ python3 scripts/render_closure.py closure.json \
 
 The script refuses JSON missing a required section (`title`, `lede`, `verdict`, `meta`,
 `grounds`, `negatives`, `recommendation`, `footer`) or with a `verdict.outcome` other than
-`benign`, `escalate` or `confirmed`. Fluency branding (navy header with the embedded
-logo, a `Confidential · <Tenant> · Incident Closure` tag, the Fluency palette and a
-"Powered by Fluency" footer) is applied on every run — never post-process the HTML.
-Always put `Subject` and `Tenant` in `meta`; the header and footer are built from them.
-**The logo is replaceable:** pass `--logo <image>` (PNG, JPEG, SVG, WebP or GIF), or set
-`"logo": "<path relative to the JSON>"` in the closure JSON; `--logo` wins. Without
-either, the bundled `assets/fluency_logo.png` is used. A logo path that cannot be read
-stops the render rather than silently falling back to the wrong brand.
+`benign`, `escalate` or `confirmed`. The report uses the Fluency report brand (the editorial
+monochrome look: white paper, IBM Plex, a brandline with the lock mark over a black rule, a black
+title, §-numbered sections, flat mono tables, one blue / red / amber), applied on every run
+— never post-process the HTML. The brand kit comes from the **`fluency-report`** skill, which must
+be installed next to this one (or set `FLUENCY_BRAND_DIR` to its `scripts/` folder); the renderer
+stops with a clear message if it is missing. Always put `Subject` and `Tenant` in `meta`; the
+`Confidential · <Tenant> · Incident Closure` line and the footer are built from them.
+The page follows the viewer's light or dark setting (`prefers-color-scheme`); `<html data-theme="dark">` or `"light"` forces one, and print and PDF are always light. On screen the page is full width (the brand kit's 816px Letter column applies only to print and PDF); from 1100px wide the verdict sits beside the metadata grid and the grounds and checks run in two columns.
+The brand is fixed: there is no replaceable or customer logo (`--logo` and a `"logo"` key are
+ignored with a note). For a PDF, render the same HTML with the `fluency-report` skill's
+`scripts/render_pdf.mjs` (see "Fluency report branding and PDF" below).
 If `scripts/render_closure.py` is not present (an install that carries only SKILL.md),
 say so and offer to fetch the skill package from `cowork/incident-investigation.skill`
 in the `SecurityDo/ingext_skills` repo; do not hand-write a substitute report.
@@ -1072,7 +1075,7 @@ multi-day incident (step 4 / step 1) → base-rate table when the base rate is a
   goes to the customer; the MCP connector is internal plumbing. Use the tenant's display
   name — as the caller gave it, or as the interactive `list_accounts` confirmation
   returned it for `ACCOUNT` (e.g. `Contoso Ltd`, not `contoso`, and
-  never `<connector> : contoso`) for `Tenant` in `meta` — which also feeds the header tag and footer —
+  never `<connector> : contoso`) for `Tenant` in `meta` — which also feeds the meta line and footer —
   and wherever the tenant is named in the title, lede, captions and findings. Fall back
   to the account name only when no display name exists.
 - **Section titles state findings.** "The score does not follow the activity", not
@@ -1110,7 +1113,6 @@ to the verdict and the one action — do not paste the report back into chat.
 | `scripts/render_closure.py` | Step 6: renders a closure JSON into the Fluency-branded HTML report; validates required sections |
 | `assets/closure_schema.md` | Step 6: field reference for the closure JSON |
 | `assets/examples/*.json` | Step 6: anonymised worked closures (multi-day admin, single event) |
-| `assets/fluency_logo.png` | Embedded into the report header as a data URI |
 
 The three scripts exist for the CLI path. On the MCP path `behavior_summary_search`
 returns the documents directly, so only `summary_digest.py` still earns its place —

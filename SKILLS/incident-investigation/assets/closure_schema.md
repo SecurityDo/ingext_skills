@@ -12,8 +12,7 @@ is escaped.
 
 | Field | Req | Shape | Rule |
 |---|---|---|---|
-| `eyebrow` | – | string | Defaults to `Incident closure · Tier 3 review`. |
-| `logo` | – | string | Path to a replacement logo (PNG, JPEG, SVG, WebP or GIF), relative to the JSON file. Defaults to `assets/fluency_logo.png`; `--logo` on the command line overrides it. |
+| `eyebrow` | – | string | Defaults to `Incident closure · Tier 3 review`. Shown top right in the brandline. |
 | `title` | ✓ | string | **What actually happened**, in plain words. It is not the rule name and not "Incident 1234". Examples: "SendAs grants by a tenant identity administrator", "A passkey campaign switched on by Microsoft". |
 | `lede` | ✓ | string | One paragraph with three parts: what escalated it, how many grounds were cited, and how many survived testing. |
 | `verdict.outcome` | ✓ | `benign` \| `escalate` \| `confirmed` | Sets the card label and colour when there is no `disposition`. |
