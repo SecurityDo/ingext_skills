@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.6.11
+version: 1.6.12
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -1047,9 +1047,7 @@ The script refuses JSON missing a required section (`title`, `lede`, `verdict`, 
 `benign`, `escalate` or `confirmed`. The report uses the Fluency report brand (the editorial
 monochrome look: white paper, IBM Plex, a brandline with the lock mark over a black rule, a black
 title, §-numbered sections, flat mono tables, one blue / red / amber), applied on every run
-— never post-process the HTML. The brand kit comes from the **`fluency-report`** skill, which must
-be installed next to this one (or set `FLUENCY_BRAND_DIR` to its `scripts/` folder); the renderer
-stops with a clear message if it is missing. Always put `Subject` and `Tenant` in `meta`; the
+— never post-process the HTML. The brand kit is `fluency-report`'s; a copy is bundled in `scripts/brand/` so the renderer works in a run that mounts only this skill and its companions. When the brand changes in `fluency-report`, refresh that folder (`fluency_brand.py`, `brand.css`, `fluency_mark.png`, the `plex-*.woff2` files). `FLUENCY_BRAND_DIR` overrides it. Always put `Subject` and `Tenant` in `meta`; the
 `Confidential · <Tenant> · Incident Closure` line and the footer are built from them.
 The page follows the viewer's light or dark setting (`prefers-color-scheme`); `<html data-theme="dark">` or `"light"` forces one, and print and PDF are always light. On screen the page is full width (the brand kit's 816px Letter column applies only to print and PDF); from 1100px wide the verdict sits beside the metadata grid and the grounds and checks run in two columns.
 The brand is fixed: there is no replaceable or customer logo (`--logo` and a `"logo"` key are
@@ -1277,10 +1275,9 @@ Tables each workflow reads are listed at the top of its file in `references/work
 
 ## Fluency report branding and PDF
 
-**Prerequisite: the `fluency-report` skill.** All Fluency report styling lives in that skill's `scripts/` folder
-(`fluency_brand.py`, `brand.css`, the IBM Plex fonts, the lock mark and `render_pdf.mjs`). This skill does not carry its own
-copy: the build scripts here that style a report find the `fluency-report` skill next to this one (or at `FLUENCY_BRAND_DIR`) and
-import `fluency_brand` from it, and stop with a clear message if it is not installed. Install `fluency-report` alongside this skill. In the steps below, `<fluency-report>` means
+**The `fluency-report` skill owns the brand.** All Fluency report styling lives in that skill's `scripts/` folder
+(`fluency_brand.py`, `brand.css`, the IBM Plex fonts, the lock mark and `render_pdf.mjs`). The closure renderer here uses the bundled copy in `scripts/brand/`
+(see Step 6); `render_pdf.mjs` is not bundled, so a PDF needs `fluency-report` installed. In the steps below, `<fluency-report>` means
 that skill's folder.
 
 - The HTML report is one self-contained file (mark, fonts and CSS inlined). The PDF is rendered from that same HTML with the same

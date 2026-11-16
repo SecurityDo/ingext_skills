@@ -3,9 +3,9 @@
 
 The look is the Fluency report brand kit (editorial monochrome: white paper, IBM Plex, a brandline
 with the lock mark over a black rule, black title, flat mono tables, one blue / red / amber).
-The kit lives in the `fluency-report` skill (scripts/fluency_brand.py + brand.css); this script
-finds that skill next to this one (or at FLUENCY_BRAND_DIR) and stops with a clear message if it
-is missing. Branding is fixed and always applied; there is no customer-branded variant.
+The kit is `fluency-report`'s scripts/fluency_brand.py + brand.css; a copy is bundled in scripts/brand/
+(refresh it from that skill when the brand changes). FLUENCY_BRAND_DIR or a sibling fluency-report
+skill are used if the copy is absent, and the script stops with a clear message if none is found. Branding is fixed and always applied; there is no customer-branded variant.
 
     python3 scripts/render_closure.py closure.json -o closure.html
     node <fluency-report>/scripts/render_pdf.mjs --input closure.html --output closure.pdf   # optional PDF
@@ -31,7 +31,9 @@ import argparse, glob, html, json, os, re, sys
 def _find_brand_kit():
     # The Fluency report brand kit lives only in the `fluency-report` skill (scripts/). Find that skill next to this one.
     here = os.path.dirname(os.path.abspath(__file__)); home = os.path.expanduser("~")
-    cands = [os.environ.get("FLUENCY_BRAND_DIR"), here]
+    # scripts/brand/ is a bundled copy of the fluency-report kit: an investigation run is given this skill and a few
+    # companions, not fluency-report, so the renderer must not depend on that skill being mounted.
+    cands = [os.environ.get("FLUENCY_BRAND_DIR"), os.path.join(here, "brand"), here]
     up = here
     for _ in range(5):
         up = os.path.dirname(up); cands.append(os.path.join(up, "fluency-report", "scripts"))
