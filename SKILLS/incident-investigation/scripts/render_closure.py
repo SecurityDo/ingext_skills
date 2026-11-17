@@ -12,7 +12,7 @@ skill are used if the copy is absent, and the script stops with a clear message 
 
 Layout (fixed order; optional blocks are skipped when absent):
     brandline · title · lede · meta line
-    verdict callout · metadata grid
+    verdict (own row) · ticket metadata grid (own row)
     §1 recommendation (what to do, before the evidence)
     §2 grounds (AI-assist claims, each tested)
     timeline          (optional — single-event incidents: raw audit times)
@@ -247,13 +247,8 @@ ul.checks li{padding:3px 0 3px 18px}
 .method{margin-top:18px}.method h2{margin:0 0 4px}
 .footer,.brand-foot{margin-top:18px;padding-bottom:16px}
 
-/* Wide screens: verdict beside the metadata, grounds and checks in two columns, so the width carries content. */
+/* Wide screens: grounds and checks in two columns, so the width carries content. The verdict and the ticket metadata each get their own full-width row. */
 @media screen and (min-width:1100px){
-.top{grid-template-columns:minmax(0,5fr) minmax(0,7fr)}
-.top{align-items:stretch}
-.top .verdict{margin:16px 0 0}
-.top .meta{align-content:center}
-.top .meta{margin:16px 0 0;border-top:0;padding-top:4px}
 ol.grounds,ul.checks{display:block;column-count:2;column-gap:48px}
 ol.grounds li,ul.checks li{break-inside:avoid;page-break-inside:avoid}
 ol.grounds li{border-top:0;padding:0 0 22px}
