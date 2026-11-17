@@ -196,6 +196,15 @@ ul.checks li{position:relative;padding:5px 0 5px 20px}
 ul.checks li::before{content:"\\2713";position:absolute;left:0;color:var(--blue);font-weight:700}
 td code,.sec-body code{font-family:var(--mono)}
 @media print{ol.grounds li{break-inside:avoid;page-break-inside:avoid}}
+.verdict{display:grid;grid-template-columns:minmax(170px,auto) minmax(0,1fr);grid-template-rows:1fr;align-items:stretch;margin:16px 0 0;background:var(--callout);border:1px solid var(--vc)}
+.verdict.good{--vc:var(--blue)}.verdict.watch{--vc:var(--amber)}.verdict.act{--vc:var(--red)}
+.v-badge{background:var(--vc);color:#fff;padding:20px 24px;display:flex;flex-direction:column;justify-content:center;gap:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.v-ic{font:700 18px/1 var(--mono);width:30px;height:30px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center}
+.v-label{font:700 22px/1.15 var(--sans);letter-spacing:-.012em}
+.v-body{padding:16px 22px;align-self:center}
+.v-badge{align-self:stretch}
+.v-tag{font:500 8.5px/1.4 var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--t3);margin:0 0 6px}
+.v-body p{margin:0 0 6px}.v-body p:last-child{margin:0}
 .top{display:grid;grid-template-columns:minmax(0,1fr);column-gap:44px;align-items:start}
 .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px 28px;margin:16px 0;padding:16px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
 .meta dt{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--t3);margin:0 0 6px}
@@ -209,11 +218,13 @@ table,table.data{table-layout:auto}
 td,th{overflow-wrap:anywhere}
 blockquote,ol.grounds p,ul.checks li{max-width:none}
 }
-@media screen and (max-width:640px){:root{--px:20px}}
+@media screen and (max-width:640px){:root{--px:20px}.verdict{grid-template-columns:1fr}}
 /* Wide screens: verdict beside the metadata, grounds and checks in two columns, so the width carries content. */
 @media screen and (min-width:1100px){
 .top{grid-template-columns:minmax(0,5fr) minmax(0,7fr)}
-.top .callout{margin:16px 0 0;height:calc(100% - 16px)}
+.top{align-items:stretch}
+.top .verdict{margin:16px 0 0}
+.top .meta{align-content:center}
 .top .meta{margin:16px 0 0;border-top:0;padding-top:4px}
 ol.grounds,ul.checks{display:block;column-count:2;column-gap:48px}
 ol.grounds li,ul.checks li{break-inside:avoid;page-break-inside:avoid}
@@ -233,6 +244,7 @@ DARK_RULES = [
     (".brandline .bl-l img,.hero-mark", "filter:invert(1)"),
     (".tag,.pill", "background:#121212"),
     (".callout .tag", "background:none"),
+    (".verdict .v-badge", "color:#121212"),
     (".tag.red,.tag.p1", "background:var(--red);border-color:var(--red);color:#121212"),
     (".tag.blue", "background:var(--blue);border-color:var(--blue);color:#121212"),
     (".callout,.note", "background:var(--callout)"),
@@ -267,8 +279,10 @@ def render(c):
         action = f'<p><strong>Action needed:</strong> {md(what)}</p>'
     elif v.get("actionable") is False:
         action = '<p><em>No action needed.</em></p>'
-    verdict = (f'<div class="callout {kind}"><p class="tag">Verdict</p><h4>{html.escape(label)}</h4>'
-               f'<p>{md(v["text"])}</p>{action}</div>')
+    icon = {"good": "\u2713", "watch": "!", "act": "\u2715"}[kind]
+    verdict = (f'<div class="verdict {kind}"><div class="v-badge"><span class="v-ic" aria-hidden="true">{icon}</span>'
+               f'<span class="v-label">{html.escape(label)}</span></div>'
+               f'<div class="v-body"><p class="v-tag">Verdict</p><p>{md(v["text"])}</p>{action}</div></div>')
     meta = ('<dl class="meta">' + "".join(f'<div><dt>{html.escape(plain(m["label"]))}</dt><dd>{md(m["value"])}</dd></div>'
                                           for m in c["meta"]) + "</dl>")
 
