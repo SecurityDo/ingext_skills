@@ -63,9 +63,30 @@ def build(ev, tenant, date):
                              "evidence": "Entra application permissions.", "mitre": "T1528"})
             recs.insert(0, {"horizon": "Immediate", "title": "Revoke persistent AI access", "detail": "Remove the grants and block user consent for applications asking for mail, files or sites access.", "owner": "M365 / IAM admin"})
         dets.append({"name": "New OAuth consent to an AI-classified app", "logic": "Office365 'Consent to application' where the target app matches the AI catalog", "path": "saas"})
-    # ---- path 2: network egress has no archived source
-    nw = ev["network"]
-    paths.append({"id": "network", "status": "no_data", "risk": "none", "headline": "Not assessed: no archived report carries proxy, DNS or firewall traffic to AI services.", "sources": [], "metrics": []})
+    # ---- path 2: network egress, from the FortiGate traffic archive (by application name, not domain)
+    nw = ev["network"]; rn = R["network"]
+    if nw["status"] != "assessed":
+        why = {"no_app_control": "Not assessed: FortiGate traffic carries no application names (Application Control is off), so AI use cannot be told from other traffic.",
+               "no_data": "Not assessed: no archived FortiGate traffic report (other firewalls, proxies and DNS are not covered either)."}.get(nw["status"], "Not assessed.")
+        paths.append({"id": "network", "status": "no_data", "risk": "none", "headline": why, "sources": nw.get("sources", []), "metrics": []})
+    else:
+        allowed = nw["non_first_party_allowed"]
+        risk = "high" if allowed and nw["sources_peak_day"] >= rn["sources_high"] else "medium" if allowed else "low" if nw["genai_events"] else "none"
+        top = [x for x in nw["services"] if not x["first_party"]][:5]
+        head = ("%s GenAI events in %s (%.2f%% of FortiGate traffic), %s blocked; allowed traffic to %s." % (
+            "{:,}".format(nw["genai_events"]), plural(nw["days"], "archived day"), 100 * nw["genai_share"], "{:,}".format(nw["genai_blocked"]),
+            ", ".join(x["service"] for x in top) or "first-party services only")) if nw["genai_events"] else \
+            "Application names are recorded and no GenAI application appears in %s of FortiGate traffic." % plural(nw["days"], "archived day")
+        paths.append({"id": "network", "status": "assessed", "risk": risk, "headline": head, "sources": nw["sources"],
+                      "metrics": [{"label": "GenAI events", "value": "{:,}".format(nw["genai_events"])}, {"label": "allowed, non-first-party", "value": "{:,}".format(allowed)},
+                                  {"label": "internal sources (busiest day)", "value": str(nw["sources_peak_day"])}, {"label": "destination countries", "value": str(len(nw["countries"]))}]})
+        if allowed:
+            findings.append({"severity": "high" if risk == "high" else "medium", "path": "network", "title": "Generative AI traffic leaves the network unchecked",
+                             "detail": "The firewall allowed %s events to generative AI applications (%s) from up to %s internal sources in a day, to %s destination countries. FortiGate sees the application and the destination address, not the domain or the content." % (
+                                 "{:,}".format(allowed), ", ".join("%s (%s)" % (x["service"], "{:,}".format(x["events"] - x["blocked"])) for x in top), nw["sources_peak_day"], len(nw["countries"])),
+                             "evidence": "Fortigate_Traffic_Activity_Report archive.", "mitre": ""})
+            recs.append({"horizon": "30 days", "title": "Decide which AI services the firewall allows", "detail": "Block or restrict the unsanctioned services with Application Control, and allow the approved ones for named groups; review what the allowed sources send.", "owner": "Network / Security team"})
+        dets.append({"name": "Allowed traffic to a GenAI application", "logic": "FortiGate traffic where appcat is GenAI or the application matches the AI catalog and action is not deny", "path": "network"})
     # ---- path 4: data exposure, from the DLP report (Office 365 DLP matches)
     dt = ev["data"]
     if dt["status"] == "assessed":
@@ -173,13 +194,22 @@ def build(ev, tenant, date):
         row = next((r for r in svc_rows if r["service"].split(" /")[0] == x["service"].split(" /")[0]), None)
         if row: row["hosts"] = x["hosts"]; row["seen_in"].append("endpoint")
         else: svc_rows.append({"service": x["service"], "category": "Desktop client", "tier": "-", "seen_in": ["endpoint"], "users": 0, "hosts": x["hosts"], "volume": "n/a", "status": "unverified", "risk": "low"})
+    for x in (nw.get("services") or []):
+        row = next((r for r in svc_rows if r["service"].split(" /")[0] == x["service"].split(" /")[0]), None)
+        vol = "{:,} events".format(x["events"])
+        if row: row["volume"] = vol; row["seen_in"].append("network")
+        elif not x["first_party"]: svc_rows.append({"service": x["service"], "category": x["category"], "tier": x["tier"], "seen_in": ["network"], "users": 0, "hosts": 0, "volume": vol, "status": "unverified", "risk": "medium" if x["events"] > x["blocked"] else "low"})
     hi = s.get("persistent_content_access_apps", 0) if s["status"] == "assessed" else 0
     kp = {"ai_services": len(svc_rows), "users": s.get("users_with_ai_grant", 0), "hosts": e.get("hosts_with_ai", 0),
           "upload_volume": "n/a", "high_risk_apps": hi, "local_llm_hosts": e.get("local_llm_hosts", 0)}
     summary = ["%s uses generative AI. %s AI services are connected to Entra and %s have granted them access." % (tenant, kp["ai_services"], plural(kp["users"], "user"))]
     if kp["local_llm_hosts"] == 0 and e["status"] == "assessed":
         summary.append("No local model runners were found in the endpoint software inventory.")
-    summary.append("Network traffic to AI services and data-exposure signals could not be assessed from the evidence available, so the posture reflects only the paths that were measured.")
+    na = [n for n, p in (("Network traffic to AI services", "network"), ("data-exposure signals", "data")) if not any(x["id"] == p and x["status"] == "assessed" for x in paths)]
+    if na:
+        summary.append("%s could not be assessed from the evidence available, so the posture reflects only the paths that were measured." % " and ".join(na))
+    if nw["status"] == "assessed":
+        summary.append("Network egress is measured from FortiGate firewall logs only (by application, not domain); other firewalls, proxies and DNS are not covered.")
     return {"tenant": tenant, "grid_account": "", "assessment_date": date, "prepared_for": "Chief Information Security Officer",
             "sanctioned_list_provided": ev.get("sanctioned_list_provided", False), "posture": posture, "posture_reason": reason,
             "executive_summary": summary, "kpis": kp, "paths": paths, "services": svc_rows, "findings": findings,

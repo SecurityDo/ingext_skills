@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Aggregate Shadow AI evidence for ONE tenant from resource dumps (aggregate counts only, board-safe).
 
-  ai_evidence.py <dump_dir> [-o evidence.json] [--rules rules.json] [--entra entra_evidence.json] [--dlp dlp_evidence.json] [--sanctioned sanctioned.json]
+  ai_evidence.py <dump_dir> [-o evidence.json] [--rules rules.json] [--entra entra_evidence.json] [--dlp dlp_evidence.json] [--egress egress_evidence.json] [--sanctioned sanctioned.json]
 
 Reads, when present in <dump_dir> (.jsonl.gz or .jsonl): office365Application, office365InstalledApp, office365User,
-sentinelOneApplication. Path 2 (network egress) and path 4 (data exposure) have no archived-report source and are
-reported "not assessed". --rules is the eventwatch_rule_list output (one or more saved results merged) for path 5.
+sentinelOneApplication. Path 2 (network egress, --egress from the FortiGate traffic archive) and path 4 (data exposure, --dlp) come from archived
+reports; without them a path is reported "not assessed". --rules is the eventwatch_rule_list output (one or more saved results merged) for path 5.
 --sanctioned is an optional JSON list of approved AI service names (as in assets/ai_catalog.json).
 """
 import argparse, collections, gzip, json, os, re, sys
@@ -53,7 +53,7 @@ def verified(a):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dump_dir"); ap.add_argument("-o", "--out", default="evidence.json")
-    ap.add_argument("--rules"); ap.add_argument("--entra"); ap.add_argument("--sanctioned"); ap.add_argument("--dlp")
+    ap.add_argument("--rules"); ap.add_argument("--entra"); ap.add_argument("--sanctioned"); ap.add_argument("--dlp"); ap.add_argument("--egress")
     a = ap.parse_args()
     sanctioned = {s.lower() for s in json.load(open(a.sanctioned))} if a.sanctioned else None
     gaps, sources = [], []
@@ -157,8 +157,14 @@ def main():
 
     # ---- Path 4 from dlp_evidence.json (DLP_Activity_Report, Office 365); path 2 has no source
     dl = json.load(open(a.dlp)) if a.dlp and os.path.exists(a.dlp) else {}
-    ev["network"] = {"status": "no_data"}
-    gaps.append("Network egress (proxy, DNS, firewall) to AI services is not assessed: no archived report carries it; the DLP report covers Office 365 only.")
+    eg = json.load(open(a.egress)) if a.egress and os.path.exists(a.egress) else None
+    if eg is None:
+        ev["network"] = {"status": "no_data"}
+        gaps.append("Network egress to AI services is not assessed: no Fortigate_Traffic_Activity_Report evidence was supplied (FortiGate only; proxies, DNS and other firewalls are not covered).")
+    else:
+        ev["network"] = eg
+        sources += eg.get("sources", [])
+        gaps += eg.get("gaps", [])
     if dl.get("measurable"):
         m, ai = dl["matches"], dl.get("ai") or {}
         ev["data"] = {"status": "assessed", "matches_total": m["total"], "enforced_share": m["enforced_share"], "undo_share": m["undo_share"],

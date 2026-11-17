@@ -1,11 +1,12 @@
 ---
 name: shadow-ai-assessment-report
-version: 1.1.0
+version: 1.2.0
 description: >-
   Assess ONE Fluency / Ingext tenant's shadow generative-AI exposure for a CISO and render a report (HTML and PDF): posture
   (Low, Moderate, Elevated, High), five evidence paths, AI services found, key findings, actions by horizon, proposed detections
   and coverage gaps. Uses Entra applications and user grants, the endpoint software inventory (local LLM runners, AI desktop
-  apps) and EventWatch rule coverage; paths without a data source are reported as not assessed. USE THIS SKILL for "shadow AI",
+  apps), EventWatch rule coverage, the archived DLP report and the archived FortiGate traffic report (network egress by AI
+  application); paths without a data source are reported as not assessed. USE THIS SKILL for "shadow AI",
   "GenAI exposure", "AI usage assessment", "which AI tools are people using", "CISO AI report". Read-only via the tenant MCP
   connector. DO NOT use it for one user (office-user-investigation) or a general endpoint inventory.
 ---
@@ -31,17 +32,25 @@ style. Board-safe: counts and AI service names only, never users, hosts or addre
    holds user names), save the result to a file and run `python3 scripts/dlp_evidence.py <file> -o dlp_evidence.json`. Pass that file with
    `--dlp`. Zero matches or no archive leaves path 4 "not assessed". Optionally pass the ransomware skill's `entra_evidence.json` with
    `--entra`: bulk file downloads then appear as context under path 4. Never run the report or query Office365 live.
-5. **Evidence:** `python3 scripts/ai_evidence.py <dump_dir> -o evidence.json --rules rules.json [--entra entra_evidence.json]
-   [--dlp dlp_evidence.json] [--sanctioned sanctioned.json]`. Matching uses `assets/ai_catalog.json` (the original catalog plus the repo's AI name patterns).
-6. **Rate and draft:** `python3 scripts/rate_evidence.py evidence.json --tenant "<Name>" --date YYYY-MM-DD --out draft_findings.json`.
+5. **Network egress (path 2).** Call `list_report_archive` for `Fortigate_Traffic_Activity_Report` (that exact name), then `download_report_archive` for the
+   last 30 days with `objects` `traffic_dims` and `sources` only (never `traffic_talkers`: internal hosts and addresses), save the result and run
+   `python3 scripts/egress_evidence.py <file> -o egress_evidence.json`. Pass that file with `--egress`. No archive, no traffic or no application
+   names (Application Control off) leaves path 2 "not assessed", never clean. Missing days can be requested with `backfill_report_archive`; never run the
+   report or query the traffic table live.
+6. **Evidence:** `python3 scripts/ai_evidence.py <dump_dir> -o evidence.json --rules rules.json [--entra entra_evidence.json]
+   [--dlp dlp_evidence.json] [--egress egress_evidence.json] [--sanctioned sanctioned.json]`. Matching uses `assets/ai_catalog.json` (the original catalog plus the repo's AI name patterns).
+7. **Rate and draft:** `python3 scripts/rate_evidence.py evidence.json --tenant "<Name>" --date YYYY-MM-DD --out draft_findings.json`.
    Risk and posture come only from `assets/rating_rules.json` (see `references/scoring.md`).
-7. **Review** the draft: plain language, no individual names; add what the rules cannot know. Keep every `coverage_gaps` entry.
-8. **Render:** `python3 scripts/render_report.py findings.json <out_dir>` writes `Shadow_AI_Assessment_<Tenant>_<DDMonYY>.html` and `.pdf`.
-9. **Reply briefly:** posture, the top findings, which paths were not assessed, and the file names.
+8. **Review** the draft: plain language, no individual names; add what the rules cannot know. Keep every `coverage_gaps` entry.
+9. **Render:** `python3 scripts/render_report.py findings.json <out_dir>` writes `Shadow_AI_Assessment_<Tenant>_<DDMonYY>.html` and `.pdf`.
+10. **Reply briefly:** posture, the top findings, which paths were not assessed, and the file names.
 
 ## What cannot be assessed (state in the report)
 
-- **Network egress (path 2):** no archived report carries proxy, DNS or firewall traffic to AI services, so it is "not assessed", never clean.
+- **Network egress (path 2)** comes from the FortiGate traffic archive only: it sees the application name and category, the destination address and
+  country, never the domain, URL or content. A tenant without FortiGate, or whose policies do not run Application Control (no application names), is
+  "not assessed", never clean. Proxies, DNS, Zscaler, Meraki and other firewalls are not covered. Distinct internal sources are the busiest day's
+  count, a lower bound. The report writes no host or address.
 - **Data exposure (path 4)** comes from the Office 365 DLP report. It sees only policies that matched, so zero matches is "not assessed", and
   the only AI signal is the Microsoft 365 Copilot DLP policy; consumer AI uploads are not seen. Undo events are split by reason (an edited
   document is not a release). Policy configuration covers only policies created or changed in the log window; overrides with a justification

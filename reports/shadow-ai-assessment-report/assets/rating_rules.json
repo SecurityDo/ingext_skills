@@ -32,7 +32,14 @@
   ]
  },
  "network": {
-  "note": "not assessed: no archived report carries web, DNS or firewall traffic to AI services"
+  "note": "path 2 reads the archived Fortigate_Traffic_Activity_Report (FortiGate, by application name, not domain). Cut-offs are Fluency proposals; the original skill defined no network rule.",
+  "app_named_share_min": 0.5,
+  "sources_high": 25,
+  "high": "allowed GenAI traffic to a non-first-party service from 25 or more internal sources on the busiest day (proposal)",
+  "medium": "any allowed GenAI traffic to a non-first-party service (proposal)",
+  "low": "GenAI traffic that was all blocked, or only first-party (Microsoft Copilot)",
+  "none": "application names are recorded and no GenAI application appears",
+  "no_data": "no archived FortiGate day, no traffic, or no application names (Application Control off): not assessed, never clean"
  },
  "data": {
   "high": "Microsoft 365 Copilot DLP policy matches that were not enforced (original rule: DLP hits coinciding with AI use, adapted to the one AI signal the DLP report carries)",
