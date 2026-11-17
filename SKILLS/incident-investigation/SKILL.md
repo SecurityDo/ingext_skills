@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.6.17
+version: 1.6.18
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -1059,7 +1059,7 @@ in the `SecurityDo/ingext_skills` repo; do not hand-write a substitute report.
 
 **Section order**, fixed by the renderer, each mapped to a step above: title + lede →
 verdict card (step 5) → metadata grid (step 1) → recommendation (step 5) → "N grounds for escalation, tested"
-(steps 1, 3, 4) → timeline for a single event **or** score-vs-activity bars for a
+(steps 1, 3, 4) → timeline (a vertical timeline) for a single event **or** score-vs-activity bars for a
 multi-day incident (step 4 / step 1) → base-rate table when the base rate is above one
 (step 2) → what did not happen (the step-3 workflow's negatives) → callouts → evidence → footer.
 

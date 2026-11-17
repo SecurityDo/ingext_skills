@@ -132,12 +132,15 @@ def render_grounds(g):
 
 
 def render_timeline(t):
-    rows = [[f"<code>{md(r['time'])}</code>", md(r["actor"]), md(r["event"])] for r in t["rows"]]
-    hl = {id(row): bool(src.get("highlight")) for row, src in zip(rows, t["rows"])}
-    table = fb.table(["Time (UTC)", "Actor", "Event"], rows, widths=["22%", "22%", "56%"],
-                     raw_cols=(0, 1, 2), row_class=lambda r: "sev-low" if hl[id(r)] else "")
+    """A vertical timeline: time (UTC) at the left, a dot on a line, then who did what. Rows the rule fired on
+    (`highlight`) get a filled red dot and a tag, so the moment that raised the incident stands out."""
+    items = "".join(
+        f'<li class="{"hl" if r.get("highlight") else ""}"><time>{md(r["time"])}</time><span class="dot"></span>'
+        f'<div class="tl-body"><p class="tl-actor">{md(r["actor"])}{" " + fb.tag("rule fired", "red") if r.get("highlight") else ""}</p>'
+        f'<p>{md(r["event"])}</p></div></li>'
+        for r in t["rows"])
     extra = callout(t["callout"], "Read") if t.get("callout") else ""
-    return t["title"], table + extra, t.get("intro")
+    return t["title"], f'<ol class="tl">{items}</ol>{extra}', t.get("intro")
 
 
 def bar(v, vmax, hot):
@@ -220,6 +223,23 @@ blockquote,ol.grounds p,ul.checks li{max-width:none}
 }
 @media screen and (max-width:760px){.verdict{grid-template-columns:1fr;grid-template-rows:auto}}
 @media screen and (max-width:640px){:root{--px:20px}.verdict{grid-template-columns:1fr;grid-template-rows:auto}}
+/* Timeline */
+ol.tl{list-style:none;margin:8px 0 4px;padding:0}
+ol.tl li{display:grid;grid-template-columns:130px 14px minmax(0,1fr);column-gap:14px;position:relative;padding:0 0 12px}
+ol.tl li::before{content:"";position:absolute;left:calc(130px + 14px + 6px);top:12px;bottom:-2px;width:2px;background:var(--rule)}
+ol.tl li:last-child{padding-bottom:2px}ol.tl li:last-child::before{display:none}
+ol.tl time{font:500 11px/1.5 var(--mono);color:var(--ink);padding-top:1px;white-space:nowrap}
+ol.tl .dot{width:14px;height:14px;border:2px solid var(--ink);border-radius:50%;background:var(--paper);margin-top:2px;position:relative;z-index:1;box-sizing:border-box}
+ol.tl li.hl .dot{background:var(--red);border-color:var(--red)}
+ol.tl .tl-body p{margin:0 0 2px}
+ol.tl .tl-actor{font-weight:600;color:var(--ink)}
+ol.tl .tag{margin-left:8px}
+@media screen and (max-width:640px){
+ol.tl li{grid-template-columns:14px minmax(0,1fr);column-gap:12px}
+ol.tl li::before{left:6px}
+ol.tl time{grid-column:2;grid-row:1}ol.tl .dot{grid-column:1;grid-row:1}ol.tl .tl-body{grid-column:2;grid-row:2}}
+@media print{ol.tl li{break-inside:avoid;page-break-inside:avoid}}
+
 /* Compact: tighter title block, headings, rows and callouts than the brand kit's defaults. */
 .brandline{padding-top:18px;padding-bottom:7px}
 .hero>.hero-in,.hero>.wrap:not(td){padding-top:16px;padding-bottom:10px;min-height:0}
