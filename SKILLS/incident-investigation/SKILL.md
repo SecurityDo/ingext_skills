@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.6.12
+version: 1.6.18
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -1049,7 +1049,7 @@ monochrome look: white paper, IBM Plex, a brandline with the lock mark over a bl
 title, §-numbered sections, flat mono tables, one blue / red / amber), applied on every run
 — never post-process the HTML. The brand kit is `fluency-report`'s; a copy is bundled in `scripts/brand/` so the renderer works in a run that mounts only this skill and its companions. When the brand changes in `fluency-report`, refresh that folder (`fluency_brand.py`, `brand.css`, `fluency_mark.png`, the `plex-*.woff2` files). `FLUENCY_BRAND_DIR` overrides it. Always put `Subject` and `Tenant` in `meta`; the
 `Confidential · <Tenant> · Incident Closure` line and the footer are built from them.
-The page follows the viewer's light or dark setting (`prefers-color-scheme`); `<html data-theme="dark">` or `"light"` forces one, and print and PDF are always light. On screen the page is full width (the brand kit's 816px Letter column applies only to print and PDF); from 1100px wide the verdict sits beside the metadata grid and the grounds and checks run in two columns.
+The page follows the viewer's light or dark setting (`prefers-color-scheme`); `<html data-theme="dark">` or `"light"` forces one, and print and PDF are always light. On screen the page is full width (the brand kit's 816px Letter column applies only to print and PDF); the verdict and the ticket metadata each have their own full-width row, and from 1100px wide the grounds and checks run in two columns.
 The brand is fixed: there is no replaceable or customer logo (`--logo` and a `"logo"` key are
 ignored with a note). For a PDF, render the same HTML with the `fluency-report` skill's
 `scripts/render_pdf.mjs` (see "Fluency report branding and PDF" below).
@@ -1058,10 +1058,10 @@ say so and offer to fetch the skill package from `cowork/incident-investigation.
 in the `SecurityDo/ingext_skills` repo; do not hand-write a substitute report.
 
 **Section order**, fixed by the renderer, each mapped to a step above: title + lede →
-verdict card (step 5) → metadata grid (step 1) → "N grounds for escalation, tested"
-(steps 1, 3, 4) → timeline for a single event **or** score-vs-activity bars for a
+verdict card (step 5) → metadata grid (step 1) → recommendation (step 5) → "N grounds for escalation, tested"
+(steps 1, 3, 4) → timeline (a vertical timeline) for a single event **or** score-vs-activity bars for a
 multi-day incident (step 4 / step 1) → base-rate table when the base rate is above one
-(step 2) → what did not happen (the step-3 workflow's negatives) → callouts → recommendation (step 5) → footer.
+(step 2) → what did not happen (the step-3 workflow's negatives) → callouts → evidence → footer.
 
 **Fill rules.**
 

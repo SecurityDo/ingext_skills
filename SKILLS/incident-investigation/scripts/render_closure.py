@@ -12,14 +12,15 @@ skill are used if the copy is absent, and the script stops with a clear message 
 
 Layout (fixed order; optional blocks are skipped when absent):
     brandline · title · lede · meta line
-    verdict callout · metadata table
-    §1 grounds (AI-assist claims, each tested)
+    verdict (own row) · ticket metadata grid (own row)
+    §1 recommendation (what to do, before the evidence)
+    §2 grounds (AI-assist claims, each tested)
     timeline          (optional — single-event incidents: raw audit times)
     score_table       (optional — multi-day incidents: activity vs riskScore bars)
     base_rate         (optional — peer census table, within this one account)
     negatives         (what did NOT happen, each against a control)
     callouts          (optional — one per red herring the ticket raised)
-    recommendation · evidence · footer (review date)
+    evidence · footer (review date)
 
 Inline markup allowed in any text field: **bold**, *italic*, `code`. Everything else
 is HTML-escaped, so tenant data can be pasted in safely.
@@ -131,12 +132,15 @@ def render_grounds(g):
 
 
 def render_timeline(t):
-    rows = [[f"<code>{md(r['time'])}</code>", md(r["actor"]), md(r["event"])] for r in t["rows"]]
-    hl = {id(row): bool(src.get("highlight")) for row, src in zip(rows, t["rows"])}
-    table = fb.table(["Time (UTC)", "Actor", "Event"], rows, widths=["22%", "22%", "56%"],
-                     raw_cols=(0, 1, 2), row_class=lambda r: "sev-low" if hl[id(r)] else "")
+    """A vertical timeline: time (UTC) at the left, a dot on a line, then who did what. Rows the rule fired on
+    (`highlight`) get a filled red dot and a tag, so the moment that raised the incident stands out."""
+    items = "".join(
+        f'<li class="{"hl" if r.get("highlight") else ""}"><time>{md(r["time"])}</time><span class="dot"></span>'
+        f'<div class="tl-body"><p class="tl-actor">{md(r["actor"])}{" " + fb.tag("rule fired", "red") if r.get("highlight") else ""}</p>'
+        f'<p>{md(r["event"])}</p></div></li>'
+        for r in t["rows"])
     extra = callout(t["callout"], "Read") if t.get("callout") else ""
-    return t["title"], table + extra, t.get("intro")
+    return t["title"], f'<ol class="tl">{items}</ol>{extra}', t.get("intro")
 
 
 def bar(v, vmax, hot):
@@ -195,6 +199,15 @@ ul.checks li{position:relative;padding:5px 0 5px 20px}
 ul.checks li::before{content:"\\2713";position:absolute;left:0;color:var(--blue);font-weight:700}
 td code,.sec-body code{font-family:var(--mono)}
 @media print{ol.grounds li{break-inside:avoid;page-break-inside:avoid}}
+.verdict{display:grid;grid-template-columns:minmax(170px,auto) minmax(0,1fr);grid-template-rows:1fr;align-items:stretch;margin:16px 0 0;background:var(--callout);border:1px solid var(--vc)}
+.verdict.v-good{--vc:#1b7f4b}  /* the one green in the report: benign and closed verdicts read as good */.verdict.v-watch{--vc:var(--amber)}.verdict.v-act{--vc:var(--red)}
+.v-badge{background:var(--vc);color:#fff;padding:20px 24px;display:flex;flex-direction:column;justify-content:center;gap:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.v-ic{font:700 18px/1 var(--mono);width:30px;height:30px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center}
+.v-label{font:700 22px/1.15 var(--sans);letter-spacing:-.012em}
+.v-body{padding:16px 22px;align-self:center}
+.v-badge{align-self:stretch}
+.v-tag{font:500 8.5px/1.4 var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--t3);margin:0 0 6px}
+.v-body p{margin:0 0 6px}.v-body p:last-child{margin:0}
 .top{display:grid;grid-template-columns:minmax(0,1fr);column-gap:44px;align-items:start}
 .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px 28px;margin:16px 0;padding:16px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
 .meta dt{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--t3);margin:0 0 6px}
@@ -208,12 +221,55 @@ table,table.data{table-layout:auto}
 td,th{overflow-wrap:anywhere}
 blockquote,ol.grounds p,ul.checks li{max-width:none}
 }
-@media screen and (max-width:640px){:root{--px:20px}}
-/* Wide screens: verdict beside the metadata, grounds and checks in two columns, so the width carries content. */
+@media screen and (max-width:760px){.verdict{grid-template-columns:1fr;grid-template-rows:auto}}
+@media screen and (max-width:640px){:root{--px:20px}.verdict{grid-template-columns:1fr;grid-template-rows:auto}}
+/* Timeline */
+ol.tl{list-style:none;margin:8px 0 4px;padding:0}
+ol.tl li{display:grid;grid-template-columns:130px 14px minmax(0,1fr);column-gap:14px;position:relative;padding:0 0 12px}
+ol.tl li::before{content:"";position:absolute;left:calc(130px + 14px + 6px);top:12px;bottom:-2px;width:2px;background:var(--rule)}
+ol.tl li:last-child{padding-bottom:2px}ol.tl li:last-child::before{display:none}
+ol.tl time{font:500 11px/1.5 var(--mono);color:var(--ink);padding-top:1px;white-space:nowrap}
+ol.tl .dot{width:14px;height:14px;border:2px solid var(--ink);border-radius:50%;background:var(--paper);margin-top:2px;position:relative;z-index:1;box-sizing:border-box}
+ol.tl li.hl .dot{background:var(--red);border-color:var(--red)}
+ol.tl .tl-body p{margin:0 0 2px}
+ol.tl .tl-actor{font-weight:600;color:var(--ink)}
+ol.tl .tag{margin-left:8px}
+@media screen and (max-width:640px){
+ol.tl li{grid-template-columns:14px minmax(0,1fr);column-gap:12px}
+ol.tl li::before{left:6px}
+ol.tl time{grid-column:2;grid-row:1}ol.tl .dot{grid-column:1;grid-row:1}ol.tl .tl-body{grid-column:2;grid-row:2}}
+@media print{ol.tl li{break-inside:avoid;page-break-inside:avoid}}
+
+/* Compact: tighter title block, headings, rows and callouts than the brand kit's defaults. */
+.brandline{padding-top:18px;padding-bottom:7px}
+.hero>.hero-in,.hero>.wrap:not(td){padding-top:16px;padding-bottom:10px;min-height:0}
+.hero-mark{width:46px;height:46px;top:20px}
+.hero-title,.hero h1{font-size:27px}
+.hero-sub,.hero p{font-size:13.5px;margin-top:8px;line-height:1.45}
+.hero .hero-meta{margin-top:12px;padding-top:8px}
+.verdict{margin-top:10px}
+.v-badge{padding:12px 18px;gap:6px}.v-ic{width:24px;height:24px;font-size:14px}.v-label{font-size:18px}
+.v-body{padding:10px 16px}
+.top .verdict{margin-top:10px}.top .meta{margin-top:10px}
+.meta{gap:10px 24px;margin:10px 0;padding:10px 0}
+h2{font-size:17px;margin:18px 0 6px}
+h2 .n{margin-bottom:3px}
+.intro{margin:0 0 6px;font-size:12px}
+p{margin:0 0 6px}
+td{padding:5px 8px 5px 0}
+th{padding-bottom:5px}
+div.bar{margin:3px 0}
+ol.grounds li{padding:0 0 8px;grid-template-columns:20px 1fr}
+ol.grounds p{margin:0 0 3px}
+ol.grounds{margin-top:2px}
+blockquote{margin-bottom:3px}
+ul.checks li{padding:3px 0 3px 18px}
+.callout,.note{padding:10px 14px;margin:10px 0}
+.method{margin-top:18px}.method h2{margin:0 0 4px}
+.footer,.brand-foot{margin-top:18px;padding-bottom:16px}
+
+/* Wide screens: grounds and checks in two columns, so the width carries content. The verdict and the ticket metadata each get their own full-width row. */
 @media screen and (min-width:1100px){
-.top{grid-template-columns:minmax(0,5fr) minmax(0,7fr)}
-.top .callout{margin:16px 0 0;height:calc(100% - 16px)}
-.top .meta{margin:16px 0 0;border-top:0;padding-top:4px}
 ol.grounds,ul.checks{display:block;column-count:2;column-gap:48px}
 ol.grounds li,ul.checks li{break-inside:avoid;page-break-inside:avoid}
 ol.grounds li{border-top:0;padding:0 0 22px}
@@ -232,6 +288,8 @@ DARK_RULES = [
     (".brandline .bl-l img,.hero-mark", "filter:invert(1)"),
     (".tag,.pill", "background:#121212"),
     (".callout .tag", "background:none"),
+    (".verdict .v-badge", "color:#121212"),
+    (".verdict.v-good", "--vc:#5cc48d"),
     (".tag.red,.tag.p1", "background:var(--red);border-color:var(--red);color:#121212"),
     (".tag.blue", "background:var(--blue);border-color:var(--blue);color:#121212"),
     (".callout,.note", "background:var(--callout)"),
@@ -266,12 +324,15 @@ def render(c):
         action = f'<p><strong>Action needed:</strong> {md(what)}</p>'
     elif v.get("actionable") is False:
         action = '<p><em>No action needed.</em></p>'
-    verdict = (f'<div class="callout {kind}"><p class="tag">Verdict</p><h4>{html.escape(label)}</h4>'
-               f'<p>{md(v["text"])}</p>{action}</div>')
+    icon = {"good": "\u2713", "watch": "!", "act": "\u2715"}[kind]
+    verdict = (f'<div class="verdict v-{kind}"><div class="v-badge"><span class="v-ic" aria-hidden="true">{icon}</span>'
+               f'<span class="v-label">{html.escape(label)}</span></div>'
+               f'<div class="v-body"><p class="v-tag">Verdict</p><p>{md(v["text"])}</p>{action}</div></div>')
     meta = ('<dl class="meta">' + "".join(f'<div><dt>{html.escape(plain(m["label"]))}</dt><dd>{md(m["value"])}</dd></div>'
                                           for m in c["meta"]) + "</dl>")
 
     secs = Sections()
+    secs.add("Recommendation", paras(c["recommendation"]))  # what to do comes first; the evidence follows
     secs.add(*render_grounds(c["grounds"]))
     if c.get("timeline"):    secs.add(*render_timeline(c["timeline"]))
     if c.get("score_table"): secs.add(*render_score_table(c["score_table"]))
@@ -279,7 +340,6 @@ def render(c):
     secs.add(*render_negatives(c["negatives"]))
     if c.get("callouts"):
         secs.out.append("".join(callout(x, "Note") for x in c["callouts"]))
-    secs.add("Recommendation", paras(c["recommendation"]))
 
     f = c["footer"]
     tenant, subject = meta_value(c, "tenant"), meta_value(c, "subject")

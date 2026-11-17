@@ -2,7 +2,7 @@
   "eyebrow": "Incident closure · Tier 3 review",
   "title": "SendAs grants by a tenant identity administrator",
   "lede": "An AI-assist workflow escalated four days of activity on this account, citing privileged admin actions, a SendAs delegation, and missing sign-in telemetry. All three grounds were tested against the tenant's own data. None of them survive.",
-  "verdict": {"outcome": "benign", "text": "Routine identity administration by the person whose job it is. No containment action required; the rule that produced these incidents needs tuning."},
+  "verdict": {"outcome": "benign", "disposition": "closed", "severity": "low", "actionable": false, "text": "Routine identity administration by the person whose job it is. No containment action required; the rule that produced these incidents needs tuning."},
   "meta": [
     {"label": "Subject", "value": "admin.user@example.com"},
     {"label": "Tenant", "value": "Example Staffing"},
