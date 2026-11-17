@@ -197,7 +197,7 @@ ul.checks li::before{content:"\\2713";position:absolute;left:0;color:var(--blue)
 td code,.sec-body code{font-family:var(--mono)}
 @media print{ol.grounds li{break-inside:avoid;page-break-inside:avoid}}
 .verdict{display:grid;grid-template-columns:minmax(170px,auto) minmax(0,1fr);grid-template-rows:1fr;align-items:stretch;margin:16px 0 0;background:var(--callout);border:1px solid var(--vc)}
-.verdict.good{--vc:var(--blue)}.verdict.watch{--vc:var(--amber)}.verdict.act{--vc:var(--red)}
+.verdict.v-good{--vc:#1b7f4b}  /* the one green in the report: benign and closed verdicts read as good */.verdict.v-watch{--vc:var(--amber)}.verdict.v-act{--vc:var(--red)}
 .v-badge{background:var(--vc);color:#fff;padding:20px 24px;display:flex;flex-direction:column;justify-content:center;gap:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .v-ic{font:700 18px/1 var(--mono);width:30px;height:30px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center}
 .v-label{font:700 22px/1.15 var(--sans);letter-spacing:-.012em}
@@ -218,7 +218,8 @@ table,table.data{table-layout:auto}
 td,th{overflow-wrap:anywhere}
 blockquote,ol.grounds p,ul.checks li{max-width:none}
 }
-@media screen and (max-width:640px){:root{--px:20px}.verdict{grid-template-columns:1fr}}
+@media screen and (max-width:760px){.verdict{grid-template-columns:1fr;grid-template-rows:auto}}
+@media screen and (max-width:640px){:root{--px:20px}.verdict{grid-template-columns:1fr;grid-template-rows:auto}}
 /* Compact: tighter title block, headings, rows and callouts than the brand kit's defaults. */
 .brandline{padding-top:18px;padding-bottom:7px}
 .hero>.hero-in,.hero>.wrap:not(td){padding-top:16px;padding-bottom:10px;min-height:0}
@@ -268,6 +269,7 @@ DARK_RULES = [
     (".tag,.pill", "background:#121212"),
     (".callout .tag", "background:none"),
     (".verdict .v-badge", "color:#121212"),
+    (".verdict.v-good", "--vc:#5cc48d"),
     (".tag.red,.tag.p1", "background:var(--red);border-color:var(--red);color:#121212"),
     (".tag.blue", "background:var(--blue);border-color:var(--blue);color:#121212"),
     (".callout,.note", "background:var(--callout)"),
@@ -303,7 +305,7 @@ def render(c):
     elif v.get("actionable") is False:
         action = '<p><em>No action needed.</em></p>'
     icon = {"good": "\u2713", "watch": "!", "act": "\u2715"}[kind]
-    verdict = (f'<div class="verdict {kind}"><div class="v-badge"><span class="v-ic" aria-hidden="true">{icon}</span>'
+    verdict = (f'<div class="verdict v-{kind}"><div class="v-badge"><span class="v-ic" aria-hidden="true">{icon}</span>'
                f'<span class="v-label">{html.escape(label)}</span></div>'
                f'<div class="v-body"><p class="v-tag">Verdict</p><p>{md(v["text"])}</p>{action}</div></div>')
     meta = ('<dl class="meta">' + "".join(f'<div><dt>{html.escape(plain(m["label"]))}</dt><dd>{md(m["value"])}</dd></div>'
