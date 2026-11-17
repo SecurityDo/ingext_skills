@@ -12,14 +12,15 @@ skill are used if the copy is absent, and the script stops with a clear message 
 
 Layout (fixed order; optional blocks are skipped when absent):
     brandline · title · lede · meta line
-    verdict callout · metadata table
-    §1 grounds (AI-assist claims, each tested)
+    verdict callout · metadata grid
+    §1 recommendation (what to do, before the evidence)
+    §2 grounds (AI-assist claims, each tested)
     timeline          (optional — single-event incidents: raw audit times)
     score_table       (optional — multi-day incidents: activity vs riskScore bars)
     base_rate         (optional — peer census table, within this one account)
     negatives         (what did NOT happen, each against a control)
     callouts          (optional — one per red herring the ticket raised)
-    recommendation · evidence · footer (review date)
+    evidence · footer (review date)
 
 Inline markup allowed in any text field: **bold**, *italic*, `code`. Everything else
 is HTML-escaped, so tenant data can be pasted in safely.
@@ -272,6 +273,7 @@ def render(c):
                                           for m in c["meta"]) + "</dl>")
 
     secs = Sections()
+    secs.add("Recommendation", paras(c["recommendation"]))  # what to do comes first; the evidence follows
     secs.add(*render_grounds(c["grounds"]))
     if c.get("timeline"):    secs.add(*render_timeline(c["timeline"]))
     if c.get("score_table"): secs.add(*render_score_table(c["score_table"]))
@@ -279,7 +281,6 @@ def render(c):
     secs.add(*render_negatives(c["negatives"]))
     if c.get("callouts"):
         secs.out.append("".join(callout(x, "Note") for x in c["callouts"]))
-    secs.add("Recommendation", paras(c["recommendation"]))
 
     f = c["footer"]
     tenant, subject = meta_value(c, "tenant"), meta_value(c, "subject")
