@@ -29,7 +29,7 @@ def main():
     t = tempfile.mkdtemp(); w = lambda n, d: (json.dump(d, open(t + "/" + n, "w")), t + "/" + n)[1]
     f = w("fg.json", {"days": [dims("2026-11-10", 30), dims("2026-11-11", 20)]})
     run(os.path.join(S, "egress_evidence.py"), f, "-o", t + "/eg.json"); eg = json.load(open(t + "/eg.json"))
-    assert eg["status"] == "assessed" and eg["days"] == 2 and eg["total_events"] == 20000 and eg["named_share"] == 0.9, eg
+    assert eg["status"] == "assessed" and eg["days"] == 2 and eg["total_events"] == 20000 and eg["products"][0]["named_share"] == 0.9 and eg["products"][0]["product"] == "FortiGate", eg
     assert eg["genai_events"] == 170 and eg["genai_blocked"] == 20 and eg["sources_peak_day"] == 30 and eg["countries"] == ["Ireland", "United States"] and eg["policies"] == 2, eg
     sv = {x["service"]: x for x in eg["services"]}
     assert sv["ChatGPT / OpenAI"]["events"] == 100 and sv["Microsoft Copilot"]["first_party"] and eg["non_first_party_allowed"] == 120, sv
@@ -49,6 +49,22 @@ def main():
     # no application names (Application Control off): not assessed, never clean
     run(os.path.join(S, "egress_evidence.py"), w("fg3.json", {"days": [dims("2026-11-10", 0, named=False)]}), "-o", t + "/eg3.json"); e3 = json.load(open(t + "/eg3.json"))
     assert e3["status"] == "no_app_control" and any("not clean" in g for g in e3["gaps"]), e3
+    # Zscaler: the proxy records the domain; users are distinct counts, never names
+    def zrow(g, app, cat, dom, out, ev, users):
+        return {"isGenAI": g, "app": app, "category": cat, "appClass": "AI & ML Apps" if g else "", "domain": dom, "outcome": out, "events": ev, "bytesOut": ev * 10, "bytesIn": ev * 100, "users": users, "devices": users}
+    zday = lambda d, u: {"entry": {"rangeFrom": d + "T00:00:00Z"}, "result": {"objects": [{"name": "web_dims", "table": {"rows": [
+        zrow(False, "", "", "", "allowed", 90000, 400), zrow(False, "", "", "", "blocked", 5000, 90),
+        zrow(True, "ChatGPT", "Generative AI and ML Applications", "chatgpt.com", "allowed", 300, u), zrow(True, "ChatGPT", "Generative AI and ML Applications", "chatgpt.com", "blocked", 50, 5),
+        zrow(True, "Claude", "Generative AI and ML Applications", "claude.ai", "allowed", 120, 8), zrow(True, "Microsoft Copilot", "Generative AI and ML Applications", "copilot.microsoft.com", "allowed", 80, 12)]}},
+        {"name": "sources", "table": {"rows": [{"source": "Zscaler web transactions", "status": "ok"}]}}]}}
+    zf = w("zs.json", {"days": [zday("2026-11-10", 30), zday("2026-11-11", 10)]})
+    run(os.path.join(S, "egress_evidence.py"), zf, "-o", t + "/ez.json"); ez = json.load(open(t + "/ez.json"))
+    assert ez["status"] == "assessed" and [p["product"] for p in ez["products"]] == ["Zscaler"] and ez["genai_events"] == 1100 and ez["genai_blocked"] == 100 and ez["sources_peak_day"] == 30, ez
+    zs = {x["service"]: x for x in ez["services"]}; assert zs["ChatGPT / OpenAI"]["domains"] == ["chatgpt.com"] and zs["Microsoft Copilot"]["first_party"] and ez["non_first_party_allowed"] == 840, zs
+    # both products together: services merge, the busiest day is the larger of the two
+    run(os.path.join(S, "egress_evidence.py"), f, zf, "-o", t + "/eb.json"); eb = json.load(open(t + "/eb.json"))
+    assert sorted(p["product"] for p in eb["products"]) == ["FortiGate", "Zscaler"] and eb["genai_events"] == 170 + 1100, eb["genai_events"]
+    assert next(x for x in eb["services"] if x["service"] == "ChatGPT / OpenAI")["products"] == ["FortiGate", "Zscaler"] and any("FortiGate and Zscaler" in g for g in eb["gaps"]), eb["gaps"]
     # no archive and no egress file: not assessed
     run(os.path.join(S, "egress_evidence.py"), w("fg4.json", {"days": []}), "-o", t + "/eg4.json"); assert json.load(open(t + "/eg4.json"))["status"] == "no_data"
     run(os.path.join(S, "ai_evidence.py"), d0, "-o", t + "/ev5.json"); run(os.path.join(S, "rate_evidence.py"), t + "/ev5.json", "--tenant", "S", "--date", "2026-11-12", "--out", t + "/d5.json")

@@ -5,8 +5,8 @@ description: >-
   Assess ONE Fluency / Ingext tenant's shadow generative-AI exposure for a CISO and render a report (HTML and PDF): posture
   (Low, Moderate, Elevated, High), five evidence paths, AI services found, key findings, actions by horizon, proposed detections
   and coverage gaps. Uses Entra applications and user grants, the endpoint software inventory (local LLM runners, AI desktop
-  apps), EventWatch rule coverage, the archived DLP report and the archived FortiGate traffic report (network egress by AI
-  application); paths without a data source are reported as not assessed. USE THIS SKILL for "shadow AI",
+  apps), EventWatch rule coverage, the archived DLP report and the archived FortiGate traffic and Zscaler web reports (network egress by AI
+  application and domain); paths without a data source are reported as not assessed. USE THIS SKILL for "shadow AI",
   "GenAI exposure", "AI usage assessment", "which AI tools are people using", "CISO AI report". Read-only via the tenant MCP
   connector. DO NOT use it for one user (office-user-investigation) or a general endpoint inventory.
 ---
@@ -32,10 +32,12 @@ style. Board-safe: counts and AI service names only, never users, hosts or addre
    holds user names), save the result to a file and run `python3 scripts/dlp_evidence.py <file> -o dlp_evidence.json`. Pass that file with
    `--dlp`. Zero matches or no archive leaves path 4 "not assessed". Optionally pass the ransomware skill's `entra_evidence.json` with
    `--entra`: bulk file downloads then appear as context under path 4. Never run the report or query Office365 live.
-5. **Network egress (path 2).** Call `list_report_archive` for `Fortigate_Traffic_Activity_Report` (that exact name), then `download_report_archive` for the
-   last 30 days with `objects` `traffic_dims` and `sources` only (never `traffic_talkers`: internal hosts and addresses), save the result and run
-   `python3 scripts/egress_evidence.py <file> -o egress_evidence.json`. Pass that file with `--egress`. No archive, no traffic or no application
-   names (Application Control off) leaves path 2 "not assessed", never clean. Missing days can be requested with `backfill_report_archive`; never run the
+5. **Network egress (path 2).** Call `list_report_archive` for `Fortigate_Traffic_Activity_Report` and for `Zscaler_Web_Activity_Report` (those exact names; use
+   whichever the tenant has), then `download_report_archive` for the last 30 days with `objects` `traffic_dims` and `sources` (FortiGate; never
+   `traffic_talkers`: internal hosts and addresses) or `web_dims` and `sources` (Zscaler), save each result and run
+   `python3 scripts/egress_evidence.py <file> [<file2>] -o egress_evidence.json`. Pass that file with `--egress`. No archive, no traffic or, for FortiGate,
+   no application names (Application Control off) leaves that product "not assessed", never clean. `Zscaler_Threat_Activity_Daily` is a threat report with no
+   web or GenAI volume: do not use it for path 2. Missing days can be requested with `backfill_report_archive`; never run the
    report or query the traffic table live.
 6. **Evidence:** `python3 scripts/ai_evidence.py <dump_dir> -o evidence.json --rules rules.json [--entra entra_evidence.json]
    [--dlp dlp_evidence.json] [--egress egress_evidence.json] [--sanctioned sanctioned.json]`. Matching uses `assets/ai_catalog.json` (the original catalog plus the repo's AI name patterns).
@@ -47,10 +49,11 @@ style. Board-safe: counts and AI service names only, never users, hosts or addre
 
 ## What cannot be assessed (state in the report)
 
-- **Network egress (path 2)** comes from the FortiGate traffic archive only: it sees the application name and category, the destination address and
-  country, never the domain, URL or content. A tenant without FortiGate, or whose policies do not run Application Control (no application names), is
-  "not assessed", never clean. Proxies, DNS, Zscaler, Meraki and other firewalls are not covered. Distinct internal sources are the busiest day's
-  count, a lower bound. The report writes no host or address.
+- **Network egress (path 2)** comes from the FortiGate traffic and Zscaler web archives. FortiGate sees the application name and category and the
+  destination country, not the domain. Zscaler sees the application and the requested domain for web traffic through the proxy, not its DNS or firewall logs, and never
+  the content. A FortiGate tenant whose policies do not run Application Control (no application names) is "not assessed", never clean. Proxies, DNS,
+  Meraki, Netskope and other firewalls are not covered. Distinct internal sources or users are the busiest day's count, a lower bound. The assessment
+  writes no host, address, user or device name.
 - **Data exposure (path 4)** comes from the Office 365 DLP report. It sees only policies that matched, so zero matches is "not assessed", and
   the only AI signal is the Microsoft 365 Copilot DLP policy; consumer AI uploads are not seen. Undo events are split by reason (an edited
   document is not a release). Policy configuration covers only policies created or changed in the log window; overrides with a justification

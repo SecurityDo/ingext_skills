@@ -32,7 +32,7 @@
   ]
  },
  "network": {
-  "note": "path 2 reads the archived Fortigate_Traffic_Activity_Report (FortiGate, by application name, not domain). Cut-offs are Fluency proposals; the original skill defined no network rule.",
+  "note": "path 2 reads the archived Fortigate_Traffic_Activity_Report (FortiGate, by application name) and Zscaler_Web_Activity_Report (by application and domain). Cut-offs are Fluency proposals; the original skill defined no network rule.",
   "app_named_share_min": 0.5,
   "sources_high": 25,
   "high": "allowed GenAI traffic to a non-first-party service from 25 or more internal sources on the busiest day (proposal)",
