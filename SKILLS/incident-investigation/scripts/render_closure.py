@@ -219,6 +219,34 @@ td,th{overflow-wrap:anywhere}
 blockquote,ol.grounds p,ul.checks li{max-width:none}
 }
 @media screen and (max-width:640px){:root{--px:20px}.verdict{grid-template-columns:1fr}}
+/* Compact: tighter title block, headings, rows and callouts than the brand kit's defaults. */
+.brandline{padding-top:18px;padding-bottom:7px}
+.hero>.hero-in,.hero>.wrap:not(td){padding-top:16px;padding-bottom:10px;min-height:0}
+.hero-mark{width:46px;height:46px;top:20px}
+.hero-title,.hero h1{font-size:27px}
+.hero-sub,.hero p{font-size:13.5px;margin-top:8px;line-height:1.45}
+.hero .hero-meta{margin-top:12px;padding-top:8px}
+.verdict{margin-top:10px}
+.v-badge{padding:12px 18px;gap:6px}.v-ic{width:24px;height:24px;font-size:14px}.v-label{font-size:18px}
+.v-body{padding:10px 16px}
+.top .verdict{margin-top:10px}.top .meta{margin-top:10px}
+.meta{gap:10px 24px;margin:10px 0;padding:10px 0}
+h2{font-size:17px;margin:18px 0 6px}
+h2 .n{margin-bottom:3px}
+.intro{margin:0 0 6px;font-size:12px}
+p{margin:0 0 6px}
+td{padding:5px 8px 5px 0}
+th{padding-bottom:5px}
+div.bar{margin:3px 0}
+ol.grounds li{padding:0 0 8px;grid-template-columns:20px 1fr}
+ol.grounds p{margin:0 0 3px}
+ol.grounds{margin-top:2px}
+blockquote{margin-bottom:3px}
+ul.checks li{padding:3px 0 3px 18px}
+.callout,.note{padding:10px 14px;margin:10px 0}
+.method{margin-top:18px}.method h2{margin:0 0 4px}
+.footer,.brand-foot{margin-top:18px;padding-bottom:16px}
+
 /* Wide screens: verdict beside the metadata, grounds and checks in two columns, so the width carries content. */
 @media screen and (min-width:1100px){
 .top{grid-template-columns:minmax(0,5fr) minmax(0,7fr)}
