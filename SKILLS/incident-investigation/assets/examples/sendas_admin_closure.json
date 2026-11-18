@@ -47,6 +47,16 @@
        "body": "The Microsoft-owned addresses the workflow flagged appear on *cmdlet* records, not on her sign-ins. Exchange Online writes its own service infrastructure as the client address when an administrative cmdlet runs. Her interactive sessions carry her own connection throughout, and every event is `ExternalAccess: false`."}
     ]
   },
+  "response": {
+    "intro": "What to do next, and what has already been done.",
+    "todo_intro": "Nothing to contain. One change to the rule would stop this recurring.",
+    "done": [
+      {"icon": "help", "when": "2026-09-22", "actor": "AI-assist", "text": "Escalated four days of activity on three grounds: missing sign-in telemetry, a SendAs grant, and 250 to 324 directory actions by a Global Administrator."},
+      {"icon": "search", "when": "2026-09-22", "actor": "Tier 3 review", "text": "All three grounds tested against the raw data. None survives: the telemetry gap is tenant-wide, the grants are a standing pattern, and the volume is her baseline."},
+      {"state": "not_done", "actor": "Containment", "text": "No account was disabled and no session revoked. **None was required**: every grant was made by the tenant's own identity administrator on internal objects."},
+      {"state": "not_checked", "actor": "Sign-in origin", "text": "`AzureSigninLogs` is empty on this tenant, so where she signed in from was **not checked** against a sign-in source."}
+    ]
+  },
   "recommendation": [
     {"kind": "close", "label": "Close · benign", "text": "Close benign, with no containment. The finding worth acting on is the detection, not the account: these rules raise an incident every time an administrator touches a user for the first time, which for this cohort is continuous."},
     {"kind": "tune", "label": "Tuning · for the rule maintainer", "text": "Tune the `ML_NEW_USER` contribution on admin-operation rules rather than the operations themselves. The rule fires on the novelty of the *target* user, not on the risk of the action."},

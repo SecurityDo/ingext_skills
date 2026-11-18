@@ -13,7 +13,8 @@ skill are used if the copy is absent, and the script stops with a clear message 
 Layout (fixed order; optional blocks are skipped when absent):
     brandline · title · lede · meta line
     verdict: icon + headline, text, action, impact and respond (own row) · ticket metadata grid (own row)
-    §1 recommendation: icon bullets, the main text of each highlighted (what to do, before the evidence)
+    §1 response (optional): the recommended actions first (the recommendation bullets), then what has already been done;
+       without `response` this is just the recommendation: icon bullets, the main text of each highlighted
     §2 grounds (AI-assist claims, each tested)
     timeline          (optional — single-event incidents: raw audit times)
     base_rate         (optional — peer census table, within this one account)
@@ -93,6 +94,7 @@ ICONS = {
     "info":    '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.8v.1"/>',
     "search":  '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/>',
     "eye":     '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.7"/>',
+    "help":    '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.6a2.5 2.5 0 114 2c-.9.6-1.6 1-1.6 2.2M12 16.7v.1"/>',
     "arrow":   '<path d="M5 12h14M13 6l6 6-6 6"/>',
 }
 
@@ -315,6 +317,18 @@ ul.recs .rt{margin:0}
 ul.recs .main{font-weight:700;color:var(--ink);background:linear-gradient(transparent 62%,color-mix(in srgb,var(--blue) 18%,transparent) 62%)}
 ul.checks li .ic{position:absolute;left:0;top:4px;width:15px;height:15px}
 .callout .tag{display:flex;align-items:center;gap:6px}.callout .tag .ic{width:13px;height:13px}
+/* Response: what has already been done */
+ol.resp{list-style:none;margin:4px 0 8px;padding:0;border-bottom:1px solid var(--rule)}
+ol.resp li{display:grid;grid-template-columns:26px 190px minmax(0,1fr);gap:0 14px;padding:9px 0;border-top:1px solid var(--rule)}
+ol.resp .ic{width:20px;height:20px;margin-top:1px;color:var(--ink)}
+ol.resp li.not_done .ic{color:var(--amber)}ol.resp li.not_checked .ic{color:var(--t3)}
+.rw-when,.rw-state{display:block;font:500 11px/1.5 var(--mono);color:var(--ink)}
+.rw-state.s-not_done{color:var(--amber)}.rw-state.s-not_checked{color:var(--t3)}
+.rw-actor{display:block;margin-top:1px;font:500 9px/1.4 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--t2)}
+p.rw-t{margin:0}
+.sec-body h3,h3{margin:14px 0 4px}
+@media screen and (max-width:700px){ol.resp li{grid-template-columns:26px minmax(0,1fr)}ol.resp .rw-l{grid-column:2;grid-row:1}ol.resp .rw-t{grid-column:2;grid-row:2}ol.resp .ic{grid-row:1}}
+@media print{ol.resp li{break-inside:avoid;page-break-inside:avoid}}
 /* Timeline */
 ol.tl{list-style:none;margin:8px 0 4px;padding:0}
 ol.tl li{display:grid;grid-template-columns:130px 14px minmax(0,1fr);column-gap:14px;position:relative;padding:0 0 12px}
@@ -404,6 +418,29 @@ def meta_value(c, label):
     return ""
 
 
+RESPONSE_STATES = {"done": "", "not_done": "Not done", "not_checked": "Not checked"}
+
+
+def render_response(r, rec):
+    """The Response section: the recommended actions first (the recommendation bullets), then what has already been
+    done (dated rows with an icon, who and what; a control that was not applied reads "Not done", one the run
+    could not read "Not checked")."""
+    rows = []
+    for d in r.get("done", []):
+        state = str(d.get("state", "done")).lower()
+        if state not in RESPONSE_STATES:
+            state = "done"
+        name = d.get("icon") if d.get("icon") in ICONS else ("lock" if state == "not_done" else "help" if state == "not_checked" else "info")
+        lead = (f'<span class="rw-when">{md(d.get("when", ""))}</span>' if state == "done"
+                else f'<span class="rw-state s-{state}">{RESPONSE_STATES[state]}</span>')
+        actor = f'<span class="rw-actor">{md(d["actor"])}</span>' if d.get("actor") else ""
+        rows.append(f'<li class="{state}">{icon(name)}<div class="rw-l">{lead}{actor}</div><p class="rw-t">{md(d.get("text", ""))}</p></li>')
+    todo_intro = f'<p class="intro">{md(r["todo_intro"])}</p>' if r.get("todo_intro") else ""
+    body = (f'<h3>Recommended actions</h3>{todo_intro}{render_recommendations(rec)}'
+            f'<h3>Already done</h3><ol class="resp">{"".join(rows)}</ol>')
+    return "Response", body, r.get("intro", "What to do next, and what has already been done.")
+
+
 RISK_LABEL = re.compile(r"risk\s*-?score", re.I)
 
 
@@ -453,7 +490,11 @@ def render(c):
     doc = "Incident Closure" if closed else "Incident Analysis"
 
     secs = Sections()
-    secs.add("Recommendation", render_recommendations(c["recommendation"]))  # what to do comes first
+    resp = c.get("response")
+    if isinstance(resp, dict) and resp.get("done"):
+        secs.add(*render_response(resp, c["recommendation"]))  # what was done and what is left comes first
+    else:
+        secs.add("Recommendation", render_recommendations(c["recommendation"]))
     if c.get("entry"):       secs.add(*render_entry(c["entry"]))
     secs.add(*render_grounds(c["grounds"]))
     if c.get("timeline"):    secs.add(*render_timeline(c["timeline"]))

@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.6.20
+version: 1.6.21
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -1058,7 +1058,7 @@ say so and offer to fetch the skill package from `cowork/incident-investigation.
 in the `SecurityDo/ingext_skills` repo; do not hand-write a substitute report.
 
 **Section order**, fixed by the renderer, each mapped to a step above: title + lede →
-verdict box (step 5: icon and headline, text, action, impact and respond) → metadata grid (step 1) → recommendation bullets (step 5, icons, main text in bold) → "N grounds for escalation, tested"
+verdict box (step 5: icon and headline, text, action, impact and respond) → metadata grid (step 1) → response (the recommended actions, then what has been done; step 5) or just the recommendation bullets (icons, main text in bold) → "N grounds for escalation, tested"
 (steps 1, 3, 4) → a vertical timeline for a single event (step 4) → base-rate table when the base rate is above one
 (step 2) → what did not happen (the step-3 workflow's negatives) → callouts → evidence → footer.
 
@@ -1072,6 +1072,13 @@ verdict box (step 5: icon and headline, text, action, impact and respond) → me
   nothing is done (or if the verdict is wrong), in one or two sentences; `respond` is a two to
   four word headline ("No action this ticket", "Same business day", "Contain now") and one
   short note. They give the reader the answer without opening the sections.
+- **Fill `response.done` from what the run read, never from what it assumes.** Rows come from
+  three places: the ticket's own history (`comments[]`: who closed it, who re-posted the AI-assist,
+  with the time), the audit and sign-in rows before the ticket (a helpdesk reset, an MFA change,
+  a provisioning step), and your own review. A containment row says **Not done** only when you
+  read the account's state (enabled, sessions, device) and it was not applied; if you did not
+  read it, use `state: "not_checked"` and say what was missing. One row per action, oldest first;
+  a control that was not needed still gets its row ("None was required").
 - **Write the recommendation as bullets, most important first,** each one action with a `kind`
   (`close`, `contain`, `confirm`, `change`, `tune`, `monitor`, `info`) and a short mono-caps
   `label`. The first sentence of each bullet is its main point and is shown in bold, so make
