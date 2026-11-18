@@ -122,6 +122,26 @@ def callout(c, tag_text="Note", kind="good"):
             f'{paras(c["body"])}</div>')
 
 
+ENTRY_STATE = {"established": ("Established from the rows", "red"), "likely": ("Likely, not proven", "amber"),
+               "not_established": ("Not established", "gray")}
+
+
+def render_entry(e):
+    """How the attacker got in: the entry steps from the raw rows, the control that did not
+    stop it, and what would settle an entry the rows do not show."""
+    state = ENTRY_STATE.get(str(e.get("state", "")).lower())
+    head = f'<p>{fb.tag(state[0], state[1])}</p>' if state else ""
+    body = paras(e["body"]) if e.get("body") else ""
+    steps = ""
+    if e.get("steps"):
+        items = "".join(f'<li><time>{md(r.get("time", ""))}</time><span class="dot"></span>'
+                        f'<div class="tl-body"><p>{md(r["event"])}</p></div></li>' for r in e["steps"])
+        steps = f'<ol class="tl">{items}</ol>'
+    why = callout({"title": "Why it worked", "body": e["why_it_worked"]}, "Control gap", "watch") if e.get("why_it_worked") else ""
+    missing = callout({"title": "What would settle it", "body": e["missing"]}, "Gap", "watch") if e.get("missing") else ""
+    return e.get("title") or "How the attacker got in", head + body + steps + why + missing
+
+
 def render_grounds(g):
     items = "".join(
         f'<li><span class="gn">{i}</span><div><blockquote>&ldquo;{md(x["claim"])}&rdquo;</blockquote>'
@@ -333,6 +353,7 @@ def render(c):
 
     secs = Sections()
     secs.add("Recommendation", paras(c["recommendation"]))  # what to do comes first; the evidence follows
+    if c.get("entry"):       secs.add(*render_entry(c["entry"]))
     secs.add(*render_grounds(c["grounds"]))
     if c.get("timeline"):    secs.add(*render_timeline(c["timeline"]))
     if c.get("score_table"): secs.add(*render_score_table(c["score_table"]))
