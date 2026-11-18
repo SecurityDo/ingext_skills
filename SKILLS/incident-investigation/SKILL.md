@@ -1,6 +1,6 @@
 ---
 name: incident-investigation
-version: 1.6.19
+version: 1.6.20
 description: >-
   Investigate an escalated Fluency/Ingext behavior incident and close it with a verdict and
   evidence. Use whenever the user hands over a behavior incident or ticket id, an AI-assist
@@ -1032,8 +1032,8 @@ customer a report", "give me the HTML".
 documented in `assets/closure_schema.md`. Start from the example that matches the
 incident's shape (both are anonymised):
 
-- `assets/examples/sendas_admin_closure.json` — a multi-day incident with a score
-  history (`score_table`, `base_rate`).
+- `assets/examples/sendas_admin_closure.json` — a multi-day incident with a peer
+  census (`base_rate`).
 - `assets/examples/credential_policy_closure.json` — a single event or transaction
   (`timeline`).
 
@@ -1058,13 +1058,24 @@ say so and offer to fetch the skill package from `cowork/incident-investigation.
 in the `SecurityDo/ingext_skills` repo; do not hand-write a substitute report.
 
 **Section order**, fixed by the renderer, each mapped to a step above: title + lede →
-verdict card (step 5) → metadata grid (step 1) → recommendation (step 5) → "N grounds for escalation, tested"
-(steps 1, 3, 4) → timeline (a vertical timeline) for a single event **or** score-vs-activity bars for a
-multi-day incident (step 4 / step 1) → base-rate table when the base rate is above one
+verdict box (step 5: icon and headline, text, action, impact and respond) → metadata grid (step 1) → recommendation bullets (step 5, icons, main text in bold) → "N grounds for escalation, tested"
+(steps 1, 3, 4) → a vertical timeline for a single event (step 4) → base-rate table when the base rate is above one
 (step 2) → what did not happen (the step-3 workflow's negatives) → callouts → evidence → footer.
 
 **Fill rules.**
 
+- **No risk scores in the report.** Not in `meta`, the title, the lede or the text; the renderer
+  drops a `riskScore` meta entry and has no score table. Say what happened and why it is or is
+  not a problem, not how the rule scored it (the score is a property of the rule, which is a
+  tuning matter and belongs in a tuning bullet if anywhere).
+- **Fill the verdict's `impact` and `respond`.** `impact` is what the account is exposed to if
+  nothing is done (or if the verdict is wrong), in one or two sentences; `respond` is a two to
+  four word headline ("No action this ticket", "Same business day", "Contain now") and one
+  short note. They give the reader the answer without opening the sections.
+- **Write the recommendation as bullets, most important first,** each one action with a `kind`
+  (`close`, `contain`, `confirm`, `change`, `tune`, `monitor`, `info`) and a short mono-caps
+  `label`. The first sentence of each bullet is its main point and is shown in bold, so make
+  it stand on its own.
 - **Every number is one you measured in this run, on `ACCOUNT` only.** The base-rate
   table, the peer cohort and every control count are intra-tenant. A report is the
   place a cross-tenant number would do the most damage, so the hard rule applies with

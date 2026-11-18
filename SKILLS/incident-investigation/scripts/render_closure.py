@@ -12,11 +12,10 @@ skill are used if the copy is absent, and the script stops with a clear message 
 
 Layout (fixed order; optional blocks are skipped when absent):
     brandline · title · lede · meta line
-    verdict (own row) · ticket metadata grid (own row)
-    §1 recommendation (what to do, before the evidence)
+    verdict: icon + headline, text, action, impact and respond (own row) · ticket metadata grid (own row)
+    §1 recommendation: icon bullets, the main text of each highlighted (what to do, before the evidence)
     §2 grounds (AI-assist claims, each tested)
     timeline          (optional — single-event incidents: raw audit times)
-    score_table       (optional — multi-day incidents: activity vs riskScore bars)
     base_rate         (optional — peer census table, within this one account)
     negatives         (what did NOT happen, each against a control)
     callouts          (optional — one per red herring the ticket raised)
@@ -71,17 +70,98 @@ DISPOSITIONS = {
 }
 SEVERITIES = ("info", "low", "medium", "high", "critical")
 
-BAR_HOT, BAR_COOL = "#b3242e", "#8a8a8a"
-
-
-def verdict_label(v):
-    """The card's label and callout kind: the disposition and severity when given, else the outcome."""
+def verdict_parts(v):
+    """(label, severity word, kind) for the verdict headline: the disposition and severity when given, else the outcome."""
     d = str(v.get("disposition") or "").lower()
     if d in DISPOSITIONS:
         label, kind = DISPOSITIONS[d]
         sev = str(v.get("severity") or "").lower()
-        return (f"{label} · {sev.capitalize()}" if sev in SEVERITIES else label), kind
-    return VERDICTS[v["outcome"].lower()]
+        return label, (sev.capitalize() if sev in SEVERITIES else ""), kind
+    label, kind = VERDICTS[v["outcome"].lower()]
+    return label, "", kind
+
+
+# One monochrome stroke icon set (24px grid). Colour comes from the state class on the wrapper.
+ICONS = {
+    "check":   '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/>',
+    "alert":   '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.1"/>',
+    "x":       '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
+    "lock":    '<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V8a4 4 0 018 0v2.5"/>',
+    "mail":    '<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3.5 7l8.5 6 8.5-6"/>',
+    "sliders": '<path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15" cy="8" r="2"/><circle cx="9" cy="16" r="2"/>',
+    "sun":     '<circle cx="12" cy="12" r="3.5"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
+    "info":    '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.8v.1"/>',
+    "search":  '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/>',
+    "eye":     '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.7"/>',
+    "arrow":   '<path d="M5 12h14M13 6l6 6-6 6"/>',
+}
+
+
+def icon(name, cls=""):
+    return f'<span class="ic {cls}" aria-hidden="true"><svg viewBox="0 0 24 24">{ICONS[name]}</svg></span>'
+
+
+# A recommendation bullet's kind picks its icon and colour. Authors can set it; otherwise it is read from the wording.
+REC_KINDS = {  # kind -> (icon, label shown when the author gave none: "" = no label)
+    "close": ("check", ""), "contain": ("lock", ""), "confirm": ("mail", ""), "change": ("sun", ""),
+    "tune": ("sliders", ""), "monitor": ("eye", ""), "info": ("info", ""),
+}
+REC_GUESS = [("contain", r"\b(contain|disable|isolate|revoke|kill the|reset the (password|credential))"),
+             ("confirm", r"\b(confirm|ask |verify with|check with)"),
+             ("tune", r"\b(tun(e|ing)|mask|suppress|the rule fires)"),
+             ("change", r"\b(block|enforce|enable|require|restrict|conditional access)"),
+             ("close", r"\b(close|no action|nothing to)")]
+
+
+def rec_kind(item_kind, text):
+    k = str(item_kind or "").lower()
+    if k in REC_KINDS:
+        return k
+    for name, pat in REC_GUESS:
+        if re.search(pat, text, re.I):
+            return name
+    return "info"
+
+
+def highlight_main(text, main=None):
+    """The bullet's main point in bold: `main` when given, else the first sentence (or its first clause when the
+    sentence runs long). Text the author already marked with ** is left as written; a text with no short
+    opening point is left plain rather than bolded whole."""
+    t = str(text or "")
+    if main:
+        return f'<span class="main">{md(main)}</span> {md(t)}'.rstrip()
+    if "**" in t:
+        return md(t)
+    m = re.match(r"(.+?[.!?])(\s+|$)", t, re.S)
+    lead = m.group(1) if m else t
+    if len(lead) > 180:  # long opening sentence: take a first clause of a useful length, or highlight nothing
+        for c in re.finditer(r"\s(?:\u2014|\u2013|-)\s|[;:]\s", lead[:170]):
+            end = c.start() + (1 if lead[c.start()] in ";:" else 0)
+            if end >= 45:
+                lead = lead[:end]
+                break
+        else:
+            return md(t)
+    rest = t[len(lead):].lstrip()
+    return f'<span class="main">{md(lead)}</span>' + (f" {md(rest)}" if rest else "")
+
+
+def render_recommendations(rec):
+    """Bullets, each with an icon and its main text highlighted. `recommendation` is a string, a list of strings,
+    or a list of {text, label?, kind?, main?}; a paragraph per line becomes a bullet."""
+    items = rec if isinstance(rec, list) else str(rec).split("\n")
+    out = []
+    for it in items:
+        if isinstance(it, dict):
+            text, label, kind, main = it.get("text", ""), it.get("label", ""), it.get("kind"), it.get("main")
+        else:
+            text, label, kind, main = it, "", None, None
+        if not str(text).strip() and not main:
+            continue
+        k = rec_kind(kind, f"{label} {main or ''} {text}")
+        lab = f'<p class="rl">{md(label)}</p>' if label else ""
+        out.append(f'<li>{icon(REC_KINDS[k][0], "r-" + k)}<div>{lab}<p class="rt">{highlight_main(text, main)}</p></div></li>')
+    return f'<ul class="recs">{"".join(out)}</ul>'
 
 
 def md(s):
@@ -118,7 +198,7 @@ def callout(c, tag_text="Note", kind="good"):
     if isinstance(c, str):  # a bare string is a body without a heading
         c = {"body": c}
     head = f'<h4>{md(c["title"])}</h4>' if c.get("title") else ""
-    return (f'<div class="callout {kind}"><p class="tag">{html.escape(tag_text)}</p>{head}'
+    return (f'<div class="callout {kind}"><p class="tag">{icon("alert" if kind in ("watch", "act") else "info")}{html.escape(tag_text)}</p>{head}'
             f'{paras(c["body"])}</div>')
 
 
@@ -163,32 +243,6 @@ def render_timeline(t):
     return t["title"], f'<ol class="tl">{items}</ol>{extra}', t.get("intro")
 
 
-def bar(v, vmax, hot):
-    pct = 0 if not vmax else max(2, round(100 * v / vmax))
-    return f'<div class="bar"><i style="width:{pct}%;background:{BAR_HOT if hot else BAR_COOL}"></i></div>'
-
-
-def render_score_table(s):
-    a_lab, b_lab = s.get("activity_label", "Admin ops"), s.get("score_label", "riskScore")
-    amax = max((r["activity"] for r in s["rows"]), default=0)
-    bmax = max((r["score"] for r in s["rows"]), default=0)
-    rows, hot = [], {}
-    for r in s["rows"]:
-        is_hot = bool(r.get("incident"))
-        rows.append([f"<code>{md(r['day'])}</code>", f"{r['activity']:,}", bar(r["activity"], amax, is_hot),
-                     f"{r['score']:,}", bar(r["score"], bmax, is_hot), fb.tag("incident", "red") if is_hot else ""])
-        hot[id(rows[-1])] = is_hot
-    cap = s.get("caption") or (f"Daily {a_lab.lower()} against the behavior riskScore for the same day. "
-                               f"Bars are scaled within each column; column maxima are {amax:,} and {bmax:,}. "
-                               f"Red rows were raised as incidents.")
-    table = fb.table(["Day", a_lab, "", b_lab, "", ""], rows, widths=["16%", "11%", "25%", "11%", "25%", "12%"],
-                     num_cols=(1, 3), raw_cols=(0, 2, 4, 5),
-                     row_class=lambda r: "sev-high" if hot[id(r)] else "",
-                     foot=md(cap))
-    extra = callout(s["callout"], "Read") if s.get("callout") else ""
-    return s.get("title", "The score does not follow the activity"), table + extra, s.get("intro")
-
-
 def render_base_rate(b):
     cols = b["columns"]
     rows = [[f"<code>{md(v)}</code>" if i == 0 else md(v) for i, v in enumerate(r)] for r in b["rows"]]
@@ -198,7 +252,7 @@ def render_base_rate(b):
 
 
 def render_negatives(n):
-    items = "".join(f'<li><strong>{md(x["title"])}</strong> {md(x.get("body", ""))}</li>' for x in n["items"])
+    items = "".join(f'<li>{icon("check")}<strong>{md(x["title"])}</strong> {md(x.get("body", ""))}</li>' for x in n["items"])
     extra = "".join(callout(c, "Red herring", "watch") for c in n.get("callouts", []))
     intro = n.get("intro", "Each negative below was run against a control proving the query finds these "
                            "operations elsewhere on the tenant — a zero from a broken query looks identical "
@@ -215,23 +269,15 @@ ol.grounds li:first-child{border-top:0}
 blockquote{margin:0 0 6px;font-size:13px;font-style:italic;color:var(--ink);font-weight:500}
 ol.grounds p{margin:0 0 6px}
 ul.checks{list-style:none;margin:6px 0 0;padding:0}
-ul.checks li{position:relative;padding:5px 0 5px 20px}
-ul.checks li::before{content:"\\2713";position:absolute;left:0;color:var(--blue);font-weight:700}
+ul.checks li{position:relative;padding:5px 0 5px 22px}
 td code,.sec-body code{font-family:var(--mono)}
 @media print{ol.grounds li{break-inside:avoid;page-break-inside:avoid}}
-.verdict{display:grid;grid-template-columns:minmax(170px,auto) minmax(0,1fr);grid-template-rows:1fr;align-items:stretch;margin:16px 0 0;background:var(--callout);border:1px solid var(--vc)}
-.verdict.v-good{--vc:#1b7f4b}  /* the one green in the report: benign and closed verdicts read as good */.verdict.v-watch{--vc:var(--amber)}.verdict.v-act{--vc:var(--red)}
-.v-badge{background:var(--vc);color:#fff;padding:20px 24px;display:flex;flex-direction:column;justify-content:center;gap:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.v-ic{font:700 18px/1 var(--mono);width:30px;height:30px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center}
-.v-label{font:700 22px/1.15 var(--sans);letter-spacing:-.012em}
-.v-body{padding:16px 22px;align-self:center}
-.v-badge{align-self:stretch}
-.v-tag{font:500 8.5px/1.4 var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--t3);margin:0 0 6px}
-.v-body p{margin:0 0 6px}.v-body p:last-child{margin:0}
 .top{display:grid;grid-template-columns:minmax(0,1fr);column-gap:44px;align-items:start}
+.top .meta{margin-top:10px}
 .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px 28px;margin:16px 0;padding:16px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
 .meta dt{font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--t3);margin:0 0 6px}
 .meta dd{margin:0;overflow-wrap:anywhere;color:var(--ink)}
+.meta .sub{display:block;margin-top:2px;font-size:11.5px;color:var(--t2)}
 /* Full width on screen: the brand kit's 816px (US Letter) column is for print and PDF, which keep it. */
 @media screen{
 :root{--w:none;--px:40px}
@@ -241,8 +287,34 @@ table,table.data{table-layout:auto}
 td,th{overflow-wrap:anywhere}
 blockquote,ol.grounds p,ul.checks li{max-width:none}
 }
-@media screen and (max-width:760px){.verdict{grid-template-columns:1fr;grid-template-rows:auto}}
-@media screen and (max-width:640px){:root{--px:20px}.verdict{grid-template-columns:1fr;grid-template-rows:auto}}
+@media screen and (max-width:640px){:root{--px:20px}}
+/* Icons: one monochrome stroke set (see ICONS); colour comes from the state. */
+.ic{display:inline-grid;place-items:center;flex:none;color:var(--t2)}
+.ic svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+ul.checks .ic{color:#1b7f4b}.ic.s-good,.ic.r-close{color:#1b7f4b}.ic.s-watch,.ic.r-change,.ic.r-tune{color:var(--amber)}.ic.s-act,.ic.r-contain{color:var(--red)}.ic.r-confirm,.ic.r-info{color:var(--blue)}
+/* Verdict: tinted box, state icon and headline, the severity word in the state colour, then impact and respond */
+.verdict{--vt:#e8f3ec;margin:10px 0 0;padding:14px 20px 14px;background:var(--vt);border-left:4px solid var(--vc);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.verdict.v-good{--vc:#1b7f4b;--vt:#e8f3ec}.verdict.v-watch{--vc:var(--amber);--vt:#faefd6}.verdict.v-act{--vc:var(--red);--vt:#fbe9ea}
+.v-tag{font:500 8.5px/1.4 var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--t3);margin:0 0 4px}
+.v-head{display:flex;align-items:center;gap:10px;margin:0 0 6px;font-size:20px;line-height:1.2;font-weight:700;letter-spacing:-.01em;color:var(--ink)}
+.v-head .ic{width:26px;height:26px;color:var(--vc)}
+.v-sev{color:var(--vc)}
+.verdict p{margin:0 0 6px}.verdict p:last-child{margin:0}
+.v-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(200px,300px);gap:6px 36px;margin-top:10px;padding-top:10px;border-top:1px solid color-mix(in srgb,var(--vc) 28%,transparent)}
+.v-split p{margin:0}
+.v-rh{font-size:15px;font-weight:700;color:var(--vc);line-height:1.25;margin:2px 0 3px!important}
+.v-rn{font-size:11.5px;color:var(--t2)}
+@media screen and (max-width:760px){.v-split{grid-template-columns:1fr}}
+/* Recommendations: icon bullets, the main text highlighted */
+ul.recs{list-style:none;margin:4px 0 0;padding:0}
+ul.recs li{display:grid;grid-template-columns:26px minmax(0,1fr);gap:0 12px;padding:9px 0;border-top:1px solid var(--rule)}
+ul.recs li:first-child{border-top:0;padding-top:2px}
+ul.recs .ic{width:22px;height:22px;margin-top:1px}
+ul.recs .rl{font:500 9px/1.4 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--t2);margin:0 0 2px}
+ul.recs .rt{margin:0}
+ul.recs .main{font-weight:700;color:var(--ink);background:linear-gradient(transparent 62%,color-mix(in srgb,var(--blue) 18%,transparent) 62%)}
+ul.checks li .ic{position:absolute;left:0;top:4px;width:15px;height:15px}
+.callout .tag{display:flex;align-items:center;gap:6px}.callout .tag .ic{width:13px;height:13px}
 /* Timeline */
 ol.tl{list-style:none;margin:8px 0 4px;padding:0}
 ol.tl li{display:grid;grid-template-columns:130px 14px minmax(0,1fr);column-gap:14px;position:relative;padding:0 0 12px}
@@ -267,10 +339,6 @@ ol.tl time{grid-column:2;grid-row:1}ol.tl .dot{grid-column:1;grid-row:1}ol.tl .t
 .hero-title,.hero h1{font-size:27px}
 .hero-sub,.hero p{font-size:13.5px;margin-top:8px;line-height:1.45}
 .hero .hero-meta{margin-top:12px;padding-top:8px}
-.verdict{margin-top:10px}
-.v-badge{padding:12px 18px;gap:6px}.v-ic{width:24px;height:24px;font-size:14px}.v-label{font-size:18px}
-.v-body{padding:10px 16px}
-.top .verdict{margin-top:10px}.top .meta{margin-top:10px}
 .meta{gap:10px 24px;margin:10px 0;padding:10px 0}
 h2{font-size:17px;margin:18px 0 6px}
 h2 .n{margin-bottom:3px}
@@ -283,7 +351,7 @@ ol.grounds li{padding:0 0 8px;grid-template-columns:20px 1fr}
 ol.grounds p{margin:0 0 3px}
 ol.grounds{margin-top:2px}
 blockquote{margin-bottom:3px}
-ul.checks li{padding:3px 0 3px 18px}
+ul.checks li{padding:3px 0 3px 22px}
 .callout,.note{padding:10px 14px;margin:10px 0}
 .method{margin-top:18px}.method h2{margin:0 0 4px}
 .footer,.brand-foot{margin-top:18px;padding-bottom:16px}
@@ -308,8 +376,10 @@ DARK_RULES = [
     (".brandline .bl-l img,.hero-mark", "filter:invert(1)"),
     (".tag,.pill", "background:#121212"),
     (".callout .tag", "background:none"),
-    (".verdict .v-badge", "color:#121212"),
-    (".verdict.v-good", "--vc:#5cc48d"),
+    (".verdict.v-good", "--vc:#5cc48d;--vt:#16271e"),
+    (".verdict.v-watch", "--vt:#2a2417"),
+    (".verdict.v-act", "--vt:#2b1a1c"),
+    (".ic.s-good,.ic.r-close,ul.checks .ic", "color:#5cc48d"),
     (".tag.red,.tag.p1", "background:var(--red);border-color:var(--red);color:#121212"),
     (".tag.blue", "background:var(--blue);border-color:var(--blue);color:#121212"),
     (".callout,.note", "background:var(--callout)"),
@@ -334,9 +404,15 @@ def meta_value(c, label):
     return ""
 
 
-def render(c):
-    label, kind = verdict_label(c["verdict"])
-    v = c["verdict"]
+RISK_LABEL = re.compile(r"risk\s*-?score", re.I)
+
+
+def render_verdict(v):
+    """The verdict box: state icon and headline (the severity word in the state colour), the verdict text, what the
+    customer must do, then an optional row with the impact on the left and the response on the right."""
+    label, sev, kind = verdict_parts(v)
+    icon_name = {"good": "check", "watch": "alert", "act": "x"}[kind]
+    head = f'{html.escape(label)}' + (f' <span class="v-sev">{html.escape(sev)}</span>' if sev else "")
     # Actionable is separate from the outcome: a benign closure can still need the customer to act.
     action = ""
     if v.get("actionable") is True:
@@ -344,19 +420,43 @@ def render(c):
         action = f'<p><strong>Action needed:</strong> {md(what)}</p>'
     elif v.get("actionable") is False:
         action = '<p><em>No action needed.</em></p>'
-    icon = {"good": "\u2713", "watch": "!", "act": "\u2715"}[kind]
-    verdict = (f'<div class="verdict v-{kind}"><div class="v-badge"><span class="v-ic" aria-hidden="true">{icon}</span>'
-               f'<span class="v-label">{html.escape(label)}</span></div>'
-               f'<div class="v-body"><p class="v-tag">Verdict</p><p>{md(v["text"])}</p>{action}</div></div>')
-    meta = ('<dl class="meta">' + "".join(f'<div><dt>{html.escape(plain(m["label"]))}</dt><dd>{md(m["value"])}</dd></div>'
-                                          for m in c["meta"]) + "</dl>")
+    split = ""
+    imp, resp = v.get("impact"), v.get("respond")
+    if imp or resp:
+        left = right = ""
+        if imp:
+            ilabel, itext = (imp.get("label", "Impact"), imp.get("text", "")) if isinstance(imp, dict) else ("Impact", imp)
+            left = f'<div><p class="v-tag">{md(ilabel)}</p><p>{md(itext)}</p></div>'
+        if resp:
+            rh, rn = (resp.get("headline", ""), resp.get("note", "")) if isinstance(resp, dict) else (resp, "")
+            right = (f'<div><p class="v-tag">Respond</p><p class="v-rh">{md(rh)}</p>'
+                     + (f'<p class="v-rn">{md(rn)}</p>' if rn else "") + "</div>")
+        split = f'<div class="v-split">{left}{right}</div>'
+    return (f'<div class="verdict v-{kind}"><p class="v-tag">Verdict</p>'
+            f'<h4 class="v-head">{icon(icon_name, "s-" + kind)}<span>{head}</span></h4>'
+            f'<p>{md(v["text"])}</p>{action}{split}</div>'), kind
+
+
+def render_meta(items):
+    """The ticket metadata grid. A `sub` line sits under the value in muted type. Risk scores are not shown."""
+    cells = "".join(
+        f'<div><dt>{html.escape(plain(m["label"]))}</dt><dd>{md(m["value"])}'
+        + (f'<span class="sub">{md(m["sub"])}</span>' if m.get("sub") else "") + "</dd></div>"
+        for m in items if not RISK_LABEL.search(str(m.get("label", ""))))
+    return f'<dl class="meta">{cells}</dl>'
+
+
+def render(c):
+    verdict, kind = render_verdict(c["verdict"])
+    meta = render_meta(c["meta"])
+    closed = kind == "good"  # closed and benign verdicts end the ticket; anything else is still open
+    doc = "Incident Closure" if closed else "Incident Analysis"
 
     secs = Sections()
-    secs.add("Recommendation", paras(c["recommendation"]))  # what to do comes first; the evidence follows
+    secs.add("Recommendation", render_recommendations(c["recommendation"]))  # what to do comes first
     if c.get("entry"):       secs.add(*render_entry(c["entry"]))
     secs.add(*render_grounds(c["grounds"]))
     if c.get("timeline"):    secs.add(*render_timeline(c["timeline"]))
-    if c.get("score_table"): secs.add(*render_score_table(c["score_table"]))
     if c.get("base_rate"):   secs.add(*render_base_rate(c["base_rate"]))
     secs.add(*render_negatives(c["negatives"]))
     if c.get("callouts"):
@@ -364,11 +464,11 @@ def render(c):
 
     f = c["footer"]
     tenant, subject = meta_value(c, "tenant"), meta_value(c, "subject")
-    chrome = " · ".join(x for x in ["Confidential", tenant, "Incident Closure"] if x)
-    foot_left = " · ".join(x for x in ["Fluency Incident Closure", subject, tenant] if x)
+    chrome = " · ".join(x for x in ["Confidential", tenant, doc] + ([] if closed else ["Open"]) if x)
+    foot_left = " · ".join(x for x in [f"Fluency {doc}", subject, tenant] if x)
     return fb.page(
         title=plain(c["title"]),
-        eyebrow=plain(c.get("eyebrow") or "Incident closure · Tier 3 review"),
+        eyebrow=plain(c.get("eyebrow") or f"{doc.replace('Incident ', 'Incident ').lower().capitalize()} · Tier 3 review"),
         subtitle=plain(c["lede"]),
         meta=chrome,
         body=f'<div class="top">{verdict}{meta}</div>' + "".join(secs.out),
@@ -391,6 +491,8 @@ def main():
     c = json.load(open(a.closure_json))
     if a.logo or c.get("logo"):
         print("note: the Fluency monochrome brand is fixed; --logo / \"logo\" is ignored", file=sys.stderr)
+    if c.get("score_table"):
+        print("note: risk scores are not shown in the report; score_table is ignored", file=sys.stderr)
     missing = [k for k in REQUIRED if not c.get(k)]
     if missing:
         sys.exit(f"closure JSON missing required field(s): {', '.join(missing)}")

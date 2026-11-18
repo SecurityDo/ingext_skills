@@ -3,8 +3,7 @@
 `scripts/render_closure.py closure.json -o closure.html` renders this into the Tier 3
 closure report. Worked examples in `assets/examples/`:
 
-- `sendas_admin_closure.json`: a multi-day admin incident. It uses `score_table` and
-  `base_rate`.
+- `sendas_admin_closure.json`: a multi-day admin incident. It uses `base_rate`.
 - `credential_policy_closure.json`: a single-event incident. It uses `timeline`.
 
 Inline markup in any text field: `**bold**`, `*italic*`, `` `code` ``. Everything else
@@ -21,23 +20,24 @@ is escaped.
 | `verdict.text` | ✓ | string | Two sentences at most. Give the verdict, then the action. |
 | `verdict.actionable` | – | bool | Whether the customer has to do something now, whatever the outcome (Step 5). Shown on the verdict card. Set it on every closure; leaving it out is "not said". |
 | `verdict.customer_action` | – | string | When `actionable`: the one thing the customer should do, in a sentence. The same text goes to `report_incident_verdict`'s `customer_action`. |
-| `meta[]` | ✓ | `{label, value}` | Always include subject, tenant, window and peak riskScore. `Tenant` is the account's **display name**, as the caller gave it or as the interactive `list_accounts` confirmation returned it (e.g. `Contoso Ltd`), never the connector and never `connector : account`. Add incident days or incident time, the AI-assist verdict when one exists, and rules if useful. Keep it to 6–7 entries. |
+| `verdict.impact` | – | string or `{label, text}` | The impact if the verdict is wrong or if nothing is done: what the account, mailbox or endpoint is exposed to, in one or two sentences. Shown on the left of the row under the verdict text. `label` defaults to "Impact"; use a conditional label when it depends on an answer ("Impact if travel is denied"). |
+| `verdict.respond` | – | `{headline, note}` or string | The response at a glance, shown on the right of that row: `headline` is two to four words in the state colour ("No action this ticket", "Same business day"), `note` one short line under it. Without `impact` or `respond` the row is left out. |
+| `meta[]` | ✓ | `{label, value, sub?}` | Always include subject, tenant and window. **No risk scores** (the report never shows them: a `riskScore` entry is dropped). `sub` is an optional muted second line under the value (a name and job title under an address). `Tenant` is the account's **display name**, as the caller gave it or as the interactive `list_accounts` confirmation returned it (e.g. `Contoso Ltd`), never the connector and never `connector : account`. Add incident days or incident time, the AI-assist verdict when one exists, and rules if useful. Keep it to 6–7 entries. |
 | `grounds.items[]` | ✓ | `{claim, finding}` | `claim` is quoted **verbatim** from the AI-assist workflow. When there is no AI-assist verdict, write the grounds the summary raises. `finding` names the index each number came from and puts counts in bold. |
 | `grounds.title` / `.intro` | – | string | The title defaults to "N grounds for escalation, tested". |
 | `entry` | – | `{title, state, body, steps[{time, event}], why_it_worked, missing}` | **How the attacker got in**, on a confirmed or escalated account compromise only; leave it out otherwise. `title` is the finding ("A phishing proxy relayed the 06:52 sign-in and its session was replayed from a hosting network"). `state` is `established` (the rows show the entry), `likely` or `not_established`. `steps` are the raw-log rows of the entry, in order. `why_it_worked` names the control that did not stop it (no MFA, a relay that captures the session after MFA, a legacy protocol, a consent grant). `missing` says which source would settle an entry that is not established. It explains; it never sets the verdict. Rendered after the recommendation, before the grounds. |
 | `timeline` | – | `{title, intro, rows[{time, actor, event, highlight}], callout}` | Use for single-event or single-transaction incidents. Rendered as a vertical timeline (time in UTC, a dot on a line, then actor and event); `highlight` rows get a red dot and a "rule fired" tag. `callout` is `{title, body}`, or a string for a body without a heading. Times come from the **raw audit log**, never from summary `from`/`to`. Set `highlight` on the rows the rule fired on. |
-| `score_table` | – | `{title, intro, activity_label, rows[{day, activity, score, incident}], callout}` | Use for multi-day incidents. Put the entity's real daily activity next to the daily riskScore. Bars are scaled per column. Put the risk term that actually drives the score in `callout` (`{title, body}` or a string). |
 | `base_rate` | – | `{title, intro, caption, columns[], rows[[…]]}` | The Step 2 census **within this one account**: one row per rule, with the number of distinct entities and the highest scorer. Never another tenant's numbers. |
 | `negatives.items[]` | ✓ | `{title, body}` | One item per negative from the Step 3 workflow. Each `body` gives the zero **and its control**, meaning the count of the same operation elsewhere on the tenant. |
 | `negatives.callouts[]` | – | `{title, body}` | Use one callout for each red herring the ticket raised, such as an "ISP discrepancy" or "impossible travel". |
 | `callouts[]` | – | `{title, body}` | Standalone callouts rendered before the Recommendation section. |
-| `recommendation` | ✓ | string or string[] | The first paragraph gives the disposition and the tuning lever, stating which lever it is (see Step 5). Later paragraphs cover gaps found along the way, such as collection or ingestion problems, kept separate from the verdict. |
+| `recommendation` | ✓ | string, string[] or `[{text, label?, kind?, main?}]` | Shown as **icon bullets, the main text of each in bold**. Write one bullet per action, the most important first. `text` is the bullet; its first sentence is highlighted unless you mark your own with `**…**` or give `main`. `kind` picks the icon and colour: `close` (check, green), `contain` (lock, red), `confirm` (envelope, blue), `change` (sun, amber), `tune` (sliders, amber), `monitor` (eye), `info`; without it the kind is read from the wording. `label` is a short mono-caps tag above the bullet ("Close · benign", "If the answer is no · contain", "Tuning · for the rule maintainer"). Keep gaps found along the way (collection or ingestion problems) in their own bullet, separate from the verdict. |
 | `footer.date` | ✓ | string | The review date. |
 | `footer.evidence` | ✓ | string | Every index or API consulted, each with its row or hit count, ending with the data-boundary line "All findings: <tenant display name> only." |
 
 ## Section titles are findings, not labels
 
-This rule applies to `score_table.title`, `base_rate.title`, `timeline.title` and
+This rule applies to `base_rate.title`, `timeline.title` and
 `grounds.title`.
 
 - **Good:** "The score does not follow the activity", "She is not an outlier among her
