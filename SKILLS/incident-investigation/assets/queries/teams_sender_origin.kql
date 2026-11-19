@@ -1,0 +1,27 @@
+// Who started an outside Teams contact: what the outside sender's address did in the
+// subject's tenant before the chat, next to the sharing links the subject made. One row
+// per side (recipient = the subject's own link creations; sender_address = every row
+// from the sender's address) and sharing id. The same UniqueSharingId on both sides, the
+// subject's link first and the sender's address using it (AnonymousLinkUsed,
+// SharingLinkUsed) before the chat, means the subject sent the outsider into their own
+// files and the chat came back from there: a contact the subject began (their own lab or
+// second tenant, a training environment), not one aimed at them. A sender_address row on
+// the subject's personal site with an empty sharing id is the same visit (PageViewed,
+// ListViewed). No row from the sender's address before the chat leaves the contact
+// unexplained.
+// Union and summarize, not a join (a lake join can return zero rows without an error).
+// Placeholders: {UPN} = the subject, lower-cased; {IPS} = the sender's ClientIP(s) from
+// the Teams rows, quoted and comma-separated; {WFROM} = 30 minutes before the chat;
+// {WTO} = a few minutes after it.
+Office365
+| where timestamp between (datetime("{WFROM}") .. datetime("{WTO}"))
+| extend U = tolower(tostring(UserId)), IP = tostring(ClientIP), Op = tostring(Operation),
+         Sid = tostring(UniqueSharingId), Obj = tostring(ObjectId)
+| where (U == "{UPN}" and Op in ("AnonymousLinkCreated", "SharingLinkCreated", "SharingInvitationCreated",
+          "CompanyLinkCreated", "SecureLinkCreated", "AddedToSecureLink"))
+    or IP in ({IPS})
+| extend side = iff(U == "{UPN}" and IP !in ({IPS}), "recipient", "sender_address")
+| summarize rows = count(), ops = make_set(Op, 8), users = make_set(U, 4), firstAt = min(timestamp),
+    lastAt = max(timestamp), objects = make_set(Obj, 3) by side, Sid
+| order by firstAt asc
+| take 100

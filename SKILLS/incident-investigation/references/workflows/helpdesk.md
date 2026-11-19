@@ -72,6 +72,19 @@ Run `assets/queries/teams_external_contact.kql` for the employee (`{UPN}`), then
 - **The attacker's own messages carry no URLs here.** The audit log records the outside
   sender's `MessageSent` without its content or links. A lure link appears only on the
   device side (H3).
+- **Who started the contact?** Take the outside sender's `ClientIP` from its Teams rows
+  and run `assets/queries/teams_sender_origin.kql` (`{IPS}` = those addresses, `{WFROM}`
+  30 minutes before the chat). When the subject created a sharing link and the sender's
+  address used that same `UniqueSharingId` before the chat, the subject sent the outsider
+  into their own files and the chat came back from there. That is a contact the subject
+  began, typically their own lab or second tenant: a Microsoft Learn hosted lab
+  (`wwlcpx<digits>.onmicrosoft.com`, sender "MOD Administrator", AS58580) is one. The
+  tenant's name, the display name and the network are a hint only, never enough alone,
+  since anyone can name a tenant anything; the link the subject made is the evidence.
+  Still check H3 (what the files did on the device), and say the open link remains.
+- **The subject is the internal recipient.** The outside sender has no sign-ins or
+  profile in this tenant, so a user lookup on it comes back empty and settles nothing.
+  The employee's own activity around the chat (links, accepts, files, device) does.
 - **Who else did the same sender reach?** The census row for the sender gives the
   number of this tenant's users in its chats. Every one of them is a contact to list in
   the closure, prioritised by engagement.
@@ -173,6 +186,7 @@ ticket; the closure must still say who else took a call. This stays inside `ACCO
 | What the evidence shows | Verdict |
 |---|---|
 | Something ran or was opened on the device during or after the call (installer, script, lure page, remote-support tool, a command shell started by the user), or Defender saw hands-on-keyboard activity | **Confirmed.** Containment first: device isolated and imaged, account disabled or reset, sessions revoked, MFA re-registered. Say which of these H4 shows already done. |
+| The subject began it: their sharing link, then the sender's address using it, before the chat (H1 "Who started the contact?"), and nothing ran on the device. Accepting or replying to a chat the subject began is not engagement with an attacker | **Benign: verify, low.** Ask the subject to confirm the outside tenant is theirs (a lab, a second tenant) and to remove the open link. |
 | A call was answered, or the chat was accepted or replied to, and H3 is clean **with controls** | **Escalate.** The open question is what happened on the call; the employee interview and the device's EDR timeline answer it. |
 | A call was answered but H3 could not run (no endpoint data, no Windows events, no EDR) | **Escalate**, with each missing source named as a gap. |
 | Contact only: no call answered after the four-hour lag, chat not accepted, no reply, nothing on the device, with controls | **Benign for this employee**, but list the sender and its other contacts (H5), and recommend blocking the tenant. |
