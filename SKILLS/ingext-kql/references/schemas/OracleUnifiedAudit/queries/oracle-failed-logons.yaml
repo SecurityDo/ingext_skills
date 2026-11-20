@@ -1,0 +1,16 @@
+description: >-
+  Failed database logons in the last day, per account: attempts, time span, servers
+  and error codes. ORA-1017 is a wrong password, ORA-28000 a locked account (often a
+  service with a stale password retrying), ORA-28001 an expired password. Many
+  accounts failing ORA-1017 in a short window points at password guessing.
+datatype: OracleUnifiedAudit
+kql: |
+  OracleUnifiedAudit
+  | where timestamp > ago(1d)
+  | where action_name == "LOGON" and outcome == "failure"
+  | summarize Attempts = count(), First = min(timestamp), Last = max(timestamp), Hosts = make_set(host, 10), Errors = make_set(error_code, 5) by database_user
+  | order by Attempts desc
+tags: [oracle, database, logon, failure, brute-force]
+expected_output: |
+  database_user  Attempts  First                     Last                      Hosts                    Errors
+  SVCAPP         33        2026-11-20T16:01:46.521Z  2026-11-20T16:02:20.991Z  ["db02","db01","db03"]   ["ORA-28000"]

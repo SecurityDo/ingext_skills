@@ -1,0 +1,20 @@
+description: >-
+  Account, privilege and system changes in the last 7 days: user creation and
+  alteration (including password changes and unlocks), grants and revokes, role
+  changes and ALTER SYSTEM. object_name is the account changed; compare
+  database_user (who logged in) with current_user (whose rights ran the
+  statement) to see changes made through an admin procedure.
+datatype: OracleUnifiedAudit
+kql: |
+  OracleUnifiedAudit
+  | where timestamp > ago(7d)
+  | where action_name in ("CREATE USER", "ALTER USER", "DROP USER", "GRANT OBJECT", "REVOKE OBJECT", "SYSTEM GRANT", "SYSTEM REVOKE", "GRANT ROLE", "REVOKE ROLE", "CREATE ROLE", "DROP ROLE", "ALTER SYSTEM", "SYSTEM AUDIT", "SYSTEM NOAUDIT", "AUDIT OBJECT", "NOAUDIT OBJECT")
+  | project timestamp, host, action_name, outcome, database_user, current_user, schema_name, object_name, session_id
+  | order by timestamp desc
+tags: [oracle, database, account-management, privilege, change]
+expected_output: |
+  timestamp                 host  action_name   outcome  database_user  current_user  schema_name  object_name  session_id
+  2026-11-20T16:05:57.050Z  db02  ALTER SYSTEM  success  SYS            SYS                                     2000000011
+  2026-11-20T16:05:05.249Z  db01  ALTER USER    success  APPUSER        ADMINPKG                   NEWUSER1     2000000003
+  2026-11-20T16:05:05.249Z  db01  GRANT OBJECT  success  APPUSER        ADMINPKG                                2000000003
+  2026-11-20T16:05:05.249Z  db01  CREATE USER   success  APPUSER        ADMINPKG                   NEWUSER1     2000000003

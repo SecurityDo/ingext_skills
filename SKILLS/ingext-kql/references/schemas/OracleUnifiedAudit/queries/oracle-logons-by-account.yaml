@@ -1,0 +1,18 @@
+description: >-
+  Logon activity per database account in the last day: successful and failed
+  logons, how many servers the account uses, first and last seen. A baseline of
+  which accounts connect where; a new account at the top, or an account
+  appearing on a server it never used, is worth a look.
+datatype: OracleUnifiedAudit
+kql: |
+  OracleUnifiedAudit
+  | where timestamp > ago(1d)
+  | where action_name == "LOGON"
+  | summarize Logons = count(), Failures = countif(outcome == "failure"), Hosts = dcount(host), First = min(timestamp), Last = max(timestamp) by database_user
+  | order by Logons desc
+tags: [oracle, database, logon, baseline, account]
+expected_output: |
+  database_user  Logons  Failures  Hosts  First                     Last
+  APPUSER        4434    0         2      2026-11-20T15:51:28.604Z  2026-11-20T16:11:59.359Z
+  SYS            715     0         3      2026-11-20T15:51:28.610Z  2026-11-20T16:11:59.342Z
+  SVCAPP         33      33        3      2026-11-20T16:01:46.521Z  2026-11-20T16:02:20.991Z

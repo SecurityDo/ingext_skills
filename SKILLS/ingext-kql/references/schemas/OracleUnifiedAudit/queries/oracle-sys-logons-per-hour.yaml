@@ -1,0 +1,17 @@
+description: >-
+  SYS and SYSTEM logons per server and hour, last day. Most are internal and
+  scheduled (monitoring, backups, jobs), so the useful signal is a change in the
+  hourly pattern or a server where they normally do not occur.
+datatype: OracleUnifiedAudit
+kql: |
+  OracleUnifiedAudit
+  | where timestamp > ago(1d)
+  | where database_user in ("SYS", "SYSTEM") and action_name == "LOGON"
+  | summarize Logons = count() by host, database_user, bin(timestamp, 1h)
+  | order by timestamp desc
+tags: [oracle, database, privileged, sys, baseline]
+expected_output: |
+  host  database_user  timestamp             Logons
+  db01  SYS            2026-11-20T16:00:00Z  358
+  db02  SYS            2026-11-20T16:00:00Z  83
+  db03  SYS            2026-11-20T16:00:00Z  12

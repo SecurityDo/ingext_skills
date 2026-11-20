@@ -1,6 +1,6 @@
 ---
 name: ingext-kql
-version: 1.1.7
+version: 1.1.8
 description: >
   Generate a validated KQL query for the Ingext datalake from a natural-language description.
   Use this skill whenever the user asks to query, search, count, aggregate, or report on data

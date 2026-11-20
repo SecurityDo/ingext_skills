@@ -1,0 +1,202 @@
+schema: OracleUnifiedAudit
+description: >-
+  Oracle Database unified audit trail events (UNIFIED_AUDIT_TRAIL), forwarded by
+  Cribl over the HTTP event collector and parsed by Ingext. Each record is one
+  audit entry: who acted (database_user, current_user), what they did (action_id
+  / action_name), on what (schema_name, object_name), whether it worked
+  (return_code, outcome, error_code), and where (host = the database server,
+  database_id, session_id).
+
+  action_name is the discriminator. Most of the volume is session bookkeeping:
+
+    - LOGON / LOGOFF / LOGOFF BY CLEANUP — one LOGON and one LOGOFF per database
+      session (LOGOFF BY CLEANUP when PMON ends a dead session). Application
+      service accounts open thousands of short sessions a day, so these
+      dominate: count them per user, never read them one by one.
+    - Account and privilege changes — CREATE USER, ALTER USER (also password
+      changes and unlocks), DROP USER, GRANT OBJECT / REVOKE OBJECT, SYSTEM GRANT
+      / SYSTEM REVOKE, GRANT ROLE / REVOKE ROLE, CREATE ROLE / DROP ROLE.
+      object_name holds the account the change applies to.
+    - ALTER SYSTEM, PL/SQL EXECUTE, and DML (UPDATE, INSERT, DELETE) on objects
+      covered by an audit policy.
+
+  The record is stored as a dynamic JSON document (root @oracleAudit), so every
+  field is referenced bare (database_user, action_name). Which fields appear
+  depends on what the Cribl pipeline sends: the base set below is on every
+  record, schema_name / object_name / client_identifier only when Oracle filled
+  them. The UNIFIED_AUDIT_TRAIL columns for the client side (OS_USERNAME,
+  USERHOST, TERMINAL, CLIENT_PROGRAM_NAME, AUTHENTICATION_TYPE) and SQL_TEXT,
+  SYSTEM_PRIVILEGE_USED and UNIFIED_AUDIT_POLICIES are not forwarded today; do
+  not write queries that depend on them.
+
+  Traps worth knowing before writing a query:
+    1. timestamp is the time Ingext received the record, not Oracle's event time
+       (Cribl's time field is the database's local time read as UTC, hours off;
+       it is kept as cribl_time). Records arrive within a minute or two, in
+       batches, so many share the same millisecond: order a session by entry_id,
+       not timestamp.
+    2. session_id, oracle_process_id and entry_id are only unique per database.
+       Pin host (or database_id) together with session_id to follow a session.
+    3. database_user is the account that logged in (DBUSERNAME). current_user
+       is the effective user of the statement: it differs when a definer's-rights
+       PL/SQL procedure runs the statement, e.g. an application account calling
+       an admin package that issues CREATE USER shows database_user = the app
+       account, current_user = the package owner.
+    4. outcome is derived from return_code (0 success, anything else failure).
+       error_code is "ORA-<return_code>" and exists only on failures; for logons
+       ORA-1017 is a wrong password, ORA-28000 a locked account, ORA-28001 an
+       expired password.
+    5. action_name is mapped from action_id by Ingext; a rare action may have
+       action_id but no action_name. Filter on action_id when in doubt.
+    6. client_identifier is set by the client application (DBMS_SESSION
+       .SET_IDENTIFIER), not by Oracle: free text, often a user name glued to an
+       IP address with no separator, sometimes unreadable bytes.
+fields:
+
+  # ==========================================
+  # CORE / INGEST
+  # ==========================================
+  - name: timestamp
+    type: DateTime
+    description: "Primary time column for range filters (where timestamp > ago(1d)). Time Ingext received the record; see trap 1."
+    sampleValues: ["2026-11-20T16:05:05.249Z"]
+
+  - name: size
+    type: Integer
+    description: "Internal record size in bytes, used for ingestion accounting."
+
+  - name: _behaviors
+    type: DynamicArray
+    description: "Behavior rule names this event triggered (empty until rules exist for this data type). mv-expand before grouping."
+
+  - name: cribl_time
+    type: Integer
+    description: "Cribl's event time, epoch SECONDS. It is the database's local time read as UTC, so it is off by the server's UTC offset. Kept for reference; use timestamp."
+    sampleValues: ["1795168184"]
+
+  - name: cribl_pipe
+    type: String
+    description: "The Cribl pipeline that produced the record."
+    sampleValues: ["OracleUnifiedLog_Parser"]
+
+  - name: source_type
+    type: String
+    description: "Constant oracle_unified_audit."
+    sampleValues: ["oracle_unified_audit"]
+
+  - name: event_type
+    type: String
+    description: "Constant audit."
+    sampleValues: ["audit"]
+
+  - name: vendor
+    type: String
+    description: "Constant Oracle."
+    sampleValues: ["Oracle"]
+
+  - name: product
+    type: String
+    description: "Constant Oracle Database."
+    sampleValues: ["Oracle Database"]
+
+  # ==========================================
+  # WHERE
+  # ==========================================
+  - name: host
+    type: String
+    description: "The database server that wrote the record (Cribl's HEC host), lowercase. One server can host several databases (database_id)."
+    sampleValues: ["db01", "db02"]
+
+  - name: database_id
+    type: String
+    description: "Oracle DBID of the database (string). Use with host to tell databases apart."
+    sampleValues: ["100000001"]
+
+  - name: session_id
+    type: String
+    description: "Audit session id (SESSIONID), string. Every record of one database session shares it; unique per database only (trap 2)."
+    sampleValues: ["2000000001"]
+
+  - name: oracle_process_id
+    type: String
+    description: "Operating-system process id of the Oracle server process (OS_PROCESS), string."
+    sampleValues: ["10001"]
+
+  - name: entry_id
+    type: Integer
+    description: "Sequence of this record within its session, starting at 1 for the LOGON. Order a session by this."
+    sampleValues: ["1", "2", "8"]
+
+  - name: statement_id
+    type: Integer
+    description: "Number of the SQL statement within the session that produced the record."
+    sampleValues: ["1", "43"]
+
+  # ==========================================
+  # WHO
+  # ==========================================
+  - name: database_user
+    type: String
+    description: "The database account that logged in (DBUSERNAME), uppercase. Application service accounts, SYS (internal and DBA connections) and monitoring accounts (DBSNMP) are the bulk."
+    sampleValues: ["APPUSER", "SYS", "DBSNMP", "SVCAPP"]
+
+  - name: current_user
+    type: String
+    description: "Effective user the statement ran as (CURRENT_USER). Differs from database_user under definer's-rights PL/SQL (trap 3). Can be null on failed logons."
+    sampleValues: ["APPUSER", "ADMINPKG"]
+
+  - name: client_identifier
+    type: String
+    description: "Application-set client identifier (trap 6). Present only when the client sets it."
+    sampleValues: ["USER1192.0.2.10"]
+
+  # ==========================================
+  # WHAT
+  # ==========================================
+  - name: action_id
+    type: Integer
+    description: "Oracle action code (AUDIT_ACTIONS.ACTION): 100 LOGON, 101 LOGOFF, 102 LOGOFF BY CLEANUP, 51 CREATE USER, 43 ALTER USER, 53 DROP USER, 17 GRANT OBJECT, 18 REVOKE OBJECT, 108 SYSTEM GRANT, 109 SYSTEM REVOKE, 114 GRANT ROLE, 115 REVOKE ROLE, 49 ALTER SYSTEM, 47 PL/SQL EXECUTE, 2 INSERT, 3 SELECT, 6 UPDATE, 7 DELETE."
+    sampleValues: ["100", "101", "51", "43", "17"]
+
+  - name: action_name
+    type: String
+    description: "Readable action, mapped from action_id (trap 5). The main discriminator."
+    sampleValues: ["LOGON", "LOGOFF", "LOGOFF BY CLEANUP", "CREATE USER", "ALTER USER", "GRANT OBJECT", "ALTER SYSTEM", "PL/SQL EXECUTE", "UPDATE"]
+
+  - name: schema_name
+    type: String
+    description: "Schema of the object acted on (OBJECT_SCHEMA). Present on object DML/DDL."
+    sampleValues: ["APPSCHEMA"]
+
+  - name: object_name
+    type: String
+    description: "Object acted on (OBJECT_NAME). For CREATE/ALTER/DROP USER it is the account changed."
+    sampleValues: ["NEWUSER1", "APP_SETTINGS"]
+
+  - name: record_type_code
+    type: String
+    description: "Audit record type code as sent by Cribl (string). Mostly \"4\"; \"9\" also seen on PL/SQL EXECUTE."
+    sampleValues: ["4", "9"]
+
+  # ==========================================
+  # RESULT
+  # ==========================================
+  - name: return_code
+    type: Integer
+    description: "Oracle error number of the action; 0 = success."
+    sampleValues: ["0", "1017", "28000"]
+
+  - name: outcome
+    type: String
+    description: "success or failure, derived from return_code by Ingext."
+    sampleValues: ["success", "failure"]
+
+  - name: error_code
+    type: String
+    description: "ORA-<return_code>, failures only (trap 4)."
+    sampleValues: ["ORA-28000", "ORA-1017", "ORA-1031"]
+
+  - name: error_message
+    type: String
+    description: "Short text for common error codes (logon failures, insufficient privileges); absent for other codes."
+    sampleValues: ["the account is locked", "invalid username/password; logon denied"]

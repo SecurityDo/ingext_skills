@@ -1,0 +1,21 @@
+description: >-
+  Every record of one database session in order, from LOGON to LOGOFF. A session
+  is identified by host and session_id together (session ids are unique per
+  database only); order by entry_id because the records of a session often share
+  one timestamp. Replace the host and session id, e.g. with values from the
+  account-changes query.
+datatype: OracleUnifiedAudit
+kql: |
+  OracleUnifiedAudit
+  | where timestamp > ago(1d)
+  | where host == "db01" and session_id == "2000000003"
+  | project timestamp, entry_id, statement_id, action_name, outcome, database_user, current_user, object_name, client_identifier
+  | order by entry_id asc
+tags: [oracle, database, session, investigation, timeline]
+expected_output: |
+  timestamp                 entry_id  statement_id  action_name   outcome  database_user  current_user  object_name
+  2026-11-20T16:05:05.248Z  1         1             LOGON         success  APPUSER        APPUSER
+  2026-11-20T16:05:05.249Z  2         43            CREATE USER   success  APPUSER        ADMINPKG      NEWUSER1
+  2026-11-20T16:05:05.249Z  3         44            GRANT OBJECT  success  APPUSER        ADMINPKG
+  2026-11-20T16:05:05.249Z  6         48            ALTER USER    success  APPUSER        ADMINPKG      NEWUSER1
+  2026-11-20T16:06:24.973Z  8         83            LOGOFF        success  APPUSER        APPUSER

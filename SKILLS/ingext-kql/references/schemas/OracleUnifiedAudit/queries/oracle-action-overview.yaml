@@ -1,0 +1,19 @@
+description: >-
+  What the audit trail holds, per database server: events and distinct accounts by
+  action and outcome over the last day. A first look at a new tenant, and the way
+  to spot a server that stopped sending (its row disappears).
+datatype: OracleUnifiedAudit
+kql: |
+  OracleUnifiedAudit
+  | where timestamp > ago(1d)
+  | summarize Events = count(), Users = dcount(database_user) by host, action_name, outcome
+  | order by Events desc
+tags: [oracle, database, overview, volume]
+expected_output: |
+  host  action_name        outcome  Events  Users
+  db01  LOGON              success  5543    19
+  db01  LOGOFF             success  5434    16
+  db02  LOGON              success  102     4
+  db01  LOGOFF BY CLEANUP  success  82      9
+  db01  PL/SQL EXECUTE     success  27      2
+  db01  LOGON              failure  13      1
