@@ -40,6 +40,18 @@ Common aggregators: `count()`, `sum(col)`, `avg(col)`, `min(col)`, `max(col)`, `
 
 `bin(col, <duration>)` buckets values — use for time-series charts.
 
+## Several summaries in one pass — `fork`
+
+```
+| where TimeGenerated > ago(1d)
+| fork
+    BySrc  = (summarize hits = count() by srcip | top 10 by hits desc)
+    ByDst  = (summarize hits = count() by dstip | top 10 by hits desc)
+    Denied = (where action == "deny" | count)
+```
+
+One read of the table feeds every subquery; the result has one table per subquery (`BySrc`, `ByDst`, `Denied`). Name with `Name = (...)` or a trailing `| as Name`; unnamed ones are `Fork_1`, `Fork_2`, ... `fork` is the last operator. See `examples/fork.md`.
+
 ## Projecting / extending
 
 ```

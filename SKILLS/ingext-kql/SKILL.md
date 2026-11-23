@@ -1,6 +1,6 @@
 ---
 name: ingext-kql
-version: 1.1.8
+version: 1.1.9
 description: >
   Generate a validated KQL query for the Ingext datalake from a natural-language description.
   Use this skill whenever the user asks to query, search, count, aggregate, or report on data
@@ -123,7 +123,7 @@ This step is required for **every** query, including trivial `project`/`take` lo
 - **If it has no entry** (a table appears in `list_data_tables` but not the manifest): **stop — do not guess.** You don't know the table's columns, so you cannot build a reliable query. Return the output contract with `kql` set to `""`, `tables` set to `[]`, and `explanation` stating that the table exists in the tenant but isn't in your embedded schema knowledge base, so you can't construct a query for it. Only suggest another table you do know if one is actually relevant to the user's request — otherwise don't offer a substitute.
 
 ### 3. Reuse example queries
-Check the table's `queries` in the manifest. If one is close to the user's request, open it (`references/schemas/<TableName>/queries/<name>.yaml`) and adapt its `kql` rather than writing from scratch — these are known-good patterns for the table. For generic patterns (group-by, faceting), see `references/examples/`.
+Check the table's `queries` in the manifest. If one is close to the user's request, open it (`references/schemas/<TableName>/queries/<name>.yaml`) and adapt its `kql` rather than writing from scratch — these are known-good patterns for the table. For generic patterns (group-by, faceting, several breakdowns in one pass with `fork`), see `references/examples/`.
 
 ### 4. Draft the KQL
 Use the **table name** (from `list_data_tables`) as the identifier. Reference only columns that appear in the schema you loaded. If the user's request can't be answered with the available data, say so in `explanation` and return an empty `kql`.
@@ -179,6 +179,7 @@ Emit a single JSON object — no prose wrapper, no markdown fence:
 - **Never name a computed column after a dynamic root.** On a dynamic table, `extend client = ...` (or `actor`, `outcome`, `target`) shadows the event's field: every later `client.ipAddress` reads the new column and comes back empty. Use `clientType`, `actorName`, and so on.
 - **Fine-grained summaries can be truncated.** A per-minute `summarize` over a busy table hits the group limit and drops groups; check `truncated` in the response, and bin coarser or filter to the keys of interest first.
 - **`summarize by X` needs an aggregate.** `summarize by X` with no aggregate does not parse; use `distinct X`, or add `count()`.
+- **Several breakdowns of the same rows: `fork`.** When the user wants two or more summaries of one filtered population (by workload, top operations, an Exchange count), write the shared filters once and end the query with `| fork Name1 = (summarize ...) Name2 = (summarize ... | top 5 by n desc)`. The table is read once and the subqueries run in parallel; the response has one table per subquery, named `Name1`, `Name2` (or by a trailing `| as Name`, else `Fork_1`, `Fork_2`). `fork` must be the last operator, and a subquery cannot contain `join`, `union`, `facet` or another `fork`. `kql_summary` refuses it. Worked example: `references/examples/fork.md`.
 - **Time bucketing:** `bin(TimeGenerated, 1h)` for time-series.
 - **Dynamic JSON fields:** use `.` navigation and cast with `tostring()` / `tolong()` before aggregating.
 
