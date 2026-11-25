@@ -2,14 +2,14 @@
 name: defender-patch-health-report
 version: 1.0.0
 description: >-
-  Produce a CISO-level Microsoft Defender for Endpoint PATCH AND HARDENING health report for ONE Fluency / Ingext tenant (HTML, PDF, CSVs) from the
-  msDefender* resource dumps, with no scheduled report or archive needed. It shows where server patching stopped (months behind and last patched
-  month per server), which exploitable CVEs to clear first and how long they have been open, which servers (domain controllers, backup, Hyper-V)
-  are on the network but outside Defender, which enrolled servers have gone silent, which hardening controls (ASR rules, LAPS, BitLocker,
-  ransomware protection) are off on every server, antivirus health, 30 days of de-duplicated alerts, and endpoint connections that deliver no
-  data. USE THIS SKILL for "Defender health report", "patching health", "which servers need patching", "CISO view of Defender vulnerabilities",
-  "exploitable CVEs and hardening for tenant X". DO NOT use it for the archive-based device-scoring report (defender-resource-report), one host
-  (ingext-get-profile) or alert triage (incident-investigation).
+  Produce a CISO-level Microsoft Defender for Endpoint PATCH AND HARDENING health report for ONE Fluency / Ingext tenant (HTML, PDF, CSVs)
+  from the msDefender* resource dumps, with no scheduled report or archive needed. It shows where server patching stopped (months behind and
+  last patched month per server), which exploitable CVEs to clear first and how long they have been open, which servers are on the network but
+  outside Defender, which enrolled servers have gone silent, which hardening controls (ASR rules, LAPS, BitLocker, ransomware protection) are
+  off on every server, antivirus health, de-duplicated alerts, and endpoint connections that deliver no data. USE THIS SKILL for "Defender
+  health report", "patching health", "which servers need patching", "CISO view of Defender vulnerabilities", "exploitable CVEs and hardening
+  for tenant X". DO NOT use it for the archive-based device-scoring report (defender-resource-report), one host (ingext-get-profile) or alert
+  triage (incident-investigation).
 ---
 
 # Defender Patch & Hardening Health Report
